@@ -2,7 +2,7 @@
 
 Independent evidence-backed memory and context for agentic work.
 
-> Bootstrap documentation only. No product runtime, released API, installation command or performance claim is established here. The reviewed architecture is `architecture-v1-20260912`; its full canonical documents have not yet been imported into these repositories. These READMEs summarize boundaries and do not replace the specifications.
+> Bootstrap documentation only. No product runtime, released API, installation command or performance claim is established here. The reviewed architecture is `architecture-v1-20260912`, published as `public-development-v1-20260913`. Canonical specifications are available through [the documentation map](docs/README.md). This README is an overview, not the full specification.
 
 CBR helps agents preserve constraints, reuse useful investigations and recover context across long projects. It can run directly with model providers and evidence producers, without PIO or Combraton. Its models remain fallible; memory must preserve provenance and uncertainty rather than turn summaries into authority.
 
@@ -44,4 +44,8 @@ Measure downstream accepted outcomes, missed constraints, unsupported claims, co
 
 Rust/SQLite are core starting preferences. Native provider calls versus lightweight Pi-derived libraries need a bounded runtime comparison. Prime and upstream Pi are different source/release candidates; neither is selected. Generated-program workers are optional and require real scope enforcement, host-owned provenance and aggregate limits.
 
-For shared milestones and self-development, read [BOOTSTRAP](https://github.com/Combraton/combraton/blob/main/BOOTSTRAP.md). No runtime, benchmark claim or license is provided by this bootstrap; initial visibility is private.
+For development milestones, read [BOOTSTRAP](https://github.com/Combraton/combraton/blob/main/BOOTSTRAP.md). No runtime, benchmark claim or license is provided by this bootstrap; the repository is public and its project license remains to be selected.
+
+## Working on this repository
+
+Read [AGENTS.md](AGENTS.md), [CLAUDE.md](CLAUDE.md), [the documentation map](docs/README.md), and [verification](docs/VERIFICATION.md). Use existing native harnesses for development. **Combraton self-development is deferred until usable v0.1 releases of all four projects.** Public visibility does not select a license; no project license has been added yet.
