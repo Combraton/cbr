@@ -167,3 +167,9 @@ Evaluate extraction precision, citation correctness, stale-claim escape, false c
 [PREPARATION-AND-DELIVERY](PREPARATION-AND-DELIVERY.md) defines bounded background consolidation, immediate access to binding corrections, greenfield capture and progressive brownfield assimilation. These use the existing maintenance and request-time loops; no project-wide assimilation barrier or permanent model conversation is introduced.
 
 The caller selects advisory, required-before-transition or required-before-start obligations. CBR returns the exact packet, applicable basis and explicit required gaps. It never silently downgrades required context on timeout. Keep deadline, internal investigation budget and output capacity distinct. Preparation must not hold its waiting consumer's scarce execution resources. Versioned updates preserve earlier packets and record actual delivery; unavailable hooks and late arrival remain visible.
+
+## PIO standalone client as a context consumer
+
+PIO's [standalone CLI/TUI application](https://github.com/Combraton/pio/blob/main/docs/spec/STANDALONE-CLIENT.md) can request CBR packets and publish scoped eligible evidence through public profiles, without Combraton. Its explicit user/caller binding supplies context obligations and authority; CBR returns exact packets, applicability and gaps. CBR memory confidence does not grant authority, and client receipt does not prove native-model comprehension.
+
+This optional consumer does not change CBR's independent direct-model operation. If a CBR investigation uses PIO, it has a separate memory-job/execution identity and bounded grant. It must not reenter automatic CBR enrichment or depend on a resource held by its waiting consumer. Client disconnect/cancellation follows existing durable request and subscriber rules; shared preparation and other subscribers are not implicitly canceled.

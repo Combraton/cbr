@@ -13,6 +13,10 @@ Start with [README](README.md) and [the documentation map](docs/README.md), then
 - Consolidate in bounded background work; expose recorded binding corrections promptly. Brownfield assimilation is progressive, not a default global startup barrier.
 - The caller chooses advisory/start/transition obligations. Return explicit gaps; deadline expiry is not proof. Preparation must not deadlock on a resource held by its waiting consumer.
 
+## Current standalone-first milestone
+
+Support PIO's standalone client as an optional context consumer using public profiles and explicit caller authority. Retain direct-provider/no-PIO operation; reciprocal harness investigations must not recurse through automatic enrichment or deadlock on the waiting consumer. Follow [release gates](https://github.com/Combraton/combraton/blob/main/docs/STANDALONE-RELEASES.md) and [ADR 001](https://github.com/Combraton/combraton/blob/main/docs/decisions/001-standalone-first-and-evaluation.md). Comparative evaluation lives in [benchmarks](https://github.com/Combraton/benchmarks); product acceptance remains evidence-based.
+
 ## Work and coordination
 
 Inspect the assigned issue/task, branch, head, worktree and uncommitted changes before editing. Preserve unrelated work. For a large task, persist a small plan with outcome, scope, acceptance, dependencies and next step in `docs/work/` or the linked issue; do not rely on chat alone. One owner per task; one isolated worktree per concurrent writer. Agree shared contracts before consumers diverge.
