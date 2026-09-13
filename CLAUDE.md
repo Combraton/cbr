@@ -13,3 +13,9 @@ When reading or editing another repository, explicitly read its root instruction
 After changing instruction files, confirm the next session loaded them using the installed client's context inspection. Do not use `/init` to replace reviewed instructions with generic generated text.
 
 Support PIO's standalone client as an optional context consumer using public profiles and explicit caller authority. Retain direct-provider/no-PIO operation; reciprocal harness investigations must not recurse through automatic enrichment or deadlock on the waiting consumer. Follow the current standalone-first milestone in the imported instructions; earlier research recommending early desktop integration is superseded.
+
+## Session continuity and prompt cleanup
+
+Follow the imported `AGENTS.md` session-state and prompt-lifecycle rules. Read [current session state](docs/work/STATE.md), reconcile it with actual Git/task state, and maintain it at meaningful checkpoints and before pausing or ending. Tell the human what changed, what works with evidence, what remains uncertain, and what happens next.
+
+Update an owned one-off prompt to remaining work, or retire it when completed/superseded after preserving decisions and evidence. Update its active references. Keep reusable templates and other sessions' work intact. A saved prompt or old handoff is not authority to replay completed work; verify its status first. Keep durable state outside this chat so another session can continue.
