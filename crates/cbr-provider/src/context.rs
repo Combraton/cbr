@@ -880,15 +880,31 @@ pub fn attach_claim(section: &mut Value, read: Result<(Value, i64), &'static str
 
 /// Which sections fit the output capacity, and every omission with its
 /// reason (CONTEXT sections 3 and 5). A section whose claim could not be read
-/// or verified is never carried. A section for a required item is always
-/// included, whatever it costs; the refusal at submit is what keeps that
-/// honest. Advisory and unattached content is included while it fits.
+/// or verified is never carried. Capacity is reserved for the sections of
+/// required items first, so they are always included and advisory or
+/// unattached content fills only what remains, whatever order the sections
+/// were prepared in; the refusal at submit is what keeps the reservation
+/// within the capacity.
 pub fn inclusion(record: &Value, job: &Value) -> (Vec<String>, Vec<Value>) {
-    let mut remaining = int(record, &["limits", "output_capacity", "amount"]);
     let items = list(record, &["items"]);
+    let sections = list(job, &["sections"]);
+    let carried = |section: &Value| section.get("claim_error").is_none();
+    let size = |section: &Value| text(section, &["content"]).len() as i64;
+    let mandatory = |section: &Value| {
+        items.iter().any(|item| {
+            is_required(item)
+                && section.get("item_id").and_then(Value::as_str) == Some(text(item, &["item_id"]))
+        })
+    };
+    let reserved: i64 = sections
+        .iter()
+        .filter(|s| carried(s) && mandatory(s))
+        .map(&size)
+        .sum();
+    let mut remaining = int(record, &["limits", "output_capacity", "amount"]) - reserved;
     let mut included = Vec::new();
     let mut omissions: Vec<Value> = list(job, &["omissions"]).to_vec();
-    for section in list(job, &["sections"]) {
+    for section in sections {
         let section_id = text(section, &["section_id"]);
         let omit = |reason: &str| {
             let mut omission = object(vec![
@@ -900,17 +916,12 @@ pub fn inclusion(record: &Value, job: &Value) -> (Vec<String>, Vec<Value>) {
             }
             omission
         };
-        if section.get("claim_error").is_some() {
+        if !carried(section) {
             omissions.push(omit("unavailable"));
-            continue;
-        }
-        let size = text(section, &["content"]).len() as i64;
-        let mandatory = items.iter().any(|item| {
-            is_required(item)
-                && section.get("item_id").and_then(Value::as_str) == Some(text(item, &["item_id"]))
-        });
-        if mandatory || size <= remaining {
-            remaining -= size;
+        } else if mandatory(section) {
+            included.push(section_id.to_string());
+        } else if size(section) <= remaining {
+            remaining -= size(section);
             included.push(section_id.to_string());
         } else {
             omissions.push(omit("output_capacity"));
@@ -1512,6 +1523,27 @@ mod tests {
         assert_eq!(text(&results[0], &["result"]), "satisfied");
         assert_eq!(text(&results[1], &["result"]), "degraded");
         assert_eq!(text(&results[1], &["reason"]), "output_capacity");
+    }
+
+    #[test]
+    fn capacity_is_reserved_for_required_content_whatever_order_it_was_prepared_in() {
+        let items = format!(
+            "[{},{}]",
+            source_item("req", "required_before_start", "a"),
+            source_item("adv", "advisory", "b")
+        );
+        let record = record(&items, 20);
+        // Advisory content prepared first would fit on its own, and would
+        // leave too little for the required section after it.
+        let job = job(
+            r#"[{"section_id":"s-adv","item_id":"adv","label":"observation","historical":false,"content":"012345678901234","source":{"repository":"r","path":"b"}},
+                {"section_id":"s-req","item_id":"req","label":"binding","historical":false,"content":"0123456789","source":{"repository":"r","path":"a"}}]"#,
+        );
+        let (included, omissions) = inclusion(&record, &job);
+        assert_eq!(included, vec!["s-req".to_string()]);
+        assert_eq!(omissions.len(), 1);
+        assert_eq!(text(&omissions[0], &["section_id"]), "s-adv");
+        assert_eq!(text(&omissions[0], &["reason"]), "output_capacity");
     }
 
     #[test]

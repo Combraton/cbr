@@ -985,7 +985,11 @@ impl Provider {
                 error.code
             );
         }
-        if let Err(error) = self.tick_context() {
+        // Preparation can call peers, so a connection that has not yet
+        // authenticated never sets it running.
+        if self.authenticated
+            && let Err(error) = self.tick_context()
+        {
             eprintln!("cbr-provider: context preparation failed: {}", error.code);
         }
         if !self.known_operation(method) {
@@ -1846,7 +1850,9 @@ impl Provider {
                 error.code
             );
         }
-        if let Err(error) = self.tick_context() {
+        if self.authenticated
+            && let Err(error) = self.tick_context()
+        {
             eprintln!("cbr-provider: context preparation failed: {}", error.code);
         }
     }

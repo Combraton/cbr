@@ -2005,6 +2005,71 @@ mod tests {
     }
 
     #[test]
+    fn a_provider_batch_commits_whole_or_not_at_all() {
+        let (_directory, mut store) = store();
+        let job = SubjectKey {
+            kind: "context.job".into(),
+            id: "j".into(),
+        };
+        let request = SubjectKey {
+            kind: "context.request".into(),
+            id: "r".into(),
+        };
+        let write = |key: &SubjectKey, base: i64, revision: i64, value: &str| ProviderWrite {
+            key: key.clone(),
+            base,
+            revision,
+            value: value.into(),
+        };
+        let event = |key: &SubjectKey, revision: i64| ProviderEvent {
+            key: key.clone(),
+            revision,
+            event_type: "context.request.changed".into(),
+            payload: Value::Object(vec![]),
+        };
+        let last = |store: &Store| {
+            let epoch = store.current_epoch().expect("epoch");
+            store.last_sequence(epoch).expect("sequence")
+        };
+        store
+            .commit_provider_batch(
+                &[write(&job, 0, 1, "{}"), write(&request, 0, 2, "{}")],
+                &[event(&request, 1), event(&request, 2)],
+                "2030-01-01T00:00:00Z",
+            )
+            .expect("a batch from the current revisions commits");
+        assert_eq!(store.revision(&request).expect("revision"), 2);
+        assert_eq!(last(&store), 2);
+
+        // Computed from a revision that is no longer current: nothing lands,
+        // not even the write that was still current.
+        let stale = store.commit_provider_batch(
+            &[
+                write(&job, 1, 2, "{\"changed\":1}"),
+                write(&request, 1, 3, "{}"),
+            ],
+            &[],
+            "2030-01-01T00:00:01Z",
+        );
+        assert!(matches!(stale, Err(StoreError::Corrupt(_))), "{stale:?}");
+        assert_eq!(store.revision(&job).expect("revision"), 1);
+        assert_eq!(store.subject(&job).expect("read").expect("job").value, "{}");
+
+        // An event at a revision the batch did not write is refused whole.
+        let unwritten = store.commit_provider_batch(
+            &[write(&job, 1, 2, "{}")],
+            &[event(&request, 3)],
+            "2030-01-01T00:00:02Z",
+        );
+        assert!(
+            matches!(unwritten, Err(StoreError::Corrupt(_))),
+            "{unwritten:?}"
+        );
+        assert_eq!(store.revision(&job).expect("revision"), 1);
+        assert_eq!(last(&store), 2, "no event was appended");
+    }
+
+    #[test]
     fn durability_settings_read_back_from_the_open_connection() {
         let (_directory, store) = store();
         // Not "we called pragma_update": what the connection reports now.

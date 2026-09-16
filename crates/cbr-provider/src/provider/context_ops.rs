@@ -994,6 +994,7 @@ impl Provider {
             context::packet_descriptor(request, &packet.digest, packet.content.len(), &tick.now);
         let descriptor = crate::evidence::parse_descriptor(&payload, &self.config.provider_id)?;
         self.store.publish_object(&packet.digest, &packet.content)?;
+        crate::barriers::pause(crate::barriers::PACKET_AFTER_OBJECT_PUBLISHED);
         let staged = object(vec![
             ("descriptor", descriptor.clone()),
             ("state", string("staged")),

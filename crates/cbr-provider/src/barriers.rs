@@ -20,6 +20,9 @@ use std::time::{Duration, Instant};
 /// Between a subscription's re-authorization and reading the events to
 /// deliver, while the processing lock is held.
 pub const RECHECK_AFTER_AUTHORIZATION: &str = "subscription.recheck.after_authorization";
+/// A context tick published a packet's object and has not yet committed the
+/// batch that names it (CONTEXT section 5, STORAGE section 2).
+pub const PACKET_AFTER_OBJECT_PUBLISHED: &str = "context.packet.after_object_published";
 /// A request found the processing lock held by someone else.
 pub const LOCK_CONTENDED: &str = "processing.lock.contended";
 
