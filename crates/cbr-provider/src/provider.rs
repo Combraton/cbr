@@ -9,6 +9,7 @@
 use cbr_encoding::Value;
 
 use crate::config::Config;
+use crate::effects;
 use crate::envelope::{self, Command, Query};
 use crate::errors::ProtocolError;
 use crate::grants::{self, Grant};
@@ -18,7 +19,18 @@ use crate::store::{Store, SubjectKey};
 /// A profile is listed here only when it is implemented: over-claiming would
 /// make negotiation succeed and then fail at the first operation.
 const SERVED: &[(&str, i64, &[&str], &[&str])] = &[
-    ("core", 1, &["core.events", "core.grants"], &[]),
+    (
+        "core",
+        1,
+        &[
+            "core.events",
+            "core.grants",
+            "core.capabilities",
+            "core.events.backpressure",
+            "core.effects",
+        ],
+        &[],
+    ),
     ("core-test", 1, &[], &["core"]),
 ];
 
@@ -43,13 +55,6 @@ const UNSUPPORTED: &[(&str, &str)] = &[
     ("remote-trust", "not_in_release"),
 ];
 
-/// The per-connection bound on output produced but not yet written. The
-/// conformance launch configuration documents 8 MiB as the default for
-/// `max_pending_notification_bytes`, and `core.events.backpressure` is not
-/// negotiated here, so this bound is CBR's own discipline rather than a
-/// declared guarantee.
-const MAX_PENDING_NOTIFICATION_BYTES: usize = 8 * 1024 * 1024;
-
 /// Operations answerable before negotiation (CORE section 3).
 const PRE_NEGOTIATION: [&str; 4] = [
     "core.describe",
@@ -65,23 +70,26 @@ const PRE_NEGOTIATION: [&str; 4] = [
 ///
 /// `core.events.unsubscribe` is here because it removes only the session's own
 /// subscriptions, so there is nothing to authorize that the session does not
-/// already hold. `core.capabilities` joins it when that feature lands.
-const UNPROTECTED: [&str; 5] = [
+/// already hold. `core.capabilities` is here because CORE section 15.5 lists
+/// it: what a provider can do right now is not a secret of any subject.
+const UNPROTECTED: [&str; 6] = [
     "core.describe",
     "core.negotiate",
     "core.feature_dependencies",
     "core.authenticate",
     "core.events.unsubscribe",
+    "core.capabilities",
 ];
 
 /// Every operation that is a command rather than a query. A command carries a
 /// command identity, so its step 6 runs after deduplication; a query has none,
 /// so its step 6 runs first.
-const COMMANDS: [&str; 4] = [
+const COMMANDS: [&str; 5] = [
     "core-test.subject.put",
     "core-test.authority.claim",
     "core.grant.issue",
     "core.grant.revoke",
+    "core.effects.abort_obligation",
 ];
 
 /// What step 6 means for one command (CORE section 10).
@@ -93,6 +101,8 @@ enum Step6 {
     Issue(Box<Grant>),
     /// `core.grant.revoke`, likewise.
     Revoke,
+    /// `core.effects.abort_obligation` (CORE section 19.4).
+    Abort,
 }
 
 /// A subject key from an envelope's subject object.
@@ -120,6 +130,27 @@ fn revoked_event(caused_by: &[String]) -> crate::store::NewEvent {
         payload: Box::new(|_| {
             Value::Object(vec![("state".into(), Value::String("revoked".into()))])
         }),
+    }
+}
+
+/// The effect id a `core.effects.*` payload names.
+fn effect_id_of(payload: &Value) -> Result<String, ProtocolError> {
+    match payload.get("effect").and_then(Value::as_str) {
+        Some(id) if crate::envelope::is_identifier(id) => Ok(id.to_string()),
+        _ => Err(ProtocolError::invalid_envelope(
+            "/payload/effect",
+            "not an identifier",
+        )),
+    }
+}
+
+/// The capability an operation depends on, if any (CORE section 17.4). Only a
+/// write depends on `core-test.writes`: claiming an authority epoch does not,
+/// which `core.capabilities.claim-does-not-depend-on-writes` pins.
+fn capability_dependency(operation: &str) -> Option<&'static str> {
+    match operation {
+        "core-test.subject.put" => Some("core-test.writes"),
+        _ => None,
     }
 }
 
@@ -193,21 +224,18 @@ impl Provider {
         // The capability snapshot is reconciled at launch, after any epoch
         // change, so its change event lands in the epoch the process serves.
         //
-        // Only the snapshot and its change event live here, and only because
-        // an in-scope fixture needs them: event recording is not gated on
-        // negotiation (CORE section 16.3), so
-        // `core.events.visibility-follows-direct-read-authority` expects the
-        // `core.capabilities.changed` event a restart with a changed predicate
-        // records, while declaring only `core.events` and `core.grants`. The
-        // `core.capabilities` query and the `capability_unavailable` refusal
-        // are the negotiated feature, and are not claimed.
-        if config.mode == crate::config::Mode::Conformance {
+        // Recording is not gated on negotiation (CORE section 16.3): the
+        // snapshot and its change event exist whether or not any session
+        // negotiates `core.capabilities`, which is why
+        // `core.events.visibility-follows-direct-read-authority` needed them in
+        // c3 while declaring only `core.events` and `core.grants`.
+        let predicates = if config.mode == crate::config::Mode::Conformance {
             let status = config
                 .capabilities
                 .iter()
                 .find(|(name, _)| name == "core-test.writes")
                 .map_or("supported", |(_, status)| status.as_str());
-            let predicates = Value::Array(vec![Value::Object(vec![
+            Value::Array(vec![Value::Object(vec![
                 ("name".into(), Value::String("core-test.writes".into())),
                 ("status".into(), Value::String(status.into())),
                 (
@@ -220,9 +248,15 @@ impl Provider {
                         Value::String("launch-configuration".into()),
                     )]),
                 ),
-            ])]);
-            store.reconcile_capabilities(&config.provider_id, &predicates, &clock.now())?;
-        }
+            ])])
+        } else {
+            // A production launch serves no `core-test`, and CBR has no other
+            // predicate it can yet state with evidence. An empty snapshot is
+            // the honest answer; a predicate asserted without evidence would
+            // have to be `unknown`, and listing one only to say so adds nothing.
+            Value::Array(vec![])
+        };
+        store.reconcile_capabilities(&config.provider_id, &predicates, &clock.now())?;
         let (current, oldest) = store.start_generation(
             config.dedupe_advance_on_start,
             config.dedupe_retain_generations,
@@ -314,6 +348,9 @@ impl Provider {
                 | "core.grant.issue"
                 | "core.grant.revoke"
                 | "core.grant.get"
+                | "core.capabilities"
+                | "core.effects.get"
+                | "core.effects.abort_obligation"
                 | "core.events.read"
                 | "core.events.subscribe"
                 | "core.events.unsubscribe"
@@ -633,7 +670,25 @@ impl Provider {
                 ),
             ),
             ("unselected".into(), Value::Array(unselected)),
-            ("limits".into(), self.config.limits.to_value()),
+            ("limits".into(), {
+                // CORE section 16.5: negotiating backpressure adds its two
+                // bounds to `limits`; without the feature they are absent.
+                let mut limits = self.config.limits.to_value();
+                let backpressure = selected.iter().any(|(name, _, features)| {
+                    name == "core" && features.iter().any(|f| f == "core.events.backpressure")
+                });
+                if backpressure && let Value::Object(members) = &mut limits {
+                    members.push((
+                        "max_pending_notification_bytes".into(),
+                        Value::Int(self.config.events_max_pending_notification_bytes),
+                    ));
+                    members.push((
+                        "backpressure_notice_ms".into(),
+                        Value::Int(self.config.events_backpressure_notice_ms),
+                    ));
+                }
+                limits
+            }),
             ("dedupe_window".into(), self.dedupe_window()),
         ]);
         self.negotiated = Some(selected);
@@ -647,6 +702,15 @@ impl Provider {
     pub fn handle(&mut self, method: &str, params: &Value) -> Result<Value, ProtocolError> {
         // Step 1: operation known, session negotiated, profile selected. These
         // are decided from the transport method, before the envelope is read.
+        // Time-driven effect state first, so an obligation whose deadline has
+        // passed is overdue before anything in this request reads it. A
+        // failure here must not fail an unrelated request; it is recorded.
+        if let Err(error) = self.tick_effects() {
+            eprintln!(
+                "cbr-provider: marking overdue obligations failed: {}",
+                error.code
+            );
+        }
         if !self.known_operation(method) {
             return Err(ProtocolError::method_not_found(method));
         }
@@ -696,6 +760,7 @@ impl Provider {
                 "core-test.authority.claim" => self.authority_claim(params, command),
                 "core.grant.issue" => self.grant_issue(params, command),
                 "core.grant.revoke" => self.grant_revoke(params, command),
+                "core.effects.abort_obligation" => self.effects_abort(params, command),
                 _ => Err(ProtocolError::method_not_found(method)),
             };
         }
@@ -714,6 +779,8 @@ impl Provider {
         // `core.grants.authorization-without-grants-feature` catch it.
         let in_force = if UNPROTECTED.contains(&method) || is_grant_operation(method) {
             None
+        } else if method == "core.effects.get" {
+            self.authorize_effect_read(&query)?
         } else {
             let needs = self.query_needs(&query)?;
             self.authorize(query.grant.as_deref(), &needs)?
@@ -735,6 +802,8 @@ impl Provider {
             "core.events.read" => self.events_read(&query, in_force.as_ref()),
             "core-test.subject.get" => self.subject_get(&query),
             "core.grant.get" => self.grant_get(&query),
+            "core.capabilities" => self.capabilities(),
+            "core.effects.get" => self.effects_get(&query),
             _ => Err(ProtocolError::method_not_found(method)),
         }
     }
@@ -877,6 +946,14 @@ impl Provider {
             // No profile defines a read right for capabilities, so resources
             // alone decide (CORE section 16.6).
             "core.capabilities" => grant.covers(key),
+            // "An effect subject is visible in events exactly when its target
+            // is" (CORE section 19.4).
+            effects::KIND => self
+                .effect(&key.id)
+                .ok()
+                .flatten()
+                .and_then(|(_, record)| effects::target(&record))
+                .is_some_and(|target| self.may_read(Some(grant), &target)),
             // A kind no profile defines is never readable under a grant.
             _ => false,
         }
@@ -1061,6 +1138,8 @@ impl Provider {
                 generation: command.dedupe_generation,
                 recorded_at: &recorded_at,
                 also: Vec::new(),
+                effects: Vec::new(),
+                grant: command.grant.as_deref(),
                 event: Some(crate::store::NewEvent {
                     event_type: "core.grant.issued".into(),
                     caused_by: command.caused_by.clone(),
@@ -1132,6 +1211,8 @@ impl Provider {
                 generation: command.dedupe_generation,
                 recorded_at: &recorded_at,
                 also,
+                effects: Vec::new(),
+                grant: command.grant.as_deref(),
                 event: Some(revoked_event(&command.caused_by)),
             },
             |revision, operation_ref| {
@@ -1146,6 +1227,322 @@ impl Provider {
             },
         )?;
         Ok(result)
+    }
+
+    // ---- effects (CORE section 19) ------------------------------------------
+
+    /// The effect record stored under this id, with its revision.
+    fn effect(&self, id: &str) -> Result<Option<(i64, Value)>, ProtocolError> {
+        let key = SubjectKey {
+            kind: effects::KIND.into(),
+            id: id.into(),
+        };
+        let Some(state) = self.store.subject(&key)? else {
+            return Ok(None);
+        };
+        let record = cbr_encoding::parse(state.value.as_bytes())
+            .map_err(|_| ProtocolError::new_internal_error())?;
+        Ok(Some((state.revision, record)))
+    }
+
+    /// Step 6 for `core.effects.get`.
+    ///
+    /// Reading an effect needs read authority on its **target**, and CORE-12
+    /// requires the same refusal for an existing effect and for one that does
+    /// not exist. The reference provider resolves the reason from its single
+    /// target family's read right. CBR's effects will not share one family,
+    /// and a missing effect has no target whose right could be evaluated, so
+    /// under a grant CBR reports the one reason true in both cases —
+    /// `out_of_scope` — whenever the target is not readable, including when
+    /// there is no target. Distinguishing a missing right would reveal that
+    /// the effect exists.
+    fn authorize_effect_read(&self, query: &Query) -> Result<Option<Grant>, ProtocolError> {
+        let id = effect_id_of(&query.payload)?;
+        let Some(named) = query.grant.as_deref() else {
+            return if self.config.is_authority(&self.config.principal) {
+                Ok(None)
+            } else {
+                Err(grants::Denial::GrantRequired.into())
+            };
+        };
+        let grant = self
+            .grant(named)?
+            .filter(|grant| grant.holder == self.config.principal)
+            .ok_or(grants::Denial::GrantNotFound)?;
+        grant.usable(&self.authority_context()?)?;
+        let readable = self
+            .effect(&id)?
+            .and_then(|(_, record)| effects::target(&record))
+            .is_some_and(|target| self.may_read(Some(&grant), &target));
+        if !readable {
+            return Err(grants::Denial::OutOfScope.into());
+        }
+        Ok(Some(grant))
+    }
+
+    /// Step 6 for `core.effects.abort_obligation`: right
+    /// `core.effects.abort_obligation` on the effect's target. The right name
+    /// is fixed, so the ordinary order holds — `right_missing` before
+    /// `out_of_scope` — and a missing right reveals nothing about existence.
+    /// An effect that does not exist is `out_of_scope`, like one whose target
+    /// the grant does not cover.
+    fn authorize_abort(&self, command: &Command) -> Result<Option<Grant>, ProtocolError> {
+        let Some(named) = command.grant.as_deref() else {
+            return if self.config.is_authority(&self.config.principal) {
+                Ok(None)
+            } else {
+                Err(grants::Denial::GrantRequired.into())
+            };
+        };
+        let grant = self
+            .grant(named)?
+            .filter(|grant| grant.holder == self.config.principal)
+            .ok_or(grants::Denial::GrantNotFound)?;
+        grant.usable(&self.authority_context()?)?;
+        if !grant
+            .rights
+            .iter()
+            .any(|right| right == effects::ABORT_RIGHT)
+        {
+            return Err(grants::Denial::RightMissing.into());
+        }
+        let covered = self
+            .effect(&key_of(&command.subject).id)?
+            .and_then(|(_, record)| effects::target(&record))
+            .is_some_and(|target| grant.covers(&target));
+        if !covered {
+            return Err(grants::Denial::OutOfScope.into());
+        }
+        Ok(Some(grant))
+    }
+
+    /// `core.effects.get` (CORE section 19.2). An effect this provider recorded
+    /// is never reported `not_found`: its record is retained, and an outcome
+    /// that could not be established is `unknown` with the wait still open.
+    fn effects_get(&self, query: &Query) -> Result<Value, ProtocolError> {
+        if !self.selected_feature("core.effects") {
+            return Err(ProtocolError::unsupported_required_feature_message(
+                Value::Array(vec![Value::String("core.effects".into())]),
+            ));
+        }
+        let id = effect_id_of(&query.payload)?;
+        match self.effect(&id)? {
+            Some((revision, record)) => Ok(effects::get_result(&record, revision)),
+            None => Err(ProtocolError::not_found()),
+        }
+    }
+
+    /// `core.effects.abort_obligation` (CORE section 19.4): closes a wait and
+    /// never changes the effect's status.
+    fn effects_abort(&mut self, params: &Value, command: Command) -> Result<Value, ProtocolError> {
+        if !self.selected_feature("core.effects") {
+            return Err(ProtocolError::unsupported_required_feature_message(
+                Value::Array(vec![Value::String("core.effects".into())]),
+            ));
+        }
+        let key = key_of(&command.subject);
+        if key.kind != effects::KIND
+            || command.preconditions.len() != 1
+            || key_of(&command.preconditions[0].0) != key
+        {
+            return Err(ProtocolError::invalid_envelope(
+                "/preconditions",
+                "exactly one precondition on the effect subject is required",
+            ));
+        }
+        let obligation = match command.payload.get("obligation").and_then(Value::as_str) {
+            Some(id) if crate::envelope::is_identifier(id) => id.to_string(),
+            _ => {
+                return Err(ProtocolError::invalid_envelope(
+                    "/payload/obligation",
+                    "not an identifier",
+                ));
+            }
+        };
+        if let Some(stored) =
+            self.admit_command(params, &command, "core-test", false, Step6::Abort)?
+        {
+            return Ok(stored);
+        }
+        let Some((_, mut record)) = self.effect(&key.id)? else {
+            return Err(ProtocolError::not_found());
+        };
+        // Only a waiting obligation can be aborted; anything else is not found.
+        if !effects::obligation_waiting(&record, &obligation) {
+            return Err(ProtocolError::not_found());
+        }
+        effects::abort(&mut record, &obligation);
+        let status = effects::status(&record);
+        let target = record
+            .get("descriptor")
+            .and_then(|d| d.get("target"))
+            .cloned()
+            .unwrap_or(Value::Null);
+        let value = String::from_utf8(cbr_encoding::to_canonical(&record))
+            .expect("canonical form is UTF-8");
+        let principal = self.config.principal.clone();
+        let digest = command.command_digest.clone();
+        let subject = command.subject.clone();
+        let command_id = command.command_id.clone();
+        let effect_id = key.id.clone();
+        let payload = Value::Object(vec![
+            ("effect".into(), Value::String(effect_id.clone())),
+            ("obligation".into(), Value::String(obligation.clone())),
+            ("target".into(), target),
+        ]);
+        let recorded_at = self.clock.now();
+        let result = self.store.commit_command(
+            crate::store::Commit {
+                key: &key,
+                value: &value,
+                principal: &principal,
+                command_id: &command_id,
+                digest: &digest,
+                generation: command.dedupe_generation,
+                recorded_at: &recorded_at,
+                also: Vec::new(),
+                effects: Vec::new(),
+                grant: command.grant.as_deref(),
+                event: Some(crate::store::NewEvent {
+                    event_type: "core.effect.obligation.aborted".into(),
+                    caused_by: command.caused_by.clone(),
+                    payload: Box::new(move |_| payload),
+                }),
+            },
+            |revision, operation_ref| {
+                accepted(
+                    &command_id,
+                    &digest,
+                    operation_ref,
+                    &subject,
+                    revision,
+                    Value::Object(vec![
+                        ("effect".into(), Value::String(effect_id.clone())),
+                        (
+                            "obligation".into(),
+                            Value::Object(vec![
+                                ("id".into(), Value::String(obligation.clone())),
+                                ("state".into(), Value::String("aborted".into())),
+                            ]),
+                        ),
+                        ("status".into(), Value::String(status.clone())),
+                    ]),
+                )
+            },
+        )?;
+        Ok(result)
+    }
+
+    /// Mark obligations whose deadline has passed as `overdue`, each with a
+    /// provider-origin `core.effect.obligation.overdue` event on the effect.
+    ///
+    /// Run at the start of every request. On the stdio binding nothing else can
+    /// happen while a session is idle, so this is when the passing becomes
+    /// observable, as for grant expiry (CORE section 16.5). CORE section 19.4
+    /// does not name the overdue event's subject or payload; CBR uses the
+    /// effect subject and the same `{ effect, obligation, target }` payload as
+    /// the aborted event, so a consumer reads both the same way.
+    fn tick_effects(&mut self) -> Result<(), ProtocolError> {
+        let now = self.clock.now();
+        for (id, value) in self.store.subjects_of_kind(effects::KIND)? {
+            let mut record = cbr_encoding::parse(value.as_bytes())
+                .map_err(|_| ProtocolError::new_internal_error())?;
+            let marked = effects::mark_overdue(&mut record, &now);
+            if marked.is_empty() {
+                continue;
+            }
+            let target = record
+                .get("descriptor")
+                .and_then(|d| d.get("target"))
+                .cloned()
+                .unwrap_or(Value::Null);
+            let events = marked
+                .into_iter()
+                .map(|obligation| {
+                    let payload = Value::Object(vec![
+                        ("effect".into(), Value::String(id.clone())),
+                        ("obligation".into(), Value::String(obligation)),
+                        ("target".into(), target.clone()),
+                    ]);
+                    crate::store::NewEvent {
+                        event_type: "core.effect.obligation.overdue".into(),
+                        caused_by: Vec::new(),
+                        payload: Box::new(move |_| payload),
+                    }
+                })
+                .collect();
+            let value = String::from_utf8(cbr_encoding::to_canonical(&record))
+                .expect("canonical form is UTF-8");
+            let key = SubjectKey {
+                kind: effects::KIND.into(),
+                id,
+            };
+            self.store
+                .commit_provider_change(&key, &value, events, &now)?;
+        }
+        Ok(())
+    }
+
+    /// Record an observation of an effect's outcome. The producer API: nothing
+    /// in M1 produces effects, so only tests call it until M4.
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub fn observe_effect(
+        &mut self,
+        id: &str,
+        status: &str,
+        class: &str,
+        source: &str,
+    ) -> Result<(), ProtocolError> {
+        let Some((_, mut record)) = self.effect(id)? else {
+            return Err(ProtocolError::not_found());
+        };
+        let now = self.clock.now();
+        effects::observe(&mut record, status, class, source, &now);
+        let value = String::from_utf8(cbr_encoding::to_canonical(&record))
+            .expect("canonical form is UTF-8");
+        let key = SubjectKey {
+            kind: effects::KIND.into(),
+            id: id.into(),
+        };
+        self.store
+            .commit_provider_change(&key, &value, Vec::new(), &now)?;
+        Ok(())
+    }
+
+    /// `core.capabilities` (CORE section 17.1): the current snapshot.
+    fn capabilities(&self) -> Result<Value, ProtocolError> {
+        if !self.selected_feature("core.capabilities") {
+            return Err(ProtocolError::unsupported_required_feature_message(
+                Value::Array(vec![Value::String("core.capabilities".into())]),
+            ));
+        }
+        let (revision, predicates) = self
+            .store
+            .capabilities()?
+            .ok_or_else(ProtocolError::new_internal_error)?;
+        Ok(Value::Object(vec![
+            ("revision".into(), Value::Int(revision)),
+            ("predicates".into(), predicates),
+        ]))
+    }
+
+    /// A predicate's current status. A predicate the snapshot does not name is
+    /// `unknown`, never `supported`: CORE section 17.1 allows `supported` only
+    /// with evidence.
+    fn capability_status(&self, name: &str) -> Result<String, ProtocolError> {
+        let predicates = self
+            .store
+            .capabilities()?
+            .map(|(_, predicates)| predicates)
+            .unwrap_or(Value::Array(vec![]));
+        Ok(predicates
+            .as_array()
+            .unwrap_or_default()
+            .iter()
+            .find(|p| p.get("name").and_then(Value::as_str) == Some(name))
+            .and_then(|p| p.get("status").and_then(Value::as_str))
+            .unwrap_or("unknown")
+            .to_string())
     }
 
     /// The grant id a `core.grant.*` command names, with the single
@@ -1345,13 +1742,39 @@ impl Provider {
     /// items stay undelivered and are produced on a later pass. They are never
     /// skipped, because a semantic event that vanishes is indistinguishable
     /// from one that never happened.
-    pub fn drain_subscriptions(&mut self, pending: usize) -> Vec<Value> {
-        if pending >= MAX_PENDING_NOTIFICATION_BYTES {
-            return Vec::new();
-        }
+    /// The per-connection bound on output produced but not yet written.
+    pub fn pending_output_bound(&self) -> usize {
+        self.config.events_max_pending_notification_bytes.max(1) as usize
+    }
+
+    /// The room deadline for a stalled consumer, and the one budget all its
+    /// ending notices share.
+    pub fn backpressure_notice(&self) -> std::time::Duration {
+        std::time::Duration::from_millis(self.config.events_backpressure_notice_ms.max(0) as u64)
+    }
+
+    /// Whether this session negotiated `core.events.backpressure`. A session
+    /// that did not is bounded and closed the same way, but is never sent the
+    /// `consumer_too_slow` reason it did not agree to understand.
+    pub fn backpressure_negotiated(&self) -> bool {
+        self.selected_feature("core.events.backpressure")
+    }
+
+    /// Produce the notifications owed to this connection's subscriptions,
+    /// without producing more than `room` bytes of item-carrying frames.
+    ///
+    /// `whole` lets the first notification exceed `room` when nothing else is
+    /// pending, so an item that fits the caller's frame limit is never withheld
+    /// forever by a bound smaller than itself. Returns the notifications and
+    /// whether one was withheld for lack of room. A withheld notification is
+    /// not produced and its subscription's cursor does not move, so its items
+    /// are produced again later: **withheld, never skipped** (CORE 16.5).
+    pub fn drain_subscriptions(&mut self, room: usize, whole: bool) -> (Vec<Value>, bool) {
         let mut frames = Vec::new();
+        let mut produced = 0usize;
+        let mut withheld = false;
         let budget = self.receive_budget();
-        for index in 0..self.subscriptions.len() {
+        'subscriptions: for index in 0..self.subscriptions.len() {
             loop {
                 let subscription = &self.subscriptions[index];
                 if subscription.ended {
@@ -1394,15 +1817,37 @@ impl Provider {
                 if read.items.is_empty() {
                     break;
                 }
-                self.subscriptions[index].cursor = read.next_cursor;
                 let Ok(next_cursor) = self.encode_cursor(read.next_cursor) else {
                     break;
                 };
-                frames.push(notification(&id, read.items, &next_cursor, None));
+                let frame = notification(&id, read.items, &next_cursor, None);
+                let size = crate::frames::encode(&frame).len();
+                if produced + size > room && !(produced == 0 && whole) {
+                    withheld = true;
+                    break 'subscriptions;
+                }
+                produced += size;
+                self.subscriptions[index].cursor = read.next_cursor;
+                frames.push(frame);
             }
         }
         self.subscriptions.retain(|s| !s.ended);
-        frames
+        (frames, withheld)
+    }
+
+    /// End every subscription on the connection, returning one ending notice
+    /// each, at the position delivery stopped. Used when the connection closes
+    /// for backpressure: every subscription on it ends whether or not a notice
+    /// is owed or written.
+    pub fn end_subscriptions(&mut self, reason: &str) -> Vec<Value> {
+        let subscriptions = std::mem::take(&mut self.subscriptions);
+        subscriptions
+            .iter()
+            .filter(|subscription| !subscription.ended)
+            .map(|subscription| {
+                self.ending_notification(&subscription.id, subscription.cursor, reason)
+            })
+            .collect()
     }
 
     fn ending_notification(&self, id: &str, cursor: crate::store::Position, reason: &str) -> Value {
@@ -1659,9 +2104,21 @@ impl Provider {
             Step6::Rights(needs) => self.authorize(command.grant.as_deref(), &needs)?,
             Step6::Issue(grant) => self.authorize_issue(&grant)?,
             Step6::Revoke => self.authorize_revoke(command)?,
+            Step6::Abort => self.authorize_abort(command)?,
         };
 
         // Step 7: capabilities, then the authority epoch, then preconditions.
+        //
+        // A capability refusal comes first so a command whose capability is
+        // lost changes nothing and names no precondition. It follows step 5, so
+        // a command bound before the loss still replays its stored outcome
+        // (CORE section 17.2): loss does not rewrite accepted history.
+        if let Some(capability) = capability_dependency(&command.operation) {
+            let status = self.capability_status(capability)?;
+            if status != "supported" {
+                return Err(ProtocolError::capability_unavailable(capability, &status));
+            }
+        }
         //
         // CORE section 8 applies to operations that *act under* an authority
         // "that can be taken over", and only to those. `core-test.authority.claim`
@@ -1780,6 +2237,8 @@ impl Provider {
                 generation: command.dedupe_generation,
                 recorded_at: &recorded_at,
                 also: Vec::new(),
+                effects: Vec::new(),
+                grant: command.grant.as_deref(),
                 event: Some(crate::store::NewEvent {
                     event_type: "core-test.authority.claimed".into(),
                     payload: Box::new(|epoch| {
@@ -1840,6 +2299,8 @@ impl Provider {
                 generation: command.dedupe_generation,
                 recorded_at: &recorded_at,
                 also: Vec::new(),
+                effects: Vec::new(),
+                grant: command.grant.as_deref(),
                 event: Some(crate::store::NewEvent {
                     event_type: "core-test.subject.changed".into(),
                     caused_by: caused_by.clone(),
@@ -1962,12 +2423,11 @@ mod tests {
 
     /// A subscription must not outlive the authority it was created under.
     ///
-    /// The fixture-level kill for this guard is carried to stage c3: all three
-    /// fixtures that exercise it — `core.events.subscription-ends-at-grant-expiry`,
+    /// The fixture-level kill for the grant form of this guard landed in c3:
+    /// `core.events.subscription-ends-at-grant-expiry`,
     /// `core.events.subscription-ends-when-grant-revoked` and
-    /// `core.events.subscription-ends-when-grant-stops-authorizing` — declare
-    /// `core.grants`, which c2 does not implement. This test stands in for
-    /// them until then, and is not a substitute for them.
+    /// `core.events.subscription-ends-when-grant-stops-authorizing`. This test
+    /// covers the authority-principal form, which no fixture reaches.
     #[test]
     fn a_subscription_ends_when_its_principal_stops_being_an_authority() {
         let directory = tempfile::tempdir().expect("temp dir");
@@ -1983,13 +2443,13 @@ mod tests {
         assert_eq!(provider.subscriptions.len(), 1);
 
         // Nothing to deliver yet, and the subscription survives.
-        assert!(provider.drain_subscriptions(0).is_empty());
+        assert!(provider.drain_subscriptions(usize::MAX, true).0.is_empty());
         assert_eq!(provider.subscriptions.len(), 1);
 
         // The principal stops being an authority. The next delivery ends the
         // subscription rather than continuing to serve it.
         provider.config.authority_principals = vec!["someone-else".into()];
-        let frames = provider.drain_subscriptions(0);
+        let (frames, _) = provider.drain_subscriptions(usize::MAX, true);
         assert_eq!(frames.len(), 1, "one ending notification: {frames:?}");
         let params = frames[0].get("params").expect("params");
         assert_eq!(
@@ -2001,5 +2461,246 @@ mod tests {
         );
         assert_eq!(params.get("items"), Some(&Value::Array(vec![])));
         assert!(provider.subscriptions.is_empty(), "and it is gone");
+    }
+
+    // ---- effects: no fixture CBR can run exercises these ------------------
+
+    fn negotiated_with_effects(provider: &mut Provider) {
+        provider.negotiated = Some(vec![
+            (
+                "core".into(),
+                1,
+                vec![
+                    "core.events".into(),
+                    "core.grants".into(),
+                    "core.effects".into(),
+                ],
+            ),
+            ("core-test".into(), 1, vec![]),
+        ]);
+    }
+
+    /// Send a query or command through `handle`, computing a command's digest.
+    fn call(provider: &mut Provider, envelope: &str) -> Result<Value, ProtocolError> {
+        let mut value = cbr_encoding::parse(envelope.as_bytes()).expect("envelope parses");
+        if value.get("command_id").is_some() {
+            let digest = cbr_encoding::command_digest(&value).expect("intent");
+            if let Value::Object(members) = &mut value {
+                members.push(("command_digest".into(), Value::String(digest)));
+            }
+        }
+        let method = value
+            .get("operation")
+            .and_then(Value::as_str)
+            .expect("operation")
+            .to_string();
+        provider.handle(&method, &value)
+    }
+
+    /// Record an effect the way a producer will: in the authorizing command's
+    /// own transaction, before any external action. Returns its id.
+    fn record_effect(provider: &mut Provider, target: &str, deadline: Option<&str>) -> String {
+        let key = SubjectKey {
+            kind: "core-test.subject".into(),
+            id: target.into(),
+        };
+        let recorded_at = provider.clock.now();
+        let result = provider
+            .store
+            .commit_command(
+                crate::store::Commit {
+                    key: &key,
+                    value: "v",
+                    principal: "owner",
+                    command_id: &format!("produce-{target}"),
+                    digest: "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+                    generation: 1,
+                    event: None,
+                    also: Vec::new(),
+                    effects: vec![effects::NewEffect {
+                        kind: "cbr.model_call".into(),
+                        target: key.clone(),
+                        payload_digest: format!("sha256:{}", "b".repeat(64)),
+                        retry_class: effects::RetryClass::NonRepeatable,
+                        idempotency_key: None,
+                        obligations: vec![(
+                            "o-outcome".into(),
+                            "outcome".into(),
+                            deadline.map(str::to_string),
+                        )],
+                    }],
+                    grant: None,
+                    recorded_at: &recorded_at,
+                },
+                |_, operation_ref| Value::String(effects::effect_id(operation_ref, 0)),
+            )
+            .expect("commits");
+        result.as_str().expect("effect id").to_string()
+    }
+
+    fn get(
+        provider: &mut Provider,
+        effect: &str,
+        grant: Option<&str>,
+    ) -> Result<Value, ProtocolError> {
+        let grant = grant
+            .map(|g| format!(r#","grant":"{g}""#))
+            .unwrap_or_default();
+        call(
+            provider,
+            &format!(
+                r#"{{"operation":"core.effects.get","message_id":"m-g"{grant},"payload":{{"effect":"{effect}"}}}}"#
+            ),
+        )
+    }
+
+    #[test]
+    fn an_effect_is_recorded_with_its_command_and_read_back_whole() {
+        let directory = tempfile::tempdir().expect("temp dir");
+        let mut provider = provider(directory.path());
+        negotiated_with_effects(&mut provider);
+        let id = record_effect(&mut provider, "s-1", None);
+
+        let result = get(&mut provider, &id, None).expect("an authority reads it");
+        assert_eq!(result.get("revision"), Some(&Value::Int(1)));
+        assert_eq!(
+            result.get("status").and_then(Value::as_str),
+            Some("pending")
+        );
+        let descriptor = result.get("effect").expect("descriptor");
+        assert_eq!(
+            descriptor.get("id").and_then(Value::as_str),
+            Some(id.as_str())
+        );
+        assert_eq!(
+            descriptor.get("retry_class").and_then(Value::as_str),
+            Some("non_repeatable")
+        );
+        // The operation that recorded it is named, and is the id's own prefix.
+        let operation_ref = descriptor
+            .get("operation_ref")
+            .and_then(Value::as_str)
+            .unwrap();
+        assert!(id.starts_with(&format!("{operation_ref}.")));
+
+        // An id never recorded is not_found for an authority.
+        let missing = get(&mut provider, "op-999.e1", None).expect_err("absent");
+        assert_eq!(missing.code, "not_found");
+    }
+
+    #[test]
+    fn reading_an_effect_under_a_grant_does_not_reveal_whether_it_exists() {
+        let directory = tempfile::tempdir().expect("temp dir");
+        let mut provider = provider(directory.path());
+        negotiated_with_effects(&mut provider);
+        let id = record_effect(&mut provider, "s-1", None);
+        for (grant, resource) in [("g-elsewhere", "s-9"), ("g-here", "s-1")] {
+            call(
+                &mut provider,
+                &format!(
+                    r#"{{"operation":"core.grant.issue","message_id":"m-{grant}","command_id":"issue-{grant}","dedupe_generation":1,"subject":{{"kind":"core.grant","id":"{grant}"}},"preconditions":[{{"subject":{{"kind":"core.grant","id":"{grant}"}},"revision":0}}],"requires":[],"payload":{{"holder":"agent-1","audience":"cbr","rights":["core-test.read"],"resources":[{{"kind":"core-test.subject","id":"{resource}"}}],"delegation":{{"allowed":false,"max_depth":0}}}}}}"#
+                ),
+            )
+            .expect("issued");
+        }
+        provider.config.principal = "agent-1".into();
+
+        let existing = get(&mut provider, &id, Some("g-elsewhere")).expect_err("not readable");
+        let absent = get(&mut provider, "op-999.e1", Some("g-elsewhere")).expect_err("absent");
+        assert_eq!(existing.code, "permission_denied");
+        assert_eq!(
+            existing.to_data(),
+            absent.to_data(),
+            "an existing effect and an absent one are refused identically (CORE-12)"
+        );
+        // A grant that can read the target reads the effect.
+        assert!(get(&mut provider, &id, Some("g-here")).is_ok());
+        // And an effect that does not exist is refused alike even under that
+        // grant, because there is no target it could read.
+        let absent_here = get(&mut provider, "op-999.e1", Some("g-here")).expect_err("absent");
+        assert_eq!(absent_here.to_data(), existing.to_data());
+    }
+
+    #[test]
+    fn an_overdue_obligation_is_announced_and_aborting_it_leaves_the_status_alone() {
+        let directory = tempfile::tempdir().expect("temp dir");
+        let clock_file = directory.path().join("clock");
+        std::fs::write(&clock_file, "2030-01-01T00:00:00Z").expect("clock");
+        let config = Config {
+            mode: Mode::Conformance,
+            principal: "owner".into(),
+            authority_principals: vec!["owner".into()],
+            ..Config::default()
+        };
+        let clock = crate::clock::Clock::open(crate::clock::Source::File(clock_file.clone()))
+            .expect("clock");
+        let data = directory.path().join("data");
+        std::fs::create_dir_all(&data).expect("data dir");
+        let mut provider = Provider::open(config, clock, &data).expect("opens");
+        negotiated_with_effects(&mut provider);
+        let id = record_effect(&mut provider, "s-1", Some("2030-01-01T00:01:00Z"));
+
+        // Before the deadline: open. At the deadline, the next request marks it.
+        let before = get(&mut provider, &id, None).expect("reads");
+        assert!(format!("{before:?}").contains(r#"String("open")"#));
+        std::fs::write(&clock_file, "2030-01-01T00:01:00Z").expect("advances");
+        let after = get(&mut provider, &id, None).expect("reads");
+        assert!(
+            format!("{after:?}").contains(r#"String("overdue")"#),
+            "{after:?}"
+        );
+        assert_eq!(after.get("revision"), Some(&Value::Int(2)));
+        assert_eq!(
+            after.get("status").and_then(Value::as_str),
+            Some("pending"),
+            "an ended wait is not an observation"
+        );
+        let read = call(
+            &mut provider,
+            r#"{"operation":"core.events.read","message_id":"m-r","payload":{"limit":100,"from":"start"}}"#,
+        )
+        .expect("reads events");
+        let rendered = String::from_utf8(cbr_encoding::to_canonical(&read)).unwrap();
+        assert_eq!(
+            rendered.matches("core.effect.obligation.overdue").count(),
+            1,
+            "one provider-origin overdue event, not one per request: {rendered}"
+        );
+
+        // The outcome cannot be established: unknown, and still waiting.
+        provider
+            .observe_effect(&id, "unknown", "provider", "response lost")
+            .expect("observes");
+        let abort = |provider: &mut Provider, command: &str, revision: i64| {
+            call(
+                provider,
+                &format!(
+                    r#"{{"operation":"core.effects.abort_obligation","message_id":"m-{command}","command_id":"{command}","dedupe_generation":1,"subject":{{"kind":"core.effect","id":"{id}"}},"preconditions":[{{"subject":{{"kind":"core.effect","id":"{id}"}},"revision":{revision}}}],"requires":[],"payload":{{"obligation":"o-outcome"}}}}"#
+                ),
+            )
+        };
+        let aborted = abort(&mut provider, "abort-1", 3).expect("aborts");
+        let outcome = aborted.get("outcome").expect("outcome");
+        assert_eq!(
+            outcome.get("status").and_then(Value::as_str),
+            Some("unknown"),
+            "EFF-4: aborting the wait leaves the effect unknown"
+        );
+        assert_eq!(
+            aborted
+                .get("acknowledgment")
+                .and_then(|a| a.get("effect_refs")),
+            Some(&Value::Array(vec![])),
+            "the abort records no effect of its own"
+        );
+        let final_state = get(&mut provider, &id, None).expect("reads");
+        assert_eq!(
+            final_state.get("status").and_then(Value::as_str),
+            Some("unknown")
+        );
+
+        // An obligation no longer waiting is not found.
+        let again = abort(&mut provider, "abort-2", 4).expect_err("not waiting");
+        assert_eq!(again.code, "not_found");
     }
 }

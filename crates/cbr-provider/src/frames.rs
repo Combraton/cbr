@@ -93,6 +93,19 @@ impl<R: Read> FrameReader<R> {
     }
 }
 
+/// One outgoing frame: canonical bytes, then the terminator. Never a line feed
+/// inside, which canonical encoding guarantees by escaping control characters.
+/// Its length is what the pending-output bound counts.
+pub fn encode(value: &cbr_encoding::Value) -> Vec<u8> {
+    let mut bytes = cbr_encoding::to_canonical(value);
+    debug_assert!(
+        !bytes.contains(&b'\n'),
+        "a frame must not contain a line feed"
+    );
+    bytes.push(b'\n');
+    bytes
+}
+
 /// Classify a frame's bytes, applying the domain's I-JSON rules.
 ///
 /// Returns the parsed value, or the frame-level failure that requires closing

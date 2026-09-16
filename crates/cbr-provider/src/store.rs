@@ -65,6 +65,8 @@ pub enum StoreError {
         expected: String,
         computed: String,
     },
+    /// The store's own state contradicts itself. Never a caller's mistake.
+    Corrupt(&'static str),
 }
 
 impl std::fmt::Display for StoreError {
@@ -82,6 +84,7 @@ impl std::fmt::Display for StoreError {
             StoreError::DigestMismatch { expected, computed } => {
                 write!(f, "object digest {computed} does not match {expected}")
             }
+            StoreError::Corrupt(what) => write!(f, "inconsistent store: {what}"),
         }
     }
 }
@@ -223,6 +226,13 @@ pub struct Commit<'a> {
     /// the order they are appended. CORE section 16.3 requires the primary
     /// subject first, which is why it is not simply one more entry here.
     pub also: Vec<Change>,
+    /// Effects the command authorizes, recorded in its transaction before any
+    /// external action (CORE section 19.1). Their ids derive from the
+    /// command's operation reference, so `make_result` can name them.
+    pub effects: Vec<crate::effects::NewEffect>,
+    /// The grant the command acted under, recorded in each effect's
+    /// authorization.
+    pub grant: Option<&'a str>,
     /// The provider clock's instant for this command. Supplied rather than
     /// read here, so `recorded_at` follows a controlled clock like every other
     /// protocol-visible time, and so one command records one instant.
@@ -656,6 +666,92 @@ impl Store {
         Ok(revision)
     }
 
+    /// A change the provider makes itself rather than a command — an effect
+    /// observation, an attempt, an obligation falling overdue. The subject's
+    /// revision rises; its applied count does not, because no command applied
+    /// it. Its events are provider-origin and commit in the same transaction
+    /// as the change.
+    pub fn commit_provider_change(
+        &mut self,
+        key: &SubjectKey,
+        value: &str,
+        events: Vec<NewEvent>,
+        recorded_at: &str,
+    ) -> Result<i64, StoreError> {
+        let transaction = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let revision: i64 = transaction
+            .query_row(
+                "SELECT revision FROM subjects WHERE kind = ?1 AND id = ?2",
+                params![key.kind, key.id],
+                |row| row.get::<_, i64>(0),
+            )
+            .optional()?
+            .ok_or(StoreError::Corrupt(
+                "a provider change to a subject that does not exist",
+            ))?
+            + 1;
+        transaction.execute(
+            "UPDATE subjects SET revision = ?3, value = ?4 WHERE kind = ?1 AND id = ?2",
+            params![key.kind, key.id, revision, value],
+        )?;
+        // Several events for one change share its revision: two obligations
+        // falling overdue together are one change to the effect.
+        for event in events {
+            let epoch: i64 = transaction
+                .query_row(
+                    "SELECT value FROM meta WHERE key = 'current_epoch'",
+                    [],
+                    |row| row.get(0),
+                )
+                .optional()?
+                .unwrap_or(1);
+            let last: i64 = transaction.query_row(
+                "SELECT COALESCE(MAX(sequence), 0) FROM events WHERE epoch = ?1",
+                params![epoch],
+                |row| row.get(0),
+            )?;
+            transaction.execute(
+                "INSERT INTO events (epoch, sequence, type, subject_kind, subject_id, revision,
+                                     origin, operation_ref, command_id, caused_by, recorded_at, payload)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'provider', NULL, NULL, '[]', ?7, ?8)",
+                params![
+                    epoch,
+                    last + 1,
+                    event.event_type,
+                    key.kind,
+                    key.id,
+                    revision,
+                    recorded_at,
+                    String::from_utf8(cbr_encoding::to_canonical(&(event.payload)(revision)))
+                        .expect("canonical form is UTF-8")
+                ],
+            )?;
+        }
+        transaction.commit()?;
+        Ok(revision)
+    }
+
+    /// The current capability snapshot: its revision and predicates, or `None`
+    /// before the first reconcile.
+    pub fn capabilities(&self) -> Result<Option<(i64, Value)>, StoreError> {
+        let row: Option<(i64, String)> = self
+            .connection
+            .query_row(
+                "SELECT revision, predicates FROM capabilities WHERE id = 1",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()?;
+        Ok(row.map(|(revision, predicates)| {
+            (
+                revision,
+                cbr_encoding::parse(predicates.as_bytes()).unwrap_or(Value::Array(vec![])),
+            )
+        }))
+    }
+
     /// Every subject of one kind, ordered by id, with its stored value.
     ///
     /// The store deliberately knows nothing about what a value means, so a
@@ -839,6 +935,28 @@ impl Store {
                 ],
             )?;
             append(&transaction, &change.key, changed_revision, change.event)?;
+        }
+
+        for (index, effect) in commit.effects.iter().enumerate() {
+            let id = crate::effects::effect_id(&operation_ref, index);
+            let record = crate::effects::new_record(
+                effect,
+                &id,
+                &operation_ref,
+                commit.principal,
+                commit.grant,
+                commit.recorded_at,
+            );
+            transaction.execute(
+                "INSERT INTO subjects (kind, id, revision, value, applied_count)
+                 VALUES (?1, ?2, 1, ?3, 1)",
+                params![
+                    crate::effects::KIND,
+                    id,
+                    String::from_utf8(cbr_encoding::to_canonical(&record))
+                        .expect("canonical form is UTF-8")
+                ],
+            )?;
         }
 
         let result = make_result(revision, &operation_ref);
@@ -1342,6 +1460,8 @@ mod tests {
                         generation: 1,
                         event: None,
                         also: Vec::new(),
+                        effects: Vec::new(),
+                        grant: None,
                         recorded_at: "2030-01-01T00:00:00Z",
                     },
                     |revision, _| Value::Object(vec![("revision".into(), Value::Int(revision))]),
@@ -1431,6 +1551,8 @@ mod tests {
                         generation: current,
                         event: None,
                         also: Vec::new(),
+                        effects: Vec::new(),
+                        grant: None,
                         recorded_at: "2030-01-01T00:00:00Z",
                     },
                     |_, _| Value::Object(vec![]),

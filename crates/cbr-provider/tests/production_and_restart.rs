@@ -392,3 +392,191 @@ fn a_grant_and_its_revocation_both_survive_sigkill() {
     );
     provider.stop();
 }
+
+/// `(epoch, sequence, revision)` of every `core.capabilities.changed` event in
+/// a `core.events.read` response, read by parsing rather than by substring,
+/// because canonical form orders members and adjacency means nothing.
+fn change_events(response: &str) -> Vec<(i64, i64, i64)> {
+    let value = cbr_encoding::parse(response.trim_end().as_bytes()).expect("response parses");
+    let int = |v: Option<&cbr_encoding::Value>| match v {
+        Some(cbr_encoding::Value::Int(n)) => *n,
+        other => panic!("not an integer: {other:?}"),
+    };
+    value
+        .get("result")
+        .and_then(|r| r.get("items"))
+        .and_then(|i| i.as_array())
+        .expect("items")
+        .iter()
+        .filter_map(|item| item.get("event"))
+        .filter(|event| {
+            event.get("type").and_then(|t| t.as_str()) == Some("core.capabilities.changed")
+        })
+        .map(|event| {
+            (
+                int(event.get("epoch")),
+                int(event.get("sequence")),
+                int(event.get("revision")),
+            )
+        })
+        .collect()
+}
+
+/// A capability snapshot and the event recording its change are durable, at
+/// the positions they were first given.
+///
+/// The change is recorded at launch, before any frame, so this is the one
+/// piece of event history a provider writes with no command to hang it on.
+/// Two failures are plausible and both are checked: the snapshot lost across a
+/// crash, so its revision drops back and the change is announced again at a
+/// new position; or the change event rebuilt from the snapshot on every start,
+/// which would duplicate it.
+#[test]
+fn a_capability_change_and_its_event_survive_sigkill_at_their_positions() {
+    let directory = tempfile::tempdir().expect("temp dir");
+    let config = |name: &str, status: Option<&str>| {
+        let path = directory.path().join(format!("{name}.json"));
+        let capabilities = status
+            .map(|s| format!(r#","capabilities":{{"core-test.writes":"{s}"}}"#))
+            .unwrap_or_default();
+        std::fs::write(
+            &path,
+            format!(
+                r#"{{"format":"combraton-conformance-config/1","principal":"owner","authority_principals":["owner"]{capabilities}}}"#
+            ),
+        )
+        .expect("writes config");
+        path
+    };
+    const CORE_WITH_CAPABILITIES: &str = r#"{"name":"core","majors":[1],"required":true,"required_features":["core.events","core.capabilities"],"optional_features":[]},{"name":"core-test","majors":[1],"required":true,"required_features":[],"optional_features":[]}"#;
+    const CAPABILITIES: &str = r#"{"jsonrpc":"2.0","id":2,"method":"core.capabilities","params":{"operation":"core.capabilities","message_id":"m-c","payload":{}}}"#;
+    const READ: &str = r#"{"jsonrpc":"2.0","id":3,"method":"core.events.read","params":{"operation":"core.events.read","message_id":"m-r","payload":{"limit":100,"from":"start"}}}"#;
+
+    // A new store: the initial snapshot is revision 1 and appends nothing.
+    let supported = config("supported", None);
+    let mut provider = Provider::start(directory.path(), Some(&supported));
+    provider.negotiate(CORE_WITH_CAPABILITIES);
+    let first = provider.call(CAPABILITIES);
+    assert!(
+        first.contains(r#""revision":1"#),
+        "initial snapshot: {first}"
+    );
+    provider.kill();
+
+    // The capability changes at launch: revision 2 and one provider-origin
+    // event, at the stream's first position.
+    let unknown = config("unknown", Some("unknown"));
+    let mut provider = Provider::start(directory.path(), Some(&unknown));
+    provider.negotiate(CORE_WITH_CAPABILITIES);
+    let changed = provider.call(CAPABILITIES);
+    assert!(
+        changed.contains(r#""revision":2"#),
+        "changed snapshot: {changed}"
+    );
+    let before = provider.call(READ);
+    assert_eq!(
+        change_events(&before),
+        vec![(1, 1, 2)],
+        "one change event, at epoch 1 sequence 1, naming snapshot revision 2: {before}"
+    );
+    // No clean shutdown after the change was recorded.
+    provider.kill();
+
+    // Same configuration again, after SIGKILL: nothing changed, so the
+    // revision holds, the event is still at its position, and there is
+    // exactly one of it.
+    let mut provider = Provider::start(directory.path(), Some(&unknown));
+    provider.negotiate(CORE_WITH_CAPABILITIES);
+    let after_snapshot = provider.call(CAPABILITIES);
+    assert!(
+        after_snapshot.contains(r#""revision":2"#)
+            && after_snapshot.contains(r#""status":"unknown""#),
+        "the snapshot survives SIGKILL: {after_snapshot}"
+    );
+    let after = provider.call(READ);
+    assert_eq!(
+        change_events(&after),
+        vec![(1, 1, 2)],
+        "after SIGKILL the change event is still at its position, and a restart with no \
+         change records no second one: {after}"
+    );
+    provider.stop();
+}
+
+/// Over the real stdio binding, a consumer that stops reading standard output
+/// ends the process — which is what closing the connection means there — and
+/// the ending is recorded on standard error with the bound it was held to.
+///
+/// The session tests measure the timing precisely against a writer they
+/// control. This one checks what they cannot: that the binary's wiring really
+/// exits rather than leaving a writer thread blocked on a full pipe forever.
+#[test]
+fn a_stdio_consumer_that_stops_reading_ends_the_process_and_records_the_bound() {
+    let directory = tempfile::tempdir().expect("temp dir");
+    let config = directory.path().join("bounded.json");
+    std::fs::write(
+        &config,
+        r#"{"format":"combraton-conformance-config/1","principal":"owner","authority_principals":["owner"],"events":{"max_pending_notification_bytes":4096,"backpressure_notice_ms":300}}"#,
+    )
+    .expect("writes config");
+
+    let mut child = Command::new(binary())
+        .arg("--data-dir")
+        .arg(directory.path())
+        .arg("--config")
+        .arg(&config)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("provider starts");
+    // Held open and never read: a stalled consumer, not a vanished one.
+    let _stdout = child.stdout.take().expect("stdout");
+    let mut stderr = child.stderr.take().expect("stderr");
+
+    // A pipelined client: far more output than the pipe buffer and the bound
+    // together, all requested without waiting for a response.
+    let mut input = format!(
+        "{}\n",
+        r#"{"jsonrpc":"2.0","id":0,"method":"core.negotiate","params":{"operation":"core.negotiate","message_id":"m-n","payload":{"caller":{"name":"t","version":"1"},"receive_limits":{"max_frame_bytes":1048576},"profiles":[{"name":"core","majors":[1],"required":true,"required_features":["core.events","core.events.backpressure"],"optional_features":[]},{"name":"core-test","majors":[1],"required":true,"required_features":[],"optional_features":[]}]}}}"#
+    );
+    input.push_str(r#"{"jsonrpc":"2.0","id":"s","method":"core.events.subscribe","params":{"operation":"core.events.subscribe","message_id":"m-s","payload":{"from":"now"}}}"#);
+    input.push('\n');
+    for n in 1..=400 {
+        input.push_str(&command(
+            n,
+            &format!(
+                r#"{{"operation":"core-test.subject.put","message_id":"m-{n}","command_id":"cmd-{n}","dedupe_generation":1,"subject":{{"kind":"core-test.subject","id":"s-{n}"}},"preconditions":[{{"subject":{{"kind":"core-test.subject","id":"s-{n}"}},"revision":0}}],"authority_epoch":0,"requires":[],"payload":{{"value":"{n}"}}}}"#
+            ),
+        ));
+        input.push('\n');
+    }
+    let mut stdin = child.stdin.take().expect("stdin");
+    // The provider stops reading input while it waits for room, so this may
+    // block, and it ends with a broken pipe once the provider exits.
+    std::thread::spawn(move || {
+        let _ = stdin.write_all(input.as_bytes());
+    });
+
+    let started = std::time::Instant::now();
+    let status = loop {
+        if let Some(status) = child.try_wait().expect("polls") {
+            break status;
+        }
+        if started.elapsed() > std::time::Duration::from_secs(20) {
+            child.kill().expect("kills");
+            panic!("the provider never closed a consumer that stopped reading");
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    };
+    let mut diagnostics = String::new();
+    std::io::Read::read_to_string(&mut stderr, &mut diagnostics).expect("reads stderr");
+    assert!(
+        status.success(),
+        "a closure is not a crash: {status}; {diagnostics}"
+    );
+    assert!(
+        diagnostics.contains("consumer too slow") && diagnostics.contains("a bound of 4096"),
+        "the ending is recorded with the bound it was held to: {diagnostics}"
+    );
+}

@@ -153,6 +153,15 @@ impl ProtocolError {
         Self::new("unavailable", Retry::SameCommand)
     }
 
+    /// A capability the operation depends on is not `supported` right now
+    /// (CORE section 17.2). Retry after reconciling, because the capability may
+    /// return.
+    pub fn capability_unavailable(capability: &str, status: &str) -> Self {
+        Self::new("capability_unavailable", Retry::AfterReconcile)
+            .with("capability", Value::String(capability.to_string()))
+            .with("status", Value::String(status.to_string()))
+    }
+
     pub fn not_found() -> Self {
         Self::new("not_found", Retry::No)
     }
