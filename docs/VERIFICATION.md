@@ -47,6 +47,8 @@ Conformance additionally needs the runner, which is **not** built from this work
 python3 scripts/build_runner.py
 python3 scripts/run_fixtures.py --filter stream. --out conformance/results/m1b
 python3 scripts/check_results.py conformance/results/m1b conformance/expectations/stream.json
+python3 scripts/run_fixtures.py --filter core.   --out conformance/results/m1c1
+python3 scripts/check_results.py conformance/results/m1c1 conformance/expectations/core-c1.json
 ```
 
 `build_runner.py` downloads the archive once and reuses it afterwards; `--archive PATH` uses a copy you already have and `--offline` refuses to download. It verifies the archive against the pinned SHA-256, verifies every extracted file against the archive's own `BUNDLE-SHA256SUMS`, checks the archive's recorded commit against the pin, and records the runner identity that `run_fixtures.py` stamps into every results manifest.
@@ -60,6 +62,7 @@ python3 scripts/check_results.py conformance/results/m1b conformance/expectation
 | `cargo build --workspace --locked` | The workspace builds from the committed `Cargo.lock` with no dependency resolution | Runtime behaviour |
 | `cargo test --workspace --locked` | Every pinned encoding vector — 12 canonical, 18 rejected, 1 command intent — plus the property tests, 19 in all. A rejected vector must be refused **for the reason the vector states**, so a parser that refused everything would fail. | Any profile conformance |
 | `build_runner.py` | The runner was built from the published release archive, with its own lockfile, and its identity is recorded | Anything about CBR |
+| `run_fixtures.py --filter core.` | **62 of the 135 `core` fixtures pass, 73 are unsupported by name, none fails.** That is every fixture needing no negotiated feature. | The 73. `core.events`, `core.grants` and `core.capabilities` arrive in c2, c3 and c4; five are permanently unsupported (below). |
 | `run_fixtures.py --filter stream.` | Runs the suite and writes the runner's manifest, the transcripts, and a `cbr-run.json` sidecar. The manifest stays byte-for-byte the runner's own output. | Nothing on its own: it reports, it does not gate |
 | `check_results.py` | **The gate.** The outcome multiset matches a recorded expectation exactly: pass count, total, the named unsupported set, and zero `fail`, `timeout`, `harness_error` and `skipped`. | Every suite with no expectation file. Only `stream` has one today. |
 
@@ -83,7 +86,9 @@ Five of the 135 `core` fixtures declare the `execution` profile and require the 
 
 So the maximum attainable on the `core` suite is **130 of 135**, with exactly those five `unsupported`. Any statement of the form "all 135 core fixtures pass" is unattainable and must not be written.
 
-**What is and is not established.** `stream` is the only suite run against CBR. The `core` (135), `socket` (13) and `evidence` (16) suites have not been run and no claim is made about them. The store is **in memory and not durable**; nothing here shows CBR survives a restart with state intact. No packet, model call, Knowledge or Context code exists.
+**What is and is not established.** `stream` passes completely; `core` passes every fixture that needs no negotiated feature. The `socket` (13) and `evidence` (16) suites have **not** been run and no claim is made about them. The store **is** durable — SQLite in WAL mode with `synchronous=FULL`, verified by reading the PRAGMAs back from the open connection, and by a test that `SIGKILL`s the provider and restarts it over the same data directory. No feature, packet, model call, Knowledge or Context code exists.
+
+`core-test/1` is served **only** under a `combraton-conformance-config/1` launch configuration. A provider launched in production serves no `core-test/1`, answers `method_not_found` to its operations, and **refuses** a production configuration naming any test control rather than ignoring it. Each of those is a test, and each has a mutant that the test kills.
 
 Committed results live under `conformance/results/`. The `manifest.json` in each is the runner's own output, unedited. Beside it, `cbr-run.json` records the runner's identity — the release archive SHA-256, the source commit and the release `Cargo.lock` SHA-256 — so a fixture outcome names the exact runner that produced it, along with a correction for the runner's `suite.protocol_commit`, which records the Git checkout enclosing `--repo` and therefore names CBR rather than Protocol.
 

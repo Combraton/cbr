@@ -19,3 +19,13 @@ license = "MIT"
 
 [workspace.dependencies]
 sha2 = "0.11.0"
+# Bundled so the SQLite version is pinned with the build rather than taken from
+# the host, and so FTS5 is compiled in. See docs/work/readiness/STACK.md §1.
+rusqlite = { version = "0.40.2", features = [
+    "bundled",
+    "functions",
+    "collation",
+    "trace",
+    "limits",
+    "pointer",
+] }

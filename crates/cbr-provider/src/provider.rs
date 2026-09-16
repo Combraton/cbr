@@ -11,7 +11,7 @@ use cbr_encoding::Value;
 use crate::config::Config;
 use crate::envelope::{self, Command, Query};
 use crate::errors::ProtocolError;
-use crate::store::{CommandRecord, Store, SubjectKey};
+use crate::store::{Store, SubjectKey};
 
 /// Profiles this build serves, with the majors and features it implements.
 /// A profile is listed here only when it is implemented: over-claiming would
@@ -64,19 +64,30 @@ pub struct Provider {
     store: Store,
     negotiated: Option<Vec<(String, i64, Vec<String>)>>,
     dedupe_current: i64,
+    dedupe_oldest: i64,
     operation_counter: u64,
 }
 
 impl Provider {
-    pub fn new(config: Config) -> Self {
-        let current = 1 + config.dedupe_advance_on_start;
-        Self {
+    /// Open the provider over its data directory, advancing the deduplication
+    /// generation for this process.
+    pub fn open(
+        config: Config,
+        data_dir: &std::path::Path,
+    ) -> Result<Self, crate::store::StoreError> {
+        let mut store = Store::open(data_dir)?;
+        let (current, oldest) = store.start_generation(
+            config.dedupe_advance_on_start,
+            config.dedupe_retain_generations,
+        )?;
+        Ok(Self {
             config,
-            store: Store::new(),
+            store,
             negotiated: None,
             dedupe_current: current,
+            dedupe_oldest: oldest,
             operation_counter: 0,
-        }
+        })
     }
 
     /// The receive limit for the next frame. The binding's 1 MiB default holds
@@ -90,7 +101,7 @@ impl Provider {
     }
 
     fn dedupe_oldest(&self) -> i64 {
-        (self.dedupe_current - self.config.dedupe_retain_generations + 1).max(0)
+        self.dedupe_oldest
     }
 
     fn dedupe_window(&self) -> Value {
@@ -98,6 +109,28 @@ impl Provider {
             ("oldest_retained".into(), Value::Int(self.dedupe_oldest())),
             ("current".into(), Value::Int(self.dedupe_current)),
         ])
+    }
+
+    /// The profiles this process serves.
+    ///
+    /// `core-test/1` is conformance-only and MUST NOT be exposed outside a test
+    /// configuration (CORE section 13). Filtering here rather than at each use
+    /// means `core.describe`, negotiation and operation dispatch cannot
+    /// disagree about whether it exists.
+    fn served(
+        &self,
+    ) -> impl Iterator<
+        Item = &'static (
+            &'static str,
+            i64,
+            &'static [&'static str],
+            &'static [&'static str],
+        ),
+    > {
+        let conformance = self.config.mode == crate::config::Mode::Conformance;
+        SERVED
+            .iter()
+            .filter(move |(name, _, _, _)| conformance || *name != "core-test")
     }
 
     fn selected_major(&self, profile: &str) -> Option<i64> {
@@ -136,8 +169,8 @@ impl Provider {
     // ---- describe and negotiate -------------------------------------------
 
     pub fn describe(&self) -> Value {
-        let profiles = SERVED
-            .iter()
+        let profiles = self
+            .served()
             .map(|(name, major, features, depends)| {
                 Value::Object(vec![
                     ("name".into(), Value::String((*name).into())),
@@ -194,8 +227,8 @@ impl Provider {
 
     /// In-session dependencies negotiation enforces (CORE section 4.3).
     pub fn feature_dependencies(&self) -> Value {
-        let entries = SERVED
-            .iter()
+        let entries = self
+            .served()
             .filter(|(name, _, _, _)| *name != "core")
             .map(|(name, major, _, depends)| {
                 Value::Object(vec![
@@ -273,8 +306,8 @@ impl Provider {
                 _ => Vec::new(),
             };
 
-            let served = SERVED
-                .iter()
+            let served = self
+                .served()
                 .find(|(served_name, _, _, _)| *served_name == name);
             let declared_unsupported = UNSUPPORTED
                 .iter()
@@ -385,7 +418,7 @@ impl Provider {
 
         // Profile-triggered dependencies, applied after selection.
         let names: Vec<String> = selected.iter().map(|(name, _, _)| name.clone()).collect();
-        for (name, _, _, depends) in SERVED {
+        for (name, _, _, depends) in self.served() {
             if !names.contains(&(*name).to_string()) {
                 continue;
             }
@@ -444,6 +477,12 @@ impl Provider {
         // Step 1: operation known, session negotiated, profile selected. These
         // are decided from the transport method, before the envelope is read.
         if !self.known_operation(method) {
+            return Err(ProtocolError::method_not_found(method));
+        }
+        // A conformance-only operation does not exist in a production
+        // configuration, so it is unknown rather than merely unauthorised.
+        if method.starts_with("core-test.") && self.config.mode != crate::config::Mode::Conformance
+        {
             return Err(ProtocolError::method_not_found(method));
         }
         let pre_negotiation = PRE_NEGOTIATION.contains(&method);
@@ -600,7 +639,7 @@ impl Provider {
             ("subject".into(), subject.clone()),
             (
                 "applied_count".into(),
-                Value::Int(self.store.applied_count(&key)),
+                Value::Int(self.store.applied_count(&key)?),
             ),
         ]))
     }
@@ -609,7 +648,7 @@ impl Provider {
         let key = self.subject_key(&query.payload)?;
         // The result requires a revision of at least 1, so a subject that does
         // not exist is absent rather than a zero-revision reading.
-        match self.store.subject(&key) {
+        match self.store.subject(&key)? {
             None => Err(ProtocolError::not_found()),
             Some(state) => Ok(Value::Object(vec![
                 (
@@ -703,7 +742,7 @@ impl Provider {
                 "generation was never issued",
             ));
         }
-        if let Some(record) = self.store.command(&principal, &command.command_id) {
+        if let Some(record) = self.store.command(&principal, &command.command_id)? {
             if record.digest == command.command_digest {
                 return Ok(Some(replayed(record.result.clone())));
             }
@@ -741,7 +780,7 @@ impl Provider {
         // exercises the absent case either way, so this is the specification's
         // default rather than a measured behaviour.
         if epoch_checked {
-            let current_epoch = self.store.epoch(scope);
+            let current_epoch = self.store.epoch(scope)?;
             let Some(epoch) = command.authority_epoch else {
                 return Err(ProtocolError::invalid_envelope(
                     "/authority_epoch",
@@ -783,7 +822,7 @@ impl Provider {
                     .unwrap_or_default()
                     .into(),
             };
-            let current = self.store.revision(&key);
+            let current = self.store.revision(&key)?;
             if current != *expected_revision {
                 failed.push(Value::Object(vec![
                     ("subject".into(), subject.clone()),
@@ -796,27 +835,6 @@ impl Provider {
             return Err(ProtocolError::precondition_failed(Value::Array(failed)));
         }
         Ok(None)
-    }
-
-    fn acknowledgment(&mut self, command: &Command, revision: i64) -> Value {
-        self.operation_counter += 1;
-        Value::Object(vec![
-            (
-                "command_id".into(),
-                Value::String(command.command_id.clone()),
-            ),
-            (
-                "command_digest".into(),
-                Value::String(command.command_digest.clone()),
-            ),
-            (
-                "operation_ref".into(),
-                Value::String(format!("op-{}", self.operation_counter)),
-            ),
-            ("subject".into(), command.subject.clone()),
-            ("revision".into(), Value::Int(revision)),
-            ("effect_refs".into(), Value::Array(vec![])),
-        ])
     }
 
     /// Claim the next authority epoch for the `core-test` scope.
@@ -833,28 +851,53 @@ impl Provider {
         }
         // The epoch and the authority subject's revision are the same number by
         // construction, so the acknowledgment's revision and the outcome's
-        // epoch cannot disagree.
-        let epoch = self.store.claim_epoch("core-test");
-        let result = Value::Object(vec![
-            (
-                "acknowledgment".into(),
-                self.acknowledgment(&command, epoch),
-            ),
-            (
-                "outcome".into(),
-                Value::Object(vec![("epoch".into(), Value::Int(epoch))]),
-            ),
-            ("replay".into(), Value::Bool(false)),
-        ]);
+        // epoch cannot disagree. The state change and the command record commit
+        // in one transaction.
         let principal = self.config.principal.clone();
-        self.store.bind_command(
-            &principal,
-            &command.command_id,
-            CommandRecord {
-                digest: command.command_digest,
-                result: result.clone(),
+        let key = Store::authority_key("core-test");
+        let counter = {
+            self.operation_counter += 1;
+            self.operation_counter
+        };
+        let command_digest = command.command_digest.clone();
+        let subject = command.subject.clone();
+        let command_id = command.command_id.clone();
+        let result = self.store.commit_command(
+            crate::store::Commit {
+                key: &key,
+                value: "",
+                principal: &principal,
+                command_id: &command_id,
+                digest: &command_digest,
+                generation: command.dedupe_generation,
             },
-        );
+            |epoch| {
+                Value::Object(vec![
+                    (
+                        "acknowledgment".into(),
+                        Value::Object(vec![
+                            ("command_id".into(), Value::String(command_id.clone())),
+                            (
+                                "command_digest".into(),
+                                Value::String(command_digest.clone()),
+                            ),
+                            (
+                                "operation_ref".into(),
+                                Value::String(format!("op-{counter}")),
+                            ),
+                            ("subject".into(), subject.clone()),
+                            ("revision".into(), Value::Int(epoch)),
+                            ("effect_refs".into(), Value::Array(vec![])),
+                        ]),
+                    ),
+                    (
+                        "outcome".into(),
+                        Value::Object(vec![("epoch".into(), Value::Int(epoch))]),
+                    ),
+                    ("replay".into(), Value::Bool(false)),
+                ])
+            },
+        )?;
         Ok(result)
     }
 
@@ -864,7 +907,7 @@ impl Provider {
         }
 
         // Step 8: commit the command record, the state change and the result in
-        // one transaction.
+        // one transaction, so a crash between them is not representable.
         let value = command
             .payload
             .get("value")
@@ -885,27 +928,51 @@ impl Provider {
                 .unwrap_or_default()
                 .into(),
         };
-        let revision = self.store.put(key, value.clone());
-        let result = Value::Object(vec![
-            (
-                "acknowledgment".into(),
-                self.acknowledgment(&command, revision),
-            ),
-            (
-                "outcome".into(),
-                Value::Object(vec![("value".into(), Value::String(value))]),
-            ),
-            ("replay".into(), Value::Bool(false)),
-        ]);
         let principal = self.config.principal.clone();
-        self.store.bind_command(
-            &principal,
-            &command.command_id,
-            CommandRecord {
-                digest: command.command_digest,
-                result: result.clone(),
+        let counter = {
+            self.operation_counter += 1;
+            self.operation_counter
+        };
+        let command_digest = command.command_digest.clone();
+        let subject = command.subject.clone();
+        let command_id = command.command_id.clone();
+        let stored_value = value.clone();
+        let result = self.store.commit_command(
+            crate::store::Commit {
+                key: &key,
+                value: &value,
+                principal: &principal,
+                command_id: &command_id,
+                digest: &command_digest,
+                generation: command.dedupe_generation,
             },
-        );
+            |revision| {
+                Value::Object(vec![
+                    (
+                        "acknowledgment".into(),
+                        Value::Object(vec![
+                            ("command_id".into(), Value::String(command_id.clone())),
+                            (
+                                "command_digest".into(),
+                                Value::String(command_digest.clone()),
+                            ),
+                            (
+                                "operation_ref".into(),
+                                Value::String(format!("op-{counter}")),
+                            ),
+                            ("subject".into(), subject.clone()),
+                            ("revision".into(), Value::Int(revision)),
+                            ("effect_refs".into(), Value::Array(vec![])),
+                        ]),
+                    ),
+                    (
+                        "outcome".into(),
+                        Value::Object(vec![("value".into(), Value::String(stored_value.clone()))]),
+                    ),
+                    ("replay".into(), Value::Bool(false)),
+                ])
+            },
+        )?;
         Ok(result)
     }
 }

@@ -1,0 +1,8 @@
+{"detail":{"argv":["/Volumes/Mrigesh SSD/Combraton/cbr/vendor/protocol/v0.1.0/../../../target/debug/cbr-provider","--data-dir","/var/folders/5x/1swvbn9x1v19n27p21mydfkh0000gn/T/.tmpqidq0N/case-124/data","--config","/var/folders/5x/1swvbn9x1v19n27p21mydfkh0000gn/T/.tmpqidq0N/case-124/config.json"]},"event":"start","session":"main","t_ms":0}
+{"detail":{"bytes":188,"text":"{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"core-test.subject.get\",\"params\":{\"message_id\":\"msg-1\",\"operation\":\"core-test.subject.get\",\"payload\":{\"subject\":{\"id\":\"s-1\",\"kind\":\"core-test.subject\"}}}}\n"},"event":"send","session":"main","t_ms":0}
+{"detail":{"bytes":156,"text":"{\"error\":{\"code\":1,\"data\":{\"code\":\"negotiation_required\",\"details\":{},\"retry\":\"after_renegotiate\"},\"message\":\"negotiation_required\"},\"id\":1,\"jsonrpc\":\"2.0\"}"},"event":"recv","session":"main","t_ms":4}
+{"detail":{},"event":"close_input","session":"main","t_ms":4}
+{"detail":{},"event":"peer_closed","session":"main","t_ms":5}
+{"detail":{"code":0},"event":"exit","session":"main","t_ms":5}
+{"detail":{},"event":"resume_reading","session":"main","t_ms":5}
+{"detail":{"code":0},"event":"exit","session":"main","t_ms":5}

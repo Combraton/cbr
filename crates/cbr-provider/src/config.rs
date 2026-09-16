@@ -61,8 +61,40 @@ impl Limits {
     }
 }
 
+/// Members that exist only to drive conformance fixtures. A production
+/// configuration naming any of them is refused rather than ignored: silently
+/// dropping a control the operator wrote down would leave them believing a
+/// clock or a fault injector was in effect when it was not.
+const TEST_CONTROL_MEMBERS: [&str; 11] = [
+    "clock",
+    "capabilities",
+    "credentials",
+    "test_barriers",
+    "executor",
+    "context",
+    "knowledge",
+    "evidence",
+    "verifier",
+    "faults",
+    "events",
+];
+
+/// Which launch configuration a process was given. CORE section 13.1 makes
+/// test control environment-only, so this is decided once at startup from the
+/// configuration's declared format and can never be reached over the protocol.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Mode {
+    /// No configuration, or a `cbr-config/1` one. `core-test/1` is not served
+    /// and no test control exists.
+    Production,
+    /// A `combraton-conformance-config/1` configuration. `core-test/1` is
+    /// served and the documented controls are honoured.
+    Conformance,
+}
+
 #[derive(Debug, Clone)]
 pub struct Config {
+    pub mode: Mode,
     pub principal: String,
     pub authority_principals: Vec<String>,
     pub provider_id: String,
@@ -76,6 +108,7 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
+            mode: Mode::Production,
             principal: "caller".into(),
             authority_principals: Vec::new(),
             provider_id: "cbr".into(),
@@ -108,10 +141,36 @@ impl Config {
         let value =
             cbr_encoding::parse(&bytes).map_err(|e| format!("parsing {}: {e}", path.display()))?;
 
-        match value.get("format").and_then(Value::as_str) {
-            Some("combraton-conformance-config/1") => {}
+        config.mode = match value.get("format").and_then(Value::as_str) {
+            Some("combraton-conformance-config/1") => Mode::Conformance,
+            Some("cbr-config/1") => Mode::Production,
             Some(other) => return Err(format!("unknown launch configuration format {other}")),
             None => return Err("launch configuration has no format".into()),
+        };
+
+        // Refuse a test control in a production configuration, naming it. The
+        // check is on the configuration's own members, so a control cannot
+        // arrive unnoticed through a member this build does not otherwise read.
+        if config.mode == Mode::Production {
+            for member in value.keys() {
+                if TEST_CONTROL_MEMBERS.contains(&member) {
+                    return Err(format!(
+                        "`{member}` is a conformance test control and has no effect in a \
+                         production configuration; it is refused rather than ignored"
+                    ));
+                }
+            }
+            if value
+                .get("dedupe")
+                .and_then(|d| d.get("advance_on_start"))
+                .is_some()
+            {
+                return Err(
+                    "`dedupe.advance_on_start` is a conformance test control and has no \
+                            effect in a production configuration; it is refused rather than ignored"
+                        .into(),
+                );
+            }
         }
 
         if let Some(principal) = text(value.get("principal")) {
