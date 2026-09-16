@@ -13,6 +13,17 @@
   "outcomes": {
     "pass": 24
   },
+  "redactions": [
+    {
+      "applied": "after the fact",
+      "files": 24,
+      "note": "These transcripts were sanitised after the fact by the commit on main titled \"Sanitise machine paths in the m1b and m1c2 transcripts\", not when the run was recorded. The original bytes remain in git history at b00ec49, the last commit that wrote them, and can be read with `git show b00ec49:conformance/results/m1b/transcripts/<file>`. History was not rewritten.",
+      "reason": "The runner expands {repo} in the descriptor's launch argv into an absolute path, which names the machine and its owner in a public repository and says nothing about CBR's behaviour. The substitution is a fixed prefix, so it is reversible and changes no outcome.",
+      "replaced": "the absolute path of the CBR checkout the run was made from",
+      "where": "transcripts/*.jsonl only; manifest.json and every outcome are untouched",
+      "with": "{cbr_checkout}"
+    }
+  ],
   "runner_exit_status": 0,
   "runner_identity": {
     "archive_sha256": "bde7892404bcc6fcf45f4cddb95026517e92a6bdf352ce20f959941596a3511d",
