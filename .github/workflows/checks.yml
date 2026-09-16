@@ -95,6 +95,21 @@ jobs:
       - name: Knowledge outcomes match the recorded expectation exactly
         run: python3 scripts/check_results.py target/ci-results/knowledge conformance/expectations/knowledge.json
 
+      - name: Context fixtures
+        run: python3 scripts/run_fixtures.py --filter context. --out target/ci-results/context
+
+      - name: Context outcomes match the recorded expectation exactly
+        run: python3 scripts/check_results.py target/ci-results/context conformance/expectations/context.json
+
+      # Separate CBR instances with their own stores, reaching each other only
+      # over their public sockets; one fixture also launches the vendored
+      # client-only minimal-executor.
+      - name: Composition fixtures
+        run: python3 scripts/run_fixtures.py --filter composition. --participant conformance/participants/cbr-provider-unix.json --out target/ci-results/composition
+
+      - name: Composition outcomes match the recorded expectation exactly
+        run: python3 scripts/check_results.py target/ci-results/composition conformance/expectations/composition.json
+
       # The same check run_fixtures.py applies when it records a run, over
       # every committed results directory, so a machine path cannot come back.
       - name: Committed results carry no machine paths

@@ -98,7 +98,7 @@ Five of the 135 `core` fixtures declare the `execution` profile and require the 
 
 So the maximum attainable on the `core` suite is **130 of 135**, with exactly those five `unsupported`. Any statement of the form "all 135 core fixtures pass" is unattainable and must not be written.
 
-**What is and is not established.** `stream` passes completely; `core` passes every fixture a provider that never serves `execution/1` can pass. `socket` passes every fixture a provider that never serves `execution/1` can pass. `evidence` and `knowledge` pass completely. The store **is** durable — SQLite in WAL mode with `synchronous=FULL`, verified by reading the PRAGMAs back from the open connection, and by tests that `SIGKILL` the provider and restart it over the same data directory. No packet, retrieval, model call or Context code exists.
+**What is and is not established.** `stream` passes completely; `core` passes every fixture a provider that never serves `execution/1` can pass. `socket` passes every fixture a provider that never serves `execution/1` can pass. `evidence`, `knowledge` and `context` pass completely. `composition` passes every fixture that needs neither `execution/1` nor `verification/1`, which CBR never serves. The store **is** durable — SQLite in WAL mode with `synchronous=FULL`, verified by reading the PRAGMAs back from the open connection, and by tests that `SIGKILL` the provider and restart it over the same data directory. No retrieval, packet compiler or model call exists: a packet's content comes only from the `context.script` test control.
 
 ### Knowledge, source identity and the knowledge verbs
 
@@ -151,6 +151,43 @@ Each row has a mutant that fails its test.
 - **Cost of reads.** `inspect` and `history` scan every record of a kind, which is proportionate to v0.1 counts and not measured beyond them.
 - **CLI coverage.** `cbr` has no verb for conflicts, transfers or grants.
 
+### Context: requests, packets and claims in packets
+
+**`context/1` is served with all seven features** (CONTEXT §1–§14) — `context.advisory`, `context.required_before_start`, `context.required_before_transition`, `context.shared_jobs`, `context.updates`, `context.expand` and `context.claims` — over stdio and the Unix socket.
+- **Requests.** Step 2 refuses an item that cannot be checked, a misplaced transition and a commit-only basis declared complete. Step 3 refuses an obligation, or a claim check, whose feature the session did not negotiate.
+- **Results.** An item is satisfied only by content that meets its check. A required item missing at the deadline is `unmet`; an advisory one follows its fallback. The investigation budget, the output capacity and the deadline are three separate reasons, never reported as one another.
+- **Capacity.** Output capacity is reserved for required items' sections before any advisory content, and mandatory content that cannot fit refuses the request with `budget_insufficient` and the size it needs.
+- **Packets.** Each revision is an exact sealed evidence artifact of canonical `combraton-context-packet/1` bytes, or `/2` under `context.claims`. It is sealed in CBR's own store with CBR as producer principal, or at a separate evidence provider over that provider's public socket, as CBR's own principal under that provider's grant. A revision is never reported before its artifact is sealed. Updates are new revisions; an old revision keeps its artifact and is never current again.
+- **Claims.** A claim is carried as an exact snapshot after its record digest is recomputed. A label never promotes an unaccepted claim, and only `invalid_for_target` makes a section stale. Reading a packet under `context.claims` re-reads each carried claim, locally or at a knowledge provider, and reports `claim_changes`, claim invalidations and unverified items. The published facts never change.
+- **Reads.** `context.packet.inspect` serves an exact excerpt that never carries a digest. `context.expand` serves a cited artifact the reader may read, and refuses an unreadable, a nonexistent and a foreign citation identically.
+
+**Where packet content comes from.** Every packet today is prepared by the `context.script` test control. The script says which sections, coverage, omissions, corrections and unmet reasons a job produces. CBR decides everything the protocol makes the provider responsible for: satisfaction, inclusion, labels, claim snapshots, sealing and the read-time facts. The provenance names the compiler `cbr-context-script`. A production launch refuses the control, so a production request has nothing to prepare it and is published at its deadline with every required item `unmet`; `a_request_nothing_prepares_is_published_unmet_at_its_deadline` shows the same path. The deterministic compiler over a real repository is m3c.
+
+**The composition fixtures run separate CBR instances**, each with its own store, reaching one another only over public sockets under grants:
+- a context provider sealing at a separate evidence provider, including while that provider is killed and restarted;
+- one grant per audience for direct fetch;
+- the protocol's independently written, client-only `minimal-executor`, vendored from the release archive, enforcing its dispatch boundary from CBR's read-time claim facts, with CBR reading claims at a separate knowledge provider.
+
+The other 11 composition fixtures declare `execution/1` or `verification/1` and are permanently out of reach.
+
+**CBR's own tests** (`crates/cbr-provider/tests/context.rs`, and unit tests in `context.rs` and `store.rs`) cover what no fixture reaches:
+- a publication whose seal is held at the evidence provider past the peer timeout replays after the clock moves, because the first attempt's capture instant is kept, and the diagnostic it logs does not contain the peer credential;
+- a packet killed after its object is published and before its batch commits is published exactly once after restart (the crash-matrix row below);
+- a correction after publication is reported at the read beside `superseded_by`, and content derived from a corrected authority revision is stale whether prepared before or after the correction;
+- capacity is reserved for required content whatever order sections were prepared in, which the reference provider does not do;
+- a provider-origin batch commits whole or not at all.
+
+Of 57 mutants, 48 fail a context or composition fixture at a named step and 9 fail only CBR's own tests; [STATE](work/STATE.md) lists every one.
+
+**Packet bytes are kept by the context record too, and that is a retention limit.** A revision's published facts keep its body, which `context.packet.inspect` excerpts after re-encoding it canonically; it is served only while it still digests to the reference. So a packet sealed at a separate evidence provider has a copy at the context provider, and purging a packet artifact ends `evidence.fetch` of it but not its excerpt. Request retention is not implemented.
+
+**What m3a does not establish.**
+- **That CBR prepares useful context.** Scripted content is test environment (CONTEXT §12). Nothing is retrieved or compiled.
+- **Investigation executions.** CBR has no executor role. A script step it does not perform, `execute`, holds its job rather than pretending it ran.
+- **Responsiveness under a stalled peer.** A context provider calls peers while holding its processing lock, bounded by a three-second timeout per frame, so a stalled peer delays every request to that provider for up to that long. Preparation runs on every request and idle poll of an authenticated session, and its cost grows with the number of running jobs.
+- **Untested paths.** Event visibility of `context.job` subjects under a grant follows the requests' `context.read` without a dedicated test. Skipping preparation for an unauthenticated connection has no test. A `packet.<request>.<n>` id that collides with an existing artifact stops that publication with a diagnostic and has no test.
+- **Read cost.** A request record holds every published revision's facts, and each tick parses every job.
+
 ### The `cbr` command, and the credentials it needs
 
 **`cbr ingest` and `cbr fetch` are a client, not a shortcut.** `cbr` is a separate binary that depends only on `cbr-encoding`: it opens the provider's Unix socket, authenticates, negotiates `core/1` with `core.events` and `evidence/1`, and uses `evidence.upload.prepare`, `append`, `seal` and `evidence.fetch`. It links no provider code and opens no store. `fetch` checks the bytes it assembled against the digest it asked for, which is the sealed digest, **before** writing anything, and writes nothing on a mismatch.
@@ -172,6 +209,7 @@ Issue #3's acceptance is `ingested_bytes_fetch_identically_after_sigkill_and_res
 | During artifact upload | idle between appends, then `evidence.append.before_commit` on the next | Still staged with the durable `received`; `evidence.fetch` is `not_found`; seal is `upload_incomplete`; no object, no `sealed` event; the upload resumes from `received` and fetches byte-identical |
 | The orphan object (STORAGE §2) | `evidence.seal.after_object_published` — object published and verified from disk, row not committed | Before restart the object is on disk, complete. After: collected; the artifact is still staged at its old revision, `fetch` is `not_found`, no `sealed` event — **no receipt for the seal**. The same seal then applies and publishes again |
 | During collection | `evidence.purge.after_commit` — row committed, object not deleted | The artifact is `purged` and fetch serves nothing; the deletion was finished at start; the purge replays. When another sealed artifact shares the bytes, **the object is kept** and still served for that one |
+| A context packet's object published, its batch not committed (m3a) | `context.packet.after_object_published` — the packet's object published and verified, its request, job and artifact rows not committed | Nothing was reported before the kill. After restart exactly one revision is published, with one `sealed` and one `packet.published` event, and `evidence.fetch` serves bytes matching its digest. This row's test is in `tests/context.rs` |
 
 **Rows that do not exist in CBR at M1**, and so have nothing to kill: *after commit, before dispatch* — CBR dispatches no effects until M4's model calls; *after harness prompt write*, *after invocation dispatch right* and *after completion commit* — PIO's; *after seal, before adoption* and *after adoption, before the provider sees the decision* — Comreton adoption, which standalone CBR does not have; *during branch creation* — Knowledge, M2; *while CBR projections lag* — no projections exist before M2.
 
@@ -184,7 +222,7 @@ Every row's test fails under at least one mutant, listed in STATE, including rev
 - **`SIGKILL` is process death, not power loss.** Writes the process completed survive in the operating system's cache, so these tests cannot tell `synchronous=FULL` from `OFF`, or an object file that was `fsync`ed from one that was not. Durability against power loss rests on the PRAGMA read back from the open connection and on `fsync` of each object and its directory, not on a test.
 - The kills are made over stdio. The barriers sit in the command path both bindings share; the socket's own `SIGKILL` test is stage (d)'s.
 - An error rather than a crash is recovered only at the next start: an object whose seal commit returned an error stays until then, and so do the bytes of a purge whose deletion returned an I/O error after its row committed. That second case is the one way a reader can see `purged` while the bytes are still on disk. Nothing serves them.
-- Only evidence artifacts own objects in M1. Anything that later publishes into the object store, such as M3's packets, must become a root before it does, or the pass will delete it.
+- Only evidence artifacts own objects. A context packet sealed in CBR's own store is an evidence artifact, so it is a root like any other. Anything that later publishes into the object store outside an artifact must become a root before it does, or the pass will delete it.
 
 ### The socket binding, and what it cannot show here
 
@@ -192,7 +230,7 @@ Every row's test fails under at least one mutant, listed in STATE, including rev
 
 **Two socket fixtures passed vacuously before the binding existed.** `socket.malformed-clock-file-refused` and `socket.unsafe-directory-refused` require only that the provider fails to start, and an unimplemented binary failed on the unknown `--socket` flag. They are now backed by mutants: removing either check makes its fixture fail at step 0 with "participant listened".
 
-**Committed socket transcripts contain the runner's synthetic test credentials.** The conformance README says they will: the runner derives a deterministic credential per principal from the run's temporary directory and authenticates each session with it. They are not real credentials and grant nothing outside that run. The redaction applied to machine paths does not apply to them.
+**Committed socket and composition transcripts contain the runner's synthetic test credentials.** The conformance README says they will: the runner derives a deterministic credential per principal from the run's temporary directory and authenticates each session with it. They are not real credentials and grant nothing outside that run. The redaction applied to machine paths does not apply to them.
 
 ### Two features with no fixture evidence
 

@@ -1,0 +1,263 @@
+{
+  "coverage_limits": [],
+  "environment": {
+    "arch": "aarch64",
+    "os": "macos"
+  },
+  "format": "combraton-conformance-result/1",
+  "participant": {
+    "claimed_profiles": [
+      {
+        "major": 1,
+        "name": "core"
+      },
+      {
+        "major": 1,
+        "name": "core-test"
+      },
+      {
+        "major": 1,
+        "name": "evidence"
+      },
+      {
+        "major": 1,
+        "name": "knowledge"
+      },
+      {
+        "major": 1,
+        "name": "context"
+      }
+    ],
+    "client_mutant": null,
+    "descriptor_digest": "sha256:a1b3dabbff717b07dd4788058ad4ac86bbbec362bd9c18d1e9377b6ea4867ad0",
+    "mutant": null,
+    "name": "cbr-provider-unix",
+    "version": "0.1.0"
+  },
+  "results": [
+    {
+      "failed_step": null,
+      "fixture": "composition.blocked-consumer-releases-the-slot-for-preparation",
+      "fixture_digest": "sha256:be04be766f206f090a451a55bc6cefdd4553d8185d1654da3bd0a2c27ca718cb",
+      "outcome": "unsupported",
+      "polarity": "negative",
+      "reason": "participant does not claim execution/1",
+      "requirements": [
+        "SCN-6",
+        "CTX-18",
+        "CTX-15"
+      ],
+      "transcript": "transcripts/composition.blocked-consumer-releases-the-slot-for-preparation.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "composition.cancelling-one-consumer-leaves-the-other",
+      "fixture_digest": "sha256:42f7b037bf6818675bf3b80526262017e46b629b4708161688184b351c33e89a",
+      "outcome": "unsupported",
+      "polarity": "negative",
+      "reason": "participant does not claim execution/1",
+      "requirements": [
+        "SCN-11",
+        "CTX-10"
+      ],
+      "transcript": "transcripts/composition.cancelling-one-consumer-leaves-the-other.jsonl",
+      "version": 2
+    },
+    {
+      "failed_step": null,
+      "fixture": "composition.claims-in-packets-block-only-the-required-boundary",
+      "fixture_digest": "sha256:7834355a59afdd37c84c48eda9803ff6ba7c38f0f0b6b1f0d7cbc54c87733f91",
+      "outcome": "unsupported",
+      "polarity": "negative",
+      "reason": "participant does not claim execution/1",
+      "requirements": [
+        "SCN-16",
+        "KNW-10",
+        "CMP-9"
+      ],
+      "transcript": "transcripts/composition.claims-in-packets-block-only-the-required-boundary.jsonl",
+      "version": 2
+    },
+    {
+      "failed_step": null,
+      "fixture": "composition.context-provider-outage-advisory-proceeds-required-waits",
+      "fixture_digest": "sha256:eaec3fa4a7d9534c7ba44813cc5ce0012df3285bd7c6d2f1f53f79291fb3f88d",
+      "outcome": "unsupported",
+      "polarity": "negative",
+      "reason": "participant does not claim execution/1",
+      "requirements": [
+        "SCN-8",
+        "CTX-15"
+      ],
+      "transcript": "transcripts/composition.context-provider-outage-advisory-proceeds-required-waits.jsonl",
+      "version": 3
+    },
+    {
+      "failed_step": null,
+      "fixture": "composition.correction-before-dispatch-blocks-the-superseded-revision",
+      "fixture_digest": "sha256:b8ca44557239c40971c95e036d6a0c6ed2daea500984c22f0beec6382d452060",
+      "outcome": "unsupported",
+      "polarity": "negative",
+      "reason": "participant does not claim execution/1",
+      "requirements": [
+        "SCN-5",
+        "CTX-15",
+        "CTX-17",
+        "CTX-12"
+      ],
+      "transcript": "transcripts/composition.correction-before-dispatch-blocks-the-superseded-revision.jsonl",
+      "version": 3
+    },
+    {
+      "failed_step": null,
+      "fixture": "composition.direct-fetch-needs-one-grant-per-audience",
+      "fixture_digest": "sha256:57b944adfb688342848500f1a73bab8c86028a6474ba11fc7f1156e01a2d7759",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "CTX-16",
+        "EVD-5",
+        "CORE-12"
+      ],
+      "transcript": "transcripts/composition.direct-fetch-needs-one-grant-per-audience.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "composition.executor-fetches-bound-packet-and-seals-outputs",
+      "fixture_digest": "sha256:b9847f5a7b79786642842b2a396a51f66cfe35b00f40b37473cc902e4f67df64",
+      "outcome": "unsupported",
+      "polarity": "negative",
+      "reason": "participant does not claim execution/1",
+      "requirements": [
+        "CTX-1",
+        "CTX-16",
+        "SCN-1",
+        "SCN-9",
+        "EXE-21",
+        "EVD-8"
+      ],
+      "transcript": "transcripts/composition.executor-fetches-bound-packet-and-seals-outputs.jsonl",
+      "version": 3
+    },
+    {
+      "failed_step": null,
+      "fixture": "composition.executor-verifies-assembled-packet-bytes",
+      "fixture_digest": "sha256:e20605ab552e6f0e28ff8f3a3a3a7a24aa0ada78d6e4efd42343afbf29ee9aa5",
+      "outcome": "unsupported",
+      "polarity": "negative",
+      "reason": "participant does not claim execution/1",
+      "requirements": [
+        "CTX-16",
+        "CTX-5",
+        "EVD-5"
+      ],
+      "transcript": "transcripts/composition.executor-verifies-assembled-packet-bytes.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "composition.missing-required-context-blocks-bound-work",
+      "fixture_digest": "sha256:5549c8a4b251cafa0355b0dd426b0ff230bfd4ea21b57afa18d220b07f858f53",
+      "outcome": "unsupported",
+      "polarity": "negative",
+      "reason": "participant does not claim execution/1",
+      "requirements": [
+        "SCN-4",
+        "CTX-7"
+      ],
+      "transcript": "transcripts/composition.missing-required-context-blocks-bound-work.jsonl",
+      "version": 2
+    },
+    {
+      "failed_step": null,
+      "fixture": "composition.packets-are-sealed-at-a-separate-evidence-provider",
+      "fixture_digest": "sha256:69e7ce68ea0249af9e63f18b9d19a5cfc0b6edce6827c638e6e708362627478d",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "CTX-5",
+        "EVD-4",
+        "SCN-1"
+      ],
+      "transcript": "transcripts/composition.packets-are-sealed-at-a-separate-evidence-provider.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "composition.pinned-and-current-bindings-treat-supersession-differently",
+      "fixture_digest": "sha256:64a3ca10fc87ee6a2d03394eec4358275619d7325ec925b02ad8bb26ba3555d0",
+      "outcome": "unsupported",
+      "polarity": "negative",
+      "reason": "participant does not claim execution/1",
+      "requirements": [
+        "CTX-12",
+        "CTX-15",
+        "SCN-9"
+      ],
+      "transcript": "transcripts/composition.pinned-and-current-bindings-treat-supersession-differently.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "composition.preparation-runs-without-the-consumer-slot",
+      "fixture_digest": "sha256:2e04eec2dcb86819b28af8cce4971e03f7dd5594eebbd9afd5eb8658e5454cde",
+      "outcome": "unsupported",
+      "polarity": "negative",
+      "reason": "participant does not claim execution/1",
+      "requirements": [
+        "SCN-6",
+        "CTX-18",
+        "CTX-19"
+      ],
+      "transcript": "transcripts/composition.preparation-runs-without-the-consumer-slot.jsonl",
+      "version": 2
+    },
+    {
+      "failed_step": null,
+      "fixture": "composition.thirdparty-kernel-enforces-required-claim-boundary",
+      "fixture_digest": "sha256:bc630b0b2d3dcf2ed091ed8f82b38fd295e7c29ef9b05295a9bb06660f642d49",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "SCN-16",
+        "KNW-10",
+        "CMP-9"
+      ],
+      "transcript": "transcripts/composition.thirdparty-kernel-enforces-required-claim-boundary.jsonl",
+      "version": 3
+    },
+    {
+      "failed_step": null,
+      "fixture": "composition.thirdparty-publisher-feeds-reference-verification",
+      "fixture_digest": "sha256:3880973231d50643a7e205c35d06e3d6df0275c69a77a4454323ce745279b501",
+      "outcome": "unsupported",
+      "polarity": "negative",
+      "reason": "participant does not claim verification/1",
+      "requirements": [
+        "CMP-9",
+        "VER-1"
+      ],
+      "transcript": "transcripts/composition.thirdparty-publisher-feeds-reference-verification.jsonl",
+      "version": 1
+    }
+  ],
+  "runner": {
+    "name": "combraton-conformance",
+    "version": "0.1.0"
+  },
+  "status_note": "Protocol 0.1 conformance suite. A result is a conformance claim only for the fixtures it lists as passing, run from the v0.1.0 release inventory; skipped and unsupported outcomes are coverage limits, not passes.",
+  "suite": {
+    "fixtures": 14,
+    "fixtures_digest": "sha256:66bdc3dd1f629836edea7e760cd67167202d7a02f9a668e02a76f8cba66d72bb",
+    "protocol_commit": "34568ab2224ba349e90770dec7cefa194b26b47d"
+  },
+  "summary": {
+    "pass": 3,
+    "unsupported": 11
+  }
+}

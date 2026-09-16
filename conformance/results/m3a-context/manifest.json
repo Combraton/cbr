@@ -1,0 +1,209 @@
+{
+  "coverage_limits": [],
+  "environment": {
+    "arch": "aarch64",
+    "os": "macos"
+  },
+  "format": "combraton-conformance-result/1",
+  "participant": {
+    "claimed_profiles": [
+      {
+        "major": 1,
+        "name": "core"
+      },
+      {
+        "major": 1,
+        "name": "core-test"
+      },
+      {
+        "major": 1,
+        "name": "evidence"
+      },
+      {
+        "major": 1,
+        "name": "knowledge"
+      },
+      {
+        "major": 1,
+        "name": "context"
+      }
+    ],
+    "client_mutant": null,
+    "descriptor_digest": "sha256:6773978fc83aaf988bc25158a65df20b4084e3d862c9dc4671b304f698c611c8",
+    "mutant": null,
+    "name": "cbr-provider",
+    "version": "0.1.0"
+  },
+  "results": [
+    {
+      "failed_step": null,
+      "fixture": "context.claims-in-packets-are-negotiated-snapshots",
+      "fixture_digest": "sha256:18bc215e22a8a964757155ad3458881908da8b571bce3bfcb2dbe56f16beda93",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "KNW-10",
+        "KNW-9",
+        "CMP-9"
+      ],
+      "transcript": "transcripts/context.claims-in-packets-are-negotiated-snapshots.jsonl",
+      "version": 3
+    },
+    {
+      "failed_step": null,
+      "fixture": "context.correction-during-preparation-never-becomes-current",
+      "fixture_digest": "sha256:8f47d603072b55857c7c206f9b844862f14d2f6fdd2bcec4553cd21b39ad43d4",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "CTX-13",
+        "CTX-14"
+      ],
+      "transcript": "transcripts/context.correction-during-preparation-never-becomes-current.jsonl",
+      "version": 2
+    },
+    {
+      "failed_step": null,
+      "fixture": "context.deadline-leaves-required-unmet-and-advisory-follows-fallback",
+      "fixture_digest": "sha256:14fa1b4f8a2e3ce2750adebb821cb83b7373f33d8e3ce76eac70188928b8d578",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "CTX-7"
+      ],
+      "transcript": "transcripts/context.deadline-leaves-required-unmet-and-advisory-follows-fallback.jsonl",
+      "version": 2
+    },
+    {
+      "failed_step": null,
+      "fixture": "context.expand-returns-only-authorized-citations",
+      "fixture_digest": "sha256:e4b6a70c4eab510a7a1d4074371644e68644247568919ddc3124dcaa38dedb42",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "CTX-11",
+        "CORE-12"
+      ],
+      "transcript": "transcripts/context.expand-returns-only-authorized-citations.jsonl",
+      "version": 2
+    },
+    {
+      "failed_step": null,
+      "fixture": "context.items-are-satisfied-only-by-their-check",
+      "fixture_digest": "sha256:cea2b502e0fecdf508bc322746c2867775b74ce3e4d5ee874a77adc20c7df1d1",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "CTX-3",
+        "CTX-7"
+      ],
+      "transcript": "transcripts/context.items-are-satisfied-only-by-their-check.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "context.limits-are-separate-and-mandatory-content-is-never-dropped",
+      "fixture_digest": "sha256:7a3b02034ca9f28993687d62ce33f8689e2967dbbebb996a4cb81578b96301c6",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "CTX-4",
+        "CTX-8"
+      ],
+      "transcript": "transcripts/context.limits-are-separate-and-mandatory-content-is-never-dropped.jsonl",
+      "version": 2
+    },
+    {
+      "failed_step": null,
+      "fixture": "context.packet-is-an-exact-sealed-evidence-artifact",
+      "fixture_digest": "sha256:8e91f96f30435c6d6a9f130b397f8814cbfb95155b6d2a95dc4a5c52fb5a446a",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "CTX-5",
+        "CTX-6",
+        "CTX-14",
+        "CTX-20"
+      ],
+      "transcript": "transcripts/context.packet-is-an-exact-sealed-evidence-artifact.jsonl",
+      "version": 2
+    },
+    {
+      "failed_step": null,
+      "fixture": "context.request-items-are-checkable-and-obligations-negotiated",
+      "fixture_digest": "sha256:6e35f87dd1ac595cbfc041eceb6da5efda5ea9bb4c30ffe6cc3c6ec97639fc24",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "CTX-2",
+        "CTX-3",
+        "CTX-9"
+      ],
+      "transcript": "transcripts/context.request-items-are-checkable-and-obligations-negotiated.jsonl",
+      "version": 2
+    },
+    {
+      "failed_step": null,
+      "fixture": "context.requires-core-events-and-gates-optional-features",
+      "fixture_digest": "sha256:4e28489f6de8d2c71eba6d18141863ce5af08a852c5e9adb3d33b8980764c16c",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "CTX-9",
+        "CORE-3",
+        "CMP-5"
+      ],
+      "transcript": "transcripts/context.requires-core-events-and-gates-optional-features.jsonl",
+      "version": 2
+    },
+    {
+      "failed_step": null,
+      "fixture": "context.shared-job-survives-one-subscriber-cancelling",
+      "fixture_digest": "sha256:862385a008fb0620f5361b83cee70e03fd0d726e4f222575a3e015308ae6fa47",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "CTX-10"
+      ],
+      "transcript": "transcripts/context.shared-job-survives-one-subscriber-cancelling.jsonl",
+      "version": 2
+    },
+    {
+      "failed_step": null,
+      "fixture": "context.updates-are-new-revisions-and-old-bytes-stay-historical",
+      "fixture_digest": "sha256:7a07b7fb60ee7b4a4661ce0983de25cd4b87ecb838b26498374396dfa8b475ba",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "CTX-12",
+        "CTX-5"
+      ],
+      "transcript": "transcripts/context.updates-are-new-revisions-and-old-bytes-stay-historical.jsonl",
+      "version": 2
+    }
+  ],
+  "runner": {
+    "name": "combraton-conformance",
+    "version": "0.1.0"
+  },
+  "status_note": "Protocol 0.1 conformance suite. A result is a conformance claim only for the fixtures it lists as passing, run from the v0.1.0 release inventory; skipped and unsupported outcomes are coverage limits, not passes.",
+  "suite": {
+    "fixtures": 11,
+    "fixtures_digest": "sha256:31c037c9b97e0295ee101cb353e8f99ecf3392e608d8bb38d3ec39ae0a025ca0",
+    "protocol_commit": "34568ab2224ba349e90770dec7cefa194b26b47d"
+  },
+  "summary": {
+    "pass": 11
+  }
+}
