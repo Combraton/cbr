@@ -3,12 +3,81 @@
 This is a dated navigation snapshot. Reconcile it with Git, linked issues and current task evidence before acting. Issues own live progress; this file does not grant authority or maintain a second backlog.
 
 - **Updated:** 2026-09-16.
-- **Owner/task:** Claude Code session as implementation lead for standalone CBR. Active task: [issue #3](https://github.com/Combraton/cbr/issues/3), milestone M1; this change is the owner follow-ups on branch `owner/ceiling-builddigest-transcripts`, and stage (c4) is stacked on it. Parent: [issue #1](https://github.com/Combraton/cbr/issues/1). An independent reviewer session reviews this read-only.
+- **Owner/task:** Claude Code session as implementation lead for standalone CBR. Active task: [issue #3](https://github.com/Combraton/cbr/issues/3), milestone M1 stage (c4), on branch `m1c4/core-capabilities`, stacked on the owner follow-ups branch `owner/ceiling-builddigest-transcripts` (PR #8). Merge commits keep SHAs, so this head does not change when #8 merges. Parent: [issue #1](https://github.com/Combraton/cbr/issues/1). An independent reviewer session reviews this read-only.
 - **Merged:** PR #2 as `d68e9d6`, pinned to `877139f`; PR #4 as `a939446`, pinned to `630011c`; PR #5 (c1) as `8b75129`; PR #6 (c2) as `da1e650`, pinned to `b00ec49`; **PR #7 (c3) as `8ba2594`, pinned to `5b98a9f`, confirmed from `merged: true` and `merged_at: 2026-09-16T15:31:51Z`**. Earlier: PR #6 pinned to `b00ec49`, confirmed from `merged: true` and `merged_at: 2026-09-16T14:26:34Z`**, the draft marked ready first and the head re-read unchanged before merging. Every owner decision, including the ceiling, is in [ADR 001](../decisions/001-standalone-v0.1-scope-and-stack.md).
 - **Merge rule, 2026-09-16, superseded the same day.** This session ran `gh pr merge` on PR #2 after the owner replied "you can merge PR 2" in-session, having first reported the contradicting claim with evidence and waited. It landed the exact reviewed head `877139f` and is kept. A stricter rule was then recorded, and the owner then **granted merge authority under four conditions**, now in [AGENTS.md](../../AGENTS.md): pin with `--match-head-commit`; the head's CI is green; the reviewer has seen that head; no squash. Confirm from `merged` and `merged_at` afterwards, **never `merge_commit_sha`** — GitHub populates that on an open pull request with the test-merge candidate. Tags and releases remain the owner's alone.
 - **Inspected revisions:** protocol `v0.1.0` = `cbf8e4df9df2ca8a9b50264df6acace6e4c3a0fc`; combraton `9af69ce`; pio `e65b7c0`; benchmarks `c8d5878`.
 
-## This change — owner follow-ups
+## This change — M1 stage (c4)
+
+`core.capabilities` fixture-backed; `core.events.backpressure` and `core.effects` on CBR's own tests. Three commits, one per feature.
+
+| Command | Exit | Result |
+|---|---|---|
+| `check_docs.py` / `verify_pin.py` | 0 / 0 | 21 files, 0 errors; 429 and 420 files match their anchors |
+| `cargo fmt --all -- --check` | 0 | — |
+| `cargo clippy --workspace --all-targets --locked -- -D warnings` | 0 | — |
+| `cargo build --workspace --locked` | 0 | — |
+| `cargo test --workspace --locked` | 0 | **60 tests**: 19 encoding, 34 provider unit, 7 against the real binary |
+| `git diff --check` | 0 | — |
+| `run_fixtures.py --filter stream.` + `check_results.py` | 0 | 24 of 24, unchanged |
+| `run_fixtures.py --filter core.` + `check_results.py` | 0 | **130 pass, 5 unsupported by name, 0 fail** |
+| `result_paths.py conformance/results/*/` | 0 | no machine paths in m1b, m1c2, m1c3, m1c4 |
+
+**Expected versus measured.** `core-c4.json` was computed from declared features first, then confirmed by a run with `core.capabilities` declared and nothing implemented: 122 pass, 8 fail, 5 unsupported — the 8 exactly the non-execution fixtures naming `core.capabilities`. Measured at `eadd556`: 130 / 5 / 0, stable over three runs. **The c3 lower-bound effect was checked for and not found.** Declaring `core.events.backpressure` and then `core.effects` each changed no fixture outcome.
+
+One timeout was seen, on `core.acknowledgment.effect-refs-empty-for-effect-free-operations` step 1, in a run made against a stale binary while a build was failing. It did not reproduce in three runs of the built head.
+
+### What changed
+
+- **`core.capabilities`** (`eadd556`): the query, unprotected; `capability_unavailable` at step 7 before the epoch and preconditions and after deduplication, so a bound command replays; only `put` depends on `core-test.writes`; an unnamed predicate is `unknown`. A production launch reconciles an empty snapshot so the query answers.
+- **`core.events.backpressure`** (`f48dbb7`): the session loop moved into `session.rs` so tests drive it. Output within `max_pending_notification_bytes`; a notification that would exceed it is withheld with its cursor unmoved; a response waits for room; a stall gives the consumer `backpressure_notice_ms` to drain everything; too slow means one `consumer_too_slow` notice per subscription under one shared budget if negotiated, none if not, then closure. On stdio closure is process exit, recorded on stderr with the bound measured. Negotiating the feature adds both bounds to `limits`.
+- **`core.effects`** (`316f052`): effects as `core.effect` subjects recorded in the authorizing command's transaction; `core.effects.get`; `core.effects.abort_obligation`, which never changes status; obligations marked overdue once by a provider-origin event when their deadline passes; the producer API for M4.
+
+**Correction to STACK §2's wording.** "The session thread never blocks on a consumer that stopped reading" is too strong. It waits for the room deadline and no longer, and never inside a write; on one connection that wait is the backpressure. A command's commit never waits on output.
+
+**Two readings to flag.** Under a grant, `core.effects.get` reports `out_of_scope` whenever the effect's target is not readable, including when there is no effect, because CBR's effect targets will not share one family and an absent effect has no right to evaluate; the reference provider can compute the reason from its single family. And CORE §19.4 names no subject or payload for the overdue event; CBR uses the effect subject and the aborted event's `{ effect, obligation, target }`.
+
+### Mutants
+
+All observed, all restored. Fixture steps are the runner's numbering.
+
+| Mutant | Killed by | At |
+|---|---|---|
+| `unknown` admits the command | `core.capabilities.unknown-is-not-supported` | step 2 |
+| Capability loss ignored | `checked-after-authorization-before-preconditions` 6 · `loss-refuses-new-but-replays-bound` 8 · `restored-capability-admits-commands` 2 · `unknown-is-not-supported` 2 | — |
+| Claim depends on writes | `core.capabilities.claim-does-not-depend-on-writes` | step 2 |
+| Capabilities checked before deduplication | `loss-refuses-new-but-replays-bound` step 7 (the replay refused) · `checked-after-authorization-before-preconditions` step 2 (before authorization) | — |
+| Every start announced as a capability change | `a_capability_change_and_its_event_survive_sigkill_at_their_positions` | "the snapshot survives SIGKILL" (revision 3, not 2) |
+| Room wait without a deadline | `never_reads` and `older_consumer` watchdogs · `returning_within_budget` | test |
+| `consumer_too_slow` to a session that did not negotiate it | `an_older_consumer_is_closed_without_a_notice` | test |
+| Notice budget restarted per subscription | `a_consumer_that_never_reads_is_closed_within_twice_the_notice_budget` | closed after 1.54 s against 2 × 300 ms |
+| Notifications ignore the bound | same test | 3558 bytes before any notice against 2048 |
+| A withheld notification's cursor moves | `withheld_notifications_are_delivered_later_and_never_skipped` | "sub-1: … none skipped" |
+| Abort records the effect as failed | `effects::aborting_a_wait_never_changes_the_effects_status` · `an_overdue_obligation_is_announced_…` | EFF-4 |
+| Overdue counted satisfied | `a_passed_deadline_makes_an_obligation_overdue_not_satisfied` · the provider test | test |
+| Overdue announced every tick | both | "one provider-origin overdue event, not one per request" |
+| Deadline exclusive of its instant | both | test |
+| An absent effect answers `not_found` under a grant | `reading_an_effect_under_a_grant_does_not_reveal_whether_it_exists` | "refused identically (CORE-12)" |
+
+**A mutant that first survived.** Moving a withheld notification's cursor — skipping it — failed no test. The skip test used one subscription, and a response plus one notification always fit the bound together, so nothing was ever withheld: a probe counted **0 withholdings in 120 writes**. It now uses three subscriptions of 300-byte values, withholding on every write (**121** counted), and the mutant is killed. A malformed first attempt at the abort mutant changed nothing; it is not counted.
+
+**Measured backpressure ending** (test log): 1930 bytes pending against a bound of 2048; at most 1930 before any notice, 2446 including three; declared 310 ms after a 300 ms stall began, closed 305 ms later.
+
+### Coverage limits
+
+`socket` (13) and `evidence` (16) have **not** been run. The 5 unsupported `core` fixtures are permanent. **`core.effects` and `core.events.backpressure` have no fixture evidence in CBR's role**: all 70 fixtures that declare either also declare `execution`. Nothing in M1 produces an effect. Effect retention is unbounded, so `effect_history_unavailable` never arises yet. Obligations are marked overdue at the next request, which on stdio is the earliest a passing is observable; the socket binding needs a timer (stage d).
+
+### Next: the two stages that close M1, with expected outcomes stated before implementing
+
+| Stage | Scope | Expected | Why |
+|---|---|---|---|
+| **(d)** | The Unix socket binding, `core.authenticate`, cross-session delivery, idle re-checks on a timer | **socket 11 pass / 2 unsupported / 0 fail** | 13 fixtures. `socket.closing-a-session-does-not-cancel` and `socket.idle-obligation-overdue-without-traffic` declare `execution` and are permanent. `socket.subscription-recheck-race-regression` needs the barrier `subscription.recheck.after_authorization`; **11 assumes CBR implements and declares it** (10 / 3 / 0 if not). `clock.file` is already declared. A second participant descriptor with `binding: unix`. |
+| **(e)** | `evidence/1`: upload, append, seal, fetch, query, holds, purge, manifests; the `evidence.store` control; the `cbr ingest` / `cbr fetch` round trip surviving restart; the storage crash matrix from issue #3 | **evidence 16 pass / 0 unsupported / 0 fail** | 16 fixtures. Reachable only with features `evidence.retention_control`, `evidence.manifests` and `evidence.work_binding` — the last is a grant constraint kind, which CBR currently refuses — and controls `clock.file` and `evidence.store`. |
+
+Both will be confirmed by an unimplemented run before implementing, and both are **lower bounds** in the sense c3 found: a fixture can depend on recording its features do not name.
+
+## Earlier — owner follow-ups
 
 Three owner decisions from 2026-09-16, one commit each.
 

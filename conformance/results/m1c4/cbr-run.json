@@ -1,0 +1,42 @@
+{
+  "filter": "core.",
+  "fixture_source": {
+    "inventory_listing_sha256": "80b39377b10685c29bb5823e69ee539ef91bb1eace5b049f2894b603ce08b41d",
+    "note": "Fixtures and schemas came from the vendored Protocol release. The manifest's suite.protocol_commit names the Git checkout enclosing --repo, which is CBR, not Protocol.",
+    "protocol_commit": "cbf8e4df9df2ca8a9b50264df6acace6e4c3a0fc",
+    "protocol_tag": "v0.1.0",
+    "vendored_at": "vendor/protocol/v0.1.0",
+    "verified_by": "scripts/verify_pin.py"
+  },
+  "format": "cbr-run-record/1",
+  "manifest": "manifest.json",
+  "outcomes": {
+    "pass": 130,
+    "unsupported": 5
+  },
+  "redactions": [
+    {
+      "files": 130,
+      "reason": "The runner expands {repo} in the descriptor's launch argv into an absolute path, which names the machine and its owner and says nothing about CBR's behaviour. The substitution is a fixed prefix, so it is reversible and changes no outcome.",
+      "replaced": "the absolute path of the CBR checkout the run was made from",
+      "where": "transcripts/*.jsonl only; manifest.json is untouched",
+      "with": "{cbr_checkout}"
+    }
+  ],
+  "runner_exit_status": 0,
+  "runner_identity": {
+    "archive_sha256": "bde7892404bcc6fcf45f4cddb95026517e92a6bdf352ce20f959941596a3511d",
+    "cargo_lock_sha256": "91827bbe110c9204991f448d2c17323742c69de1a08ad70fdc2b16438179afca",
+    "format": "cbr-runner-identity/1",
+    "protocol_tag": "v0.1.0",
+    "runner": "target/protocol-release/combraton-protocol-0.1.0/target/debug/combraton-conformance",
+    "source_commit": "cbf8e4df9df2ca8a9b50264df6acace6e4c3a0fc"
+  },
+  "unsupported": [
+    "core.events.older-consumer-is-closed-without-notice",
+    "core.events.slow-consumer-is-closed-with-notice-and-resumes",
+    "core.events.slow-consumer-recovery-reports-retention-gap",
+    "core.events.unread-ending-notice-does-not-hold-the-connection",
+    "core.feature-dependencies-match-negotiation"
+  ]
+}
