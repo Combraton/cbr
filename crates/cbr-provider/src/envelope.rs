@@ -330,6 +330,8 @@ fn payload_members(operation: &str) -> Option<(&'static [&'static str], &'static
             &["holder", "audience", "rights", "resources", "delegation"],
         ),
         "core.grant.revoke" => (&[], &[]),
+        "core.effects.get" => (&["effect"], &["effect"]),
+        "core.effects.abort_obligation" => (&["obligation"], &["obligation"]),
         "core.grant.get" => (&["grant"], &["grant"]),
         _ => return None,
     })

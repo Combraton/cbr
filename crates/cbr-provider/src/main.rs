@@ -8,6 +8,7 @@
 
 mod clock;
 mod config;
+mod effects;
 mod envelope;
 mod errors;
 mod frames;

@@ -2,7 +2,7 @@
   "format": "combraton-conformance-participant/1",
   "name": "cbr-provider",
   "version": "0.1.0",
-  "description": "CBR's protocol provider. Claims only what it implements: core/1 with core.events, core.grants, core.capabilities and core.events.backpressure, and the conformance-only core-test/1, over stdio, with one test control, clock.file. Run with --repo pointing at vendor/protocol/v0.1.0, which holds the pinned schemas and fixtures; the launch path is relative to that so this descriptor carries no machine-specific path. Build the binary first: cargo build --workspace.",
+  "description": "CBR's protocol provider. Claims only what it implements: core/1 with core.events, core.grants, core.capabilities, core.events.backpressure and core.effects, and the conformance-only core-test/1, over stdio, with one test control, clock.file. Run with --repo pointing at vendor/protocol/v0.1.0, which holds the pinned schemas and fixtures; the launch path is relative to that so this descriptor carries no machine-specific path. Build the binary first: cargo build --workspace.",
   "role": "provider",
   "binding": "stdio",
   "claims": {
@@ -20,7 +20,8 @@
       "core.events",
       "core.grants",
       "core.capabilities",
-      "core.events.backpressure"
+      "core.events.backpressure",
+      "core.effects"
     ],
     "test_controls": [
       "clock.file"
