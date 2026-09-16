@@ -337,11 +337,32 @@ pub enum Chunks<'a> {
     },
 }
 
-/// A further subject one command changes.
+/// A further subject one command changes. A change need not be an event: a
+/// context job gaining a subscriber changes the job's record, and what a
+/// reader observes is the request's own event (CONTEXT section 11).
 pub struct Change {
     pub key: SubjectKey,
     pub value: String,
-    pub event: NewEvent,
+    pub event: Option<NewEvent>,
+}
+
+/// One subject a provider-origin batch writes: the revision it had when the
+/// batch was computed, and the revision and value it ends at. A subject that
+/// changed in between refuses the whole batch, so a batch never overwrites a
+/// change it did not see.
+pub struct ProviderWrite {
+    pub key: SubjectKey,
+    pub base: i64,
+    pub revision: i64,
+    pub value: String,
+}
+
+/// One provider-origin event of a batch, at a revision the batch wrote.
+pub struct ProviderEvent {
+    pub key: SubjectKey,
+    pub revision: i64,
+    pub event_type: String,
+    pub payload: Value,
 }
 
 pub struct Store {
@@ -880,6 +901,89 @@ impl Store {
         Ok(revision)
     }
 
+    /// Commit a provider-origin batch in one owner transaction: every write,
+    /// then every event in the order given (CORE section 16.3). The batch is
+    /// the provider's own work -- a context job advancing against the clock --
+    /// so its events have no command, operation or cause.
+    ///
+    /// Each write is checked against the revision the batch was computed
+    /// from, and each event must name a revision its subject's write passes
+    /// through; either failing is corruption of the caller's bookkeeping and
+    /// nothing is committed.
+    pub fn commit_provider_batch(
+        &mut self,
+        writes: &[ProviderWrite],
+        events: &[ProviderEvent],
+        recorded_at: &str,
+    ) -> Result<(), StoreError> {
+        let transaction = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        for write in writes {
+            let stored: i64 = transaction
+                .query_row(
+                    "SELECT revision FROM subjects WHERE kind = ?1 AND id = ?2",
+                    params![write.key.kind, write.key.id],
+                    |row| row.get(0),
+                )
+                .optional()?
+                .unwrap_or(0);
+            if stored != write.base || write.revision <= write.base {
+                return Err(StoreError::Corrupt(
+                    "a provider batch computed from a revision that is no longer current",
+                ));
+            }
+            transaction.execute(
+                "INSERT INTO subjects (kind, id, revision, value, applied_count)
+                 VALUES (?1, ?2, ?3, ?4, 0)
+                 ON CONFLICT(kind, id) DO UPDATE SET revision = ?3, value = ?4",
+                params![write.key.kind, write.key.id, write.revision, write.value],
+            )?;
+        }
+        let epoch: i64 = transaction
+            .query_row(
+                "SELECT value FROM meta WHERE key = 'current_epoch'",
+                [],
+                |row| row.get(0),
+            )
+            .optional()?
+            .unwrap_or(1);
+        let mut sequence: i64 = transaction.query_row(
+            "SELECT COALESCE(MAX(sequence), 0) FROM events WHERE epoch = ?1",
+            params![epoch],
+            |row| row.get(0),
+        )?;
+        for event in events {
+            let written = writes.iter().any(|w| {
+                w.key == event.key && event.revision > w.base && event.revision <= w.revision
+            });
+            if !written {
+                return Err(StoreError::Corrupt(
+                    "a provider event at a revision its batch did not write",
+                ));
+            }
+            sequence += 1;
+            transaction.execute(
+                "INSERT INTO events (epoch, sequence, type, subject_kind, subject_id, revision,
+                                     origin, operation_ref, command_id, caused_by, recorded_at, payload)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'provider', NULL, NULL, '[]', ?7, ?8)",
+                params![
+                    epoch,
+                    sequence,
+                    event.event_type,
+                    event.key.kind,
+                    event.key.id,
+                    event.revision,
+                    recorded_at,
+                    String::from_utf8(cbr_encoding::to_canonical(&event.payload))
+                        .expect("canonical form is UTF-8")
+                ],
+            )?;
+        }
+        transaction.commit()?;
+        Ok(())
+    }
+
     /// Every stored credential digest with its principal and revocation.
     pub fn credentials(&self) -> Result<Vec<crate::config::Credential>, StoreError> {
         let mut statement = self
@@ -1405,7 +1509,9 @@ impl Store {
                     changed_applied
                 ],
             )?;
-            append(&transaction, &change.key, changed_revision, change.event)?;
+            if let Some(event) = change.event {
+                append(&transaction, &change.key, changed_revision, event)?;
+            }
         }
 
         for (index, effect) in commit.effects.iter().enumerate() {

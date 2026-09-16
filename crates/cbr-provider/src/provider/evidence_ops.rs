@@ -1446,11 +1446,11 @@ impl Provider {
             also.push(crate::store::Change {
                 key: evidence::hold_key(hold),
                 value: canonical(&released),
-                event: event(
+                event: Some(event(
                     "evidence.hold.released",
                     hold_event_payload(&released),
                     &command.caused_by,
-                ),
+                )),
             });
         }
         let outcome = Value::Object(vec![
