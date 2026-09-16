@@ -21,6 +21,10 @@ This additionally resolves Combraton GitHub main-file links against the sibling 
 
 The GitHub Actions documentation job runs the first script on pushes and pull requests, with read-only contents permissions. It does not fetch sibling repositories. Remote URL reachability, Markdown fragment targets, Mermaid rendering, source-manifest consistency, semantic correctness, live harness instruction loading and product behavior need separate inspection. The script is intentionally small and is not a general Markdown parser.
 
+## Journey verification
+
+[Journey verification](verification/JOURNEYS.md) holds the journey-level acceptance matrix and the per-journey evidence records, aligned with the [shared verification model](https://github.com/Combraton/combraton/blob/main/docs/architecture/VERIFICATION.md). No journey has been run. A journey record names its model or provider, or records `none` or `simulated`; a simulated run is never reported as live-model evidence, and `not_evaluated` never counts as a pass.
+
 ## Product checks to add with implementation
 
 No runtime build, unit, adapter, memory-evaluation or end-to-end commands exist yet. Add actual reproducible setup/build/test commands here in the same change that introduces the corresponding code, including tool versions and fixtures. Do not manufacture a passing runtime status from documentation checks.
