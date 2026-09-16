@@ -62,40 +62,52 @@ def main():
 
     manifest = json.loads(manifest_path.read_text())
 
-    # The runner records `suite.protocol_commit` from the Git checkout that
-    # encloses `--repo`. Here that is CBR, not Protocol, so the field names the
-    # wrong repository. Its own fields are left untouched and the correction is
-    # recorded beside them, namespaced, so a reader is never left guessing which
-    # commit the fixtures actually came from.
+    # Written beside the manifest, never into it. The manifest is the runner's
+    # own output and stays byte-for-byte what the runner produced, so a reader
+    # comparing two runs is never comparing one that CBR edited.
+    #
+    # The correction below matters: the runner derives `suite.protocol_commit`
+    # from the Git checkout enclosing `--repo`, which here is CBR, so that field
+    # names CBR's HEAD rather than Protocol's.
     pin = json.loads((VENDOR / "PIN.json").read_text())
-    manifest["cbr_runner_identity"] = identity
-    manifest["cbr_runner_exit_status"] = completed.returncode
-    manifest["cbr_fixture_source"] = {
-        "note": (
-            "Fixtures and schemas came from the vendored Protocol release, not from the "
-            "repository the runner inspected for suite.protocol_commit. That field names "
-            "CBR's own HEAD and should be read as such."
+    sidecar = {
+        "format": "cbr-run-record/1",
+        "manifest": "manifest.json",
+        "runner_identity": identity,
+        "runner_exit_status": completed.returncode,
+        "filter": args.filter,
+        "fixture_source": {
+            "note": (
+                "Fixtures and schemas came from the vendored Protocol release. The manifest's "
+                "suite.protocol_commit names the Git checkout enclosing --repo, which is CBR, "
+                "not Protocol."
+            ),
+            "vendored_at": str(VENDOR.relative_to(ROOT)),
+            "protocol_tag": pin["tag"],
+            "protocol_commit": pin["commit"],
+            "inventory_listing_sha256": pin["inventory_listing_sha256"],
+            "verified_by": "scripts/verify_pin.py",
+        },
+        "outcomes": {},
+        "unsupported": sorted(
+            entry["fixture"] for entry in manifest.get("results", []) if entry.get("outcome") == "unsupported"
         ),
-        "vendored_at": str(VENDOR.relative_to(ROOT)),
-        "protocol_tag": pin["tag"],
-        "protocol_commit": pin["commit"],
-        "inventory_listing_sha256": pin["inventory_listing_sha256"],
-        "verified_by": "scripts/verify_pin.py",
     }
-    manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
-
-    outcomes = {}
     for entry in manifest.get("results", []):
         outcome = entry.get("outcome", "unknown")
-        outcomes[outcome] = outcomes.get(outcome, 0) + 1
-    limits = manifest.get("coverage_limits", [])
+        sidecar["outcomes"][outcome] = sidecar["outcomes"].get(outcome, 0) + 1
+    (out / "cbr-run.json").write_text(json.dumps(sidecar, indent=2, sort_keys=True) + "\n")
+
+    outcomes = sidecar["outcomes"]
     passed = outcomes.get("pass", 0)
     total = sum(outcomes.values())
     print(f"outcomes: {outcomes}")
     print(f"{passed} of {total} passing")
-    print(f"coverage_limits: {limits if limits else 'none'}")
     print(f"runner exit status: {completed.returncode}")
-    print("Only `pass` counts as passing. `unsupported` and `skipped` are coverage limits.")
+    print(
+        "The runner leaves coverage_limits empty even when fixtures are unsupported, so an "
+        "outcome count is the only honest gate. Use scripts/check_results.py."
+    )
     return completed.returncode
 
 

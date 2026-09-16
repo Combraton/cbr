@@ -27,10 +27,11 @@ On this machine, `rustc 1.97.1`, macOS 25.3.0 arm64, at the committed revision.
 | `cargo fmt --all -- --check` | 0 | — |
 | `cargo clippy --workspace --all-targets -- -D warnings` | 0 | — |
 | `cargo build --workspace --locked` | 0 | — |
-| `cargo test --workspace --locked` | 0 | 19 tests |
+| `cargo test --workspace --locked` | 0 | 26 tests |
 | `git diff --check` | 0 | — |
 | `python3 scripts/build_runner.py` | 0 | 539 files match `BUNDLE-SHA256SUMS`; runner built with release `Cargo.lock` `91827bbe11…` |
-| `python3 scripts/run_fixtures.py --filter stream. --out conformance/results/m1b` | 0 | **24 of 24 `pass`, 0 coverage limits** |
+| `python3 scripts/run_fixtures.py --filter stream. --out conformance/results/m1b` | 0 | 24 of 24 `pass` |
+| `python3 scripts/check_results.py conformance/results/m1b conformance/expectations/stream.json` | 0 | Outcome multiset matches the recorded expectation exactly |
 
 Results and transcripts are committed under `conformance/results/m1b/`.
 
@@ -43,8 +44,18 @@ Results and transcripts are committed under `conformance/results/m1b/`.
 | Tolerate a `requires` entry containing a slash with no matching member in `extensions` | `a_requires_entry_with_a_slash_must_be_present_in_extensions` | — | No |
 | Tolerate duplicate `requires` entries | `duplicate_requires_entries_are_refused` | — | No |
 | **Never apply the binding's pre-negotiation frame limit** | `stream.frame-limit-raised-after-negotiation` **and** `stream.frame-over-limit-closes` | both at **step 2**, reason `expected error frame_too_large, received success` | — |
+| Decide `max_array_items` before `max_depth` | `depth_outranks_every_other_limit` | — | — |
+| Count scalars toward nesting depth | `a_value_exactly_at_a_limit_is_within_it`, `array_items_outrank_string_bytes`, `scalars_do_not_add_depth` | — | — |
+| The gate itself: `core` results checked against the `stream` expectation | `check_results.py`, naming every discrepancy | — | — |
 
 Every guard was restored and the suite returned to 24 of 24 passing with 19 unit tests green.
+
+## Corrections from review
+
+- **`check_limits` reported the first violation in traversal order.** CORE §10 step 2 fixes the priority as depth, array items, string bytes, payload bytes, which is not the order one traversal finds them in. Each limit now gets its own pass. Writing the tests exposed a second, worse bug: the depth walk counted **scalars**, so `{"payload":{"a":[1,2]}}` measured depth 4 rather than 3 and a message at the limit was refused. §9 says scalars add nothing. Both are mutation-checked.
+- **`run_fixtures.py` edited the runner's own manifest.** It now writes a `cbr-run.json` sidecar beside it, so `manifest.json` stays byte-for-byte the runner's output and two runs can be compared without one having been edited by CBR.
+- **The gate was "no coverage limits", which is not a gate.** The runner leaves `coverage_limits` empty even when fixtures are unsupported: measured here, the `core` suite gives `49 pass, 13 fail, 73 unsupported` with `coverage_limits: []`. Gates are now committed expectations under `conformance/expectations/` asserting the exact multiset and the exact named unsupported set, enforced by `scripts/check_results.py` in CI. Verified to discriminate by checking the `core` results against the `stream` expectation.
+- **"135 core fixtures pass" is unattainable** and is removed. Five declare the `execution` profile, which CBR never serves, and no other participant role can satisfy them — they are single-participant stdio fixtures with `role: provider`, not compositions. Maximum is 130 of 135, recorded as a permanent coverage limit in [VERIFICATION](../VERIFICATION.md).
 
 ## A defect this stage found in its own scope
 
@@ -53,4 +64,14 @@ The first fixture run was 23 of 24. `stream.method-operation-mismatch-refused` f
 - **Coverage limits, stated rather than implied:** `stream` is the **only** suite run against CBR. `core` (135), `socket` (13) and `evidence` (16) have not been run and nothing here claims them. The store is **in memory and not durable** — no `stream` fixture requires durability, so the SQLite store from STACK §3 arrives with the Core suite, which does exercise restart. Until then nothing may claim CBR survives a restart with state intact. `core-test.authority.claim` and `core-test.subject.get` are implemented from their schemas but **unexercised** by this suite. No feature, test control, packet, model call, Knowledge or Context code exists.
 - **Awaiting the owner**, none of which blocks M1: the project licence; the two ADR 001 blanks (provider/model/ceiling/account, and the journey-6 pilot repository); and authorization to file the `build_digest` proposal on the protocol repository. Raised on issue #1.
 - **Task resources:** no CBR process or service is running. A verified extraction of the release archive lives in this session's scratchpad only; re-create it from [PROTOCOL-PIN §6](readiness/PROTOCOL-PIN.md) if needed — the vendored copy plus `verify_pin.py` is the durable record.
-- **Next action:** M1 stage (c), the Core command path against the 135 `core` fixtures, with `core-test/1` reachable only through the conformance launch configuration and a test proving a production-configured CBR refuses `core-test/1` and every control. That stage replaces the in-memory store with the SQLite store from STACK §3 — WAL, `synchronous=FULL`, `BEGIN IMMEDIATE` — asserted by reading the PRAGMAs back from the open connection, and implements the features the Core suite needs (`core.events`, `core.grants`, `core.capabilities`).
+- **Stage (c) is split**, one pull request each, so every gate is honest. Expected outcomes computed from each fixture's declared features:
+
+  | Stage | Claims | Expected |
+  |---|---|---|
+  | c1 | no features | 62 pass, 73 unsupported, 0 fail |
+  | c2 | `core.events` | 80 pass, 55 unsupported, 0 fail |
+  | c3 | `core.grants` | 122 pass, 13 unsupported, 0 fail |
+  | c4 | `core.capabilities`, `core.effects`, `core.events.backpressure` | 130 pass, 5 unsupported, 0 fail |
+
+  The 13 no-feature fixtures failing today are exactly the 13 `fail` results in the measured baseline. Note `core.effects` is named by no non-execution `core` fixture, so c4's evidence for it comes from elsewhere.
+- **Next action:** M1 stage (c1) as its own pull request: the SQLite store from STACK §3 replacing the in-memory store, restart and dedupe generations across restart, PRAGMAs asserted by reading them back from the open connection, and a test proving a production-configured CBR refuses `core-test/1` at negotiation and rejects every test control. Superseded plan text follows for reference: the Core command path against the 135 `core` fixtures, with `core-test/1` reachable only through the conformance launch configuration and a test proving a production-configured CBR refuses `core-test/1` and every control. That stage replaces the in-memory store with the SQLite store from STACK §3 — WAL, `synchronous=FULL`, `BEGIN IMMEDIATE` — asserted by reading the PRAGMAs back from the open connection, and implements the features the Core suite needs (`core.events`, `core.grants`, `core.capabilities`).

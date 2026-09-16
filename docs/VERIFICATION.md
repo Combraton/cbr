@@ -46,6 +46,7 @@ Conformance additionally needs the runner, which is **not** built from this work
 ```sh
 python3 scripts/build_runner.py
 python3 scripts/run_fixtures.py --filter stream. --out conformance/results/m1b
+python3 scripts/check_results.py conformance/results/m1b conformance/expectations/stream.json
 ```
 
 `build_runner.py` downloads the archive once and reuses it afterwards; `--archive PATH` uses a copy you already have and `--offline` refuses to download. It verifies the archive against the pinned SHA-256, verifies every extracted file against the archive's own `BUNDLE-SHA256SUMS`, checks the archive's recorded commit against the pin, and records the runner identity that `run_fixtures.py` stamps into every results manifest.
@@ -59,11 +60,32 @@ python3 scripts/run_fixtures.py --filter stream. --out conformance/results/m1b
 | `cargo build --workspace --locked` | The workspace builds from the committed `Cargo.lock` with no dependency resolution | Runtime behaviour |
 | `cargo test --workspace --locked` | Every pinned encoding vector — 12 canonical, 18 rejected, 1 command intent — plus the property tests, 19 in all. A rejected vector must be refused **for the reason the vector states**, so a parser that refused everything would fail. | Any profile conformance |
 | `build_runner.py` | The runner was built from the published release archive, with its own lockfile, and its identity is recorded | Anything about CBR |
-| `run_fixtures.py --filter stream.` | **The 24 `stream` fixtures pass against CBR's provider**, with no coverage limits. Only `pass` counts; `unsupported` and `skipped` are reported as coverage limits and never as passes. | Every other suite. `core`, `socket` and `evidence` have **not** been run against CBR. |
+| `run_fixtures.py --filter stream.` | Runs the suite and writes the runner's manifest, the transcripts, and a `cbr-run.json` sidecar. The manifest stays byte-for-byte the runner's own output. | Nothing on its own: it reports, it does not gate |
+| `check_results.py` | **The gate.** The outcome multiset matches a recorded expectation exactly: pass count, total, the named unsupported set, and zero `fail`, `timeout`, `harness_error` and `skipped`. | Every suite with no expectation file. Only `stream` has one today. |
+
+### Why the gate is an outcome multiset
+
+The runner's own `coverage_limits` list **stays empty even when fixtures are reported `unsupported`**. Measured against this provider, the `core` suite gives `49 pass, 13 fail, 73 unsupported` with `coverage_limits: []`. So "no coverage limits" is not a gate — a run in which every fixture was skipped for want of a claimed feature would satisfy it. Each suite therefore has a committed expectation under `conformance/expectations/`, naming the exact counts and the exact fixtures expected to be unsupported, and `check_results.py` refuses anything else.
+
+### A permanent coverage limit: five `core` fixtures CBR can never pass
+
+Five of the 135 `core` fixtures declare the `execution` profile and require the `executor.script` test control:
+
+| Fixture | Also needs |
+|---|---|
+| `core.events.older-consumer-is-closed-without-notice` | `execution.output` |
+| `core.events.slow-consumer-is-closed-with-notice-and-resumes` | `execution.output`, `core.events.backpressure` |
+| `core.events.slow-consumer-recovery-reports-retention-gap` | `execution.output`, `core.events.backpressure` |
+| `core.events.unread-ending-notice-does-not-hold-the-connection` | `execution.output`, `core.events.backpressure` |
+| `core.feature-dependencies-match-negotiation` | `execution.context`, and the `evidence`, `context`, `knowledge` and `verification` profiles |
+
+**CBR never serves `execution/1`** — the [consumer handoff](https://github.com/Combraton/protocol/blob/main/docs/work/release-0.1/CONSUMERS.md) states it plainly, and [ADR 001](decisions/001-standalone-v0.1-scope-and-stack.md) keeps it a client only. **No other participant role can satisfy them either:** these are single-participant `core/` fixtures over stdio with `role: provider`, not compositions, so there is no second role for CBR to occupy. `core.feature-dependencies-match-negotiation` would additionally need CBR to serve `verification/1`, which the agreed release scope excludes.
+
+So the maximum attainable on the `core` suite is **130 of 135**, with exactly those five `unsupported`. Any statement of the form "all 135 core fixtures pass" is unattainable and must not be written.
 
 **What is and is not established.** `stream` is the only suite run against CBR. The `core` (135), `socket` (13) and `evidence` (16) suites have not been run and no claim is made about them. The store is **in memory and not durable**; nothing here shows CBR survives a restart with state intact. No packet, model call, Knowledge or Context code exists.
 
-Committed results live under `conformance/results/`. Each manifest carries the runner's identity — the release archive SHA-256, the source commit and the release `Cargo.lock` SHA-256 — so a fixture outcome names the exact runner that produced it, plus a correction for the runner's own `suite.protocol_commit`, which records the Git checkout enclosing `--repo` and therefore names CBR rather than Protocol.
+Committed results live under `conformance/results/`. The `manifest.json` in each is the runner's own output, unedited. Beside it, `cbr-run.json` records the runner's identity — the release archive SHA-256, the source commit and the release `Cargo.lock` SHA-256 — so a fixture outcome names the exact runner that produced it, along with a correction for the runner's `suite.protocol_commit`, which records the Git checkout enclosing `--repo` and therefore names CBR rather than Protocol.
 
 When reporting a result, give the command, its exit status, the environment and the tested revision. Preserve the producing command's exit status when shortening output: piping a failing build into a successful `tail` or `grep` reports success, and a shortened log is not evidence that the command passed.
 

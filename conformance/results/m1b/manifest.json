@@ -1,21 +1,4 @@
 {
-  "cbr_fixture_source": {
-    "inventory_listing_sha256": "80b39377b10685c29bb5823e69ee539ef91bb1eace5b049f2894b603ce08b41d",
-    "note": "Fixtures and schemas came from the vendored Protocol release, not from the repository the runner inspected for suite.protocol_commit. That field names CBR's own HEAD and should be read as such.",
-    "protocol_commit": "cbf8e4df9df2ca8a9b50264df6acace6e4c3a0fc",
-    "protocol_tag": "v0.1.0",
-    "vendored_at": "vendor/protocol/v0.1.0",
-    "verified_by": "scripts/verify_pin.py"
-  },
-  "cbr_runner_exit_status": 0,
-  "cbr_runner_identity": {
-    "archive_sha256": "bde7892404bcc6fcf45f4cddb95026517e92a6bdf352ce20f959941596a3511d",
-    "cargo_lock_sha256": "91827bbe110c9204991f448d2c17323742c69de1a08ad70fdc2b16438179afca",
-    "format": "cbr-runner-identity/1",
-    "protocol_tag": "v0.1.0",
-    "runner": "target/protocol-release/combraton-protocol-0.1.0/target/debug/combraton-conformance",
-    "source_commit": "cbf8e4df9df2ca8a9b50264df6acace6e4c3a0fc"
-  },
   "coverage_limits": [],
   "environment": {
     "arch": "aarch64",
@@ -374,7 +357,7 @@
   "suite": {
     "fixtures": 24,
     "fixtures_digest": "sha256:8d8acff2e54695665219e271d274c8d34be01ba7b89a624f196bd5ba6478707a",
-    "protocol_commit": "f8666e3805e66e78ed6e82f3ffcbb1c5dd6e8762"
+    "protocol_commit": "51695670b978e227cef2463c9eaea009d6a8b62b"
   },
   "summary": {
     "pass": 24

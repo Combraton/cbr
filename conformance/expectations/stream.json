@@ -1,0 +1,8 @@
+{
+  "note": "Every stream fixture passes. CBR claims no features and no test controls, and no stream fixture needs one, so nothing is unsupported.",
+  "suite": "stream.",
+  "total": 24,
+  "pass": 24,
+  "unsupported": [],
+  "runner_exit_status": 0
+}

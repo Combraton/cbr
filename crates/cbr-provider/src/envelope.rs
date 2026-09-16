@@ -101,57 +101,27 @@ pub fn is_dotted_name(text: &str) -> bool {
 /// `params` is depth 1; each nested object or array adds one. Every string,
 /// member names included, counts toward the string limit, and every array
 /// counts toward the array limit. A value exactly at a limit is within it.
+///
+/// CORE section 10 step 2 fixes the **priority**: depth, then array items, then
+/// string bytes, then payload bytes. That is not the order a single traversal
+/// would find them in, so each limit gets its own pass. A message that breaks
+/// two limits must be refused naming the higher-priority one, or a caller
+/// repairing the reported limit would hit the other and learn nothing new.
 pub fn check_limits(params: &Value, limits: &Limits) -> Result<(), ProtocolError> {
-    fn walk(value: &Value, depth: i64, limits: &Limits, worst: &mut Option<ProtocolError>) {
-        if worst.is_some() {
-            return;
-        }
-        if depth > limits.max_depth {
-            *worst = Some(ProtocolError::limit_exceeded("max_depth", limits.max_depth));
-            return;
-        }
-        match value {
-            Value::String(text) => {
-                if text.len() as i64 > limits.max_string_bytes {
-                    *worst = Some(ProtocolError::limit_exceeded(
-                        "max_string_bytes",
-                        limits.max_string_bytes,
-                    ));
-                }
-            }
-            Value::Array(items) => {
-                if items.len() as i64 > limits.max_array_items {
-                    *worst = Some(ProtocolError::limit_exceeded(
-                        "max_array_items",
-                        limits.max_array_items,
-                    ));
-                    return;
-                }
-                for item in items {
-                    walk(item, depth + 1, limits, worst);
-                }
-            }
-            Value::Object(members) => {
-                for (name, member) in members {
-                    if name.len() as i64 > limits.max_string_bytes {
-                        *worst = Some(ProtocolError::limit_exceeded(
-                            "max_string_bytes",
-                            limits.max_string_bytes,
-                        ));
-                        return;
-                    }
-                    walk(member, depth + 1, limits, worst);
-                }
-            }
-            _ => {}
-        }
+    if exceeds_depth(params, 1, limits.max_depth) {
+        return Err(ProtocolError::limit_exceeded("max_depth", limits.max_depth));
     }
-
-    // Order matters: depth, array items, string bytes, then payload bytes.
-    let mut worst = None;
-    walk(params, 1, limits, &mut worst);
-    if let Some(error) = worst {
-        return Err(error);
+    if exceeds_array_items(params, limits.max_array_items) {
+        return Err(ProtocolError::limit_exceeded(
+            "max_array_items",
+            limits.max_array_items,
+        ));
+    }
+    if exceeds_string_bytes(params, limits.max_string_bytes) {
+        return Err(ProtocolError::limit_exceeded(
+            "max_string_bytes",
+            limits.max_string_bytes,
+        ));
     }
     if let Some(payload) = params.get("payload") {
         let encoded = cbr_encoding::to_canonical(payload).len() as i64;
@@ -163,6 +133,51 @@ pub fn check_limits(params: &Value, limits: &Limits) -> Result<(), ProtocolError
         }
     }
     Ok(())
+}
+
+/// `depth` is the depth this value would have *if it is a container*.
+/// Scalars add nothing (CORE section 9), so a scalar never exceeds the limit
+/// however deeply it is nested inside containers that are themselves within it.
+fn exceeds_depth(value: &Value, depth: i64, maximum: i64) -> bool {
+    match value {
+        Value::Array(items) => {
+            depth > maximum
+                || items
+                    .iter()
+                    .any(|item| exceeds_depth(item, depth + 1, maximum))
+        }
+        Value::Object(members) => {
+            depth > maximum
+                || members
+                    .iter()
+                    .any(|(_, member)| exceeds_depth(member, depth + 1, maximum))
+        }
+        _ => false,
+    }
+}
+
+fn exceeds_array_items(value: &Value, maximum: i64) -> bool {
+    match value {
+        Value::Array(items) => {
+            items.len() as i64 > maximum
+                || items.iter().any(|item| exceeds_array_items(item, maximum))
+        }
+        Value::Object(members) => members
+            .iter()
+            .any(|(_, member)| exceeds_array_items(member, maximum)),
+        _ => false,
+    }
+}
+
+fn exceeds_string_bytes(value: &Value, maximum: i64) -> bool {
+    match value {
+        Value::String(text) => text.len() as i64 > maximum,
+        Value::Array(items) => items.iter().any(|item| exceeds_string_bytes(item, maximum)),
+        Value::Object(members) => members.iter().any(|(name, member)| {
+            name.len() as i64 > maximum || exceeds_string_bytes(member, maximum)
+        }),
+        _ => false,
+    }
 }
 
 fn check_members(
@@ -466,4 +481,100 @@ pub fn parse_query(envelope: &Value) -> Result<Query, ProtocolError> {
         requires,
         payload,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn limits() -> Limits {
+        Limits {
+            max_frame_bytes: 2_097_152,
+            max_payload_bytes: 64,
+            max_string_bytes: 8,
+            max_array_items: 2,
+            max_depth: 3,
+        }
+    }
+
+    fn reported(params: &Value) -> Option<String> {
+        match check_limits(params, &limits()) {
+            Ok(()) => None,
+            Err(error) => error
+                .details
+                .iter()
+                .find(|(name, _)| name == "limit")
+                .and_then(|(_, value)| value.as_str().map(str::to_string)),
+        }
+    }
+
+    fn parse(text: &str) -> Value {
+        cbr_encoding::parse(text.as_bytes()).expect("test input is inside the domain")
+    }
+
+    #[test]
+    fn a_value_exactly_at_a_limit_is_within_it() {
+        // Two array items against a limit of two, an eight-byte string against
+        // a limit of eight, and depth exactly three.
+        assert_eq!(reported(&parse(r#"{"payload":{"a":[1,2]}}"#)), None);
+        assert_eq!(reported(&parse(r#"{"payload":{"a":"12345678"}}"#)), None);
+    }
+
+    #[test]
+    fn depth_outranks_every_other_limit() {
+        // Breaks depth, array items and string bytes at once. Step 2 puts depth
+        // first, so a single traversal that happened to meet the long string or
+        // the long array first would report the wrong limit.
+        let params = parse(r#"{"payload":{"a":{"b":{"c":["toolongstring","x","y"]}}}}"#);
+        assert_eq!(reported(&params).as_deref(), Some("max_depth"));
+    }
+
+    #[test]
+    fn array_items_outrank_string_bytes() {
+        let params = parse(r#"{"payload":{"a":["toolongstring","x","y"]}}"#);
+        assert_eq!(reported(&params).as_deref(), Some("max_array_items"));
+    }
+
+    #[test]
+    fn string_bytes_outrank_payload_bytes() {
+        // The payload is also over 64 canonical bytes, but the string limit
+        // is decided first.
+        let params =
+            parse(r#"{"payload":{"a":"waytoolongstringvalue","b":"anotherlongstringvalue"}}"#);
+        assert_eq!(reported(&params).as_deref(), Some("max_string_bytes"));
+    }
+
+    #[test]
+    fn payload_bytes_are_measured_over_canonical_form() {
+        // Every string is exactly at the string limit and there is no array,
+        // so only the payload limit can fire. Six members put the canonical
+        // payload at 91 bytes against a limit of 64.
+        let params = parse(
+            r#"{"payload":{"a":"12345678","b":"12345678","c":"12345678","d":"12345678","e":"12345678","f":"12345678"}}"#,
+        );
+        assert_eq!(reported(&params).as_deref(), Some("max_payload_bytes"));
+    }
+
+    #[test]
+    fn scalars_do_not_add_depth() {
+        // params(1) > payload(2) > object(3) > array(4) would exceed a limit of
+        // 4 only if the integers inside the array counted as depth 5.
+        let params = parse(r#"{"payload":{"a":{"b":[1,2]}}}"#);
+        let generous = Limits {
+            max_depth: 4,
+            ..limits()
+        };
+        assert!(
+            check_limits(&params, &generous).is_ok(),
+            "scalars must add nothing"
+        );
+    }
+
+    #[test]
+    fn limits_are_measured_over_the_whole_params_not_only_the_payload() {
+        // A long member name outside `payload` still counts.
+        let params =
+            parse(r#"{"operation":"core-test.subject.put","waytoolongmembername":1,"payload":{}}"#);
+        assert_eq!(reported(&params).as_deref(), Some("max_string_bytes"));
+    }
 }
