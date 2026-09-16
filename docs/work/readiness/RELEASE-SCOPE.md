@@ -41,6 +41,8 @@ It additionally carries a **`cbr search` diagnostic**, which is **not a protocol
 | `record_rejected_approach` | A failed attempt and its evidence | A scoped rejection artifact and claim | Named explicitly in MEMORY-ENGINE §4; cheap and high value |
 | `answer_gap` | An unmet item during preparation, plus a read scope and budget | Either new supported claims or an explicit unresolved gap | This *is* request-time investigation |
 
+**An M4 obligation for every family above: CBR's own producer never names a derived artifact as an ancestry root.** When a family's output is cited as claim support, each support entry's `ancestry.roots` are the **captured evidence the derivation read**, never the derived artifact and never another derivation. The M2 control, `two_derivations_over_one_captured_log_are_one_lineage`, shows what the provider reports when a producer gets this wrong: `multiple_lineages`, false corroboration. **M4 must show CBR's producer cannot get it wrong.** The acceptance is a test that drives a family through CBR's own producer, with a labelled fake model for determinism, over one captured artifact twice, and requires `single_lineage`. A mutant makes the producer list the derived artifact as its own root, and the test must catch it.
+
 **Documentation.** Install, upgrade, retention, export and restore, supported model capacities, and a limitations page that names every deferral below.
 
 ## 3. Out of scope for v0.1, and why
