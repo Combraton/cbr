@@ -33,6 +33,16 @@ pub enum IntentError {
     /// section 10 step 2 rejects this as an envelope-semantics failure, so it
     /// must not reach the digest as a silently empty extension.
     RequiredExtensionMissing(String),
+    /// The same `requires` entry twice. Section 5.1 states this rule alongside
+    /// the one above, in the same step, with the same outcome.
+    DuplicateRequires(String),
+}
+
+/// CORE section 5.1: a feature name is `<profile>.<feature>` and never contains
+/// a slash; an extension key always contains one. That is the whole test for
+/// telling a `requires` entry apart, and it is decidable from the entry alone.
+fn is_extension_key(entry: &str) -> bool {
+    entry.contains('/')
 }
 
 /// Build the command intent object from a full command envelope.
@@ -40,6 +50,12 @@ pub enum IntentError {
 /// `extensions` is always present in the result. It contains only the
 /// extensions whose keys are listed in `requires`, and is an empty object when
 /// there are none, so an optional extension cannot change a command's identity.
+///
+/// Fails when the envelope violates either `requires` rule of section 5.1: a
+/// duplicate entry, or an entry containing a slash with no matching member in
+/// `extensions`. Pinned fixtures `core.envelope.requires-unique` and
+/// `core.envelope.required-extension-must-be-present` require `invalid_envelope`
+/// for these, with no state change.
 pub fn command_intent(envelope: &Value) -> Result<Value, IntentError> {
     if !envelope.is_object() {
         return Err(IntentError::NotAnObject);
@@ -67,15 +83,25 @@ pub fn command_intent(envelope: &Value) -> Result<Value, IntentError> {
         Some(_) => return Err(IntentError::MalformedExtensions),
     };
 
+    // Both rules below are envelope semantics from section 5.1, checked in the
+    // same step. They are enforced here rather than left to a caller because
+    // an envelope that violates either has no well-defined intent: the digest
+    // it would produce belongs to a command that must never be accepted.
+    let mut seen: Vec<&str> = Vec::with_capacity(required.len());
     let mut included: Vec<(String, Value)> = Vec::new();
     for key in required {
-        // A `requires` entry naming a feature rather than an extension key is
-        // normal, and contributes no extension. A key that looks like an
-        // extension the envelope failed to carry is not distinguishable here,
-        // so only actual matches are included; the envelope check in the
-        // protocol layer owns the "declared but absent" refusal.
-        if let Some((name, value)) = declared.iter().find(|(name, _)| name == key) {
-            included.push((name.clone(), value.clone()));
+        if seen.contains(&key) {
+            return Err(IntentError::DuplicateRequires(key.to_string()));
+        }
+        seen.push(key);
+        if !is_extension_key(key) {
+            // A feature name. It constrains what must be negotiated, and
+            // contributes nothing to the intent.
+            continue;
+        }
+        match declared.iter().find(|(name, _)| name == key) {
+            Some((name, value)) => included.push((name.clone(), value.clone())),
+            None => return Err(IntentError::RequiredExtensionMissing(key.to_string())),
         }
     }
     intent.push(("extensions".to_string(), Value::Object(included)));

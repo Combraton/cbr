@@ -4,8 +4,8 @@
 //! this particular implementation could be wrong while still passing them.
 
 use cbr_encoding::{
-    Algorithm, DigestError, ErrorKind, MAX_SAFE_INTEGER, Value, command_intent, digest_bytes,
-    digest_canonical, parse, parse_digest, parse_with_depth, to_canonical,
+    Algorithm, DigestError, ErrorKind, IntentError, MAX_SAFE_INTEGER, Value, command_intent,
+    digest_bytes, digest_canonical, parse, parse_digest, parse_with_depth, to_canonical,
 };
 
 /// RFC 8785 orders member names by UTF-16 code units, which is *not* code-point
@@ -178,6 +178,85 @@ fn a_requires_entry_that_is_a_feature_contributes_no_extension() {
     .unwrap();
     let intent = command_intent(&envelope).unwrap();
     assert_eq!(intent.get("extensions"), Some(&Value::Object(vec![])));
+}
+
+/// CORE section 5.1: "An extension key always contains exactly one slash",
+/// a feature name "never contains a slash", and "That is how a `requires`
+/// entry is told apart." An entry containing a slash MUST also be present in
+/// `extensions`; a violation is `invalid_envelope`.
+///
+/// Pinned fixture `core.envelope.required-extension-must-be-present` sends
+/// exactly this envelope and requires `invalid_envelope` with no state change,
+/// so tolerating it here would produce a digest for a command that must never
+/// have been accepted.
+#[test]
+fn a_requires_entry_with_a_slash_must_be_present_in_extensions() {
+    // The fixture's envelope: `requires` names an extension, `extensions` is absent.
+    let absent = parse(
+        br#"{"operation":"core-test.subject.put","message_id":"m","command_id":"cmd-1",
+             "dedupe_generation":1,"subject":{"kind":"core-test.subject","id":"s-1"},
+             "preconditions":[],"requires":["example.org/audit"],"payload":{"value":"v"}}"#,
+    )
+    .unwrap();
+    assert_eq!(
+        command_intent(&absent).unwrap_err(),
+        IntentError::RequiredExtensionMissing("example.org/audit".into())
+    );
+
+    // Present but under a different key is still absent.
+    let wrong_key = parse(
+        br#"{"operation":"core-test.subject.put","message_id":"m","command_id":"cmd-1",
+             "dedupe_generation":1,"subject":{"kind":"core-test.subject","id":"s-1"},
+             "preconditions":[],"requires":["example.org/audit"],
+             "extensions":{"example.org/other":{"level":2}},"payload":{"value":"v"}}"#,
+    )
+    .unwrap();
+    assert_eq!(
+        command_intent(&wrong_key).unwrap_err(),
+        IntentError::RequiredExtensionMissing("example.org/audit".into())
+    );
+
+    // A feature name contains no slash and needs no extension member.
+    let feature = parse(
+        br#"{"operation":"core-test.subject.put","message_id":"m","command_id":"cmd-1",
+             "dedupe_generation":1,"subject":{"kind":"core-test.subject","id":"s-1"},
+             "preconditions":[],"requires":["core.digest-sha512"],"payload":{"value":"v"}}"#,
+    )
+    .unwrap();
+    assert!(
+        command_intent(&feature).is_ok(),
+        "a feature name is not an extension key"
+    );
+}
+
+/// CORE section 5.1 puts uniqueness in the same envelope-semantics step, and
+/// pinned fixture `core.envelope.requires-unique` requires `invalid_envelope`.
+#[test]
+fn duplicate_requires_entries_are_refused() {
+    let duplicated = parse(
+        br#"{"operation":"core-test.subject.put","message_id":"m","command_id":"cmd-1",
+             "dedupe_generation":1,"subject":{"kind":"core-test.subject","id":"s-1"},
+             "preconditions":[],"requires":["example.org/x","example.org/x"],
+             "extensions":{"example.org/x":{"n":1}},"payload":{"value":"v"}}"#,
+    )
+    .unwrap();
+    assert_eq!(
+        command_intent(&duplicated).unwrap_err(),
+        IntentError::DuplicateRequires("example.org/x".into())
+    );
+
+    // Duplicate feature names are equally invalid; the rule is about the list,
+    // not about what the entries name.
+    let features = parse(
+        br#"{"operation":"core-test.subject.put","message_id":"m","command_id":"cmd-1",
+             "dedupe_generation":1,"subject":{"kind":"core-test.subject","id":"s-1"},
+             "preconditions":[],"requires":["core.grants","core.grants"],"payload":{"value":"v"}}"#,
+    )
+    .unwrap();
+    assert_eq!(
+        command_intent(&features).unwrap_err(),
+        IntentError::DuplicateRequires("core.grants".into())
+    );
 }
 
 #[test]

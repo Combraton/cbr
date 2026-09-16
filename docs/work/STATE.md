@@ -27,19 +27,29 @@ On this machine, `rustc 1.97.1`, macOS 25.3.0 arm64, at the committed revision. 
 | `cargo fmt --all -- --check` | 0 | — |
 | `cargo clippy --workspace --all-targets -- -D warnings` | 0 | — |
 | `cargo build --workspace --locked` | 0 | — |
-| `cargo test --workspace --locked` | 0 | 17 tests: 4 vector tests covering all 31 pinned cases, 13 property tests |
+| `cargo test --workspace --locked` | 0 | 19 tests: 4 vector tests covering all 31 pinned cases, 15 property tests |
 | `git diff --check` | 0 | — |
 
 **Mutation evidence, so the suite is known to discriminate rather than merely be green.** Two guards were removed and the tests rerun:
 
-| Mutant | Killed by | At |
+| Mutant | Killed by | Also caught by a pinned vector? |
 |---|---|---|
-| Sort object members by code point instead of UTF-16 code units | `canonical_cases_round_trip_to_exact_bytes_and_digests` (the pinned `key-order-utf16-rfc8785` vector) **and** `member_order_is_utf16_not_code_point` | both, independently |
-| Let extensions not named in `requires` into the command intent | `command_intent_matches_the_pinned_vector` | the pinned intent vector |
+| Sort object members by code point instead of UTF-16 code units | `canonical_cases_round_trip_to_exact_bytes_and_digests` **and** `member_order_is_utf16_not_code_point` | **Yes** — the pinned `key-order-utf16-rfc8785` vector catches it alone |
+| Let extensions not named in `requires` into the command intent | `command_intent_matches_the_pinned_vector` | **Yes** — the pinned intent vector |
+| Tolerate a `requires` entry containing a slash with no matching member in `extensions` | `a_requires_entry_with_a_slash_must_be_present_in_extensions` | **No** — no pinned vector covers it; this is the review defect below |
+| Tolerate duplicate `requires` entries | `duplicate_requires_entries_are_refused` | **No** |
 
-Both guards were restored and the suite returned to 17 passing.
+Each mutant was killed by exactly one test, run with `--no-fail-fast` so a later suite could not mask a kill. Every guard was restored and the suite returned to 19 passing.
+
+## Defect found in review, and fixed here
+
+`command_intent` accepted a `requires` entry containing a slash with no matching member in `extensions`, returning a valid intent with empty extensions. [CORE §5.1](../../vendor/protocol/v0.1.0/docs/spec/profiles/CORE.md) says a feature name never contains a slash, an extension key always contains one, "that is how a `requires` entry is told apart", and an entry containing a slash MUST also be present in `extensions` — a violation being `invalid_envelope`. The comment claiming the two were indistinguishable was wrong, and `IntentError::RequiredExtensionMissing` was dead code.
+
+Two pinned fixtures confirm the required behaviour, and both would have failed at stage (c): `core.envelope.required-extension-must-be-present` sends exactly this envelope and requires `invalid_envelope` with `applied_count: 0`, and `core.envelope.requires-unique` requires the same for a duplicated entry. Both rules are now enforced in `command_intent`, because an envelope that violates either has no well-defined intent: the digest it would produce belongs to a command that must never be accepted.
+
+`Cargo.toml` also gained `exclude = ["vendor"]`. This was already broken before the change: the vendored runner's manifest inherits `license.workspace` and `edition.workspace`, and because it sits inside this workspace Cargo tried to resolve that inheritance here and failed, since CBR has selected no licence. The runner is built from a fresh checksum-verified extraction instead, in stage (b).
 
 - **Coverage limits, stated rather than implied:** no CBR provider, participant descriptor, store, packet or model call exists. **No conformance fixture suite has been run against CBR** — the Core 135, stream 24, socket 13 and Evidence 16 suites are M1's acceptance and are run in the stages that introduce the code they exercise. The conformance runner is vendored but not yet built or wired.
 - **Awaiting the owner**, none of which blocks M1: the project licence; the two ADR 001 blanks (provider/model/ceiling/account, and the journey-6 pilot repository); and authorization to file the `build_digest` proposal on the protocol repository. Raised on issue #1.
 - **Task resources:** no CBR process or service is running. A verified extraction of the release archive lives in this session's scratchpad only; re-create it from [PROTOCOL-PIN §6](readiness/PROTOCOL-PIN.md) if needed — the vendored copy plus `verify_pin.py` is the durable record.
-- **Next action:** M1 stage (b), the stream binding against the 24 `stream` fixtures. That stage wires the vendored conformance runner into the build and adds CBR's participant descriptor, and it is the first stage whose results directory carries a runner `manifest.json`.
+- **Next action:** M1 stage (b), the stream binding against the 24 `stream` fixtures. That stage adds a script that builds the conformance runner from a verified extraction of the release archive with the release's own `Cargo.lock`, recording the archive SHA-256, source commit and lockfile SHA-256 into every results manifest; CBR's stdio participant descriptor, claiming only `core/1` and `core-test/1` and only the test controls actually implemented; a committed `results/m1b/` with the runner's `manifest.json` and transcripts; and a broken-frame-limit mutant run recorded here.

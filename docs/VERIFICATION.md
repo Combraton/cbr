@@ -48,7 +48,7 @@ git diff --check
 | `cargo fmt --all -- --check` | Formatting only | — |
 | `cargo clippy … -D warnings` | Lints clean; warnings fail | Correctness |
 | `cargo build --workspace --locked` | The workspace builds from the committed `Cargo.lock` with no dependency resolution | Runtime behaviour |
-| `cargo test --workspace --locked` | Every pinned encoding vector — 12 canonical, 18 rejected, 1 command intent — plus the property tests. A rejected vector must be refused **for the reason the vector states**, so a parser that refused everything would fail. | Any profile conformance. No provider exists yet, so no fixture suite has been run against CBR. |
+| `cargo test --workspace --locked` | Every pinned encoding vector — 12 canonical, 18 rejected, 1 command intent — plus the property tests, 19 in all. A rejected vector must be refused **for the reason the vector states**, so a parser that refused everything would fail. | Any profile conformance. No provider exists yet, so no fixture suite has been run against CBR. |
 
 **Not yet present, and not claimed:** no CBR provider, no participant descriptor, no conformance run, no store, no packet, no model call. The Core, stream, socket and Evidence fixture suites are M1's acceptance and are run in the pull requests that introduce the code they exercise, not before.
 
