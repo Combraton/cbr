@@ -3,10 +3,55 @@
 This is a dated navigation snapshot. Reconcile it with Git, linked issues and current task evidence before acting. Issues own live progress; this file does not grant authority or maintain a second backlog.
 
 - **Updated:** 2026-09-16.
-- **Owner/task:** Claude Code session as implementation lead for standalone CBR. Active task: [issue #3](https://github.com/Combraton/cbr/issues/3), milestone M1 stage (c1), on branch `m1c1/sqlite-store-and-core`. Parent: [issue #1](https://github.com/Combraton/cbr/issues/1). An independent reviewer session reviews this read-only.
+- **Owner/task:** Claude Code session as implementation lead for standalone CBR. Active task: [issue #3](https://github.com/Combraton/cbr/issues/3), milestone M1 stage (c2), on branch `m1c2/core-events`. Parent: [issue #1](https://github.com/Combraton/cbr/issues/1). An independent reviewer session reviews this read-only.
 - **Merged:** PR #2 as `d68e9d6`, pinned to `877139f`. Stages (a) and (b) are PR #4 at head `630011c`, rebased onto `main`, retargeted, CI green, awaiting the owner's merge. All ten decisions are in [ADR 001](../decisions/001-standalone-v0.1-scope-and-stack.md).
 - **Merge rule, 2026-09-16, superseded the same day.** This session ran `gh pr merge` on PR #2 after the owner replied "you can merge PR 2" in-session, having first reported the contradicting claim with evidence and waited. It landed the exact reviewed head `877139f` and is kept. A stricter rule was then recorded, and the owner then **granted merge authority under four conditions**, now in [AGENTS.md](../../AGENTS.md): pin with `--match-head-commit`; the head's CI is green; the reviewer has seen that head; no squash. Confirm from `merged` and `merged_at` afterwards, **never `merge_commit_sha`** — GitHub populates that on an open pull request with the test-merge candidate. Tags and releases remain the owner's alone.
 - **Inspected revisions:** protocol `v0.1.0` = `cbf8e4df9df2ca8a9b50264df6acace6e4c3a0fc`; combraton `9af69ce`; pio `e65b7c0`; benchmarks `c8d5878`.
+
+## This change — M1 stage (c2)
+
+`core.events`: the durable event log, positions, cursors, epochs, retention gaps, subscriptions and the per-connection outbox.
+
+| Command | Exit | Result |
+|---|---|---|
+| `check_docs.py` / `verify_pin.py` | 0 / 0 | 21 files, 0 errors; 429 and 420 files match their anchors |
+| `cargo fmt --all -- --check` | 0 | — |
+| `cargo clippy --workspace --all-targets -- -D warnings` | 0 | — |
+| `cargo build --workspace --locked` | 0 | — |
+| `cargo test --workspace --locked` | 0 | **37 tests** |
+| `git diff --check` | 0 | — |
+| `run_fixtures.py --filter stream.` + `check_results.py` | 0 | 24 of 24, unchanged |
+| `run_fixtures.py --filter core.` + `check_results.py` | 0 | **80 pass, 55 unsupported by name, 0 fail** |
+
+**Expected versus measured:** the gate was 80 pass / 55 unsupported / 0 fail. Measured exactly that. All 18 events-only fixtures pass, and none needed a test control, as predicted.
+
+### What changed
+
+- **Events commit in the command's transaction** with the state change and the command record (CORE §16.3). `operation_ref` comes from a durable counter minted inside that transaction, so references are unique across restarts.
+- **Positions are `(epoch, sequence)`**, contiguous within an epoch. Cursors carry the stream identity, so a cursor from another store is `invalid_cursor`; a cursor past the current epoch's head was never issued; a cursor into an earlier epoch stays valid past that epoch's end, which is what epochs exist to report.
+- **Epoch changes and retention gaps are decided per epoch inside the read walk.** Emitting the gap as a global prefix gave the right answer from the start and the wrong one from a cursor in a closed epoch; `gap-spanning-epochs` is what distinguishes them.
+- **Retention records a watermark when it discards**, so a read starting at or before it is told events are missing rather than handed the next surviving event.
+- **Subscriptions are served from a per-connection outbox** — `Mutex` plus `Condvar` plus a queue with a dedicated writer thread, per STACK §2. The session thread never blocks on a consumer that stopped reading, and queueing gives CORE §16.5's ordering for free: a notification caused by a command on this connection is pushed after that command's response. Output produced but not written is bounded at 8 MiB; over it, items are withheld and produced later, **never skipped**.
+- **`item_too_large` is a recorded ending**, not a dropped frame: the subscription ends with an empty notification naming where delivery stopped, and the read of that position returns `internal_error` rather than a view that silently omits it.
+- **Authorization is re-checked before every delivery**, so a subscription cannot outlive the authority that created it.
+
+### Mutants
+
+| Mutant | Killed by | At |
+|---|---|---|
+| Events appended outside the command's transaction | `core.events.commands-append-contiguous-events` (15 fixtures fail) | step 4, `result/items: expected 2 items, found 0` |
+| A sequence gap hidden | `core.events.retention-gap-returns-snapshot` (2 fixtures fail) | step 9, `result/items/0/gap: missing` |
+| Verify a published digest from the input buffer instead of from disk | `the_published_digest_is_verified_from_the_bytes_on_disk` and `publishing_an_object_verifies_its_digest_and_makes_it_read_only` | — |
+
+All restored; the suite returned to 80 of 135 with 0 failing.
+
+**Carried to c3, by agreement:** the fixture-level kill for *a subscription surviving authorization loss*. All three fixtures that exercise it declare `core.grants`, which c2 does not implement: `core.events.subscription-ends-at-grant-expiry`, `core.events.subscription-ends-when-grant-revoked` and `core.events.subscription-ends-when-grant-stops-authorizing`. The guard is implemented and covered by the unit test `a_subscription_ends_when_its_principal_stops_being_an_authority`, which revokes through the store and shows the next delivery ends the subscription. **No mutant kill is logged for it, because none was observed.**
+
+### Coverage limits
+
+`socket` (13) and `evidence` (16) have **not** been run. The 55 unsupported are named in `conformance/expectations/core-c2.json`; 50 arrive in c3 and c4, five never will. **`core.events.backpressure` is not negotiated**, so no backpressure guarantee is declared and the output bound is CBR's own discipline; `consumer_too_slow` is not implemented. `core.effects` is named by no non-execution `core` fixture. The object store still has no fixture and rests on its own tests.
+
+## Earlier — M1 stage (c1)
 
 ## This change — M1 stage (c1)
 
@@ -19,7 +64,7 @@ The durable store and the Core command path, gated at **62 pass / 73 unsupported
 | `cargo fmt --all -- --check` | 0 | — |
 | `cargo clippy --workspace --all-targets -- -D warnings` | 0 | — |
 | `cargo build --workspace --locked` | 0 | — |
-| `cargo test --workspace --locked` | 0 | **33 tests** |
+| `cargo test --workspace --locked` | 0 | 33 tests |
 | `git diff --check` | 0 | — |
 | `build_runner.py --offline` | 0 | runner from the verified archive |
 | `run_fixtures.py --filter stream.` + `check_results.py` | 0 | 24 of 24, unchanged |

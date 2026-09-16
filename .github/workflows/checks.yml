@@ -75,4 +75,4 @@ jobs:
         run: python3 scripts/run_fixtures.py --filter core. --out target/ci-results/core
 
       - name: Core outcomes match the recorded expectation exactly
-        run: python3 scripts/check_results.py target/ci-results/core conformance/expectations/core-c1.json
+        run: python3 scripts/check_results.py target/ci-results/core conformance/expectations/core-c2.json

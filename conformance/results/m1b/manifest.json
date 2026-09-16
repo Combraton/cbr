@@ -17,7 +17,7 @@
       }
     ],
     "client_mutant": null,
-    "descriptor_digest": "sha256:c15abd957b54194af9d38d50c5fba0d6d9740007bbd8405dccc8badbc738a18b",
+    "descriptor_digest": "sha256:edaa9c1dafb5e4ff6a6572100b97268b9bb77f7721cfbcd3ccebedea011d2d95",
     "mutant": null,
     "name": "cbr-provider",
     "version": "0.1.0"
@@ -357,7 +357,7 @@
   "suite": {
     "fixtures": 24,
     "fixtures_digest": "sha256:8d8acff2e54695665219e271d274c8d34be01ba7b89a624f196bd5ba6478707a",
-    "protocol_commit": "51695670b978e227cef2463c9eaea009d6a8b62b"
+    "protocol_commit": "514781bb3a3b6ef78edc97b6ff8dde8134d1c264"
   },
   "summary": {
     "pass": 24

@@ -47,8 +47,8 @@ Conformance additionally needs the runner, which is **not** built from this work
 python3 scripts/build_runner.py
 python3 scripts/run_fixtures.py --filter stream. --out conformance/results/m1b
 python3 scripts/check_results.py conformance/results/m1b conformance/expectations/stream.json
-python3 scripts/run_fixtures.py --filter core.   --out conformance/results/m1c1
-python3 scripts/check_results.py conformance/results/m1c1 conformance/expectations/core-c1.json
+python3 scripts/run_fixtures.py --filter core.   --out conformance/results/m1c2
+python3 scripts/check_results.py conformance/results/m1c2 conformance/expectations/core-c2.json
 ```
 
 `build_runner.py` downloads the archive once and reuses it afterwards; `--archive PATH` uses a copy you already have and `--offline` refuses to download. It verifies the archive against the pinned SHA-256, verifies every extracted file against the archive's own `BUNDLE-SHA256SUMS`, checks the archive's recorded commit against the pin, and records the runner identity that `run_fixtures.py` stamps into every results manifest.
@@ -62,7 +62,7 @@ python3 scripts/check_results.py conformance/results/m1c1 conformance/expectatio
 | `cargo build --workspace --locked` | The workspace builds from the committed `Cargo.lock` with no dependency resolution | Runtime behaviour |
 | `cargo test --workspace --locked` | Every pinned encoding vector — 12 canonical, 18 rejected, 1 command intent — plus the property tests, 19 in all. A rejected vector must be refused **for the reason the vector states**, so a parser that refused everything would fail. | Any profile conformance |
 | `build_runner.py` | The runner was built from the published release archive, with its own lockfile, and its identity is recorded | Anything about CBR |
-| `run_fixtures.py --filter core.` | **62 of the 135 `core` fixtures pass, 73 are unsupported by name, none fails.** That is every fixture needing no negotiated feature. | The 73. `core.events`, `core.grants` and `core.capabilities` arrive in c2, c3 and c4; five are permanently unsupported (below). |
+| `run_fixtures.py --filter core.` | **80 of the 135 `core` fixtures pass, 55 are unsupported by name, none fails.** That is every fixture needing no feature beyond `core.events`, including all 18 events-only fixtures. | The 55. `core.grants` and `core.capabilities` arrive in c3 and c4; five are permanently unsupported (below). |
 | `run_fixtures.py --filter stream.` | Runs the suite and writes the runner's manifest, the transcripts, and a `cbr-run.json` sidecar. The manifest stays byte-for-byte the runner's own output. | Nothing on its own: it reports, it does not gate |
 | `check_results.py` | **The gate.** The outcome multiset matches a recorded expectation exactly: pass count, total, the named unsupported set, and zero `fail`, `timeout`, `harness_error` and `skipped`. | Every suite with no expectation file. Only `stream` has one today. |
 
