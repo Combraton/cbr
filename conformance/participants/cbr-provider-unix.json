@@ -14,6 +14,10 @@
       {
         "name": "core-test",
         "major": 1
+      },
+      {
+        "name": "evidence",
+        "major": 1
       }
     ],
     "features": [
@@ -21,10 +25,14 @@
       "core.grants",
       "core.capabilities",
       "core.events.backpressure",
-      "core.effects"
+      "core.effects",
+      "evidence.manifests",
+      "evidence.retention_control",
+      "evidence.work_binding"
     ],
     "test_controls": [
-      "clock.file"
+      "clock.file",
+      "evidence.store"
     ],
     "test_barriers": [
       "subscription.recheck.after_authorization"

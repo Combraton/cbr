@@ -103,6 +103,9 @@ pub struct Grant {
     pub delegation: Delegation,
     pub parent: Option<String>,
     pub revoked: bool,
+    /// Typed restrictions that only narrow the grant (CORE section 15.3). The
+    /// one kind CBR implements is `evidence.work_binding` (EVIDENCE 10).
+    pub constraints: Vec<Value>,
 }
 
 /// Why an operation was refused, in the order CORE section 15.5 fixes.
@@ -118,6 +121,7 @@ pub enum Denial {
     AuthorityEpochStale,
     RightMissing,
     OutOfScope,
+    BindingViolation,
     DelegationExceeded,
     NotAuthority,
     GrantRequired,
@@ -132,6 +136,7 @@ impl Denial {
             Denial::AuthorityEpochStale => "authority_epoch_stale",
             Denial::RightMissing => "right_missing",
             Denial::OutOfScope => "out_of_scope",
+            Denial::BindingViolation => "binding_violation",
             Denial::DelegationExceeded => "delegation_exceeded",
             Denial::NotAuthority => "not_authority",
             Denial::GrantRequired => "grant_required",
@@ -219,6 +224,9 @@ impl Grant {
         if let Some(parent) = &self.parent {
             members.push(("parent".into(), Value::String(parent.clone())));
         }
+        if !self.constraints.is_empty() {
+            members.push(("constraints".into(), Value::Array(self.constraints.clone())));
+        }
         members.push((
             "state".into(),
             Value::String(if self.revoked { "revoked" } else { "active" }.into()),
@@ -281,6 +289,11 @@ impl Grant {
             },
             parent: text("parent"),
             revoked: text("state").as_deref() == Some("revoked"),
+            constraints: value
+                .get("constraints")
+                .and_then(Value::as_array)
+                .map(<[Value]>::to_vec)
+                .unwrap_or_default(),
         })
     }
 
@@ -368,6 +381,15 @@ impl Grant {
             }
         }
         if child.delegation.max_depth > self.delegation.max_depth - 1 {
+            return Err(Denial::DelegationExceeded);
+        }
+        // A delegated grant carries every constraint of its parent, unchanged;
+        // it may add more, which only narrow it (CORE section 15.3).
+        if !self
+            .constraints
+            .iter()
+            .all(|constraint| child.constraints.contains(constraint))
+        {
             return Err(Denial::DelegationExceeded);
         }
         // A bound parent passes its binding down unchanged, so a takeover that
@@ -580,17 +602,51 @@ pub fn parse_issue(id: &str, issuer: &str, payload: &Value) -> Result<Grant, Pro
         }
     };
 
-    // Constraint kinds are defined by profile features (CORE section 15.2).
-    // This build implements none, and a constraint silently dropped would
-    // widen the grant the issuer thought they were narrowing.
-    if let Some(Value::Array(items)) = payload.get("constraints")
-        && !items.is_empty()
-    {
-        return Err(ProtocolError::invalid_envelope(
-            "/payload/constraints/0/kind",
-            "no constraint kind is implemented",
-        ));
-    }
+    // Constraint kinds are defined by profile features (CORE section 15.3).
+    // The one kind CBR implements is `evidence.work_binding`; any other is
+    // refused rather than stored and ignored, because a constraint silently
+    // dropped would widen the grant the issuer thought they were narrowing.
+    let constraints = match payload.get("constraints") {
+        None => Vec::new(),
+        Some(Value::Array(items)) => {
+            for (index, item) in items.iter().enumerate() {
+                let path = format!("/payload/constraints/{index}");
+                match item.get("kind").and_then(Value::as_str) {
+                    Some("evidence.work_binding") => {
+                        let work = item.get("work");
+                        let valid = matches!(item, Value::Object(m) if m.iter().all(|(n, _)| n == "kind" || n == "work"))
+                            && work
+                                .and_then(|w| w.get("kind"))
+                                .and_then(Value::as_str)
+                                .is_some()
+                            && work
+                                .and_then(|w| w.get("id"))
+                                .and_then(Value::as_str)
+                                .is_some();
+                        if !valid {
+                            return Err(ProtocolError::invalid_envelope(
+                                &format!("{path}/work"),
+                                "a work binding names one work subject",
+                            ));
+                        }
+                    }
+                    _ => {
+                        return Err(ProtocolError::invalid_envelope(
+                            &format!("{path}/kind"),
+                            "no such constraint kind is implemented",
+                        ));
+                    }
+                }
+            }
+            items.clone()
+        }
+        Some(_) => {
+            return Err(ProtocolError::invalid_envelope(
+                "/payload/constraints",
+                "not an array",
+            ));
+        }
+    };
 
     let parent = match payload.get("parent") {
         None => None,
@@ -615,6 +671,7 @@ pub fn parse_issue(id: &str, issuer: &str, payload: &Value) -> Result<Grant, Pro
         delegation,
         parent,
         revoked: false,
+        constraints,
     })
 }
 
@@ -681,6 +738,7 @@ mod tests {
             },
             parent: None,
             revoked: false,
+            constraints: Vec::new(),
         };
         let needs = [
             ("core-test.read", Some(subject("core-test.subject", "s-2"))),
@@ -715,6 +773,7 @@ mod tests {
             },
             parent: None,
             revoked: false,
+            constraints: Vec::new(),
         };
         let at = |grant: &Grant, instant: &str| {
             grant.usable(&Context {

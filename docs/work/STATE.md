@@ -3,12 +3,85 @@
 This is a dated navigation snapshot. Reconcile it with Git, linked issues and current task evidence before acting. Issues own live progress; this file does not grant authority or maintain a second backlog.
 
 - **Updated:** 2026-09-16.
-- **Owner/task:** Claude Code session as implementation lead for standalone CBR. Active task: [issue #3](https://github.com/Combraton/cbr/issues/3), milestone M1 stage (d), on branch `m1d/socket-binding`. Parent: [issue #1](https://github.com/Combraton/cbr/issues/1). An independent reviewer session reviews this read-only.
+- **Owner/task:** Claude Code session as implementation lead for standalone CBR. Active task: [issue #3](https://github.com/Combraton/cbr/issues/3), milestone M1 stage (e), the last, on branch `m1e/evidence-profile`, stacked on stage (d)'s PR #10, which is not yet merged. Parent: [issue #1](https://github.com/Combraton/cbr/issues/1). An independent reviewer session reviews this read-only.
 - **Merged:** PR #2 as `d68e9d6`, pinned to `877139f`; PR #4 as `a939446`, pinned to `630011c`; PR #5 (c1) as `8b75129`; PR #6 (c2) as `da1e650`, pinned to `b00ec49`; **PR #7 (c3) as `8ba2594`, pinned to `5b98a9f`, confirmed from `merged: true` and `merged_at: 2026-09-16T15:31:51Z`**. Earlier: PR #6 pinned to `b00ec49`, confirmed from `merged: true` and `merged_at: 2026-09-16T14:26:34Z`**, the draft marked ready first and the head re-read unchanged before merging. Every owner decision, including the ceiling, is in [ADR 001](../decisions/001-standalone-v0.1-scope-and-stack.md). **PR #8 (owner follow-ups) as `f00faaf`, pinned to `40cb30b`, `merged_at: 2026-09-16T16:57:29Z`; PR #9 (c4) as `9a7b8f5`, pinned to `5db9d7c`, `merged_at: 2026-09-16T16:57:53Z`**, in that order, each confirmed from `merged` and `merged_at`.
 - **Merge rule, 2026-09-16, superseded the same day.** This session ran `gh pr merge` on PR #2 after the owner replied "you can merge PR 2" in-session, having first reported the contradicting claim with evidence and waited. It landed the exact reviewed head `877139f` and is kept. A stricter rule was then recorded, and the owner then **granted merge authority under four conditions**, now in [AGENTS.md](../../AGENTS.md): pin with `--match-head-commit`; the head's CI is green; the reviewer has seen that head; no squash. Confirm from `merged` and `merged_at` afterwards, **never `merge_commit_sha`** — GitHub populates that on an open pull request with the test-merge candidate. Tags and releases remain the owner's alone.
 - **Inspected revisions:** protocol `v0.1.0` = `cbf8e4df9df2ca8a9b50264df6acace6e4c3a0fc`; combraton `9af69ce`; pio `e65b7c0`; benchmarks `c8d5878`.
 
-## This change — M1 stage (d)
+## This change — M1 stage (e)
+
+The Evidence profile, the `cbr` CLI, and the storage crash matrix. Three commits: the profile (`c0c974b`), the CLI with credential administration (`56fe7ee`), and the crash matrix with results and documentation.
+
+| Command | Exit | Result |
+|---|---|---|
+| `check_docs.py` / `verify_pin.py` | 0 / 0 | 21 files, 0 errors; 429 and 420 files match their anchors |
+| `cargo fmt --all -- --check` | 0 | — |
+| `cargo clippy --workspace --all-targets --locked -- -D warnings` | 0 | — |
+| `cargo build --workspace --locked` | 0 | — |
+| `cargo test --workspace --locked` | 0 | **78 tests**: 20 encoding, 41 provider unit, 14 against the real provider, 3 running `cbr` against it |
+| `git diff --check` | 0 | — |
+| `run_fixtures.py --filter stream.` + `check_results.py` | 0 | 24 of 24, unchanged |
+| `run_fixtures.py --filter core.` + `check_results.py` | 0 | 130 / 5 / 0, unchanged |
+| `run_fixtures.py --filter socket. --participant …unix.json` + `check_results.py` | 0 | 11 / 2 / 0, unchanged, with the descriptor's claims synced to include `evidence/1` |
+| `run_fixtures.py --filter evidence.` + `check_results.py` | 0 | **16 pass, 0 unsupported, 0 fail**, stable over three runs of the final binary |
+| `result_paths.py conformance/results/*/` | 0 | no machine paths in m1b, m1c2, m1c3, m1c4, m1d, m1e |
+| The crash-matrix, CLI and restart integration tests | 0 | stable over three consecutive runs |
+
+**Expected versus measured.** `evidence.json` was derived from declared profiles, features and controls — all 16 reachable, none permanently unsupported — and confirmed by a run with the claims declared and nothing implemented: 16 fail, 0 unsupported. Measured: **16 / 0 / 0, as predicted.** One fixture reached past its own profile: `evidence.publish-grant-bound-to-work` issues grants carrying an `evidence.work_binding` constraint, so `core.grant.issue` gained that constraint kind.
+
+### What changed
+
+- **The profile** (`c0c974b`): prepare, append, seal, abandon, inspect, query, fetch, hold, release and purge on the Core command path; manifests; the proof-loss record; the `evidence.store` control. The object is published and verified from disk before the row that names it; a purge commits before it deletes.
+- **`cbr`** (`56fe7ee`): `cbr ingest` and `cbr fetch`, a separate binary over the public socket that links no provider code; fetch verifies against the sealed digest before writing. Production socket starts issue a credential per CORE §18.1 (only its digest stored, handed off `0600` in `0700`); `--rotate-credential` and `--revoke-credential` apply to the next authentication without a restart. This closes stage (d)'s limit that a production socket had no way to issue a credential.
+- **The crash matrix**: five tests, each killing the real provider with `SIGKILL` at a named barrier and asserting the durable fact after restart. Rows and the rows that do not exist at M1 are in [VERIFICATION](../VERIFICATION.md#the-storage-crash-matrix).
+- **Found while mapping the collection row, and fixed.** Before this change a purge killed between its commit and its deletion left the object on disk **permanently**, under a record saying `purged`: nothing ever deleted it later. A start-time collection pass now rechecks the roots and deletes every object no sealed, unconfirmed-purge artifact names, plus leftover staging files. The same pass collects the orphan a crashed seal leaves.
+- **Also found, and fixed:** that pass would be unsafe if two providers served one data directory, since one's collection could delete an object the other had published and not yet named. Nothing prevented that. A serving provider now holds an exclusive `flock` on `provider.lock`; a second refuses to start, and `SIGKILL` releases it.
+- The Unix participant descriptor claims `evidence/1`, its features and `evidence.store` again, like the stdio one. No socket fixture declares them; the socket outcome is unchanged.
+- CI runs the evidence suite and gates it against `evidence.json`.
+
+### Mutants
+
+All observed, all restored. Fixture steps are the runner's numbering. A mutant against another package's binary is only valid after `cargo build --workspace`: a first run of `restart-rotates-live-credential` under `cargo test --test ingest_and_fetch` **survived because the provider binary was not rebuilt**. The mutant script now builds the workspace first; that kill is from the rerun, and the earlier survival is not counted either way.
+
+| Mutant | Killed by | At |
+|---|---|---|
+| Seal without its digest check | `evidence.seal-refuses-digest-mismatch-and-is-idempotent` step 4 | `unavailable`, not a sealed artifact — **a second guard**, `publish_object`'s own digest check, not the one named |
+| Append accepts an offset already received | `evidence.chunk-retransmission-and-conflicts` step 8 | `unavailable` — **a second guard**, the chunk table's primary key |
+| Purge ignores holds | `expired-hold-stops-protecting` 7 · `purge-requires-release-authority-for-holds` 19 | — |
+| A withheld manifest child evaluated anyway | `manifest-completeness-respects-authorization` step 45 | "expected withheld, found present" |
+| Stored bytes not verified on read | `integrity-failure-is-never-served` step 11 | — |
+| Work binding ignored | `publish-grant-bound-to-work` step 13 | — |
+| `cbr fetch` skips its digest check | `fetch_refuses_bytes_that_do_not_match_the_sealed_digest` | "altered bytes must be refused" — only this test; against an honest provider nothing shows it |
+| `cbr fetch` stops after the first chunk | `ingested_bytes_fetch_identically_after_sigkill_and_restart` | "fetch failed", reported by `cbr`'s own digest check |
+| `cbr ingest` in one append | same test | "ingest failed: Broken pipe" — the provider closed on the oversized frame, so ingest really is multi-chunk |
+| A restart rotates a live credential | same test | "a restart keeps a live handed-off credential rather than rotating it" |
+| Rotation keeps the old credential valid | `a_rotated_or_revoked_credential_no_longer_authenticates` | "the rotated-out credential is refused" |
+| Authentication ignores revocation | same test | "the rotated-out credential is refused" |
+| Revocation does nothing | same test | "a revoked credential is refused" |
+| `received` written outside the command's transaction | `before_commit_nothing_is_accepted_and_the_same_command_applies` | "no bytes were accepted". Four other crash tests also failed, incidentally, on the extra revision |
+| The deduplication record not consulted | `after_commit_before_the_acknowledgment_the_retry_replays_and_appends_nothing` | the retry, `precondition_failed` instead of a replay; also the purge replay in the collection test |
+| The seal's row committed before its object | `an_object_published_before_its_seal_row_is_collected_and_never_served` | "the object was published before the kill" |
+| The purge deletes before it commits | `a_purge_killed_before_deletion_is_finished_at_restart_and_rechecks_roots` | "the kill landed before the deletion" |
+| No start-time collection | the orphan test · the collection test | "the orphan was collected at start" · "the interrupted deletion was finished at start" |
+| A confirmed purge still counted as a root | the collection test | "the interrupted deletion was finished at start" |
+| Roots ignore every artifact | the collection test | "the kill landed before the deletion" — **earlier than the shared-object assertion it was aimed at**: the pass at the previous start had already deleted every object |
+| The data-directory lock never refuses | `a_second_provider_over_the_same_data_directory_refuses_to_start` | "a second provider must not start" |
+| *Probe:* the before-commit barrier moved past the commit | the before-commit test · `a_killed_upload_stays_staged_is_never_served_and_resumes` | "no bytes were accepted" · `received` |
+| *Probe:* the after-commit barrier moved before the commit | the after-commit test | "the unacknowledged append is durable" |
+
+The two **probes** move a barrier, not product code. They show the tests can tell which side of a commit the kill landed on. **The during-upload row has no product-defect mutant; only the probe fails it.**
+
+### Coverage limits
+
+- **`SIGKILL` is not power loss.** It cannot distinguish `synchronous=FULL` from `OFF` or a synced file from an unsynced one; that durability rests on the PRAGMA read back and on `fsync` of objects and directories, not on a test.
+- The crash-matrix kills are over stdio. The socket's own `SIGKILL` test is stage (d)'s.
+- Recovery from an **error** rather than a crash waits for the next start: an object whose seal commit failed, and the bytes of a purge whose deletion failed — the one case where `purged` is visible while bytes remain on disk, never served.
+- Only evidence artifacts are roots. M3's packets must become roots before they are published into the object store.
+- A partial `cbr ingest` is not resumed; the staged artifact stays staged and is not timed out in production.
+- The different-user peer check, the 2 `socket` and 5 `core` fixtures that declare `execution`, and the absence of fixture evidence for `core.effects` and `core.events.backpressure`: all unchanged from earlier stages.
+- Every committed transcript set, m1b through m1e, contains the runner's per-run temporary directory, which on macOS is a per-user path under `/var/folders`. It carries no user name and is not one of the paths `result_paths.py` refuses.
+
+## Earlier — M1 stage (d)
 
 The Unix-socket binding. Three commits: G6 and G7 recorded (`a339a1a`), the binding with `core.authenticate` and the recheck barrier (`1693243`), and durability, results and documentation.
 

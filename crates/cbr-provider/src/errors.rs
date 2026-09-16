@@ -45,7 +45,7 @@ pub struct ProtocolError {
 }
 
 impl ProtocolError {
-    fn new(code: &'static str, retry: Retry) -> Self {
+    pub fn new(code: &'static str, retry: Retry) -> Self {
         Self {
             code,
             retry,
