@@ -1,6 +1,6 @@
 # ADR 001: standalone CBR v0.1 scope, stack and evaluation posture
 
-- **Status:** accepted, and now complete. The project licence, the model provider and spend envelope, and the journey-6 pilot repository were all decided on 2026-09-16. One number inside the spend envelope arrived in example form and is flagged in [Unresolved](#unresolved); no work waits on it.
+- **Status:** accepted and complete. The project licence, the model provider, the spend ceiling and the journey-6 pilot repository were all decided on 2026-09-16. Nothing in this record is unresolved.
 - **Date:** 2026-09-16.
 - **Authority:** the owner, answering the nine questions in [TALK §5](../work/readiness/TALK.md), after independent review of [PR #2](https://github.com/Combraton/cbr/pull/2) at head `b8ba7f3` against base `3278393`. The reviewer independently reproduced the protocol pin facts, the condition-vocabulary gap, the reference provider's synchronous design, the fixture counts and the crate licences.
 - **Scope:** CBR-local implementation choices. Wire and compatibility decisions belong to Protocol; cross-system authority belongs to Combraton. This record selects nothing outside this repository.
@@ -35,16 +35,18 @@ Two design statements accepted alongside them, both now recorded in [PROTOCOL-PI
 
 ## Unresolved
 
-Both open lines were closed on 2026-09-16. **One number inside them arrived in example form** and is recorded here rather than quietly rounded into a decision.
+Nothing remains unresolved. Every line below was closed on 2026-09-16; the table is kept so the order in which things were decided stays legible.
 
 | Item | Status |
 |---|---|
 | ~~**Project licence**~~ | **Resolved 2026-09-16: MIT**, matching Protocol, holder line `Copyright (c) 2026 Combraton contributors`. Question 10. |
 | ~~**Provider and spend budget**~~ | **Resolved 2026-09-16: MiniMax**, on the owner's subscription quota, with the endpoints, models, counting endpoint and key location recorded in [STACK §8.1](../work/readiness/STACK.md). Question 3. |
 | ~~**Journey-6 pilot repository**~~ | **Resolved 2026-09-16: Knowscroll-v2**, decisions `D-001`–`D-022` as input, one open backlog task as the refactor, labelled pilot. Question 6. |
-| **The numeric ceiling** | **Flagged, not guessed.** The owner's answer gave the CBR share of the quota as `[e.g. 20M]` tokens per 5-hour window and `[e.g. 300M]` per month — the example markers were left in place. CBR adopts **20M per 5-hour window and 300M per month** as the working envelope so nothing is blocked, and labels them *provisional, pending a one-word confirmation*. They are written in one place (the envelope configuration), and every number CBR derives from them is derived, not copied, so a correction is a one-line change and not a search. |
+| ~~**The numeric ceiling**~~ | **Resolved 2026-09-16: 20M tokens per 5-hour window and 200M per month** for CBR, debited from the persisted envelope before every call. The first answer had arrived as `[e.g. 20M]` and `[e.g. 300M]` with the example markers still in place; CBR held them as provisional and asked, rather than rounding an example into a decision. The confirmed monthly figure is **lower** than the example, which is the case that made asking worthwhile. |
 
-A provisional ceiling is safe here in a way a provisional provider was not: the envelope is enforced by the same debit-before-call mechanism whatever the number is, and an envelope set too low fails **closed**, as a typed `budget_exhausted`, which is the direction an error should point when the quota is shared with the owner's own tools.
+**Where the numbers live.** An earlier revision of this section said they were "written in one place (the envelope configuration)". **No envelope configuration exists yet**; it is introduced in M4 with the budget code that reads it. Until then the single source is [STACK §8.1](../work/readiness/STACK.md), and M4 seeds the configuration from it. Every other document states the numbers by reference to that section or repeats them verbatim.
+
+The envelope fails **closed**: a ceiling reached is a typed `budget_exhausted`, never a retry loop, because the quota is shared with the owner's own tools.
 
 Owner actions are recorded on [issue #1](https://github.com/Combraton/cbr/issues/1); they do not need a new decision record.
 
