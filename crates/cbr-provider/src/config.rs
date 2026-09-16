@@ -122,6 +122,19 @@ pub struct Config {
     pub clock: crate::clock::Source,
     /// Capability statuses the launch configuration sets, by predicate name.
     pub capabilities: Vec<(String, String)>,
+    /// Principal credentials for a shared transport (CORE section 18.1): the
+    /// SHA-256 digest of each whole credential string, its principal and
+    /// whether it is revoked. The credential itself is never kept.
+    pub credentials: Vec<Credential>,
+    /// Test barriers (decision 007): a directory and the barrier names enabled.
+    pub test_barriers: Option<(std::path::PathBuf, Vec<String>)>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Credential {
+    pub principal: String,
+    pub digest: String,
+    pub revoked: bool,
 }
 
 impl Default for Config {
@@ -141,6 +154,8 @@ impl Default for Config {
             events_backpressure_notice_ms: 1000,
             clock: crate::clock::Source::System,
             capabilities: Vec::new(),
+            credentials: Vec::new(),
+            test_barriers: None,
         }
     }
 }
@@ -217,6 +232,12 @@ impl Config {
         // explicitly. A production launch keeps CBR's own id.
         if config.mode == Mode::Conformance {
             config.provider_id = "conformance-provider".into();
+            // The runner's own default, which it writes a credential for on
+            // the socket form; the stdio form never depended on the name. An
+            // explicit `principal` always wins.
+            if value.get("principal").is_none() {
+                config.principal = "conformance-caller".into();
+            }
         }
         if let Some(id) = text(value.get("provider_id")) {
             config.provider_id = id;
@@ -254,6 +275,35 @@ impl Config {
             if let Some(v) = int(events.get("backpressure_notice_ms")) {
                 config.events_backpressure_notice_ms = v.max(0);
             }
+        }
+        if let Some(Value::Array(entries)) = value.get("credentials") {
+            for entry in entries {
+                let Some(credential) = entry.get("credential").and_then(Value::as_str) else {
+                    return Err("each credential entry needs a `credential` string".into());
+                };
+                // `ccred1.<principal>.<secret>`; only the digest is kept.
+                let principal = credential.split('.').nth(1).unwrap_or_default().to_string();
+                config.credentials.push(Credential {
+                    principal,
+                    digest: cbr_encoding::sha256_hex(credential.as_bytes()),
+                    revoked: matches!(entry.get("revoked"), Some(Value::Bool(true))),
+                });
+            }
+        }
+        if let Some(barriers) = value.get("test_barriers") {
+            let directory = barriers
+                .get("directory")
+                .and_then(Value::as_str)
+                .ok_or("`test_barriers` needs a `directory`")?;
+            let enabled = barriers
+                .get("enabled")
+                .and_then(Value::as_array)
+                .unwrap_or_default()
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::to_string)
+                .collect();
+            config.test_barriers = Some((directory.into(), enabled));
         }
         if let Some(Value::Object(members)) = value.get("capabilities") {
             for (name, status) in members {

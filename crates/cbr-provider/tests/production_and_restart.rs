@@ -580,3 +580,224 @@ fn a_stdio_consumer_that_stops_reading_ends_the_process_and_records_the_bound() 
         "the ending is recorded with the bound it was held to: {diagnostics}"
     );
 }
+
+/// One connection to a provider's Unix socket, as a client sees it: responses
+/// are matched by id, and notifications that arrive in between are kept.
+struct SocketSession {
+    reader: BufReader<std::os::unix::net::UnixStream>,
+    writer: std::os::unix::net::UnixStream,
+    notifications: Vec<String>,
+}
+
+impl SocketSession {
+    fn connect(socket: &Path, credential: &str) -> Self {
+        let started = std::time::Instant::now();
+        let stream = loop {
+            match std::os::unix::net::UnixStream::connect(socket) {
+                Ok(stream) => break stream,
+                Err(_) if started.elapsed() < std::time::Duration::from_secs(10) => {
+                    std::thread::sleep(std::time::Duration::from_millis(20));
+                }
+                Err(error) => panic!("the provider never listened: {error}"),
+            }
+        };
+        stream
+            .set_read_timeout(Some(std::time::Duration::from_secs(10)))
+            .expect("timeout");
+        let mut session = Self {
+            reader: BufReader::new(stream.try_clone().expect("clone")),
+            writer: stream,
+            notifications: Vec::new(),
+        };
+        let authenticated = session.call(&format!(
+            r#"{{"jsonrpc":"2.0","id":"auth","method":"core.authenticate","params":{{"operation":"core.authenticate","message_id":"m-auth","payload":{{"credential":"{credential}"}}}}}}"#
+        ));
+        assert!(
+            authenticated.contains(r#""principal":"owner""#),
+            "{authenticated}"
+        );
+        let negotiated = session.call(&format!(
+            r#"{{"jsonrpc":"2.0","id":"neg","method":"core.negotiate","params":{{"operation":"core.negotiate","message_id":"m-neg","payload":{{"caller":{{"name":"t","version":"1"}},"receive_limits":{{"max_frame_bytes":1048576}},"profiles":[{CORE_AND_TEST}]}}}}}}"#
+        ));
+        assert!(negotiated.contains(r#""result""#), "{negotiated}");
+        session
+    }
+
+    /// Send a frame and return its response, keeping any notifications that
+    /// arrive first.
+    fn call(&mut self, frame: &str) -> String {
+        writeln!(self.writer, "{frame}").expect("writes");
+        loop {
+            let line = self
+                .next_line()
+                .expect("a response before the connection ended");
+            if line.contains(r#""method":"core.events.notify""#) {
+                self.notifications.push(line);
+            } else {
+                return line;
+            }
+        }
+    }
+
+    fn next_line(&mut self) -> Option<String> {
+        let mut line = String::new();
+        match self.reader.read_line(&mut line) {
+            Ok(0) | Err(_) => None,
+            Ok(_) => Some(line),
+        }
+    }
+}
+
+/// Two concurrent socket sessions, one subscribed and part-way through its
+/// deliveries, the other writing, when the provider is killed.
+///
+/// What must hold afterwards is what a consumer relies on to resume: every
+/// write acknowledged before the kill is durable at the position it was given,
+/// its command identity still replays rather than applying twice, and a
+/// subscriber resuming from the last cursor it received gets exactly the
+/// events it had not yet seen — none repeated from before that cursor, none
+/// skipped after it.
+#[test]
+fn two_socket_sessions_one_mid_subscription_survive_sigkill() {
+    use std::os::unix::fs::PermissionsExt;
+    let directory = tempfile::tempdir().expect("temp dir");
+    let sockets = directory.path().join("sockets");
+    std::fs::create_dir(&sockets).expect("socket dir");
+    std::fs::set_permissions(&sockets, std::fs::Permissions::from_mode(0o700)).expect("0700");
+    let socket = sockets.join("provider.sock");
+    let data = directory.path().join("data");
+    std::fs::create_dir(&data).expect("data dir");
+    let credential = format!("ccred1.owner.{}", "A".repeat(43));
+    let config = directory.path().join("socket.json");
+    std::fs::write(
+        &config,
+        format!(
+            r#"{{"format":"combraton-conformance-config/1","principal":"owner","authority_principals":["owner"],"credentials":[{{"credential":"{credential}"}}]}}"#
+        ),
+    )
+    .expect("config");
+    let launch = || {
+        Command::new(binary())
+            .arg("--data-dir")
+            .arg(&data)
+            .arg("--config")
+            .arg(&config)
+            .arg("--socket")
+            .arg(&socket)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("provider starts")
+    };
+
+    let mut provider = launch();
+    let mut subscriber = SocketSession::connect(&socket, &credential);
+    let subscribed = subscriber.call(r#"{"jsonrpc":"2.0","id":"sub","method":"core.events.subscribe","params":{"operation":"core.events.subscribe","message_id":"m-sub","payload":{"from":"now"}}}"#);
+    assert!(subscribed.contains(r#""subscription""#), "{subscribed}");
+
+    let mut writer = SocketSession::connect(&socket, &credential);
+    let put = |n: usize| {
+        let envelope = format!(
+            r#"{{"operation":"core-test.subject.put","message_id":"m-{n}","command_id":"cmd-{n}","dedupe_generation":1,"subject":{{"kind":"core-test.subject","id":"s-{n}"}},"preconditions":[{{"subject":{{"kind":"core-test.subject","id":"s-{n}"}},"revision":0}}],"authority_epoch":0,"requires":[],"payload":{{"value":"v{n}"}}}}"#
+        );
+        command(n as i64, &envelope)
+    };
+    for n in 1..=3 {
+        let accepted = writer.call(&put(n));
+        assert!(accepted.contains(r#""replay":false"#), "{accepted}");
+    }
+
+    let cursor_of = |notification: &str| -> String {
+        let value = cbr_encoding::parse(notification.trim_end().as_bytes()).expect("parses");
+        value
+            .get("params")
+            .and_then(|p| p.get("next_cursor"))
+            .and_then(|c| c.as_str())
+            .expect("next_cursor")
+            .to_string()
+    };
+    let sequences_in = |frame: &str| -> Vec<i64> {
+        let value = cbr_encoding::parse(frame.trim_end().as_bytes()).expect("parses");
+        let items = value
+            .get("params")
+            .or_else(|| value.get("result"))
+            .and_then(|p| p.get("items"))
+            .and_then(|i| i.as_array())
+            .unwrap_or_default();
+        items
+            .iter()
+            .filter_map(
+                |item| match item.get("event").and_then(|e| e.get("sequence")) {
+                    Some(cbr_encoding::Value::Int(n)) => Some(*n),
+                    _ => None,
+                },
+            )
+            .collect()
+    };
+
+    // The subscriber takes deliveries across sessions until it has the first
+    // batch, and keeps the cursor of the last one it read.
+    let mut seen: Vec<i64> = Vec::new();
+    let mut resume_at = String::new();
+    while !seen.contains(&3) {
+        let delivery = subscriber.next_line().expect("a delivery across sessions");
+        assert!(
+            delivery.contains(r#""method":"core.events.notify""#),
+            "{delivery}"
+        );
+        seen.extend(sequences_in(&delivery));
+        resume_at = cursor_of(&delivery);
+    }
+    assert_eq!(seen, vec![1, 2, 3], "delivered once each, in order");
+
+    // A second batch the subscriber has not read, so it is part-way through
+    // its subscription when the process dies.
+    for n in 4..=5 {
+        let accepted = writer.call(&put(n));
+        assert!(accepted.contains(r#""replay":false"#), "{accepted}");
+    }
+
+    // No clean shutdown: both sessions are open, one mid-subscription.
+    provider.kill().expect("SIGKILL");
+    provider.wait().expect("reaped");
+    let mut ended = false;
+    for _ in 0..100 {
+        if subscriber.next_line().is_none() {
+            ended = true;
+            break;
+        }
+    }
+    assert!(ended, "the subscriber's connection ends with the process");
+    drop(writer);
+
+    let mut provider = launch();
+    let mut resumed = SocketSession::connect(&socket, &credential);
+
+    // Every acknowledged write is at its original position.
+    let read = resumed.call(r#"{"jsonrpc":"2.0","id":"read","method":"core.events.read","params":{"operation":"core.events.read","message_id":"m-read","payload":{"limit":100,"from":"start"}}}"#);
+    assert_eq!(sequences_in(&read), vec![1, 2, 3, 4, 5], "{read}");
+    for n in 1..=5 {
+        assert!(
+            read.contains(&format!(r#""command_id":"cmd-{n}""#)),
+            "{read}"
+        );
+    }
+    // A command identity from the killed session replays.
+    let replayed = resumed.call(&put(3));
+    assert!(replayed.contains(r#""replay":true"#), "{replayed}");
+
+    // Resuming from the subscriber's last cursor delivers exactly the rest.
+    let rest = resumed.call(&format!(
+        r#"{{"jsonrpc":"2.0","id":"rest","method":"core.events.read","params":{{"operation":"core.events.read","message_id":"m-rest","payload":{{"limit":100,"cursor":"{resume_at}"}}}}}}"#
+    ));
+    assert_eq!(
+        sequences_in(&rest),
+        vec![4, 5],
+        "resuming from the last cursor read before the kill delivers exactly what was not yet seen: {rest}"
+    );
+
+    drop(resumed);
+    drop(provider.stdin.take());
+    provider.wait().expect("exits when its input ends");
+}

@@ -1,0 +1,225 @@
+{
+  "coverage_limits": [],
+  "environment": {
+    "arch": "aarch64",
+    "os": "macos"
+  },
+  "format": "combraton-conformance-result/1",
+  "participant": {
+    "claimed_profiles": [
+      {
+        "major": 1,
+        "name": "core"
+      },
+      {
+        "major": 1,
+        "name": "core-test"
+      }
+    ],
+    "client_mutant": null,
+    "descriptor_digest": "sha256:3ce2cc794696cdb8dd802d24fe502cb4f00eaf68b790d8550124e7c5247d3ad3",
+    "mutant": null,
+    "name": "cbr-provider-unix",
+    "version": "0.1.0"
+  },
+  "results": [
+    {
+      "failed_step": null,
+      "fixture": "socket.already-authenticated",
+      "fixture_digest": "sha256:06addf57dc129c0b835c968070fef690527ada2755c2d7886e0ccb00f0946e0b",
+      "outcome": "pass",
+      "polarity": "positive",
+      "reason": null,
+      "requirements": [
+        "CORE-15"
+      ],
+      "transcript": "transcripts/socket.already-authenticated.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "socket.authentication-failures-indistinguishable",
+      "fixture_digest": "sha256:4ef7d509cc74889d7136301e55cdcd777bfbd4dc684c15310dd835d11569687b",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "TRN-3",
+        "CORE-15",
+        "CORE-12"
+      ],
+      "transcript": "transcripts/socket.authentication-failures-indistinguishable.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "socket.authentication-required-before-negotiation",
+      "fixture_digest": "sha256:7c7037506e538e9fcc11918d566c268a2683ba852e611606497ebd3658fe8107",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "TRN-3",
+        "CORE-15"
+      ],
+      "transcript": "transcripts/socket.authentication-required-before-negotiation.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "socket.closing-a-session-does-not-cancel",
+      "fixture_digest": "sha256:26d30926b31f078ba17dc4a0fed01feafd96aac4b3aab469d0ce302dae4961f8",
+      "outcome": "unsupported",
+      "polarity": "negative",
+      "reason": "participant does not claim execution/1",
+      "requirements": [
+        "EXE-22"
+      ],
+      "transcript": "transcripts/socket.closing-a-session-does-not-cancel.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "socket.events-delivered-across-sessions",
+      "fixture_digest": "sha256:5d9a6f87ba184158658cebc3ba07002b8fc32d23d67e4c255f62a57afe1556d5",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "TRN-3",
+        "OBS-2"
+      ],
+      "transcript": "transcripts/socket.events-delivered-across-sessions.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "socket.feature-dependencies-after-authentication",
+      "fixture_digest": "sha256:7511f8d2c4c79beaa46c71baed9f6d09366eae24bb58088f652ad5ae8775378f",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "CMP-5",
+        "CORE-15"
+      ],
+      "transcript": "transcripts/socket.feature-dependencies-after-authentication.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "socket.idle-obligation-overdue-without-traffic",
+      "fixture_digest": "sha256:aa5e900e5e34051271b783041faaa6d8fd7e3a83111bfcbac36a4694d1af7c7c",
+      "outcome": "unsupported",
+      "polarity": "negative",
+      "reason": "participant does not claim execution/1",
+      "requirements": [
+        "EFF-4",
+        "EXE-19",
+        "EXE-7"
+      ],
+      "transcript": "transcripts/socket.idle-obligation-overdue-without-traffic.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "socket.idle-subscription-ends-at-grant-expiry",
+      "fixture_digest": "sha256:19ead5bca07aaeea2f93898380933f0f50ae6cb086271f953246d00b44ce59d8",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "OBS-9",
+        "CORE-11",
+        "TRN-3"
+      ],
+      "transcript": "transcripts/socket.idle-subscription-ends-at-grant-expiry.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "socket.idle-subscription-ends-on-revocation-elsewhere",
+      "fixture_digest": "sha256:f52191ed96f1180871d326ff02b73f44da5062b5989ef2d3968593570265eeb7",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "OBS-2",
+        "CORE-11",
+        "TRN-3"
+      ],
+      "transcript": "transcripts/socket.idle-subscription-ends-on-revocation-elsewhere.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "socket.malformed-clock-file-refused",
+      "fixture_digest": "sha256:57192a52c81782800a8186f8eae1346e523472e9e58c4616302534a3a19e9c95",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "REL-12"
+      ],
+      "transcript": "transcripts/socket.malformed-clock-file-refused.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "socket.principal-per-session",
+      "fixture_digest": "sha256:92c3e1165e6aa552178d26987b8120d46346cd091cc1a4732827c2826d10a784",
+      "outcome": "pass",
+      "polarity": "positive",
+      "reason": null,
+      "requirements": [
+        "TRN-3",
+        "CORE-15",
+        "CORE-7"
+      ],
+      "transcript": "transcripts/socket.principal-per-session.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "socket.subscription-recheck-race-regression",
+      "fixture_digest": "sha256:2caff819b7984da8d1a6ddbb68c902b705e57339daaa9c08184be5ec82c48c35",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "OBS-9",
+        "REL-13",
+        "TRN-3"
+      ],
+      "transcript": "transcripts/socket.subscription-recheck-race-regression.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "socket.unsafe-directory-refused",
+      "fixture_digest": "sha256:a2cde75617c4036ea28df2719a8f4c59d97967d3158cc385828704748f17df21",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "TRN-3"
+      ],
+      "transcript": "transcripts/socket.unsafe-directory-refused.jsonl",
+      "version": 1
+    }
+  ],
+  "runner": {
+    "name": "combraton-conformance",
+    "version": "0.1.0"
+  },
+  "status_note": "Protocol 0.1 conformance suite. A result is a conformance claim only for the fixtures it lists as passing, run from the v0.1.0 release inventory; skipped and unsupported outcomes are coverage limits, not passes.",
+  "suite": {
+    "fixtures": 13,
+    "fixtures_digest": "sha256:7b98935fd1a4924cd1a615d0ffad2fbd99cbe5ce26aad3915d5723e6c057aa8b",
+    "protocol_commit": "16932438ec4d19e6dd37b55165d647e03a782945"
+  },
+  "summary": {
+    "pass": 11,
+    "unsupported": 2
+  }
+}

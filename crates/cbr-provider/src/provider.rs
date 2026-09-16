@@ -133,6 +133,17 @@ fn revoked_event(caused_by: &[String]) -> crate::store::NewEvent {
     }
 }
 
+/// Compare two byte strings in time that depends only on their length.
+fn constant_time_eq(left: &[u8], right: &[u8]) -> bool {
+    if left.len() != right.len() {
+        return false;
+    }
+    left.iter()
+        .zip(right)
+        .fold(0u8, |difference, (a, b)| difference | (a ^ b))
+        == 0
+}
+
 /// The effect id a `core.effects.*` payload names.
 fn effect_id_of(payload: &Value) -> Result<String, ProtocolError> {
     match payload.get("effect").and_then(Value::as_str) {
@@ -191,10 +202,36 @@ fn is_grant_operation(operation: &str) -> bool {
     operation.starts_with("core.grant.")
 }
 
+/// One process-wide lock serializing request processing and subscription
+/// re-checks across every session (STACK section 2). A re-check re-authorizes
+/// a subscription and reads the events to deliver under it, so no command can
+/// commit between the two: an item committed after a revocation is never
+/// delivered under the revoked grant (CORE section 16.5).
+static PROCESSING: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+fn processing() -> std::sync::MutexGuard<'static, ()> {
+    match PROCESSING.try_lock() {
+        Ok(guard) => guard,
+        Err(std::sync::TryLockError::WouldBlock) => {
+            crate::barriers::signal(crate::barriers::LOCK_CONTENDED);
+            PROCESSING
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+        }
+        Err(std::sync::TryLockError::Poisoned(poisoned)) => poisoned.into_inner(),
+    }
+}
+
 pub struct Provider {
     pub config: Config,
-    clock: crate::clock::Clock,
+    clock: std::sync::Arc<crate::clock::Clock>,
     store: Store,
+    /// Whether this session is on a transport many processes can reach, where
+    /// it starts unauthenticated (CORE section 18.2).
+    shared_transport: bool,
+    /// Whether the session has a principal. Always true on stdio, where the
+    /// launching process assigns it.
+    authenticated: bool,
     negotiated: Option<Vec<(String, i64, Vec<String>)>>,
     dedupe_current: i64,
     dedupe_oldest: i64,
@@ -263,8 +300,10 @@ impl Provider {
         )?;
         Ok(Self {
             config,
-            clock,
+            clock: std::sync::Arc::new(clock),
             store,
+            shared_transport: false,
+            authenticated: true,
             negotiated: None,
             dedupe_current: current,
             dedupe_oldest: oldest,
@@ -272,6 +311,75 @@ impl Provider {
             subscriptions: Vec::new(),
             next_subscription: 0,
         })
+    }
+
+    /// A further session over a store a started process has already opened:
+    /// its own connection to the store, the process's clock, and **none** of
+    /// the start-time effects — no epoch change, no retention pass, no
+    /// capability reconcile, no generation advance. A connection is not a
+    /// restart. The session starts unauthenticated.
+    pub fn connect(
+        config: Config,
+        clock: std::sync::Arc<crate::clock::Clock>,
+        data_dir: &std::path::Path,
+    ) -> Result<Self, crate::store::StoreError> {
+        let store = Store::open(data_dir)?;
+        let (current, oldest) = store.current_generation(config.dedupe_retain_generations)?;
+        Ok(Self {
+            config,
+            clock,
+            store,
+            shared_transport: true,
+            authenticated: false,
+            negotiated: None,
+            dedupe_current: current,
+            dedupe_oldest: oldest,
+            caller_receive_limit: crate::frames::PRE_NEGOTIATION_LIMIT,
+            subscriptions: Vec::new(),
+            next_subscription: 0,
+        })
+    }
+
+    /// The clock every session of this process shares.
+    pub fn shared_clock(&self) -> std::sync::Arc<crate::clock::Clock> {
+        self.clock.clone()
+    }
+
+    /// `core.authenticate` (CORE section 18.2).
+    ///
+    /// The presented credential is digested and compared with **every** stored
+    /// digest in constant time, without stopping at a match, so the time taken
+    /// does not say how far a guess got. Unknown, malformed and revoked
+    /// credentials are one error with empty details, and the credential is
+    /// never echoed, logged or kept.
+    fn authenticate(&mut self, payload: &Value) -> Result<Value, ProtocolError> {
+        if !self.shared_transport || self.authenticated {
+            return Err(ProtocolError::already_authenticated());
+        }
+        let presented = payload
+            .get("credential")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        let digest = cbr_encoding::sha256_hex(presented.as_bytes());
+        let mut matched: Option<(String, bool)> = None;
+        for credential in &self.config.credentials {
+            if constant_time_eq(credential.digest.as_bytes(), digest.as_bytes())
+                && matched.is_none()
+            {
+                matched = Some((credential.principal.clone(), credential.revoked));
+            }
+        }
+        match matched {
+            Some((principal, false)) if presented.starts_with("ccred1.") => {
+                self.authenticated = true;
+                self.config.principal = principal.clone();
+                Ok(Value::Object(vec![(
+                    "principal".into(),
+                    Value::String(principal),
+                )]))
+            }
+            _ => Err(ProtocolError::authentication_failed()),
+        }
     }
 
     /// The receive limit for the next frame. The binding's 1 MiB default holds
@@ -700,6 +808,7 @@ impl Provider {
     /// Handle one request. `method` is the transport method, which the envelope
     /// must agree with.
     pub fn handle(&mut self, method: &str, params: &Value) -> Result<Value, ProtocolError> {
+        let _processing = processing();
         // Step 1: operation known, session negotiated, profile selected. These
         // are decided from the transport method, before the envelope is read.
         // Time-driven effect state first, so an obligation whose deadline has
@@ -713,6 +822,13 @@ impl Provider {
         }
         if !self.known_operation(method) {
             return Err(ProtocolError::method_not_found(method));
+        }
+        // CORE section 18.2: on a shared transport, before authentication only
+        // `core.describe` and `core.authenticate` are allowed, and anything else
+        // is refused here — before the negotiation check, so an unauthenticated
+        // caller cannot learn what negotiating would have said.
+        if !self.authenticated && !matches!(method, "core.describe" | "core.authenticate") {
+            return Err(ProtocolError::authentication_required());
         }
         // A conformance-only operation does not exist in a production
         // configuration, so it is unknown rather than merely unauthorised.
@@ -788,12 +904,9 @@ impl Provider {
 
         match method {
             "core.describe" => Ok(self.describe()),
-            // CORE section 18: the stdio binding assigns the principal through
-            // the launch configuration, so every session already has one from
-            // its first frame, before and after negotiation. The socket form,
-            // where a session starts unauthenticated, arrives with that
-            // binding.
-            "core.authenticate" => Err(ProtocolError::already_authenticated()),
+            // CORE section 18: on stdio the launching process assigns the
+            // principal, so every stdio session is already authenticated.
+            "core.authenticate" => self.authenticate(&query.payload),
             "core.feature_dependencies" => Ok(self.feature_dependencies()),
             "core.negotiate" => self.negotiate(&query.payload),
             "core-test.subject.applied_count" => self.applied_count(&query),
@@ -1442,6 +1555,19 @@ impl Provider {
     /// does not name the overdue event's subject or payload; CBR uses the
     /// effect subject and the same `{ effect, obligation, target }` payload as
     /// the aborted event, so a consumer reads both the same way.
+    /// Idle maintenance for a session with no request in hand: mark passed
+    /// obligations overdue under the processing lock. Subscription re-checks
+    /// happen in `drain_subscriptions`, which the session calls next.
+    pub fn tick(&mut self) {
+        let _processing = processing();
+        if let Err(error) = self.tick_effects() {
+            eprintln!(
+                "cbr-provider: marking overdue obligations failed: {}",
+                error.code
+            );
+        }
+    }
+
     fn tick_effects(&mut self) -> Result<(), ProtocolError> {
         let now = self.clock.now();
         for (id, value) in self.store.subjects_of_kind(effects::KIND)? {
@@ -1770,6 +1896,7 @@ impl Provider {
     /// not produced and its subscription's cursor does not move, so its items
     /// are produced again later: **withheld, never skipped** (CORE 16.5).
     pub fn drain_subscriptions(&mut self, room: usize, whole: bool) -> (Vec<Value>, bool) {
+        let _processing = processing();
         let mut frames = Vec::new();
         let mut produced = 0usize;
         let mut withheld = false;
@@ -1794,6 +1921,9 @@ impl Provider {
                     frames.push(self.ending_notification(&id, cursor, "authorization_lost"));
                     break;
                 };
+                // Still under the processing lock: nothing can commit between
+                // the re-authorization above and the read below.
+                crate::barriers::pause(crate::barriers::RECHECK_AFTER_AUTHORIZATION);
                 let (id, cursor, kinds) = (
                     subscription.id.clone(),
                     subscription.cursor,

@@ -23,8 +23,8 @@
 //! A file that is malformed **at launch** is different: there is no last good
 //! instant to keep, so the provider refuses to start rather than invent one.
 
-use std::cell::RefCell;
 use std::path::PathBuf;
+use std::sync::Mutex;
 
 use crate::grants::is_instant;
 
@@ -39,7 +39,10 @@ pub enum Source {
 pub struct Clock {
     source: Source,
     /// The last good instant read from the file source. Never moves backward.
-    last: RefCell<Option<String>>,
+    /// Behind a mutex because every session on a shared transport reads the
+    /// same clock, so one session can never see time run back that another
+    /// has already seen move forward.
+    last: Mutex<Option<String>>,
 }
 
 impl Clock {
@@ -48,11 +51,11 @@ impl Clock {
     pub fn open(source: Source) -> Result<Self, String> {
         let clock = Self {
             source,
-            last: RefCell::new(None),
+            last: Mutex::new(None),
         };
         if let Source::File(path) = &clock.source {
             match read_instant(path) {
-                Some(instant) => *clock.last.borrow_mut() = Some(instant),
+                Some(instant) => *clock.lock() = Some(instant),
                 None => {
                     return Err(format!(
                         "the clock file {} does not hold a UTC instant; refusing to start \
@@ -65,13 +68,19 @@ impl Clock {
         Ok(clock)
     }
 
+    fn lock(&self) -> std::sync::MutexGuard<'_, Option<String>> {
+        self.last
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
     /// The current instant, `YYYY-MM-DDTHH:MM:SSZ`.
     pub fn now(&self) -> String {
         match &self.source {
             Source::System => system_now(),
             Source::Fixed(instant) => instant.clone(),
             Source::File(path) => {
-                let mut last = self.last.borrow_mut();
+                let mut last = self.lock();
                 if let Some(read) = read_instant(path) {
                     // Fixed-width UTC, so string order is time order.
                     if last.as_ref().is_none_or(|previous| read > *previous) {
