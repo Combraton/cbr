@@ -11,6 +11,7 @@ use cbr_encoding::Value;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Retry {
     No,
+    SameCommand,
     AfterReconcile,
     AfterRenegotiate,
 }
@@ -19,6 +20,7 @@ impl Retry {
     fn wire(self) -> &'static str {
         match self {
             Retry::No => "no",
+            Retry::SameCommand => "same_command",
             Retry::AfterReconcile => "after_reconcile",
             Retry::AfterRenegotiate => "after_renegotiate",
         }
@@ -136,6 +138,19 @@ impl ProtocolError {
 
     pub fn precondition_failed(failed: Value) -> Self {
         Self::new("precondition_failed", Retry::AfterReconcile).with("failed", failed)
+    }
+
+    /// The session already has a principal (CORE section 18). On stdio the
+    /// spawner assigns it through the launch configuration, so every session
+    /// is authenticated from its first frame.
+    pub fn already_authenticated() -> Self {
+        Self::new("already_authenticated", Retry::No)
+    }
+
+    /// The provider temporarily cannot process; nothing was bound, so
+    /// retransmitting the identical command is safe (CORE section 12).
+    pub fn unavailable() -> Self {
+        Self::new("unavailable", Retry::SameCommand)
     }
 
     pub fn not_found() -> Self {

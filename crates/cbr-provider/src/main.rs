@@ -91,14 +91,10 @@ fn frame_failure(out: &mut impl Write, failure: FrameFailure) -> std::io::Result
 
 fn run() -> Result<(), String> {
     let args = parse_args()?;
-    if let Some(dir) = &args.data_dir {
-        // The directory is the provider's own state location. Creating it is
-        // the only thing done with it at this stage, because the store is not
-        // yet durable.
-        std::fs::create_dir_all(dir).map_err(|e| format!("creating {}: {e}", dir.display()))?;
-    }
     let config = config::Config::load(args.config.as_deref())?;
-    let mut provider = Provider::new(config);
+    let data_dir = args.data_dir.clone().unwrap_or_else(|| PathBuf::from("."));
+    let mut provider = Provider::open(config, &data_dir)
+        .map_err(|error| format!("opening the store at {}: {error}", data_dir.display()))?;
 
     let stdin = std::io::stdin();
     let mut reader = FrameReader::new(stdin.lock());

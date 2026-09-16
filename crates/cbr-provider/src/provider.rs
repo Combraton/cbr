@@ -11,7 +11,7 @@ use cbr_encoding::Value;
 use crate::config::Config;
 use crate::envelope::{self, Command, Query};
 use crate::errors::ProtocolError;
-use crate::store::{CommandRecord, Store, SubjectKey};
+use crate::store::{Store, SubjectKey};
 
 /// Profiles this build serves, with the majors and features it implements.
 /// A profile is listed here only when it is implemented: over-claiming would
@@ -19,23 +19,44 @@ use crate::store::{CommandRecord, Store, SubjectKey};
 const SERVED: &[(&str, i64, &[&str], &[&str])] =
     &[("core", 1, &[], &[]), ("core-test", 1, &[], &["core"])];
 
-/// Declared unsupported. `coordination` and `remote-trust` are out of the 0.1
-/// release; the rest are CBR's own profiles that later milestones implement.
+/// Profiles this provider *declares* unsupported, which is a narrower thing
+/// than "does not serve".
+///
+/// CORE section 4.1 requires a 0.1 release to list at least `coordination` and
+/// `remote-trust`, and those are genuinely out of the release. Nothing else
+/// belongs here. A declaration makes negotiation report `declared_unsupported`,
+/// whereas a profile the provider simply does not serve is reported
+/// `unknown_profile`, and the fixture
+/// `core.negotiation.execution-requests-against-any-provider` accepts only the
+/// latter for `execution`: its title is "an optional execution/1 request is
+/// selected by providers that support it and reported unknown by older ones".
+///
+/// So `execution` is absent here even though CBR will never serve it, and
+/// `evidence`, `context` and `knowledge` are absent because later milestones
+/// implement them. Declaring either kind would be a statement this provider is
+/// not entitled to make.
 const UNSUPPORTED: &[(&str, &str)] = &[
     ("coordination", "not_in_release"),
     ("remote-trust", "not_in_release"),
-    ("evidence", "not_implemented"),
-    ("context", "not_implemented"),
-    ("knowledge", "not_implemented"),
-    ("verification", "not_implemented"),
-    ("execution", "not_implemented"),
 ];
 
 /// Operations answerable before negotiation (CORE section 3).
-const PRE_NEGOTIATION: [&str; 3] = [
+const PRE_NEGOTIATION: [&str; 4] = [
     "core.describe",
     "core.negotiate",
     "core.feature_dependencies",
+    "core.authenticate",
+];
+
+/// Operations no profile protects (CORE section 15.5). Everything else needs
+/// authorization at step 6, **before** any check that depends on whether a
+/// subject exists, so an unauthorised principal cannot learn that a subject is
+/// absent (CORE-12).
+const UNPROTECTED: [&str; 4] = [
+    "core.describe",
+    "core.negotiate",
+    "core.feature_dependencies",
+    "core.authenticate",
 ];
 
 pub struct Provider {
@@ -43,19 +64,30 @@ pub struct Provider {
     store: Store,
     negotiated: Option<Vec<(String, i64, Vec<String>)>>,
     dedupe_current: i64,
+    dedupe_oldest: i64,
     operation_counter: u64,
 }
 
 impl Provider {
-    pub fn new(config: Config) -> Self {
-        let current = 1 + config.dedupe_advance_on_start;
-        Self {
+    /// Open the provider over its data directory, advancing the deduplication
+    /// generation for this process.
+    pub fn open(
+        config: Config,
+        data_dir: &std::path::Path,
+    ) -> Result<Self, crate::store::StoreError> {
+        let mut store = Store::open(data_dir)?;
+        let (current, oldest) = store.start_generation(
+            config.dedupe_advance_on_start,
+            config.dedupe_retain_generations,
+        )?;
+        Ok(Self {
             config,
-            store: Store::new(),
+            store,
             negotiated: None,
             dedupe_current: current,
+            dedupe_oldest: oldest,
             operation_counter: 0,
-        }
+        })
     }
 
     /// The receive limit for the next frame. The binding's 1 MiB default holds
@@ -69,7 +101,7 @@ impl Provider {
     }
 
     fn dedupe_oldest(&self) -> i64 {
-        (self.dedupe_current - self.config.dedupe_retain_generations + 1).max(0)
+        self.dedupe_oldest
     }
 
     fn dedupe_window(&self) -> Value {
@@ -77,6 +109,28 @@ impl Provider {
             ("oldest_retained".into(), Value::Int(self.dedupe_oldest())),
             ("current".into(), Value::Int(self.dedupe_current)),
         ])
+    }
+
+    /// The profiles this process serves.
+    ///
+    /// `core-test/1` is conformance-only and MUST NOT be exposed outside a test
+    /// configuration (CORE section 13). Filtering here rather than at each use
+    /// means `core.describe`, negotiation and operation dispatch cannot
+    /// disagree about whether it exists.
+    fn served(
+        &self,
+    ) -> impl Iterator<
+        Item = &'static (
+            &'static str,
+            i64,
+            &'static [&'static str],
+            &'static [&'static str],
+        ),
+    > {
+        let conformance = self.config.mode == crate::config::Mode::Conformance;
+        SERVED
+            .iter()
+            .filter(move |(name, _, _, _)| conformance || *name != "core-test")
     }
 
     fn selected_major(&self, profile: &str) -> Option<i64> {
@@ -97,6 +151,7 @@ impl Provider {
                 // fixture happens to call would make step 1 report
                 // `method_not_found` for a known operation, hiding the
                 // method/operation mismatch that step 2 owns.
+                | "core.authenticate"
                 | "core-test.subject.put"
                 | "core-test.subject.get"
                 | "core-test.subject.applied_count"
@@ -114,8 +169,8 @@ impl Provider {
     // ---- describe and negotiate -------------------------------------------
 
     pub fn describe(&self) -> Value {
-        let profiles = SERVED
-            .iter()
+        let profiles = self
+            .served()
             .map(|(name, major, features, depends)| {
                 Value::Object(vec![
                     ("name".into(), Value::String((*name).into())),
@@ -172,8 +227,8 @@ impl Provider {
 
     /// In-session dependencies negotiation enforces (CORE section 4.3).
     pub fn feature_dependencies(&self) -> Value {
-        let entries = SERVED
-            .iter()
+        let entries = self
+            .served()
             .filter(|(name, _, _, _)| *name != "core")
             .map(|(name, major, _, depends)| {
                 Value::Object(vec![
@@ -251,8 +306,8 @@ impl Provider {
                 _ => Vec::new(),
             };
 
-            let served = SERVED
-                .iter()
+            let served = self
+                .served()
                 .find(|(served_name, _, _, _)| *served_name == name);
             let declared_unsupported = UNSUPPORTED
                 .iter()
@@ -363,7 +418,7 @@ impl Provider {
 
         // Profile-triggered dependencies, applied after selection.
         let names: Vec<String> = selected.iter().map(|(name, _, _)| name.clone()).collect();
-        for (name, _, _, depends) in SERVED {
+        for (name, _, _, depends) in self.served() {
             if !names.contains(&(*name).to_string()) {
                 continue;
             }
@@ -424,6 +479,12 @@ impl Provider {
         if !self.known_operation(method) {
             return Err(ProtocolError::method_not_found(method));
         }
+        // A conformance-only operation does not exist in a production
+        // configuration, so it is unknown rather than merely unauthorised.
+        if method.starts_with("core-test.") && self.config.mode != crate::config::Mode::Conformance
+        {
+            return Err(ProtocolError::method_not_found(method));
+        }
         let pre_negotiation = PRE_NEGOTIATION.contains(&method);
         if self.negotiated.is_none() && !pre_negotiation {
             return Err(ProtocolError::negotiation_required());
@@ -438,12 +499,36 @@ impl Provider {
         // Step 2: limits, then the method/operation agreement, then shape.
         envelope::check_limits(params, &self.config.limits)?;
 
+        // Step 6: authorization, for every protected operation including
+        // queries. This runs before the operation looks anything up, because
+        // CORE section 15.5 requires an unauthorised principal to get the same
+        // `permission_denied` whether or not the subject exists. Doing it
+        // inside each operation would leak existence through `not_found` on the
+        // query path, which is how `core.grants.authorization-without-grants-
+        // feature` catches it. This build negotiates no `core.grants`, so a
+        // session cannot name a grant and only an authority principal is
+        // authorized.
+        if !UNPROTECTED.contains(&method) && !self.config.is_authority(&self.config.principal) {
+            return Err(ProtocolError::permission_denied("grant_required"));
+        }
+
         match method {
             "core.describe" => {
                 let query = envelope::parse_query(params)?;
                 self.check_method_matches(method, &query.operation)?;
                 self.check_requires(&query.requires)?;
                 Ok(self.describe())
+            }
+            "core.authenticate" => {
+                let query = envelope::parse_query(params)?;
+                self.check_method_matches(method, &query.operation)?;
+                self.check_requires(&query.requires)?;
+                // CORE section 18: the stdio binding assigns the principal
+                // through the launch configuration, so every session already
+                // has one from its first frame, before and after negotiation.
+                // The socket form, where a session starts unauthenticated,
+                // arrives with that binding.
+                Err(ProtocolError::already_authenticated())
             }
             "core.feature_dependencies" => {
                 let query = envelope::parse_query(params)?;
@@ -554,7 +639,7 @@ impl Provider {
             ("subject".into(), subject.clone()),
             (
                 "applied_count".into(),
-                Value::Int(self.store.applied_count(&key)),
+                Value::Int(self.store.applied_count(&key)?),
             ),
         ]))
     }
@@ -563,7 +648,7 @@ impl Provider {
         let key = self.subject_key(&query.payload)?;
         // The result requires a revision of at least 1, so a subject that does
         // not exist is absent rather than a zero-revision reading.
-        match self.store.subject(&key) {
+        match self.store.subject(&key)? {
             None => Err(ProtocolError::not_found()),
             Some(state) => Ok(Value::Object(vec![
                 (
@@ -609,6 +694,7 @@ impl Provider {
         params: &Value,
         command: &Command,
         scope: &str,
+        epoch_checked: bool,
     ) -> Result<Option<Value>, ProtocolError> {
         // Step 4: digest algorithm, then the recomputed digest.
         match cbr_encoding::parse_digest(&command.command_digest) {
@@ -656,7 +742,7 @@ impl Provider {
                 "generation was never issued",
             ));
         }
-        if let Some(record) = self.store.command(&principal, &command.command_id) {
+        if let Some(record) = self.store.command(&principal, &command.command_id)? {
             if record.digest == command.command_digest {
                 return Ok(Some(replayed(record.result.clone())));
             }
@@ -668,20 +754,58 @@ impl Provider {
             ));
         }
 
-        // Step 6: authorization. This build has no grants, so only an authority
-        // principal may act.
-        if !self.config.is_authority(&principal) {
-            return Err(ProtocolError::permission_denied("grant_required"));
-        }
+        // Step 6 already ran in `handle`, before this operation was reached, so
+        // that an unauthorised principal cannot tell an existing subject from
+        // an absent one.
 
         // Step 7: capabilities, then the authority epoch, then preconditions.
-        let current_epoch = self.store.epoch(scope);
-        let epoch = command.authority_epoch.unwrap_or(0);
-        if epoch < current_epoch {
-            return Err(ProtocolError::new_stale_epoch(current_epoch));
+        //
+        // CORE section 8 applies to operations that *act under* an authority
+        // "that can be taken over", and only to those. `core-test.authority.claim`
+        // is the takeover itself, not an operation performed under one, so it
+        // carries no `authority_epoch` and is not epoch-checked. Across the
+        // whole pinned fixture corpus this is unambiguous: all 198
+        // `core-test.subject.put` commands carry `authority_epoch` and none
+        // omits it, while all 16 `core-test.authority.claim` commands omit it.
+        // A claim is ordered by its precondition on the authority subject
+        // instead, which is why `core.authority.claim-requires-current-epoch`
+        // expects `precondition_failed` rather than `stale_authority_epoch`.
+        //
+        // An absent epoch on an operation that does require one is
+        // `invalid_envelope`. Section 8 permits a profile to treat it as epoch
+        // 0 instead -- "A profile whose epoch exists only once claimed may
+        // treat an absent epoch as epoch 0, so it is `stale_authority_epoch`
+        // once any epoch exists (EXECUTION section 11.3)" -- but that is
+        // something a profile must state, and `core-test` does not. No fixture
+        // exercises the absent case either way, so this is the specification's
+        // default rather than a measured behaviour.
+        if epoch_checked {
+            let current_epoch = self.store.epoch(scope)?;
+            let Some(epoch) = command.authority_epoch else {
+                return Err(ProtocolError::invalid_envelope(
+                    "/authority_epoch",
+                    "required by this operation",
+                ));
+            };
+            if epoch < current_epoch {
+                return Err(ProtocolError::new_stale_epoch(current_epoch));
+            }
+            if epoch > current_epoch {
+                return Err(ProtocolError::new_unknown_epoch());
+            }
         }
-        if epoch > current_epoch {
-            return Err(ProtocolError::new_unknown_epoch());
+
+        // A command must carry a precondition on its own subject: without one
+        // it would apply against an unknown starting revision.
+        if !command
+            .preconditions
+            .iter()
+            .any(|(subject, _)| *subject == command.subject)
+        {
+            return Err(ProtocolError::invalid_envelope(
+                "/preconditions",
+                "no precondition on the command's own subject",
+            ));
         }
 
         let mut failed = Vec::new();
@@ -698,7 +822,7 @@ impl Provider {
                     .unwrap_or_default()
                     .into(),
             };
-            let current = self.store.revision(&key);
+            let current = self.store.revision(&key)?;
             if current != *expected_revision {
                 failed.push(Value::Object(vec![
                     ("subject".into(), subject.clone()),
@@ -713,27 +837,6 @@ impl Provider {
         Ok(None)
     }
 
-    fn acknowledgment(&mut self, command: &Command, revision: i64) -> Value {
-        self.operation_counter += 1;
-        Value::Object(vec![
-            (
-                "command_id".into(),
-                Value::String(command.command_id.clone()),
-            ),
-            (
-                "command_digest".into(),
-                Value::String(command.command_digest.clone()),
-            ),
-            (
-                "operation_ref".into(),
-                Value::String(format!("op-{}", self.operation_counter)),
-            ),
-            ("subject".into(), command.subject.clone()),
-            ("revision".into(), Value::Int(revision)),
-            ("effect_refs".into(), Value::Array(vec![])),
-        ])
-    }
-
     /// Claim the next authority epoch for the `core-test` scope.
     ///
     /// Implemented from the profile's schemas; **no fixture in the `stream`
@@ -743,40 +846,68 @@ impl Provider {
         params: &Value,
         command: Command,
     ) -> Result<Value, ProtocolError> {
-        if let Some(stored) = self.admit_command(params, &command, "core-test")? {
+        if let Some(stored) = self.admit_command(params, &command, "core-test", false)? {
             return Ok(stored);
         }
-        let epoch = self.store.claim_epoch("core-test");
-        let result = Value::Object(vec![
-            (
-                "acknowledgment".into(),
-                self.acknowledgment(&command, epoch),
-            ),
-            (
-                "outcome".into(),
-                Value::Object(vec![("epoch".into(), Value::Int(epoch))]),
-            ),
-            ("replay".into(), Value::Bool(false)),
-        ]);
+        // The epoch and the authority subject's revision are the same number by
+        // construction, so the acknowledgment's revision and the outcome's
+        // epoch cannot disagree. The state change and the command record commit
+        // in one transaction.
         let principal = self.config.principal.clone();
-        self.store.bind_command(
-            &principal,
-            &command.command_id,
-            CommandRecord {
-                digest: command.command_digest,
-                result: result.clone(),
+        let key = Store::authority_key("core-test");
+        let counter = {
+            self.operation_counter += 1;
+            self.operation_counter
+        };
+        let command_digest = command.command_digest.clone();
+        let subject = command.subject.clone();
+        let command_id = command.command_id.clone();
+        let result = self.store.commit_command(
+            crate::store::Commit {
+                key: &key,
+                value: "",
+                principal: &principal,
+                command_id: &command_id,
+                digest: &command_digest,
+                generation: command.dedupe_generation,
             },
-        );
+            |epoch| {
+                Value::Object(vec![
+                    (
+                        "acknowledgment".into(),
+                        Value::Object(vec![
+                            ("command_id".into(), Value::String(command_id.clone())),
+                            (
+                                "command_digest".into(),
+                                Value::String(command_digest.clone()),
+                            ),
+                            (
+                                "operation_ref".into(),
+                                Value::String(format!("op-{counter}")),
+                            ),
+                            ("subject".into(), subject.clone()),
+                            ("revision".into(), Value::Int(epoch)),
+                            ("effect_refs".into(), Value::Array(vec![])),
+                        ]),
+                    ),
+                    (
+                        "outcome".into(),
+                        Value::Object(vec![("epoch".into(), Value::Int(epoch))]),
+                    ),
+                    ("replay".into(), Value::Bool(false)),
+                ])
+            },
+        )?;
         Ok(result)
     }
 
     fn subject_put(&mut self, params: &Value, command: Command) -> Result<Value, ProtocolError> {
-        if let Some(stored) = self.admit_command(params, &command, "core-test")? {
+        if let Some(stored) = self.admit_command(params, &command, "core-test", true)? {
             return Ok(stored);
         }
 
         // Step 8: commit the command record, the state change and the result in
-        // one transaction.
+        // one transaction, so a crash between them is not representable.
         let value = command
             .payload
             .get("value")
@@ -797,27 +928,51 @@ impl Provider {
                 .unwrap_or_default()
                 .into(),
         };
-        let revision = self.store.put(key, value.clone());
-        let result = Value::Object(vec![
-            (
-                "acknowledgment".into(),
-                self.acknowledgment(&command, revision),
-            ),
-            (
-                "outcome".into(),
-                Value::Object(vec![("value".into(), Value::String(value))]),
-            ),
-            ("replay".into(), Value::Bool(false)),
-        ]);
         let principal = self.config.principal.clone();
-        self.store.bind_command(
-            &principal,
-            &command.command_id,
-            CommandRecord {
-                digest: command.command_digest,
-                result: result.clone(),
+        let counter = {
+            self.operation_counter += 1;
+            self.operation_counter
+        };
+        let command_digest = command.command_digest.clone();
+        let subject = command.subject.clone();
+        let command_id = command.command_id.clone();
+        let stored_value = value.clone();
+        let result = self.store.commit_command(
+            crate::store::Commit {
+                key: &key,
+                value: &value,
+                principal: &principal,
+                command_id: &command_id,
+                digest: &command_digest,
+                generation: command.dedupe_generation,
             },
-        );
+            |revision| {
+                Value::Object(vec![
+                    (
+                        "acknowledgment".into(),
+                        Value::Object(vec![
+                            ("command_id".into(), Value::String(command_id.clone())),
+                            (
+                                "command_digest".into(),
+                                Value::String(command_digest.clone()),
+                            ),
+                            (
+                                "operation_ref".into(),
+                                Value::String(format!("op-{counter}")),
+                            ),
+                            ("subject".into(), subject.clone()),
+                            ("revision".into(), Value::Int(revision)),
+                            ("effect_refs".into(), Value::Array(vec![])),
+                        ]),
+                    ),
+                    (
+                        "outcome".into(),
+                        Value::Object(vec![("value".into(), Value::String(stored_value.clone()))]),
+                    ),
+                    ("replay".into(), Value::Bool(false)),
+                ])
+            },
+        )?;
         Ok(result)
     }
 }
