@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/cbr-encoding", "crates/cbr-provider"]
+members = ["crates/cbr-encoding", "crates/cbr-provider", "crates/cbr-cli"]
 # The vendored Protocol tree contains its own Cargo packages. Left unexcluded,
 # Cargo treats them as nested packages of this workspace and tries to resolve
 # their `*.workspace = true` inheritance here, which fails because CBR has not

@@ -397,6 +397,14 @@ impl Store {
                  bytes    BLOB    NOT NULL,
                  PRIMARY KEY (artifact, offset)
              );
+             -- Principal credentials for a shared transport (CORE section
+             -- 18.1): the digest of each whole credential string, never the
+             -- credential, with its principal and revocation state.
+             CREATE TABLE IF NOT EXISTS credentials (
+                 digest    TEXT    PRIMARY KEY,
+                 principal TEXT    NOT NULL,
+                 revoked   INTEGER NOT NULL
+             );
              CREATE TABLE IF NOT EXISTS commands (
                  principal  TEXT    NOT NULL,
                  command_id TEXT    NOT NULL,
@@ -777,6 +785,53 @@ impl Store {
         }
         transaction.commit()?;
         Ok(revision)
+    }
+
+    /// Every stored credential digest with its principal and revocation.
+    pub fn credentials(&self) -> Result<Vec<crate::config::Credential>, StoreError> {
+        let mut statement = self
+            .connection
+            .prepare("SELECT digest, principal, revoked FROM credentials ORDER BY digest")?;
+        let rows = statement.query_map([], |row| {
+            Ok(crate::config::Credential {
+                digest: row.get(0)?,
+                principal: row.get(1)?,
+                revoked: row.get::<_, i64>(2)? != 0,
+            })
+        })?;
+        let mut out = Vec::new();
+        for row in rows {
+            out.push(row?);
+        }
+        Ok(out)
+    }
+
+    /// Record a new credential's digest for a principal, revoking every earlier
+    /// one for that principal in the same transaction: rotation leaves exactly
+    /// one live credential, and never zero or two.
+    pub fn rotate_credential(&mut self, principal: &str, digest: &str) -> Result<(), StoreError> {
+        let transaction = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        transaction.execute(
+            "UPDATE credentials SET revoked = 1 WHERE principal = ?1",
+            params![principal],
+        )?;
+        transaction.execute(
+            "INSERT INTO credentials (digest, principal, revoked) VALUES (?1, ?2, 0)",
+            params![digest, principal],
+        )?;
+        transaction.commit()?;
+        Ok(())
+    }
+
+    /// Revoke every credential of a principal. Future authentications fail;
+    /// sessions already authenticated are not ended by this (CORE 18.3).
+    pub fn revoke_credentials(&mut self, principal: &str) -> Result<usize, StoreError> {
+        Ok(self.connection.execute(
+            "UPDATE credentials SET revoked = 1 WHERE principal = ?1 AND revoked = 0",
+            params![principal],
+        )?)
     }
 
     /// Bind a command whose outcome changes nothing: no revision, no event,

@@ -405,7 +405,11 @@ impl Provider {
             .unwrap_or_default();
         let digest = cbr_encoding::sha256_hex(presented.as_bytes());
         let mut matched: Option<(String, bool)> = None;
-        for credential in &self.config.credentials {
+        // Credentials from the launch configuration (conformance) and from the
+        // store (issued by this provider), read now, so a revocation or
+        // rotation made while the provider runs applies to the next attempt.
+        let stored = self.store.credentials()?;
+        for credential in self.config.credentials.iter().chain(stored.iter()) {
             if constant_time_eq(credential.digest.as_bytes(), digest.as_bytes())
                 && matched.is_none()
             {

@@ -1,0 +1,18 @@
+[package]
+name = "cbr-cli"
+description = "The cbr command: a client of CBR's public protocol over its Unix socket."
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "cbr"
+path = "src/main.rs"
+
+[dependencies]
+cbr-encoding = { path = "../cbr-encoding" }
+
+[dev-dependencies]
+tempfile = "3.27.0"

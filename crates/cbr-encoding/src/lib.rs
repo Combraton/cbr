@@ -12,6 +12,7 @@
 //! - canonical form, whose bytes must match RFC 8785 exactly;
 //! - digests, over exact bytes for content and over canonical form for records.
 
+mod base64;
 mod canonical;
 mod digest;
 mod error;
@@ -19,6 +20,7 @@ mod intent;
 mod parse;
 mod value;
 
+pub use base64::{decode_base64, encode_base64};
 pub use canonical::to_canonical;
 pub use digest::{
     Algorithm, DigestError, digest_bytes, digest_canonical, parse_digest, sha256_hex,
