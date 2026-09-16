@@ -18,7 +18,12 @@ use crate::store::{Store, SubjectKey};
 /// A profile is listed here only when it is implemented: over-claiming would
 /// make negotiation succeed and then fail at the first operation.
 const SERVED: &[(&str, i64, &[&str], &[&str])] = &[
-    ("core", 1, &["core.events", "core.grants"], &[]),
+    (
+        "core",
+        1,
+        &["core.events", "core.grants", "core.capabilities"],
+        &[],
+    ),
     ("core-test", 1, &[], &["core"]),
 ];
 
@@ -65,13 +70,15 @@ const PRE_NEGOTIATION: [&str; 4] = [
 ///
 /// `core.events.unsubscribe` is here because it removes only the session's own
 /// subscriptions, so there is nothing to authorize that the session does not
-/// already hold. `core.capabilities` joins it when that feature lands.
-const UNPROTECTED: [&str; 5] = [
+/// already hold. `core.capabilities` is here because CORE section 15.5 lists
+/// it: what a provider can do right now is not a secret of any subject.
+const UNPROTECTED: [&str; 6] = [
     "core.describe",
     "core.negotiate",
     "core.feature_dependencies",
     "core.authenticate",
     "core.events.unsubscribe",
+    "core.capabilities",
 ];
 
 /// Every operation that is a command rather than a query. A command carries a
@@ -120,6 +127,16 @@ fn revoked_event(caused_by: &[String]) -> crate::store::NewEvent {
         payload: Box::new(|_| {
             Value::Object(vec![("state".into(), Value::String("revoked".into()))])
         }),
+    }
+}
+
+/// The capability an operation depends on, if any (CORE section 17.4). Only a
+/// write depends on `core-test.writes`: claiming an authority epoch does not,
+/// which `core.capabilities.claim-does-not-depend-on-writes` pins.
+fn capability_dependency(operation: &str) -> Option<&'static str> {
+    match operation {
+        "core-test.subject.put" => Some("core-test.writes"),
+        _ => None,
     }
 }
 
@@ -193,21 +210,18 @@ impl Provider {
         // The capability snapshot is reconciled at launch, after any epoch
         // change, so its change event lands in the epoch the process serves.
         //
-        // Only the snapshot and its change event live here, and only because
-        // an in-scope fixture needs them: event recording is not gated on
-        // negotiation (CORE section 16.3), so
-        // `core.events.visibility-follows-direct-read-authority` expects the
-        // `core.capabilities.changed` event a restart with a changed predicate
-        // records, while declaring only `core.events` and `core.grants`. The
-        // `core.capabilities` query and the `capability_unavailable` refusal
-        // are the negotiated feature, and are not claimed.
-        if config.mode == crate::config::Mode::Conformance {
+        // Recording is not gated on negotiation (CORE section 16.3): the
+        // snapshot and its change event exist whether or not any session
+        // negotiates `core.capabilities`, which is why
+        // `core.events.visibility-follows-direct-read-authority` needed them in
+        // c3 while declaring only `core.events` and `core.grants`.
+        let predicates = if config.mode == crate::config::Mode::Conformance {
             let status = config
                 .capabilities
                 .iter()
                 .find(|(name, _)| name == "core-test.writes")
                 .map_or("supported", |(_, status)| status.as_str());
-            let predicates = Value::Array(vec![Value::Object(vec![
+            Value::Array(vec![Value::Object(vec![
                 ("name".into(), Value::String("core-test.writes".into())),
                 ("status".into(), Value::String(status.into())),
                 (
@@ -220,9 +234,15 @@ impl Provider {
                         Value::String("launch-configuration".into()),
                     )]),
                 ),
-            ])]);
-            store.reconcile_capabilities(&config.provider_id, &predicates, &clock.now())?;
-        }
+            ])])
+        } else {
+            // A production launch serves no `core-test`, and CBR has no other
+            // predicate it can yet state with evidence. An empty snapshot is
+            // the honest answer; a predicate asserted without evidence would
+            // have to be `unknown`, and listing one only to say so adds nothing.
+            Value::Array(vec![])
+        };
+        store.reconcile_capabilities(&config.provider_id, &predicates, &clock.now())?;
         let (current, oldest) = store.start_generation(
             config.dedupe_advance_on_start,
             config.dedupe_retain_generations,
@@ -314,6 +334,7 @@ impl Provider {
                 | "core.grant.issue"
                 | "core.grant.revoke"
                 | "core.grant.get"
+                | "core.capabilities"
                 | "core.events.read"
                 | "core.events.subscribe"
                 | "core.events.unsubscribe"
@@ -735,6 +756,7 @@ impl Provider {
             "core.events.read" => self.events_read(&query, in_force.as_ref()),
             "core-test.subject.get" => self.subject_get(&query),
             "core.grant.get" => self.grant_get(&query),
+            "core.capabilities" => self.capabilities(),
             _ => Err(ProtocolError::method_not_found(method)),
         }
     }
@@ -1146,6 +1168,42 @@ impl Provider {
             },
         )?;
         Ok(result)
+    }
+
+    /// `core.capabilities` (CORE section 17.1): the current snapshot.
+    fn capabilities(&self) -> Result<Value, ProtocolError> {
+        if !self.selected_feature("core.capabilities") {
+            return Err(ProtocolError::unsupported_required_feature_message(
+                Value::Array(vec![Value::String("core.capabilities".into())]),
+            ));
+        }
+        let (revision, predicates) = self
+            .store
+            .capabilities()?
+            .ok_or_else(ProtocolError::new_internal_error)?;
+        Ok(Value::Object(vec![
+            ("revision".into(), Value::Int(revision)),
+            ("predicates".into(), predicates),
+        ]))
+    }
+
+    /// A predicate's current status. A predicate the snapshot does not name is
+    /// `unknown`, never `supported`: CORE section 17.1 allows `supported` only
+    /// with evidence.
+    fn capability_status(&self, name: &str) -> Result<String, ProtocolError> {
+        let predicates = self
+            .store
+            .capabilities()?
+            .map(|(_, predicates)| predicates)
+            .unwrap_or(Value::Array(vec![]));
+        Ok(predicates
+            .as_array()
+            .unwrap_or_default()
+            .iter()
+            .find(|p| p.get("name").and_then(Value::as_str) == Some(name))
+            .and_then(|p| p.get("status").and_then(Value::as_str))
+            .unwrap_or("unknown")
+            .to_string())
     }
 
     /// The grant id a `core.grant.*` command names, with the single
@@ -1662,6 +1720,17 @@ impl Provider {
         };
 
         // Step 7: capabilities, then the authority epoch, then preconditions.
+        //
+        // A capability refusal comes first so a command whose capability is
+        // lost changes nothing and names no precondition. It follows step 5, so
+        // a command bound before the loss still replays its stored outcome
+        // (CORE section 17.2): loss does not rewrite accepted history.
+        if let Some(capability) = capability_dependency(&command.operation) {
+            let status = self.capability_status(capability)?;
+            if status != "supported" {
+                return Err(ProtocolError::capability_unavailable(capability, &status));
+            }
+        }
         //
         // CORE section 8 applies to operations that *act under* an authority
         // "that can be taken over", and only to those. `core-test.authority.claim`

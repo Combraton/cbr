@@ -656,6 +656,25 @@ impl Store {
         Ok(revision)
     }
 
+    /// The current capability snapshot: its revision and predicates, or `None`
+    /// before the first reconcile.
+    pub fn capabilities(&self) -> Result<Option<(i64, Value)>, StoreError> {
+        let row: Option<(i64, String)> = self
+            .connection
+            .query_row(
+                "SELECT revision, predicates FROM capabilities WHERE id = 1",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()?;
+        Ok(row.map(|(revision, predicates)| {
+            (
+                revision,
+                cbr_encoding::parse(predicates.as_bytes()).unwrap_or(Value::Array(vec![])),
+            )
+        }))
+    }
+
     /// Every subject of one kind, ordered by id, with its stored value.
     ///
     /// The store deliberately knows nothing about what a value means, so a

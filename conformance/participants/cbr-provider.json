@@ -18,7 +18,8 @@
     ],
     "features": [
       "core.events",
-      "core.grants"
+      "core.grants",
+      "core.capabilities"
     ],
     "test_controls": [
       "clock.file"
