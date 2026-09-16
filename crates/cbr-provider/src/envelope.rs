@@ -313,6 +313,24 @@ fn payload_members(operation: &str) -> Option<(&'static [&'static str], &'static
         "core-test.subject.put" => (&["value", "labels"], &["value"]),
         "core-test.subject.get" | "core-test.subject.applied_count" => (&["subject"], &["subject"]),
         "core-test.authority.claim" => (&[], &[]),
+        // CORE section 15.3: the issue payload is the grant record without
+        // `id`, `issuer` and `state`, which the provider supplies.
+        "core.grant.issue" => (
+            &[
+                "holder",
+                "audience",
+                "rights",
+                "resources",
+                "expires_at",
+                "authority_binding",
+                "delegation",
+                "parent",
+                "constraints",
+            ],
+            &["holder", "audience", "rights", "resources", "delegation"],
+        ),
+        "core.grant.revoke" => (&[], &[]),
+        "core.grant.get" => (&["grant"], &["grant"]),
         _ => return None,
     })
 }
@@ -354,6 +372,9 @@ pub struct Command {
     pub requires: Vec<String>,
     pub command_digest: String,
     pub payload: Value,
+    /// The grant this command acts under, if any (CORE section 15.5). Present
+    /// even for an authority principal, which is then restricted to it.
+    pub grant: Option<String>,
     /// The envelope's `caused_by`, copied onto the events this command appends.
     pub caused_by: Vec<String>,
 }
@@ -494,6 +515,10 @@ pub fn parse_command(envelope: &Value) -> Result<Command, ProtocolError> {
         requires,
         command_digest,
         payload,
+        grant: envelope
+            .get("grant")
+            .and_then(Value::as_str)
+            .map(str::to_string),
         caused_by: match envelope.get("caused_by") {
             None => Vec::new(),
             Some(Value::Array(items)) => items
@@ -515,6 +540,8 @@ pub struct Query {
     pub operation: String,
     pub requires: Vec<String>,
     pub payload: Value,
+    /// The grant this query reads under, if any (CORE section 15.5).
+    pub grant: Option<String>,
 }
 
 /// Validate a query envelope. A query has no command identity, preconditions
@@ -545,6 +572,10 @@ pub fn parse_query(envelope: &Value) -> Result<Query, ProtocolError> {
         operation,
         requires,
         payload,
+        grant: envelope
+            .get("grant")
+            .and_then(Value::as_str)
+            .map(str::to_string),
     })
 }
 

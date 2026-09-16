@@ -110,6 +110,11 @@ pub struct Config {
     pub events_unvouched_last: i64,
     /// Keep only this many events, discarding earlier ones with a watermark.
     pub events_retain_last: Option<i64>,
+    /// Where protocol-visible time comes from. Always the system clock in
+    /// production, because `clock` is a test control and is refused there.
+    pub clock: crate::clock::Source,
+    /// Capability statuses the launch configuration sets, by predicate name.
+    pub capabilities: Vec<(String, String)>,
 }
 
 impl Default for Config {
@@ -125,6 +130,8 @@ impl Default for Config {
             events_new_epoch_on_start: false,
             events_unvouched_last: 0,
             events_retain_last: None,
+            clock: crate::clock::Source::System,
+            capabilities: Vec::new(),
         }
     }
 }
@@ -193,6 +200,15 @@ impl Config {
                 .map(str::to_string)
                 .collect();
         }
+        // A grant's `audience` must equal the issuing provider's own id (CORE
+        // section 15.2), so this is what every fixture's grant is addressed to.
+        // Single-participant fixtures never set it and always issue to
+        // `conformance-provider`, so that is the conformance default; the
+        // composition fixtures, which run several providers at once, set it
+        // explicitly. A production launch keeps CBR's own id.
+        if config.mode == Mode::Conformance {
+            config.provider_id = "conformance-provider".into();
+        }
         if let Some(id) = text(value.get("provider_id")) {
             config.provider_id = id;
         }
@@ -223,6 +239,36 @@ impl Config {
             if let Some(v) = int(events.get("retain_last")) {
                 config.events_retain_last = Some(v);
             }
+        }
+        if let Some(Value::Object(members)) = value.get("capabilities") {
+            for (name, status) in members {
+                match status.as_str() {
+                    Some(status @ ("supported" | "unsupported" | "unknown")) => {
+                        config.capabilities.push((name.clone(), status.to_string()));
+                    }
+                    _ => {
+                        return Err(format!(
+                            "capability `{name}` must be supported, unsupported or unknown"
+                        ));
+                    }
+                }
+            }
+        }
+        if let Some(clock) = value.get("clock") {
+            config.clock = match (clock.get("fixed"), clock.get("file")) {
+                (Some(Value::String(instant)), None) if crate::grants::is_instant(instant) => {
+                    crate::clock::Source::Fixed(instant.clone())
+                }
+                (None, Some(Value::String(path))) if !path.is_empty() => {
+                    crate::clock::Source::File(path.into())
+                }
+                _ => {
+                    return Err(
+                        "`clock` must be exactly one of a `fixed` UTC instant or a `file` path"
+                            .into(),
+                    );
+                }
+            };
         }
         if let Some(dedupe) = value.get("dedupe") {
             if let Some(v) = int(dedupe.get("advance_on_start")) {

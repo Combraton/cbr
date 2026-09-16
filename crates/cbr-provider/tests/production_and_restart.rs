@@ -74,6 +74,24 @@ impl Provider {
     }
 }
 
+/// Frame a command envelope with the digest the provider will recompute, so a
+/// test exercises the real command path rather than a store call in disguise.
+fn command(id: i64, envelope: &str) -> String {
+    let value = cbr_encoding::parse(envelope.as_bytes()).expect("envelope parses");
+    let digest = cbr_encoding::command_digest(&value).expect("intent");
+    let operation = value
+        .get("operation")
+        .and_then(|v| v.as_str())
+        .expect("operation");
+    format!(
+        r#"{{"jsonrpc":"2.0","id":{id},"method":"{operation}","params":{}}}"#,
+        envelope.replace(
+            r#""payload""#,
+            &format!(r#""command_digest":"{digest}","payload""#)
+        )
+    )
+}
+
 const CORE_ONLY: &str =
     r#"{"name":"core","majors":[1],"required":true,"required_features":[],"optional_features":[]}"#;
 const CORE_AND_TEST: &str = r#"{"name":"core","majors":[1],"required":true,"required_features":["core.events"],"optional_features":[]},{"name":"core-test","majors":[1],"required":true,"required_features":[],"optional_features":[]}"#;
@@ -297,6 +315,80 @@ fn a_retention_gap_after_restart_is_reported_rather_than_closed() {
     assert!(
         !read.contains(r#""error""#),
         "a gap is an item, never a refusal: {read}"
+    );
+    provider.stop();
+}
+
+/// A conformance configuration for one session's principal. The authority set
+/// stays `owner`, so a session launched as `agent-1` acts only under a grant.
+fn session_config(directory: &Path, name: &str, principal: &str) -> PathBuf {
+    let path = directory.join(format!("{name}.json"));
+    std::fs::write(
+        &path,
+        format!(
+            r#"{{"format":"combraton-conformance-config/1","principal":"{principal}","authority_principals":["owner"]}}"#
+        ),
+    )
+    .expect("writes config");
+    path
+}
+
+const CORE_AND_GRANTS: &str = r#"{"name":"core","majors":[1],"required":true,"required_features":["core.grants"],"optional_features":[]},{"name":"core-test","majors":[1],"required":true,"required_features":[],"optional_features":[]}"#;
+
+/// A grant is durable state, and so is its revocation.
+///
+/// The `core` suite proves both within a session and across a clean stop, but
+/// every fixture stops the provider politely. This kills it. The failure this
+/// guards against is specific and plausible: a provider that keeps grants in
+/// memory and rebuilds them from an event log would satisfy every fixture and
+/// then, after a crash, either forget a grant — inconvenient — or forget a
+/// **revocation**, which silently restores authority the owner withdrew.
+#[test]
+fn a_grant_and_its_revocation_both_survive_sigkill() {
+    let directory = tempfile::tempdir().expect("temp dir");
+    let owner = session_config(directory.path(), "owner", "owner");
+    let agent = session_config(directory.path(), "agent", "agent-1");
+
+    let mut provider = Provider::start(directory.path(), Some(&owner));
+    provider.negotiate(CORE_AND_GRANTS);
+    for (n, id) in [(1, "g-live"), (2, "g-dead")] {
+        let issued = provider.call(&command(
+            n,
+            &format!(
+                r#"{{"operation":"core.grant.issue","message_id":"m-{id}","command_id":"issue-{id}","dedupe_generation":1,"subject":{{"kind":"core.grant","id":"{id}"}},"preconditions":[{{"subject":{{"kind":"core.grant","id":"{id}"}},"revision":0}}],"requires":[],"payload":{{"holder":"agent-1","audience":"conformance-provider","rights":["core-test.read","core-test.write"],"resources":[{{"kind":"core-test.subject","id_prefix":"s-"}}],"delegation":{{"allowed":false,"max_depth":0}}}}}}"#
+            ),
+        ));
+        assert!(issued.contains("\"replay\":false"), "issued {id}: {issued}");
+    }
+    let revoked = provider.call(&command(
+        3,
+        r#"{"operation":"core.grant.revoke","message_id":"m-rev","command_id":"revoke-g-dead","dedupe_generation":1,"subject":{"kind":"core.grant","id":"g-dead"},"preconditions":[{"subject":{"kind":"core.grant","id":"g-dead"},"revision":1}],"requires":[],"payload":{}}"#,
+    ));
+    assert!(
+        revoked.contains(r#""revoked":["g-dead"]"#),
+        "revoked: {revoked}"
+    );
+
+    // The process dies where it stands, with no drain and no flush.
+    provider.kill();
+
+    let mut provider = Provider::start(directory.path(), Some(&agent));
+    provider.negotiate(CORE_AND_GRANTS);
+    let under_live = provider.call(&command(
+        4,
+        r#"{"operation":"core-test.subject.put","message_id":"m-a","command_id":"cmd-a","dedupe_generation":1,"subject":{"kind":"core-test.subject","id":"s-1"},"preconditions":[{"subject":{"kind":"core-test.subject","id":"s-1"},"revision":0}],"authority_epoch":0,"requires":[],"grant":"g-live","payload":{"value":"a"}}"#,
+    ));
+    assert!(
+        under_live.contains("\"replay\":false"),
+        "a grant issued before the kill still authorizes after it: {under_live}"
+    );
+    let under_dead = provider.call(&command(
+        5,
+        r#"{"operation":"core-test.subject.put","message_id":"m-b","command_id":"cmd-b","dedupe_generation":1,"subject":{"kind":"core-test.subject","id":"s-2"},"preconditions":[{"subject":{"kind":"core-test.subject","id":"s-2"},"revision":0}],"authority_epoch":0,"requires":[],"grant":"g-dead","payload":{"value":"b"}}"#,
+    ));
+    assert!(
+        under_dead.contains(r#""reason":"revoked""#),
+        "a grant revoked before the kill is still refused after it: {under_dead}"
     );
     provider.stop();
 }

@@ -11,13 +11,14 @@ use cbr_encoding::Value;
 use crate::config::Config;
 use crate::envelope::{self, Command, Query};
 use crate::errors::ProtocolError;
+use crate::grants::{self, Grant};
 use crate::store::{Store, SubjectKey};
 
 /// Profiles this build serves, with the majors and features it implements.
 /// A profile is listed here only when it is implemented: over-claiming would
 /// make negotiation succeed and then fail at the first operation.
 const SERVED: &[(&str, i64, &[&str], &[&str])] = &[
-    ("core", 1, &["core.events"], &[]),
+    ("core", 1, &["core.events", "core.grants"], &[]),
     ("core-test", 1, &[], &["core"]),
 ];
 
@@ -61,15 +62,107 @@ const PRE_NEGOTIATION: [&str; 4] = [
 /// authorization at step 6, **before** any check that depends on whether a
 /// subject exists, so an unauthorised principal cannot learn that a subject is
 /// absent (CORE-12).
-const UNPROTECTED: [&str; 4] = [
+///
+/// `core.events.unsubscribe` is here because it removes only the session's own
+/// subscriptions, so there is nothing to authorize that the session does not
+/// already hold. `core.capabilities` joins it when that feature lands.
+const UNPROTECTED: [&str; 5] = [
     "core.describe",
     "core.negotiate",
     "core.feature_dependencies",
     "core.authenticate",
+    "core.events.unsubscribe",
 ];
+
+/// Every operation that is a command rather than a query. A command carries a
+/// command identity, so its step 6 runs after deduplication; a query has none,
+/// so its step 6 runs first.
+const COMMANDS: [&str; 4] = [
+    "core-test.subject.put",
+    "core-test.authority.claim",
+    "core.grant.issue",
+    "core.grant.revoke",
+];
+
+/// What step 6 means for one command (CORE section 10).
+enum Step6 {
+    /// An operation a profile protects: these rights over these subjects,
+    /// evaluated under CORE section 15.5.
+    Rights(Vec<grants::Need>),
+    /// `core.grant.issue`, which has its own rules (CORE section 15.3).
+    Issue(Box<Grant>),
+    /// `core.grant.revoke`, likewise.
+    Revoke,
+}
+
+/// A subject key from an envelope's subject object.
+fn key_of(subject: &Value) -> SubjectKey {
+    SubjectKey {
+        kind: subject
+            .get("kind")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .into(),
+        id: subject
+            .get("id")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .into(),
+    }
+}
+
+/// The `core.grant.revoked` event: one per revoked grant, payload fixed by
+/// CORE section 16.2.
+fn revoked_event(caused_by: &[String]) -> crate::store::NewEvent {
+    crate::store::NewEvent {
+        event_type: "core.grant.revoked".into(),
+        caused_by: caused_by.to_vec(),
+        payload: Box::new(|_| {
+            Value::Object(vec![("state".into(), Value::String("revoked".into()))])
+        }),
+    }
+}
+
+/// The response to an accepted command: the acknowledgment, the outcome and
+/// `replay: false` (CORE section 11).
+fn accepted(
+    command_id: &str,
+    digest: &str,
+    operation_ref: &str,
+    subject: &Value,
+    revision: i64,
+    outcome: Value,
+) -> Value {
+    Value::Object(vec![
+        (
+            "acknowledgment".into(),
+            Value::Object(vec![
+                ("command_id".into(), Value::String(command_id.to_string())),
+                ("command_digest".into(), Value::String(digest.to_string())),
+                (
+                    "operation_ref".into(),
+                    Value::String(operation_ref.to_string()),
+                ),
+                ("subject".into(), subject.clone()),
+                ("revision".into(), Value::Int(revision)),
+                ("effect_refs".into(), Value::Array(vec![])),
+            ]),
+        ),
+        ("outcome".into(), outcome),
+        ("replay".into(), Value::Bool(false)),
+    ])
+}
+
+/// The `core.grant.*` operations are protected, but by their own rules rather
+/// than by section 15.5's, and a `grant` field on them is validated and not
+/// evaluated. They are therefore neither "unprotected" nor ordinary.
+fn is_grant_operation(operation: &str) -> bool {
+    operation.starts_with("core.grant.")
+}
 
 pub struct Provider {
     pub config: Config,
+    clock: crate::clock::Clock,
     store: Store,
     negotiated: Option<Vec<(String, i64, Vec<String>)>>,
     dedupe_current: i64,
@@ -85,6 +178,7 @@ impl Provider {
     /// generation for this process.
     pub fn open(
         config: Config,
+        clock: crate::clock::Clock,
         data_dir: &std::path::Path,
     ) -> Result<Self, crate::store::StoreError> {
         let mut store = Store::open(data_dir)?;
@@ -96,12 +190,46 @@ impl Provider {
         if let Some(retain) = config.events_retain_last {
             store.retain_last_events(retain)?;
         }
+        // The capability snapshot is reconciled at launch, after any epoch
+        // change, so its change event lands in the epoch the process serves.
+        //
+        // Only the snapshot and its change event live here, and only because
+        // an in-scope fixture needs them: event recording is not gated on
+        // negotiation (CORE section 16.3), so
+        // `core.events.visibility-follows-direct-read-authority` expects the
+        // `core.capabilities.changed` event a restart with a changed predicate
+        // records, while declaring only `core.events` and `core.grants`. The
+        // `core.capabilities` query and the `capability_unavailable` refusal
+        // are the negotiated feature, and are not claimed.
+        if config.mode == crate::config::Mode::Conformance {
+            let status = config
+                .capabilities
+                .iter()
+                .find(|(name, _)| name == "core-test.writes")
+                .map_or("supported", |(_, status)| status.as_str());
+            let predicates = Value::Array(vec![Value::Object(vec![
+                ("name".into(), Value::String("core-test.writes".into())),
+                ("status".into(), Value::String(status.into())),
+                (
+                    "evidence".into(),
+                    // In a conformance launch this predicate is whatever the
+                    // launch configuration says, defaulted or explicit, so the
+                    // source names that rather than claiming a probe.
+                    Value::Object(vec![(
+                        "source".into(),
+                        Value::String("launch-configuration".into()),
+                    )]),
+                ),
+            ])]);
+            store.reconcile_capabilities(&config.provider_id, &predicates, &clock.now())?;
+        }
         let (current, oldest) = store.start_generation(
             config.dedupe_advance_on_start,
             config.dedupe_retain_generations,
         )?;
         Ok(Self {
             config,
+            clock,
             store,
             negotiated: None,
             dedupe_current: current,
@@ -183,6 +311,9 @@ impl Provider {
                 // `method_not_found` for a known operation, hiding the
                 // method/operation mismatch that step 2 owns.
                 | "core.authenticate"
+                | "core.grant.issue"
+                | "core.grant.revoke"
+                | "core.grant.get"
                 | "core.events.read"
                 | "core.events.subscribe"
                 | "core.events.unsubscribe"
@@ -536,97 +667,513 @@ impl Provider {
             }
         }
 
-        // Step 2: limits, then the method/operation agreement, then shape.
+        // Step 2: limits, then the envelope's shape, then step 3's
+        // `requires`. All three are decided before step 6, so a malformed
+        // envelope is `invalid_envelope` whoever sent it.
         envelope::check_limits(params, &self.config.limits)?;
 
-        // Step 6: authorization, for every protected operation including
-        // queries. This runs before the operation looks anything up, because
-        // CORE section 15.5 requires an unauthorised principal to get the same
-        // `permission_denied` whether or not the subject exists. Doing it
-        // inside each operation would leak existence through `not_found` on the
-        // query path, which is how `core.grants.authorization-without-grants-
-        // feature` catches it. This build negotiates no `core.grants`, so a
-        // session cannot name a grant and only an authority principal is
-        // authorized.
-        if !UNPROTECTED.contains(&method) && !self.config.is_authority(&self.config.principal) {
-            return Err(ProtocolError::permission_denied("grant_required"));
+        // The `grant` envelope field exists only for a session that negotiated
+        // `core.grants` (CORE section 15.5). Accepting it from a session that
+        // did not would let a caller believe it was acting under a grant while
+        // the provider ignored the field entirely.
+        if params.get("grant").is_some() && !self.selected_feature("core.grants") {
+            return Err(ProtocolError::invalid_envelope(
+                "/grant",
+                "core.grants was not negotiated",
+            ));
         }
 
+        if COMMANDS.contains(&method) {
+            let command = envelope::parse_command(params)?;
+            self.check_method_matches(method, &command.operation)?;
+            self.check_requires(&command.requires)?;
+            // Step 6 for a command runs inside `admit_command`, **after**
+            // deduplication: CORE section 15.5 has a replay skip step 6, so a
+            // holder replaying its own bound command still receives its stored
+            // result once the grant has been revoked.
+            return match method {
+                "core-test.subject.put" => self.subject_put(params, command),
+                "core-test.authority.claim" => self.authority_claim(params, command),
+                "core.grant.issue" => self.grant_issue(params, command),
+                "core.grant.revoke" => self.grant_revoke(params, command),
+                _ => Err(ProtocolError::method_not_found(method)),
+            };
+        }
+
+        let query = envelope::parse_query(params)?;
+        self.check_method_matches(method, &query.operation)?;
+        // `already_negotiated` is decided after steps 1 to 3.
+        self.check_requires(&query.requires)?;
+
+        // Step 6 for a query, which has no command identity and so nothing to
+        // deduplicate first. It runs before the operation looks anything up,
+        // because CORE section 15.5 requires an unauthorised principal to get
+        // the same `permission_denied` whether or not the subject exists.
+        // Doing it inside each operation would leak existence through
+        // `not_found`, which is how `core.grants.existence-not-leaked` and
+        // `core.grants.authorization-without-grants-feature` catch it.
+        let in_force = if UNPROTECTED.contains(&method) || is_grant_operation(method) {
+            None
+        } else {
+            let needs = self.query_needs(&query)?;
+            self.authorize(query.grant.as_deref(), &needs)?
+        };
+
         match method {
-            "core.describe" => {
-                let query = envelope::parse_query(params)?;
-                self.check_method_matches(method, &query.operation)?;
-                self.check_requires(&query.requires)?;
-                Ok(self.describe())
-            }
-            "core.authenticate" => {
-                let query = envelope::parse_query(params)?;
-                self.check_method_matches(method, &query.operation)?;
-                self.check_requires(&query.requires)?;
-                // CORE section 18: the stdio binding assigns the principal
-                // through the launch configuration, so every session already
-                // has one from its first frame, before and after negotiation.
-                // The socket form, where a session starts unauthenticated,
-                // arrives with that binding.
-                Err(ProtocolError::already_authenticated())
-            }
-            "core.feature_dependencies" => {
-                let query = envelope::parse_query(params)?;
-                self.check_method_matches(method, &query.operation)?;
-                self.check_requires(&query.requires)?;
-                Ok(self.feature_dependencies())
-            }
-            "core.negotiate" => {
-                let query = envelope::parse_query(params)?;
-                self.check_method_matches(method, &query.operation)?;
-                // `already_negotiated` is decided after steps 1 to 3.
-                self.check_requires(&query.requires)?;
-                self.negotiate(&query.payload)
-            }
-            "core-test.subject.applied_count" => {
-                let query = envelope::parse_query(params)?;
-                self.check_method_matches(method, &query.operation)?;
-                self.check_requires(&query.requires)?;
-                self.applied_count(&query)
-            }
-            "core.events.subscribe" => {
-                let query = envelope::parse_query(params)?;
-                self.check_method_matches(method, &query.operation)?;
-                self.check_requires(&query.requires)?;
-                self.events_subscribe(&query)
-            }
-            "core.events.unsubscribe" => {
-                let query = envelope::parse_query(params)?;
-                self.check_method_matches(method, &query.operation)?;
-                self.check_requires(&query.requires)?;
-                self.events_unsubscribe(&query)
-            }
-            "core.events.read" => {
-                let query = envelope::parse_query(params)?;
-                self.check_method_matches(method, &query.operation)?;
-                self.check_requires(&query.requires)?;
-                self.events_read(&query)
-            }
-            "core-test.subject.get" => {
-                let query = envelope::parse_query(params)?;
-                self.check_method_matches(method, &query.operation)?;
-                self.check_requires(&query.requires)?;
-                self.subject_get(&query)
-            }
-            "core-test.subject.put" => {
-                let command = envelope::parse_command(params)?;
-                self.check_method_matches(method, &command.operation)?;
-                self.check_requires(&command.requires)?;
-                self.subject_put(params, command)
-            }
-            "core-test.authority.claim" => {
-                let command = envelope::parse_command(params)?;
-                self.check_method_matches(method, &command.operation)?;
-                self.check_requires(&command.requires)?;
-                self.authority_claim(params, command)
-            }
+            "core.describe" => Ok(self.describe()),
+            // CORE section 18: the stdio binding assigns the principal through
+            // the launch configuration, so every session already has one from
+            // its first frame, before and after negotiation. The socket form,
+            // where a session starts unauthenticated, arrives with that
+            // binding.
+            "core.authenticate" => Err(ProtocolError::already_authenticated()),
+            "core.feature_dependencies" => Ok(self.feature_dependencies()),
+            "core.negotiate" => self.negotiate(&query.payload),
+            "core-test.subject.applied_count" => self.applied_count(&query),
+            "core.events.subscribe" => self.events_subscribe(&query),
+            "core.events.unsubscribe" => self.events_unsubscribe(&query),
+            "core.events.read" => self.events_read(&query, in_force.as_ref()),
+            "core-test.subject.get" => self.subject_get(&query),
+            "core.grant.get" => self.grant_get(&query),
             _ => Err(ProtocolError::method_not_found(method)),
         }
+    }
+
+    // ---- grants (CORE section 15) -----------------------------------------
+
+    /// The grant record stored under this id.
+    ///
+    /// A grant is a subject like any other, so its record lives in the subject
+    /// row and inherits revisions, the command transaction and durability for
+    /// free. A record that will not parse is this provider's own corruption,
+    /// never a caller's mistake, so it is `internal_error` and not
+    /// `invalid_envelope`.
+    fn grant(&self, id: &str) -> Result<Option<Grant>, ProtocolError> {
+        let Some(state) = self.store.subject(&Grant::key(id))? else {
+            return Ok(None);
+        };
+        let value = cbr_encoding::parse(state.value.as_bytes())
+            .map_err(|_| ProtocolError::new_internal_error())?;
+        match Grant::from_value(&value) {
+            Some(grant) => Ok(Some(grant)),
+            None => Err(ProtocolError::new_internal_error()),
+        }
+    }
+
+    /// Every grant delegated from `root`, directly or transitively, that is
+    /// still active, in a stable breadth-first order.
+    ///
+    /// The walk passes **through** revoked grants rather than stopping at
+    /// them. Today that changes nothing, because a revoked grant cannot gain a
+    /// child and its children were revoked with it; but stopping would make
+    /// the cascade depend on that invariant holding forever, and a cascade that
+    /// silently leaves a grant authorizing is the failure this exists to rule
+    /// out.
+    fn active_descendants(&self, root: &str) -> Result<Vec<Grant>, ProtocolError> {
+        let mut all = Vec::new();
+        for (_, value) in self.store.subjects_of_kind(grants::KIND)? {
+            let parsed = cbr_encoding::parse(value.as_bytes())
+                .ok()
+                .and_then(|value| Grant::from_value(&value))
+                .ok_or_else(ProtocolError::new_internal_error)?;
+            all.push(parsed);
+        }
+        let mut frontier = vec![root.to_string()];
+        let mut seen = std::collections::HashSet::from([root.to_string()]);
+        let mut active = Vec::new();
+        while !frontier.is_empty() {
+            let mut next = Vec::new();
+            for grant in &all {
+                if let Some(parent) = &grant.parent
+                    && frontier.contains(parent)
+                    && seen.insert(grant.id.clone())
+                {
+                    next.push(grant.id.clone());
+                    if !grant.revoked {
+                        active.push(grant.clone());
+                    }
+                }
+            }
+            frontier = next;
+        }
+        Ok(active)
+    }
+
+    /// The current epoch of every authority scope this provider tracks.
+    fn authority_context(&self) -> Result<grants::Context, ProtocolError> {
+        let mut epochs = Vec::new();
+        for scope in grants::KNOWN_SCOPES {
+            epochs.push((scope.to_string(), self.store.epoch(scope)?));
+        }
+        Ok(grants::Context {
+            now: self.clock.now(),
+            epochs,
+        })
+    }
+
+    /// Step 6 for an operation a profile protects (CORE section 15.5).
+    /// Returns the grant in force, or `None` when the caller acted as an
+    /// authority principal without naming one.
+    fn authorize(
+        &self,
+        named: Option<&str>,
+        needs: &[grants::Need],
+    ) -> Result<Option<Grant>, ProtocolError> {
+        let Some(id) = named else {
+            return if self.config.is_authority(&self.config.principal) {
+                Ok(None)
+            } else {
+                Err(grants::Denial::GrantRequired.into())
+            };
+        };
+        // The holder check is part of finding the grant, not a property read
+        // from one that was found: CORE section 15.5 makes a grant held by
+        // someone else indistinguishable from one that never existed, so a
+        // caller cannot probe for grant ids or learn that one was revoked.
+        let grant = self
+            .grant(id)?
+            .filter(|grant| grant.holder == self.config.principal)
+            .ok_or(grants::Denial::GrantNotFound)?;
+        grant.usable(&self.authority_context()?)?;
+        grant.permits(needs)?;
+        Ok(Some(grant))
+    }
+
+    /// Whether a subscription may still deliver, and the grant in force if it
+    /// named one. `None` means it may not, and the subscription ends.
+    ///
+    /// This mirrors `authorize`, but takes the principal rather than reading
+    /// the session's, because it is asked on behalf of a subscription created
+    /// earlier rather than of the frame being processed.
+    fn events_authorization(&self, principal: &str, named: Option<&str>) -> Option<Option<Grant>> {
+        let Some(id) = named else {
+            return self.config.is_authority(principal).then_some(None);
+        };
+        let grant = self
+            .grant(id)
+            .ok()
+            .flatten()
+            .filter(|grant| grant.holder == principal)?;
+        grant.usable(&self.authority_context().ok()?).ok()?;
+        grant.permits(&[("core.events.read", None)]).ok()?;
+        Some(Some(grant))
+    }
+
+    /// Whether the caller may read a subject directly, which is what decides
+    /// disclosure in an error: a current revision in `precondition_failed` and
+    /// a current epoch in `stale_authority_epoch` are shown only to a principal
+    /// that could have read the subject anyway (CORE sections 15.5 and 16.6).
+    fn may_read(&self, in_force: Option<&Grant>, key: &SubjectKey) -> bool {
+        let Some(grant) = in_force else {
+            // Only an authority principal reaches an operation without a grant
+            // in force, and an authority sees every subject.
+            return true;
+        };
+        match key.kind.as_str() {
+            grants::KIND => self.grant(&key.id).ok().flatten().is_some_and(|other| {
+                other.holder == self.config.principal || other.issuer == self.config.principal
+            }),
+            kind if kind.starts_with("core-test.") => grant.may_read(key, "core-test.read"),
+            // No profile defines a read right for capabilities, so resources
+            // alone decide (CORE section 16.6).
+            "core.capabilities" => grant.covers(key),
+            // A kind no profile defines is never readable under a grant.
+            _ => false,
+        }
+    }
+
+    /// The rights a query needs, and the subjects it needs them over.
+    fn query_needs(&self, query: &Query) -> Result<Vec<grants::Need>, ProtocolError> {
+        Ok(match query.operation.as_str() {
+            "core-test.subject.get" | "core-test.subject.applied_count" => {
+                vec![("core-test.read", Some(self.subject_key(&query.payload)?))]
+            }
+            // CORE section 16.6: reading or subscribing needs the right
+            // itself. Which events it then shows is decided per subject as
+            // they are read, so there is no subject to name here.
+            "core.events.read" | "core.events.subscribe" => vec![("core.events.read", None)],
+            _ => Vec::new(),
+        })
+    }
+
+    /// The rights a command needs, and the subjects it needs them over
+    /// (CORE section 13).
+    fn command_needs(command: &Command) -> Vec<grants::Need> {
+        let primary = key_of(&command.subject);
+        match command.operation.as_str() {
+            "core-test.subject.put" => {
+                let mut needs: Vec<grants::Need> = vec![("core-test.write", Some(primary.clone()))];
+                // Read authority on every **other** subject the preconditions
+                // name. The primary subject's own precondition rides on the
+                // write right, which is why a write-only grant can still
+                // create a subject — and why `core.grants.precondition-
+                // current-needs-read` can reach a precondition failure at all.
+                for (subject, _) in &command.preconditions {
+                    let key = key_of(subject);
+                    if key != primary {
+                        needs.push(("core-test.read", Some(key)));
+                    }
+                }
+                needs
+            }
+            "core-test.authority.claim" => vec![("core-test.claim", Some(primary))],
+            _ => Vec::new(),
+        }
+    }
+
+    /// Step 6 for `core.grant.issue` (CORE section 15.3), in the order that
+    /// section fixes: the three validity checks first — audience, expiry, then
+    /// binding scope — and only then the issuing rules. So a non-authority
+    /// issuing a malformed grant learns that it was malformed, not that it
+    /// lacked authority, and the two checks cannot be swapped without
+    /// `core.grants.issue-validity-check-order` failing at a named step.
+    fn authorize_issue(&self, grant: &Grant) -> Result<Option<Grant>, ProtocolError> {
+        // One instant for the whole decision, so the expiry check below and a
+        // parent's own expiry are judged against the same time.
+        let context = self.authority_context()?;
+        if grant.audience != self.config.provider_id {
+            return Err(ProtocolError::invalid_envelope(
+                "/payload/audience",
+                "not this provider",
+            ));
+        }
+        // "Not after the provider's current time": an expiry equal to now is
+        // already expired, so issuing it would mint a grant that never worked.
+        if let Some(expiry) = &grant.expires_at
+            && expiry.as_str() <= context.now.as_str()
+        {
+            return Err(ProtocolError::invalid_envelope(
+                "/payload/expires_at",
+                "not after the provider's current time",
+            ));
+        }
+        if let Some(binding) = &grant.authority_binding
+            && !grants::KNOWN_SCOPES.contains(&binding.scope.as_str())
+        {
+            return Err(ProtocolError::invalid_envelope(
+                "/payload/authority_binding/scope",
+                "not an authority scope this provider tracks",
+            ));
+        }
+
+        let Some(parent_id) = &grant.parent else {
+            // A grant without a parent may be issued only by an authority.
+            if !self.config.is_authority(&self.config.principal) {
+                return Err(grants::Denial::NotAuthority.into());
+            }
+            return Ok(None);
+        };
+        // A delegated grant may be issued only by the parent's holder. The
+        // parent is found the way `authorize` finds a grant, so a parent held
+        // by someone else is `grant_not_found`, not a hint that it exists.
+        let parent = self
+            .grant(parent_id)?
+            .filter(|parent| parent.holder == self.config.principal)
+            .ok_or(grants::Denial::GrantNotFound)?;
+        // Then usable — active, unexpired, bound to a current epoch — before
+        // its delegation terms are read at all, so a revoked parent says
+        // `revoked` rather than `delegation_exceeded`.
+        parent.usable(&context)?;
+        parent.may_delegate_to(grant)?;
+        Ok(None)
+    }
+
+    /// Step 6 for `core.grant.revoke` (CORE section 15.3): the issuer or an
+    /// authority principal, decided **before** whether the grant is already
+    /// revoked, so a stranger learns nothing about it either way.
+    fn authorize_revoke(&self, command: &Command) -> Result<Option<Grant>, ProtocolError> {
+        let existing = self.grant(&key_of(&command.subject).id)?;
+        let permitted = self.config.is_authority(&self.config.principal)
+            || existing
+                .as_ref()
+                .is_some_and(|grant| grant.issuer == self.config.principal);
+        if !permitted {
+            return Err(grants::Denial::NotAuthority.into());
+        }
+        if existing.is_some_and(|grant| grant.revoked) {
+            return Err(grants::Denial::Revoked.into());
+        }
+        Ok(None)
+    }
+
+    /// `core.grant.get`: visible to its holder, its issuer and authority
+    /// principals; anyone else gets `not_found` (CORE section 15.3).
+    fn grant_get(&self, query: &Query) -> Result<Value, ProtocolError> {
+        let Some(id) = query.payload.get("grant").and_then(Value::as_str) else {
+            return Err(ProtocolError::invalid_envelope(
+                "/payload/grant",
+                "not a grant id",
+            ));
+        };
+        let Some(grant) = self.grant(id)? else {
+            return Err(ProtocolError::not_found());
+        };
+        let principal = &self.config.principal;
+        if grant.holder != *principal
+            && grant.issuer != *principal
+            && !self.config.is_authority(principal)
+        {
+            return Err(ProtocolError::not_found());
+        }
+        Ok(Value::Object(vec![
+            (
+                "revision".into(),
+                Value::Int(self.store.revision(&Grant::key(id))?),
+            ),
+            ("grant".into(), grant.to_value()),
+        ]))
+    }
+
+    fn grant_issue(&mut self, params: &Value, command: Command) -> Result<Value, ProtocolError> {
+        let id = self.grant_subject(&command, 0)?;
+        let issuer = self.config.principal.clone();
+        // Step 2: the payload's shape. Nothing here reads the clock, the store
+        // or the principal; the checks that do run at step 6, so an
+        // already-bound issue still replays past them.
+        let grant = grants::parse_issue(&id, &issuer, &command.payload)?;
+        if let Some(stored) = self.admit_command(
+            params,
+            &command,
+            "core-test",
+            false,
+            Step6::Issue(Box::new(grant.clone())),
+        )? {
+            return Ok(stored);
+        }
+
+        let record = grant.to_value();
+        let value = String::from_utf8(cbr_encoding::to_canonical(&record))
+            .expect("canonical form is UTF-8");
+        let key = Grant::key(&id);
+        let principal = self.config.principal.clone();
+        let digest = command.command_digest.clone();
+        let subject = command.subject.clone();
+        let command_id = command.command_id.clone();
+        let event_record = record.clone();
+        let recorded_at = self.clock.now();
+        let result = self.store.commit_command(
+            crate::store::Commit {
+                key: &key,
+                value: &value,
+                principal: &principal,
+                command_id: &command_id,
+                digest: &digest,
+                generation: command.dedupe_generation,
+                recorded_at: &recorded_at,
+                also: Vec::new(),
+                event: Some(crate::store::NewEvent {
+                    event_type: "core.grant.issued".into(),
+                    caused_by: command.caused_by.clone(),
+                    payload: Box::new(move |_| Value::Object(vec![("grant".into(), event_record)])),
+                }),
+            },
+            |revision, operation_ref| {
+                accepted(
+                    &command_id,
+                    &digest,
+                    operation_ref,
+                    &subject,
+                    revision,
+                    Value::Object(vec![("grant".into(), record.clone())]),
+                )
+            },
+        )?;
+        Ok(result)
+    }
+
+    fn grant_revoke(&mut self, params: &Value, command: Command) -> Result<Value, ProtocolError> {
+        let id = self.grant_subject(&command, 1)?;
+        if let Some(stored) =
+            self.admit_command(params, &command, "core-test", false, Step6::Revoke)?
+        {
+            return Ok(stored);
+        }
+
+        // Step 7's precondition, on a revision of at least 1, has already
+        // refused a grant that does not exist.
+        let Some(mut grant) = self.grant(&id)? else {
+            return Err(ProtocolError::new_internal_error());
+        };
+        grant.revoked = true;
+        let value = String::from_utf8(cbr_encoding::to_canonical(&grant.to_value()))
+            .expect("canonical form is UTF-8");
+        let key = Grant::key(&id);
+        let principal = self.config.principal.clone();
+        let digest = command.command_digest.clone();
+        let subject = command.subject.clone();
+        let command_id = command.command_id.clone();
+
+        // Revocation cascades to every grant delegated from this one, directly
+        // or transitively, in the same transaction: a crash cannot leave a
+        // parent revoked and a child still authorizing. Descendants already
+        // revoked are neither listed nor changed (CORE section 15.3).
+        let descendants = self.active_descendants(&id)?;
+        let mut revoked = vec![Value::String(id.clone())];
+        let mut also = Vec::new();
+        for mut child in descendants {
+            revoked.push(Value::String(child.id.clone()));
+            child.revoked = true;
+            also.push(crate::store::Change {
+                key: Grant::key(&child.id),
+                value: String::from_utf8(cbr_encoding::to_canonical(&child.to_value()))
+                    .expect("canonical form is UTF-8"),
+                event: revoked_event(&command.caused_by),
+            });
+        }
+        let revoked = Value::Array(revoked);
+        let recorded_at = self.clock.now();
+        let result = self.store.commit_command(
+            crate::store::Commit {
+                key: &key,
+                value: &value,
+                principal: &principal,
+                command_id: &command_id,
+                digest: &digest,
+                generation: command.dedupe_generation,
+                recorded_at: &recorded_at,
+                also,
+                event: Some(revoked_event(&command.caused_by)),
+            },
+            |revision, operation_ref| {
+                accepted(
+                    &command_id,
+                    &digest,
+                    operation_ref,
+                    &subject,
+                    revision,
+                    Value::Object(vec![("revoked".into(), revoked.clone())]),
+                )
+            },
+        )?;
+        Ok(result)
+    }
+
+    /// The grant id a `core.grant.*` command names, with the single
+    /// precondition CORE section 15.3 requires: revision 0 for an issue and at
+    /// least 1 for a revoke. Anything else is `invalid_envelope` at step 2,
+    /// before the command is bound.
+    fn grant_subject(&self, command: &Command, expected: i64) -> Result<String, ProtocolError> {
+        let key = key_of(&command.subject);
+        if key.kind != grants::KIND {
+            return Err(ProtocolError::invalid_envelope(
+                "/subject/kind",
+                "not core.grant",
+            ));
+        }
+        let matching = command.preconditions.len() == 1
+            && key_of(&command.preconditions[0].0) == key
+            && if expected == 0 {
+                command.preconditions[0].1 == 0
+            } else {
+                command.preconditions[0].1 >= 1
+            };
+        if !matching {
+            return Err(ProtocolError::invalid_envelope(
+                "/preconditions",
+                "exactly one precondition on the grant subject is required",
+            ));
+        }
+        Ok(key.id)
     }
 
     fn check_method_matches(&self, method: &str, operation: &str) -> Result<(), ProtocolError> {
@@ -759,6 +1306,7 @@ impl Provider {
             // delivery, so a subscription cannot outlive the authority that
             // created it.
             principal: self.config.principal.clone(),
+            grant: query.grant.clone(),
             ended: false,
         });
         Ok(Value::Object(vec![
@@ -809,22 +1357,30 @@ impl Provider {
                 if subscription.ended {
                     break;
                 }
-                // Authorization is re-checked before each delivery, not only at
-                // subscribe: a subscription must not outlive the authority it
-                // was created under.
-                if !self.config.is_authority(&subscription.principal) {
+                // Authorization is re-checked before **each** delivery, not
+                // only at subscribe: a subscription must not outlive the
+                // authority it was created under, and the grant it named can
+                // be revoked, expire, or lose its authority epoch between two
+                // notifications (CORE section 16.6).
+                let Some(in_force) = self
+                    .events_authorization(&subscription.principal, subscription.grant.as_deref())
+                else {
                     let cursor = subscription.cursor;
                     let id = subscription.id.clone();
                     self.subscriptions[index].ended = true;
                     frames.push(self.ending_notification(&id, cursor, "authorization_lost"));
                     break;
-                }
+                };
                 let (id, cursor, kinds) = (
                     subscription.id.clone(),
                     subscription.cursor,
                     subscription.kinds.clone(),
                 );
-                let Ok(read) = self.store.read_events(cursor, 1000, &kinds, budget) else {
+                let visible = |key: &SubjectKey| self.may_read(in_force.as_ref(), key);
+                let Ok(read) = self
+                    .store
+                    .read_events(cursor, 1000, &kinds, budget, &visible)
+                else {
                     break;
                 };
                 if read.first_item_too_large {
@@ -893,7 +1449,7 @@ impl Provider {
         }
     }
 
-    fn events_read(&self, query: &Query) -> Result<Value, ProtocolError> {
+    fn events_read(&self, query: &Query, in_force: Option<&Grant>) -> Result<Value, ProtocolError> {
         if !self.selected_feature("core.events") {
             return Err(ProtocolError::unsupported_required_feature_message(
                 Value::Array(vec![Value::String("core.events".into())]),
@@ -950,9 +1506,10 @@ impl Provider {
             }
         };
 
+        let visible = |key: &SubjectKey| self.may_read(in_force, key);
         let read = self
             .store
-            .read_events(start, limit, &kinds, self.receive_budget())?;
+            .read_events(start, limit, &kinds, self.receive_budget(), &visible)?;
         if read.first_item_too_large {
             // No honest partial answer exists: the caller cannot be handed a
             // view that silently omits the item it asked for.
@@ -1032,6 +1589,7 @@ impl Provider {
         command: &Command,
         scope: &str,
         epoch_checked: bool,
+        step6: Step6,
     ) -> Result<Option<Value>, ProtocolError> {
         // Step 4: digest algorithm, then the recomputed digest.
         match cbr_encoding::parse_digest(&command.command_digest) {
@@ -1091,9 +1649,17 @@ impl Provider {
             ));
         }
 
-        // Step 6 already ran in `handle`, before this operation was reached, so
-        // that an unauthorised principal cannot tell an existing subject from
-        // an absent one.
+        // Step 6: authorization. It sits **between** deduplication and every
+        // check that depends on whether a subject exists. Both sides matter:
+        // before it, a replay of a bound command returns its stored result
+        // even after the grant was revoked (CORE section 15.5); after it, an
+        // unauthorised principal cannot tell an existing subject from an
+        // absent one, because the first lookup is step 7's preconditions.
+        let in_force = match step6 {
+            Step6::Rights(needs) => self.authorize(command.grant.as_deref(), &needs)?,
+            Step6::Issue(grant) => self.authorize_issue(&grant)?,
+            Step6::Revoke => self.authorize_revoke(command)?,
+        };
 
         // Step 7: capabilities, then the authority epoch, then preconditions.
         //
@@ -1125,7 +1691,13 @@ impl Provider {
                 ));
             };
             if epoch < current_epoch {
-                return Err(ProtocolError::new_stale_epoch(current_epoch));
+                // The current epoch is disclosed only to a principal that
+                // could read the authority subject anyway; to anyone else the
+                // refusal names no number (CORE section 15.5).
+                let readable = self.may_read(in_force.as_ref(), &Store::authority_key(scope));
+                return Err(ProtocolError::new_stale_epoch(
+                    readable.then_some(current_epoch),
+                ));
             }
             if epoch > current_epoch {
                 return Err(ProtocolError::new_unknown_epoch());
@@ -1147,25 +1719,20 @@ impl Provider {
 
         let mut failed = Vec::new();
         for (subject, expected_revision) in &command.preconditions {
-            let key = SubjectKey {
-                kind: subject
-                    .get("kind")
-                    .and_then(Value::as_str)
-                    .unwrap_or_default()
-                    .into(),
-                id: subject
-                    .get("id")
-                    .and_then(Value::as_str)
-                    .unwrap_or_default()
-                    .into(),
-            };
+            let key = key_of(subject);
             let current = self.store.revision(&key)?;
             if current != *expected_revision {
-                failed.push(Value::Object(vec![
+                let mut entry = vec![
                     ("subject".into(), subject.clone()),
                     ("expected".into(), Value::Int(*expected_revision)),
-                    ("current".into(), Value::Int(current)),
-                ]));
+                ];
+                // Same rule as the epoch above: a current revision is a fact
+                // about the subject, so it is shown only to a principal that
+                // may read it.
+                if self.may_read(in_force.as_ref(), &key) {
+                    entry.push(("current".into(), Value::Int(current)));
+                }
+                failed.push(Value::Object(entry));
             }
         }
         if !failed.is_empty() {
@@ -1183,7 +1750,13 @@ impl Provider {
         params: &Value,
         command: Command,
     ) -> Result<Value, ProtocolError> {
-        if let Some(stored) = self.admit_command(params, &command, "core-test", false)? {
+        if let Some(stored) = self.admit_command(
+            params,
+            &command,
+            "core-test",
+            false,
+            Step6::Rights(Self::command_needs(&command)),
+        )? {
             return Ok(stored);
         }
         // The epoch and the authority subject's revision are the same number by
@@ -1196,6 +1769,7 @@ impl Provider {
         let subject = command.subject.clone();
         let command_id = command.command_id.clone();
         let caused_by = command.caused_by.clone();
+        let recorded_at = self.clock.now();
         let result = self.store.commit_command(
             crate::store::Commit {
                 key: &key,
@@ -1204,6 +1778,8 @@ impl Provider {
                 command_id: &command_id,
                 digest: &command_digest,
                 generation: command.dedupe_generation,
+                recorded_at: &recorded_at,
+                also: Vec::new(),
                 event: Some(crate::store::NewEvent {
                     event_type: "core-test.authority.claimed".into(),
                     payload: Box::new(|epoch| {
@@ -1213,37 +1789,27 @@ impl Provider {
                 }),
             },
             |epoch, operation_ref| {
-                Value::Object(vec![
-                    (
-                        "acknowledgment".into(),
-                        Value::Object(vec![
-                            ("command_id".into(), Value::String(command_id.clone())),
-                            (
-                                "command_digest".into(),
-                                Value::String(command_digest.clone()),
-                            ),
-                            (
-                                "operation_ref".into(),
-                                Value::String(operation_ref.to_string()),
-                            ),
-                            ("subject".into(), subject.clone()),
-                            ("revision".into(), Value::Int(epoch)),
-                            ("effect_refs".into(), Value::Array(vec![])),
-                        ]),
-                    ),
-                    (
-                        "outcome".into(),
-                        Value::Object(vec![("epoch".into(), Value::Int(epoch))]),
-                    ),
-                    ("replay".into(), Value::Bool(false)),
-                ])
+                accepted(
+                    &command_id,
+                    &command_digest,
+                    operation_ref,
+                    &subject,
+                    epoch,
+                    Value::Object(vec![("epoch".into(), Value::Int(epoch))]),
+                )
             },
         )?;
         Ok(result)
     }
 
     fn subject_put(&mut self, params: &Value, command: Command) -> Result<Value, ProtocolError> {
-        if let Some(stored) = self.admit_command(params, &command, "core-test", true)? {
+        if let Some(stored) = self.admit_command(
+            params,
+            &command,
+            "core-test",
+            true,
+            Step6::Rights(Self::command_needs(&command)),
+        )? {
             return Ok(stored);
         }
 
@@ -1255,20 +1821,7 @@ impl Provider {
             .and_then(Value::as_str)
             .ok_or_else(|| ProtocolError::invalid_envelope("/payload/value", "not a string"))?
             .to_string();
-        let key = SubjectKey {
-            kind: command
-                .subject
-                .get("kind")
-                .and_then(Value::as_str)
-                .unwrap_or_default()
-                .into(),
-            id: command
-                .subject
-                .get("id")
-                .and_then(Value::as_str)
-                .unwrap_or_default()
-                .into(),
-        };
+        let key = key_of(&command.subject);
         let principal = self.config.principal.clone();
         let command_digest = command.command_digest.clone();
         let subject = command.subject.clone();
@@ -1276,6 +1829,7 @@ impl Provider {
         let caused_by = command.caused_by.clone();
         let stored_value = value.clone();
         let event_value = value.clone();
+        let recorded_at = self.clock.now();
         let result = self.store.commit_command(
             crate::store::Commit {
                 key: &key,
@@ -1284,6 +1838,8 @@ impl Provider {
                 command_id: &command_id,
                 digest: &command_digest,
                 generation: command.dedupe_generation,
+                recorded_at: &recorded_at,
+                also: Vec::new(),
                 event: Some(crate::store::NewEvent {
                     event_type: "core-test.subject.changed".into(),
                     caused_by: caused_by.clone(),
@@ -1293,30 +1849,14 @@ impl Provider {
                 }),
             },
             |revision, operation_ref| {
-                Value::Object(vec![
-                    (
-                        "acknowledgment".into(),
-                        Value::Object(vec![
-                            ("command_id".into(), Value::String(command_id.clone())),
-                            (
-                                "command_digest".into(),
-                                Value::String(command_digest.clone()),
-                            ),
-                            (
-                                "operation_ref".into(),
-                                Value::String(operation_ref.to_string()),
-                            ),
-                            ("subject".into(), subject.clone()),
-                            ("revision".into(), Value::Int(revision)),
-                            ("effect_refs".into(), Value::Array(vec![])),
-                        ]),
-                    ),
-                    (
-                        "outcome".into(),
-                        Value::Object(vec![("value".into(), Value::String(stored_value.clone()))]),
-                    ),
-                    ("replay".into(), Value::Bool(false)),
-                ])
+                accepted(
+                    &command_id,
+                    &command_digest,
+                    operation_ref,
+                    &subject,
+                    revision,
+                    Value::Object(vec![("value".into(), Value::String(stored_value.clone()))]),
+                )
             },
         )?;
         Ok(result)
@@ -1328,6 +1868,10 @@ struct Subscription {
     cursor: crate::store::Position,
     kinds: Vec<String>,
     principal: String,
+    /// The grant the subscription was created under, re-resolved before every
+    /// delivery rather than captured: a grant revoked or expired after
+    /// `subscribe` must stop the stream, and a captured copy could not.
+    grant: Option<String>,
     ended: bool,
 }
 
@@ -1365,11 +1909,13 @@ fn replayed(mut result: Value) -> Value {
 }
 
 impl ProtocolError {
-    fn new_stale_epoch(current: i64) -> Self {
+    fn new_stale_epoch(current: Option<i64>) -> Self {
         Self {
             code: "stale_authority_epoch",
             retry: crate::errors::Retry::AfterReconcile,
-            details: vec![("current_epoch".into(), Value::Int(current))],
+            details: current
+                .map(|epoch| vec![("current_epoch".into(), Value::Int(epoch))])
+                .unwrap_or_default(),
         }
     }
 
@@ -1410,7 +1956,8 @@ mod tests {
             authority_principals: vec!["owner".into()],
             ..Config::default()
         };
-        Provider::open(config, directory).expect("opens")
+        let clock = crate::clock::Clock::open(crate::clock::Source::System).expect("clock");
+        Provider::open(config, clock, directory).expect("opens")
     }
 
     /// A subscription must not outlive the authority it was created under.
