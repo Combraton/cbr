@@ -1,6 +1,6 @@
 # Journey verification for standalone CBR
 
-> **Status: proposed structure, no journey has been run.** Every result column below is empty on purpose. This file is the place journey evidence lands; it is linked from [VERIFICATION](../VERIFICATION.md) and aligned with the shared [verification model](https://github.com/Combraton/combraton/blob/main/docs/architecture/VERIFICATION.md). Scope and milestones: [RELEASE-SCOPE](../work/readiness/RELEASE-SCOPE.md).
+> **Status: one journey has been run: J9, at M2, with no model.** Every other result column below is empty on purpose. This file is the place journey evidence lands; it is linked from [VERIFICATION](../VERIFICATION.md) and aligned with the shared [verification model](https://github.com/Combraton/combraton/blob/main/docs/architecture/VERIFICATION.md). Scope and milestones: [RELEASE-SCOPE](../work/readiness/RELEASE-SCOPE.md).
 
 A journey is the *journey* layer of the shared evidence ladder. Lower layers — build, component, integration — remain necessary and are recorded with the code that introduces them. They cannot substitute for a journey, and a journey cannot substitute for them.
 
@@ -44,7 +44,7 @@ A journey is the *journey* layer of the shared evidence ladder. Lower layers —
 | J7 | Real public-protocol investigation and consumption with PIO, while standalone no-PIO operation still works | after M5, gated on PIO | yes | **yes** | **Recursive enrichment and reservation deadlock:** a CBR-initiated investigation must not be re-enriched through the same path, and preparation must not wait on a slot its own consumer holds. Both must be shown to fail when the guard is removed. | — |
 
 | J8 | A required item is still unmet when the deadline passes; it stays unmet, while advisory items follow their declared fallback | M3 | **no** | no | **Required silently downgraded:** remove the guard and a required item must be reported `satisfied` at deadline, or reported under an obligation it was not submitted with. Both are failures. The live behaviour must instead be `unmet` with reason `deadline_passed`, and an advisory item under `proceed_with_gap` must be `degraded` with its reason while one under `wait_until_deadline` waits. Deadline expiry must supply no evidence and no consent. | — |
-| J9 | An authority transfer or epoch change invalidates the stale decision path, without editing any history | M2 | **no** | no | **Epoch ignored, or reliance reset:** a decision carrying a superseded `authority_epoch` must be refused with `stale_authority_epoch`; remove the epoch check and it commits. Separately, a transfer must **not** reset reliance — decisions recorded under an earlier epoch stay in effect until the current authority records a later decision about the same revision. A control that wipes reliance on transfer must be caught. No record is edited in either case: supersession is a later record. | — |
+| J9 | An authority transfer or epoch change invalidates the stale decision path, without editing any history | M2 | **no** | no | **Epoch ignored, or reliance reset:** a decision carrying a superseded `authority_epoch` must be refused with `stale_authority_epoch`; remove the epoch check and it commits. Separately, a transfer must **not** reset reliance — decisions recorded under an earlier epoch stay in effect until the current authority records a later decision about the same revision. A control that wipes reliance on transfer must be caught. No record is edited in either case: supersession is a later record. | **pass**, M2, model `none` ([record](#j9-an-authority-transfer-invalidates-the-stale-decision-path)) |
 | J10 | A purge produces a proof-loss report, and export then restore round-trips the same identities | M6 | **no** | no | **Purge bypasses holds, or restore renames identities:** a purge blocked by an active hold must fail with `hold_active` naming the blocking holds; remove the check and it deletes. And a claim whose supporting evidence was purged must remain `accepted_for_use` with availability `purged` — never silently rejected, and never still reported `available`. After export and restore, every claim, decision, evaluation and packet must resolve under its original identity and digest; a control that reassigns local identities must be caught. | — |
 
 ### Journeys currently blocked
@@ -64,4 +64,22 @@ The assessment therefore uses, in order of preference: an executable test or tra
 
 ## 5. Per-journey records
 
-Nothing to record yet. Each journey gets its own section here as it is run, using the fields in §2, and links its run artifacts. A journey that fails, or that runs only partially, keeps its record with the failure described; records are not deleted to keep this page green.
+Each journey gets its own section here as it is run, using the fields in §2, and links its run artifacts. A journey that fails, or that runs only partially, keeps its record with the failure described; records are not deleted to keep this page green.
+
+### J9: an authority transfer invalidates the stale decision path
+
+| Field | Record |
+|---|---|
+| Intent and acceptance | After a scope's authority is transferred, a decision under the superseded epoch is refused and the previous authority can no longer decide, while every earlier decision stays in effect and no record is edited. Distinguishing: removing the epoch check lets a stale decision commit, and wiping reliance on transfer shows `proposed`; both are caught. |
+| Entry point | `knowledge.authority.bind`, `knowledge.authority.transfer`, `knowledge.claim.propose`, `knowledge.decision.record`, `knowledge.claim.inspect` and `knowledge.claim.history`, sent as protocol frames over the stdio binding to the real `cbr-provider` binary. No internal call. |
+| Prerequisites and inputs | A fresh data directory. `owner` is the provider's authority principal; `authority-a` and `authority-b` act under grants carrying `knowledge.propose`, `knowledge.read` and `knowledge.decide`. Cold memory state. |
+| Implementation basis | The test landed in `732ff6f` (`crates/cbr-provider/tests/knowledge.rs`); protocol pin `v0.1.0` = `cbf8e4df9df2ca8a9b50264df6acace6e4c3a0fc`; Rust 1.97.1; run on macOS and in CI on Linux and macOS. |
+| Model and provider | `none` |
+| Code and environment basis | Not applicable: the claim declares no basis and no conditions. |
+| Path taken | bind `svc` → A (epoch 1); A proposes `c` revision 1; A records `d1` `accepted_for_use` under epoch 1; `owner` transfers `svc` → B (epoch 2); A under epoch 1 → `stale_authority_epoch`; A under epoch 2 → `permission_denied` `not_authority`; B inspects `c` → `accepted_for_use` by `d1`; B under epoch 1 → `stale_authority_epoch`; history compared; B records `d2` `rejected` superseding `d1` under epoch 2. |
+| Packet identity | None; no packet exists at M2. |
+| Durable result | History after the transfer and the three refusals is byte-identical to history before them. `d2` is a new record linked to `d1` by `supersedes_decision`, and `d1`'s history entry, position included, is unchanged. A separate test, `a_claim_and_its_decision_survive_sigkill_at_their_positions`, shows a claim and its decision survive `SIGKILL` at their positions. |
+| Reproduction | `cargo build --workspace --locked && cargo test --workspace --locked --test knowledge j9`; exit 0. |
+| Cost | No model calls, no tokens; about one second of wall clock. |
+| Simulated or untested | Nothing is simulated. Untested: a transfer while another session is mid-decision; decisions reached through `cbr decide` rather than frames. The CLI path is exercised separately by `crates/cbr-cli/tests/knowledge_verbs.rs`. |
+| Properties and limits | Passed, each with a mutant observed failing: the stale epoch refused (`decision-epoch-unchecked` fails at A's stale decision), and reliance kept across a transfer (`transfer-resets-reliance` fails at B's inspect). It does not establish that a decision is project acceptance anywhere else (KNOWLEDGE §14). |

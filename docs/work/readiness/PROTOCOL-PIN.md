@@ -126,6 +126,8 @@ Protocol 0.1 treats `repository.id`, `tree`, `dirty.snapshot_digest`, `environme
 
 Each of these needs a property test with a **negative control**: a change that must alter the digest (a deleted file, a mode change, a submodule bump) and a change that must not (mtime alone, an ignored file).
 
+**Implemented at M2** in `crates/cbr-identity` for git trees, dirty snapshots and the environment fact set, each with its negative control and a mutant ([VERIFICATION](../../VERIFICATION.md#knowledge-source-identity-and-the-knowledge-verbs)). Not yet implemented: the non-git directory tree, the `workspace` clean/dirty determination under a lock, and a submodule bump beyond recording the gitlink.
+
 ## 6. How CBR pins, reproducibly
 
 The procedure below is the one used above and is the one implementation should automate. It touches no sibling checkout.

@@ -2,18 +2,20 @@
 
 Independent evidence-backed memory and context for agentic work.
 
-> **Status, 2026-09-16: milestone M1 of standalone v0.1 is complete. Nothing is released.** CBR is now a working protocol provider for storing and fetching evidence. It is not yet a memory product: there are no claims, packets, retrieval or model calls. The reviewed architecture is `architecture-v1-20260912`, published as `public-development-v1-20260913`. Canonical specifications are available through [the documentation map](docs/README.md). This README is an overview, not the full specification.
+> **Status, 2026-09-17: milestone M1 of standalone v0.1 is complete and M2, Knowledge, is in review. Nothing is released.** CBR is a working protocol provider for evidence and for scoped, challengeable claims. It has no packets, retrieval or model calls yet. The reviewed architecture is `architecture-v1-20260912`, published as `public-development-v1-20260913`. Canonical specifications are available through [the documentation map](docs/README.md). This README is an overview, not the full specification.
 
 ## What exists now
 
 Built from source with `cargo build --workspace --locked`. There is no release, no packaged binary and no installation command.
 
-- **`cbr-provider`**, a provider of [Combraton Protocol v0.1.0](https://github.com/Combraton/protocol) serving `core/1` and `evidence/1` over the stream binding, on **stdio and on a Unix socket**. The socket form checks the peer's operating-system user and requires `core.authenticate` with a credential the provider issues, rotates and revokes. Storage is SQLite (WAL, `synchronous=FULL`) plus a content-addressed object store that verifies every object from disk.
-- **Conformance, measured against the pinned release's own fixtures** and gated in CI on Linux and macOS: `stream` 24 of 24; `core` 130 of 135; `socket` 11 of 13; `evidence` 16 of 16; all 31 encoding vectors. The 7 fixtures CBR does not pass declare the `execution` profile, which CBR never serves, so they are permanently out of reach. `core.effects` and `core.events.backpressure` are implemented and rest on CBR's own tests alone.
+- **`cbr-provider`**, a provider of [Combraton Protocol v0.1.0](https://github.com/Combraton/protocol) serving `core/1`, `evidence/1` and `knowledge/1` over the stream binding, on **stdio and on a Unix socket**. The socket form checks the peer's operating-system user and requires `core.authenticate` with a credential the provider issues, rotates and revokes. Storage is SQLite (WAL, `synchronous=FULL`) plus a content-addressed object store that verifies every object from disk.
+- **Conformance, measured against the pinned release's own fixtures** and gated in CI on Linux and macOS: `stream` 24 of 24; `core` 130 of 135; `socket` 11 of 13; `evidence` 16 of 16; `knowledge` 10 of 10; all 31 encoding vectors. The 7 fixtures CBR does not pass declare the `execution` profile, which CBR never serves, so they are permanently out of reach. `core.effects` and `core.events.backpressure` are implemented and rest on CBR's own tests alone.
 - **`cbr ingest` and `cbr fetch`**, a separate command that uses only the public socket. Fetch checks the bytes against the sealed digest before writing them.
+- **Knowledge through `cbr`**: `propose`, `revise`, `decide`, `evaluate`, `inspect`, `history` and `authority bind`. Only the scope's bound authority records reliance, never a grant or a derivation label, and claim revisions are immutable in the database.
+- **Source identity**: git root trees, dirty-snapshot digests and a declared environment fact set that includes build facts, each with a negative control.
 - **A storage crash matrix.** The provider is killed with `SIGKILL` at each commit boundary that exists today, then restarted to check what survived.
 
-What **does not** exist: claims or Knowledge, packets or Context, retrieval or indexes, any model call, background maintenance, and any journey run. [VERIFICATION](docs/VERIFICATION.md) has every command and what each one does not establish. The [M1 close-out](docs/work/m1/CLOSEOUT.md) has the outcome table, the coverage limits and every mutant.
+What **does not** exist: packets or Context, retrieval or indexes, any model call, background maintenance, and any journey run except J9, which needs no model. [VERIFICATION](docs/VERIFICATION.md) has every command and what each one does not establish. The [M1 close-out](docs/work/m1/CLOSEOUT.md) has the outcome table, the coverage limits and every mutant.
 
 ```sh
 cargo build --workspace --locked

@@ -23,7 +23,7 @@ Two GitHub Actions workflows run on pushes and pull requests, both with read-onl
 
 ## Journey verification
 
-[Journey verification](verification/JOURNEYS.md) holds the journey-level acceptance matrix and the per-journey evidence records, aligned with the [shared verification model](https://github.com/Combraton/combraton/blob/main/docs/architecture/VERIFICATION.md). No journey has been run. A journey record names its model or provider, or records `none` or `simulated`; a simulated run is never reported as live-model evidence, and `not_evaluated` never counts as a pass.
+[Journey verification](verification/JOURNEYS.md) holds the journey-level acceptance matrix and the per-journey evidence records, aligned with the [shared verification model](https://github.com/Combraton/combraton/blob/main/docs/architecture/VERIFICATION.md). J9 has been run, with no model; no other journey has. A journey record names its model or provider, or records `none` or `simulated`; a simulated run is never reported as live-model evidence, and `not_evaluated` never counts as a pass.
 
 ## Product checks
 
@@ -53,7 +53,11 @@ python3 scripts/run_fixtures.py --filter socket. --participant conformance/parti
 python3 scripts/check_results.py conformance/results/m1d conformance/expectations/socket.json
 python3 scripts/run_fixtures.py --filter evidence. --out conformance/results/m1e
 python3 scripts/check_results.py conformance/results/m1e conformance/expectations/evidence.json
+python3 scripts/run_fixtures.py --filter knowledge. --out conformance/results/m2
+python3 scripts/check_results.py conformance/results/m2 conformance/expectations/knowledge.json
 ```
+
+Source identity shells out to `git`, so the tests need `git` on the path; both CI runners have it.
 
 `build_runner.py` downloads the archive once and reuses it afterwards; `--archive PATH` uses a copy you already have and `--offline` refuses to download. It verifies the archive against the pinned SHA-256, verifies every extracted file against the archive's own `BUNDLE-SHA256SUMS`, checks the archive's recorded commit against the pin, and records the runner identity that `run_fixtures.py` stamps into every results manifest.
 
@@ -64,14 +68,15 @@ python3 scripts/check_results.py conformance/results/m1e conformance/expectation
 | `cargo fmt --all -- --check` | Formatting only | — |
 | `cargo clippy … -D warnings` | Lints clean; warnings fail | Correctness |
 | `cargo build --workspace --locked` | The workspace builds from the committed `Cargo.lock` with no dependency resolution | Runtime behaviour |
-| `cargo test --workspace --locked` | **78 tests.** In `cbr-encoding`, every pinned encoding vector — 12 canonical, 18 rejected, 1 command intent — plus the property tests and the strict base64 codec, 20 in all; a rejected vector must be refused **for the reason the vector states**, so a parser that refused everything would fail. In `cbr-provider`, 41 unit tests and 14 that drive the real binary: production refuses `core-test/1` and every test control; state, events, a grant **and its revocation**, and a capability change **and its event** survive `SIGKILL`; **two concurrent socket sessions, one part-way through a subscription, survive `SIGKILL`** with every acknowledged write at its position and the subscriber's last cursor resuming to exactly what it had not seen; a consumer that stops reading standard output ends the process with the bound recorded; **the storage crash matrix** (below), each row killed at its boundary; and a second provider over the same data directory refuses to start. In `cbr-cli`, 3 that run the `cbr` binary against the real provider over its socket (below). **The only evidence for `core.events.backpressure` and `core.effects` is among these tests** (below). | Any profile conformance on its own |
+| `cargo test --workspace --locked` | **92 tests.** In `cbr-encoding`, every pinned encoding vector — 12 canonical, 18 rejected, 1 command intent — plus the property tests and the strict base64 codec, 20 in all; a rejected vector must be refused **for the reason the vector states**, so a parser that refused everything would fail. In `cbr-identity`, 4 property tests of source identity against real git repositories, each with its negative control (below). In `cbr-provider`, 46 unit tests and 17 that drive the real binary: production refuses `core-test/1` and every test control; state, events, a grant **and its revocation**, a capability change **and its event**, and **a claim and its decision** survive `SIGKILL` at their positions; **two concurrent socket sessions, one part-way through a subscription, survive `SIGKILL`** with every acknowledged write at its position and the subscriber's last cursor resuming to exactly what it had not seen; a consumer that stops reading standard output ends the process with the bound recorded; **the storage crash matrix** (below), each row killed at its boundary; a second provider over the same data directory refuses to start; **J9**; and **the derived-artifact ancestry control**. In `cbr-cli`, 5 that run the `cbr` binary against the real provider over its socket (below). **The only evidence for `core.events.backpressure` and `core.effects` is among these tests** (below). | Any profile conformance on its own |
 | `build_runner.py` | The runner was built from the published release archive, with its own lockfile, and its identity is recorded | Anything about CBR |
 | `run_fixtures.py --filter core.` | **130 of the 135 `core` fixtures pass, 5 are unsupported by name, none fails** — the most the suite allows a provider that never serves `execution/1`. | The 5, permanently (below). **Nothing about `core.effects` or `core.events.backpressure`**, which no fixture CBR can run exercises. |
 | `run_fixtures.py --filter stream.` | Runs the suite and writes the runner's manifest, the transcripts, and a `cbr-run.json` sidecar. The manifest stays byte-for-byte the runner's own output. | Nothing on its own: it reports, it does not gate |
 | `run_fixtures.py --filter socket. --participant …unix.json` | **11 of the 13 `socket` fixtures pass, 2 are unsupported by name, none fails.** | The 2, permanently: they declare `execution`. **Nothing about a different operating-system user** (below). |
 | `run_fixtures.py --filter evidence.` | **All 16 `evidence` fixtures pass.** | Anything the fixtures do not do: they never kill the provider, never use the socket, and never run `cbr` |
+| `run_fixtures.py --filter knowledge.` | **All 10 `knowledge` fixtures pass**, with the `knowledge.store` control. | That CBR's memory is useful, or that any claim is true (KNOWLEDGE §14). No fixture uses `serve_altered_claims`, runs over the socket, or runs `cbr`. |
 | `result_paths.py conformance/results/*/` | No committed result carries a machine path — the same check `run_fixtures.py` applies when it records a run | That the results are correct |
-| `check_results.py` | **The gate.** The outcome multiset matches a recorded expectation exactly: pass count, total, the named unsupported set, and zero `fail`, `timeout`, `harness_error` and `skipped`. | Every suite with no expectation file. `stream`, `core`, `socket` and `evidence` each have one. |
+| `check_results.py` | **The gate.** The outcome multiset matches a recorded expectation exactly: pass count, total, the named unsupported set, and zero `fail`, `timeout`, `harness_error` and `skipped`. | Every suite with no expectation file. `stream`, `core`, `socket`, `evidence` and `knowledge` each have one. |
 
 ### Why the gate is an outcome multiset
 
@@ -93,7 +98,58 @@ Five of the 135 `core` fixtures declare the `execution` profile and require the 
 
 So the maximum attainable on the `core` suite is **130 of 135**, with exactly those five `unsupported`. Any statement of the form "all 135 core fixtures pass" is unattainable and must not be written.
 
-**What is and is not established.** `stream` passes completely; `core` passes every fixture a provider that never serves `execution/1` can pass. `socket` passes every fixture a provider that never serves `execution/1` can pass. `evidence` passes completely. The store **is** durable — SQLite in WAL mode with `synchronous=FULL`, verified by reading the PRAGMAs back from the open connection, and by tests that `SIGKILL` the provider and restart it over the same data directory. No packet, model call, Knowledge or Context code exists.
+**What is and is not established.** `stream` passes completely; `core` passes every fixture a provider that never serves `execution/1` can pass. `socket` passes every fixture a provider that never serves `execution/1` can pass. `evidence` and `knowledge` pass completely. The store **is** durable — SQLite in WAL mode with `synchronous=FULL`, verified by reading the PRAGMAs back from the open connection, and by tests that `SIGKILL` the provider and restart it over the same data directory. No packet, retrieval, model call or Context code exists.
+
+### Knowledge, source identity and the knowledge verbs
+
+**`knowledge/1` is served in full** (KNOWLEDGE §3–§11):
+- claim revisions with the `combraton-knowledge-claim/1` record, whose digest any reader recomputes;
+- support classes from declared ancestry;
+- authority bindings, transfers and reliance decisions, including the author-is-decider case;
+- conflicts and drift;
+- the applicability evaluator over `repository_tree`, `dirty_snapshot` and `environment_digest`, with dependencies resolved only as exact local references;
+- history with stream positions, rights and events.
+
+**A claim revision is immutable in the database, not only in the code.** Revisions live in an insert-only table whose triggers refuse `UPDATE` and `DELETE`, and each revision commits in the same transaction as the claim subject it numbers. A store test shows both refusals.
+
+32 mutants each fail a knowledge fixture at a named step. Two of them are recorded under CBR's own names rather than claimed as the fixture's narrower mutant.
+
+**Source identity** (`crates/cbr-identity`, PROTOCOL-PIN §5):
+
+| Identity | Definition | Negative control |
+|---|---|---|
+| `tree` | The git root tree object id, with the commit returned beside it. `cbr ingest --repo` records both as capture anchors. | Two commits with identical content are one tree; a content change is a new tree. |
+| `dirty.snapshot_digest` | `sha256` over canonical `{ format, base_tree, entries: [path, status, mode, sha256 or null] }`, sorted by path, with deletions explicit. | A deletion, a mode change and an untracked file each change it. Modification time alone, on a modified or a clean file, staging, and an ignored file do not. |
+| `environment` | `sha256` over a declared fact set that **includes build facts**. The record says so in `covers`, because Protocol 0.1 has no `build_digest` condition (G1). | A build fact changes it; the order a file lists facts in does not; a fact declared twice is refused. |
+
+Each row has a mutant that fails its test.
+
+**The derived-artifact ancestry control** (PROTOCOL-PIN §3) runs against the real provider:
+- a captured log and two derivations over it are sealed, the derivations under `cbr.derivation.transcript`;
+- a claim whose two support entries each declare the log as their complete root is `single_lineage`;
+- the producer mistake — each derivation declaring itself as its own root — reads `multiple_lineages`, which is why the control exists;
+- a provider mutant that takes each entry's own evidence as its root fails the control.
+
+**J9** is recorded in [JOURNEYS](verification/JOURNEYS.md#j9-an-authority-transfer-invalidates-the-stale-decision-path). It passed with no model, and each of its two named controls has a mutant that fails.
+
+**The `cbr` knowledge verbs** are `propose`, `revise`, `decide`, `evaluate`, `inspect`, `history`, `authority bind`, and the local `basis`. They use the public socket only:
+- `revise` reads the current revision and digest through the protocol;
+- `decide` reads the binding's epoch and the latest decision the same way;
+- `evaluate --repo` computes the target's tree, dirty snapshot and environment digest.
+
+`cbr-provider --issue-credential PRINCIPAL` hands a credential to a second principal. `knowledge_verbs.rs` runs a production provider in which a principal named `model` holds a grant that includes `knowledge.decide` and labels its derivation `human`. It still cannot accept its own claim: `not_authority`, with no record written. The owner's review is recorded with `author_is_decider: false`, and the owner's adoption of its own requirement with `true`. No model runs in this test. `model` is a labelled stand-in principal, not model evidence.
+
+**What M2 does not establish.**
+- **That any claim is true, that declared ancestry is honest, or that disjoint lineages are independent** (KNOWLEDGE §14).
+- **Untested paths.** `serve_altered_claims` is implemented and has no test. A knowledge subject's visibility in events follows `knowledge.read` without a dedicated test. No fixture runs knowledge over the socket.
+- **Source-identity gaps.** Not implemented:
+  - the non-git directory tree of PROTOCOL-PIN §5;
+  - the `workspace` clean/dirty determination under a lock. A snapshot is read without one, so a working tree changing during the read gives a snapshot of no single instant;
+  - submodule contents, which are recorded as a gitlink with no digest.
+
+  Identity needs the `git` binary; `gix` remains the M3 choice for bulk tree access.
+- **Cost of reads.** `inspect` and `history` scan every record of a kind, which is proportionate to v0.1 counts and not measured beyond them.
+- **CLI coverage.** `cbr` has no verb for conflicts, transfers or grants.
 
 ### The `cbr` command, and the credentials it needs
 

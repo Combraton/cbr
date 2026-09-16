@@ -13,6 +13,7 @@ path = "src/main.rs"
 
 [dependencies]
 cbr-encoding = { path = "../cbr-encoding" }
+cbr-identity = { path = "../cbr-identity" }
 
 [dev-dependencies]
 tempfile = "3.27.0"

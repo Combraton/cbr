@@ -1,0 +1,182 @@
+{
+  "coverage_limits": [],
+  "environment": {
+    "arch": "aarch64",
+    "os": "macos"
+  },
+  "format": "combraton-conformance-result/1",
+  "participant": {
+    "claimed_profiles": [
+      {
+        "major": 1,
+        "name": "core"
+      },
+      {
+        "major": 1,
+        "name": "core-test"
+      },
+      {
+        "major": 1,
+        "name": "evidence"
+      },
+      {
+        "major": 1,
+        "name": "knowledge"
+      }
+    ],
+    "client_mutant": null,
+    "descriptor_digest": "sha256:8772f47c7d61ae92ba217c1cd63bfa3ca5124b25c47471a2a1cd53c4aa96a4bd",
+    "mutant": null,
+    "name": "cbr-provider",
+    "version": "0.1.0"
+  },
+  "results": [
+    {
+      "failed_step": null,
+      "fixture": "knowledge.applicability-checks-snapshots-and-environments",
+      "fixture_digest": "sha256:312cbabf3c0b017095abcc5bb0e46ccaa603d685a5171d7cf66d2fcf004df848",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "KNW-7"
+      ],
+      "transcript": "transcripts/knowledge.applicability-checks-snapshots-and-environments.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "knowledge.applicability-follows-precedence",
+      "fixture_digest": "sha256:323cb500a170a04a08d490010a762e704a22a8e28d9ba6f7f5688fdacfc5714c",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "KNW-7"
+      ],
+      "transcript": "transcripts/knowledge.applicability-follows-precedence.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "knowledge.claim-revisions-are-immutable-with-base-checks",
+      "fixture_digest": "sha256:ae710d8e6862190a0ccb4d1cbc08aad50841aa2a363c11e7fe7a4b229f35b808",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "KNW-1",
+        "KNW-2"
+      ],
+      "transcript": "transcripts/knowledge.claim-revisions-are-immutable-with-base-checks.jsonl",
+      "version": 2
+    },
+    {
+      "failed_step": null,
+      "fixture": "knowledge.conflict-resolution-needs-the-bound-authority",
+      "fixture_digest": "sha256:96184ccccfb58d58f932f21b47994d88e11b3b2d33aafb571434ea3c6753f4d9",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "KNW-5"
+      ],
+      "transcript": "transcripts/knowledge.conflict-resolution-needs-the-bound-authority.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "knowledge.conflicts-are-structural-and-drift-is-not-contradiction",
+      "fixture_digest": "sha256:b97b7a3c949471d16548588a0b897aebaecc427383f908c06bc86b397ced898b",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "KNW-2",
+        "KNW-5"
+      ],
+      "transcript": "transcripts/knowledge.conflicts-are-structural-and-drift-is-not-contradiction.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "knowledge.dependencies-resolve-only-exact-references",
+      "fixture_digest": "sha256:79e741b108fc5e86bea81cc46e5cf9a6a1d9f5644df5c4a5b8a1b59b23ee7983",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "KNW-7",
+        "KNW-1"
+      ],
+      "transcript": "transcripts/knowledge.dependencies-resolve-only-exact-references.jsonl",
+      "version": 3
+    },
+    {
+      "failed_step": null,
+      "fixture": "knowledge.history-keeps-every-record-with-links",
+      "fixture_digest": "sha256:404c153ace3c9405c9bf81424ce9f9b4f4084a8c73de06ae292035e6f640aa19",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "KNW-8"
+      ],
+      "transcript": "transcripts/knowledge.history-keeps-every-record-with-links.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "knowledge.only-the-bound-authority-decides",
+      "fixture_digest": "sha256:f9d9c4058916a00b12f91ef553f9297678c66e4cc013427a4249d06f0ed73359",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "KNW-6"
+      ],
+      "transcript": "transcripts/knowledge.only-the-bound-authority-decides.jsonl",
+      "version": 4
+    },
+    {
+      "failed_step": null,
+      "fixture": "knowledge.reliance-applicability-health-and-availability-are-independent",
+      "fixture_digest": "sha256:5b18032973aa40f9251caec67f26662fb818d1438c904cdebc168e97246e5b06",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "KNW-3",
+        "KNW-9"
+      ],
+      "transcript": "transcripts/knowledge.reliance-applicability-health-and-availability-are-independent.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "knowledge.support-classes-follow-declared-ancestry",
+      "fixture_digest": "sha256:06451a329369ae6b04585e35c1bef86d5edf00ec42492a945be0aa42785afcaf",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "KNW-4"
+      ],
+      "transcript": "transcripts/knowledge.support-classes-follow-declared-ancestry.jsonl",
+      "version": 2
+    }
+  ],
+  "runner": {
+    "name": "combraton-conformance",
+    "version": "0.1.0"
+  },
+  "status_note": "Protocol 0.1 conformance suite. A result is a conformance claim only for the fixtures it lists as passing, run from the v0.1.0 release inventory; skipped and unsupported outcomes are coverage limits, not passes.",
+  "suite": {
+    "fixtures": 10,
+    "fixtures_digest": "sha256:abeb939daebd1ac716789c0e06a05fd49ff558669c713ab62ae1e7e3c3f4e86b",
+    "protocol_commit": "732ff6f0d0992a3a9a26bbd297ef6e6da4a6f47c"
+  },
+  "summary": {
+    "pass": 10
+  }
+}
