@@ -1,6 +1,6 @@
 # Verification available now
 
-These repositories contain architecture and development setup, not product runtimes. The checks below validate documentation structure only.
+This repository contains architecture and development documentation and, since M1, a protocol provider and the `cbr` command. The two checks in this section validate documentation structure only; [Product checks](#product-checks) below cover the product.
 
 From this repository's root:
 

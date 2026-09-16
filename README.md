@@ -2,7 +2,32 @@
 
 Independent evidence-backed memory and context for agentic work.
 
-> Bootstrap documentation only. No product runtime, released API, installation command or performance claim is established here. The reviewed architecture is `architecture-v1-20260912`, published as `public-development-v1-20260913`. Canonical specifications are available through [the documentation map](docs/README.md). This README is an overview, not the full specification.
+> **Status, 2026-09-16: milestone M1 of standalone v0.1 is complete. Nothing is released.** CBR is now a working protocol provider for storing and fetching evidence. It is not yet a memory product: there are no claims, packets, retrieval or model calls. The reviewed architecture is `architecture-v1-20260912`, published as `public-development-v1-20260913`. Canonical specifications are available through [the documentation map](docs/README.md). This README is an overview, not the full specification.
+
+## What exists now
+
+Built from source with `cargo build --workspace --locked`. There is no release, no packaged binary and no installation command.
+
+- **`cbr-provider`**, a provider of [Combraton Protocol v0.1.0](https://github.com/Combraton/protocol) serving `core/1` and `evidence/1` over the stream binding, on **stdio and on a Unix socket**. The socket form checks the peer's operating-system user and requires `core.authenticate` with a credential the provider issues, rotates and revokes. Storage is SQLite (WAL, `synchronous=FULL`) plus a content-addressed object store that verifies every object from disk.
+- **Conformance, measured against the pinned release's own fixtures** and gated in CI on Linux and macOS: `stream` 24 of 24; `core` 130 of 135; `socket` 11 of 13; `evidence` 16 of 16; all 31 encoding vectors. The 7 fixtures CBR does not pass declare the `execution` profile, which CBR never serves, so they are permanently out of reach. `core.effects` and `core.events.backpressure` are implemented and rest on CBR's own tests alone.
+- **`cbr ingest` and `cbr fetch`**, a separate command that uses only the public socket. Fetch checks the bytes against the sealed digest before writing them.
+- **A storage crash matrix.** The provider is killed with `SIGKILL` at each commit boundary that exists today, then restarted to check what survived.
+
+What **does not** exist: claims or Knowledge, packets or Context, retrieval or indexes, any model call, background maintenance, and any journey run. [VERIFICATION](docs/VERIFICATION.md) has every command and what each one does not establish. The [M1 close-out](docs/work/m1/CLOSEOUT.md) has the outcome table, the coverage limits and every mutant.
+
+```sh
+cargo build --workspace --locked
+mkdir -m 700 run    # the socket directory must be private, and its path short
+echo '{"format":"cbr-config/1","principal":"owner"}' > cbr.json
+
+# Terminal 1: serves until its standard input closes (Ctrl-D). On first start
+# it issues a credential to data/credentials/owner (mode 0600).
+target/debug/cbr-provider --data-dir data --config cbr.json --socket run/cbr.sock
+
+# Terminal 2: ingest prints the artifact id and sealed digest that fetch needs.
+target/debug/cbr ingest notes.txt --socket run/cbr.sock --credential-file data/credentials/owner
+target/debug/cbr fetch <artifact> --digest <digest> --out copy.txt --socket run/cbr.sock --credential-file data/credentials/owner
+```
 
 CBR helps agents preserve constraints, reuse useful investigations and recover context across long projects. It can run directly with model providers and evidence producers, without PIO or Combraton. Its models remain fallible; memory must preserve provenance and uncertainty rather than turn summaries into authority.
 
@@ -42,9 +67,9 @@ Measure downstream accepted outcomes, missed constraints, unsupported claims, co
 
 ## Stack and status
 
-Rust/SQLite are core starting preferences. Native provider calls versus lightweight Pi-derived libraries need a bounded runtime comparison. Prime and upstream Pi are different source/release candidates; neither is selected. Generated-program workers are optional and require real scope enforcement, host-owned provenance and aggregate limits.
+Rust and SQLite, as accepted in [ADR 001](docs/decisions/001-standalone-v0.1-scope-and-stack.md): synchronous threads with no async runtime, `rusqlite`, and a hand-written object store. For model calls, M4 will speak both provider wire dialects directly, with MiniMax as the provider; no model call exists yet. Generated-program workers are optional and require real scope enforcement, host-owned provenance and aggregate limits.
 
-For development milestones, read [BOOTSTRAP](https://github.com/Combraton/combraton/blob/main/BOOTSTRAP.md). This repository is licensed under [MIT](LICENSE), matching Protocol. No runtime or benchmark claim is established here.
+For development milestones, read [BOOTSTRAP](https://github.com/Combraton/combraton/blob/main/BOOTSTRAP.md). This repository is licensed under [MIT](LICENSE), matching Protocol. No benchmark or performance claim is established here, and nothing above is a release.
 
 ## Working on this repository
 
