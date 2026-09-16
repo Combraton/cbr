@@ -65,7 +65,8 @@ impl Limits {
 /// configuration naming any of them is refused rather than ignored: silently
 /// dropping a control the operator wrote down would leave them believing a
 /// clock or a fault injector was in effect when it was not.
-const TEST_CONTROL_MEMBERS: [&str; 11] = [
+const TEST_CONTROL_MEMBERS: [&str; 12] = [
+    "evidence_store",
     "clock",
     "capabilities",
     "credentials",
@@ -128,6 +129,25 @@ pub struct Config {
     pub credentials: Vec<Credential>,
     /// Test barriers (decision 007): a directory and the barrier names enabled.
     pub test_barriers: Option<(std::path::PathBuf, Vec<String>)>,
+    /// The `evidence.store` test control (EVIDENCE section 14).
+    pub evidence_store: EvidenceStore,
+}
+
+/// Scripted store behaviour for evidence conformance. Every member is empty
+/// or absent outside a conformance launch, which refuses it.
+#[derive(Debug, Clone, Default)]
+pub struct EvidenceStore {
+    /// Artifacts whose stored bytes are damaged after sealing, so the
+    /// integrity check that refuses to serve them runs against real bytes.
+    pub corrupt: Vec<String>,
+    /// Artifacts the store cannot serve.
+    pub unavailable: Vec<String>,
+    /// Artifacts whose fetched bytes are altered behind honest metadata.
+    pub serve_altered_bytes: Vec<String>,
+    /// A staged upload untouched this long is abandoned as `staging_expired`.
+    pub staging_timeout_seconds: Option<i64>,
+    /// Physical deletion is confirmed this long after the purge request.
+    pub deletion_delay_seconds: Option<i64>,
 }
 
 #[derive(Debug, Clone)]
@@ -156,6 +176,7 @@ impl Default for Config {
             capabilities: Vec::new(),
             credentials: Vec::new(),
             test_barriers: None,
+            evidence_store: EvidenceStore::default(),
         }
     }
 }
@@ -289,6 +310,25 @@ impl Config {
                     revoked: matches!(entry.get("revoked"), Some(Value::Bool(true))),
                 });
             }
+        }
+        if let Some(store) = value.get("evidence_store") {
+            let names = |member: &str| -> Vec<String> {
+                store
+                    .get(member)
+                    .and_then(Value::as_array)
+                    .unwrap_or_default()
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .map(str::to_string)
+                    .collect()
+            };
+            config.evidence_store = EvidenceStore {
+                corrupt: names("corrupt"),
+                unavailable: names("unavailable"),
+                serve_altered_bytes: names("serve_altered_bytes"),
+                staging_timeout_seconds: int(store.get("staging_timeout_seconds")),
+                deletion_delay_seconds: int(store.get("deletion_delay_seconds")),
+            };
         }
         if let Some(barriers) = value.get("test_barriers") {
             let directory = barriers

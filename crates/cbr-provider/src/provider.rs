@@ -10,6 +10,8 @@ use cbr_encoding::Value;
 
 use crate::config::Config;
 use crate::effects;
+
+mod evidence_ops;
 use crate::envelope::{self, Command, Query};
 use crate::errors::ProtocolError;
 use crate::grants::{self, Grant};
@@ -18,7 +20,17 @@ use crate::store::{Store, SubjectKey};
 /// Profiles this build serves, with the majors and features it implements.
 /// A profile is listed here only when it is implemented: over-claiming would
 /// make negotiation succeed and then fail at the first operation.
-const SERVED: &[(&str, i64, &[&str], &[&str])] = &[
+/// A profile this provider serves: name, major, features, and the profiles it
+/// depends on within a session, each with the features of that profile it
+/// needs selected too (CORE section 4.3).
+type Served = (
+    &'static str,
+    i64,
+    &'static [&'static str],
+    &'static [(&'static str, &'static [&'static str])],
+);
+
+const SERVED: &[Served] = &[
     (
         "core",
         1,
@@ -31,7 +43,18 @@ const SERVED: &[(&str, i64, &[&str], &[&str])] = &[
         ],
         &[],
     ),
-    ("core-test", 1, &[], &["core"]),
+    ("core-test", 1, &[], &[("core", &[])]),
+    // EVIDENCE section 1: `evidence/1` depends on `core/1` with `core.events`.
+    (
+        "evidence",
+        1,
+        &[
+            "evidence.manifests",
+            "evidence.retention_control",
+            "evidence.work_binding",
+        ],
+        &[("core", &["core.events"])],
+    ),
 ];
 
 /// Profiles this provider *declares* unsupported, which is a narrower thing
@@ -84,12 +107,19 @@ const UNPROTECTED: [&str; 6] = [
 /// Every operation that is a command rather than a query. A command carries a
 /// command identity, so its step 6 runs after deduplication; a query has none,
 /// so its step 6 runs first.
-const COMMANDS: [&str; 5] = [
+const COMMANDS: [&str; 12] = [
     "core-test.subject.put",
     "core-test.authority.claim",
     "core.grant.issue",
     "core.grant.revoke",
     "core.effects.abort_obligation",
+    "evidence.upload.prepare",
+    "evidence.upload.append",
+    "evidence.seal",
+    "evidence.upload.abandon",
+    "evidence.hold",
+    "evidence.release",
+    "evidence.purge",
 ];
 
 /// What step 6 means for one command (CORE section 10).
@@ -103,6 +133,19 @@ enum Step6 {
     Revoke,
     /// `core.effects.abort_obligation` (CORE section 19.4).
     Abort,
+    /// An evidence publish operation: `evidence.publish` on the artifact, and
+    /// the work binding against the descriptor's `work`.
+    Publish {
+        artifact: String,
+        work: Option<Value>,
+    },
+    /// `evidence.release`: the hold's owner, an authority, or a grant.
+    Release { hold: String },
+    /// `evidence.purge`: purge on the artifact and release on each named hold.
+    Purge {
+        artifact: String,
+        holds: Vec<String>,
+    },
 }
 
 /// A subject key from an envelope's subject object.
@@ -409,16 +452,7 @@ impl Provider {
     /// configuration (CORE section 13). Filtering here rather than at each use
     /// means `core.describe`, negotiation and operation dispatch cannot
     /// disagree about whether it exists.
-    fn served(
-        &self,
-    ) -> impl Iterator<
-        Item = &'static (
-            &'static str,
-            i64,
-            &'static [&'static str],
-            &'static [&'static str],
-        ),
-    > {
+    fn served(&self) -> impl Iterator<Item = &'static Served> {
         let conformance = self.config.mode == crate::config::Mode::Conformance;
         SERVED
             .iter()
@@ -459,6 +493,16 @@ impl Provider {
                 | "core.capabilities"
                 | "core.effects.get"
                 | "core.effects.abort_obligation"
+                | "evidence.upload.prepare"
+                | "evidence.upload.append"
+                | "evidence.seal"
+                | "evidence.upload.abandon"
+                | "evidence.inspect"
+                | "evidence.query"
+                | "evidence.fetch"
+                | "evidence.hold"
+                | "evidence.release"
+                | "evidence.purge"
                 | "core.events.read"
                 | "core.events.subscribe"
                 | "core.events.unsubscribe"
@@ -496,7 +540,12 @@ impl Provider {
                     ),
                     (
                         "depends_on".into(),
-                        Value::Array(depends.iter().map(|d| Value::String((*d).into())).collect()),
+                        Value::Array(
+                            depends
+                                .iter()
+                                .map(|(d, _)| Value::String((*d).into()))
+                                .collect(),
+                        ),
                     ),
                 ])
             })
@@ -553,11 +602,19 @@ impl Provider {
                         Value::Array(
                             depends
                                 .iter()
-                                .map(|d| {
+                                .map(|(d, features)| {
                                     Value::Object(vec![
                                         ("profile".into(), Value::String((*d).into())),
                                         ("major".into(), Value::Int(1)),
-                                        ("features".into(), Value::Array(vec![])),
+                                        (
+                                            "features".into(),
+                                            Value::Array(
+                                                features
+                                                    .iter()
+                                                    .map(|f| Value::String((*f).into()))
+                                                    .collect(),
+                                            ),
+                                        ),
                                     ])
                                 })
                                 .collect(),
@@ -590,6 +647,7 @@ impl Provider {
         };
 
         let mut seen: Vec<String> = Vec::new();
+        let mut required_profiles: Vec<String> = Vec::new();
         let mut selected: Vec<(String, i64, Vec<String>)> = Vec::new();
         let mut unselected: Vec<Value> = Vec::new();
         let mut unsatisfied: Vec<(Value, u8)> = Vec::new();
@@ -713,6 +771,9 @@ impl Provider {
                 }
             }
             chosen.extend(wanted_required.iter().cloned());
+            if required {
+                required_profiles.push(name.clone());
+            }
             selected.push((name, *major, chosen));
         }
 
@@ -732,29 +793,63 @@ impl Provider {
             selected.insert(0, ("core".into(), 1, Vec::new()));
         }
 
-        // Profile-triggered dependencies, applied after selection.
-        let names: Vec<String> = selected.iter().map(|(name, _, _)| name.clone()).collect();
+        // Profile-triggered dependencies, applied after selection (CORE section
+        // 4.2). A profile whose dependency — or a feature of it — is not
+        // selected is not selected: a required one refuses the negotiation, an
+        // optional one is reported in `unselected`.
+        let mut refused: Vec<Value> = Vec::new();
+        let mut dropped: Vec<String> = Vec::new();
         for (name, _, _, depends) in self.served() {
-            if !names.contains(&(*name).to_string()) {
+            if !selected
+                .iter()
+                .any(|(selected_name, _, _)| selected_name == name)
+            {
                 continue;
             }
-            for dependency in *depends {
-                if !names
+            for (dependency, features) in *depends {
+                let chosen = selected
                     .iter()
-                    .any(|selected_name| selected_name == dependency)
-                {
-                    return Err(ProtocolError::unsupported_profile(Value::Array(vec![
-                        Value::Object(vec![
-                            ("profile".into(), Value::String((*name).into())),
-                            (
-                                "reason".into(),
-                                Value::String("dependency_not_selected".into()),
-                            ),
-                        ]),
-                    ])));
+                    .find(|(selected_name, _, _)| selected_name == dependency)
+                    .map(|(_, _, chosen)| chosen);
+                let mut items = Vec::new();
+                match chosen {
+                    None => items.push(Value::Object(vec![
+                        ("profile".into(), Value::String((*name).into())),
+                        (
+                            "reason".into(),
+                            Value::String("dependency_not_selected".into()),
+                        ),
+                    ])),
+                    Some(chosen) => {
+                        for feature in *features {
+                            if !chosen.iter().any(|f| f == feature) {
+                                items.push(Value::Object(vec![
+                                    ("profile".into(), Value::String((*name).into())),
+                                    ("feature".into(), Value::String((*feature).into())),
+                                    (
+                                        "reason".into(),
+                                        Value::String("dependency_not_selected".into()),
+                                    ),
+                                ]));
+                            }
+                        }
+                    }
+                }
+                if items.is_empty() {
+                    continue;
+                }
+                if required_profiles.iter().any(|r| r == name) {
+                    refused.extend(items);
+                } else {
+                    unselected.extend(items);
+                    dropped.push((*name).to_string());
                 }
             }
         }
+        if !refused.is_empty() {
+            return Err(ProtocolError::unsupported_profile(Value::Array(refused)));
+        }
+        selected.retain(|(name, _, _)| !dropped.contains(name));
 
         let result = Value::Object(vec![
             (
@@ -820,6 +915,12 @@ impl Provider {
                 error.code
             );
         }
+        if let Err(error) = self.tick_evidence() {
+            eprintln!(
+                "cbr-provider: evidence retention changes failed: {}",
+                error.code
+            );
+        }
         if !self.known_operation(method) {
             return Err(ProtocolError::method_not_found(method));
         }
@@ -877,6 +978,13 @@ impl Provider {
                 "core.grant.issue" => self.grant_issue(params, command),
                 "core.grant.revoke" => self.grant_revoke(params, command),
                 "core.effects.abort_obligation" => self.effects_abort(params, command),
+                "evidence.upload.prepare" => self.evidence_prepare(params, command),
+                "evidence.upload.append" => self.evidence_append(params, command),
+                "evidence.seal" => self.evidence_seal(params, command),
+                "evidence.upload.abandon" => self.evidence_abandon(params, command),
+                "evidence.hold" => self.evidence_hold(params, command),
+                "evidence.release" => self.evidence_release(params, command),
+                "evidence.purge" => self.evidence_purge(params, command),
                 _ => Err(ProtocolError::method_not_found(method)),
             };
         }
@@ -917,6 +1025,9 @@ impl Provider {
             "core.grant.get" => self.grant_get(&query),
             "core.capabilities" => self.capabilities(),
             "core.effects.get" => self.effects_get(&query),
+            "evidence.inspect" => self.evidence_inspect(&query.payload, in_force.as_ref()),
+            "evidence.query" => self.evidence_query(&query.payload, in_force.as_ref()),
+            "evidence.fetch" => self.evidence_fetch(&query.payload),
             _ => Err(ProtocolError::method_not_found(method)),
         }
     }
@@ -1067,6 +1178,14 @@ impl Provider {
                 .flatten()
                 .and_then(|(_, record)| effects::target(&record))
                 .is_some_and(|target| self.may_read(Some(grant), &target)),
+            // EVIDENCE section 8: the read right over the artifact.
+            crate::evidence::ARTIFACT => grant.may_read(key, "evidence.read"),
+            // A hold is visible to its owner and to readers of what it holds.
+            crate::evidence::HOLD => self
+                .evidence_record(crate::evidence::HOLD, &key.id)
+                .ok()
+                .flatten()
+                .is_some_and(|(_, hold)| self.hold_visible(Some(grant), &hold)),
             // A kind no profile defines is never readable under a grant.
             _ => false,
         }
@@ -1082,6 +1201,14 @@ impl Provider {
             // itself. Which events it then shows is decided per subject as
             // they are read, so there is no subject to name here.
             "core.events.read" | "core.events.subscribe" => vec![("core.events.read", None)],
+            // EVIDENCE section 8.
+            "evidence.inspect" | "evidence.fetch" => vec![(
+                "evidence.read",
+                Some(crate::evidence::artifact_key(
+                    &evidence_ops::artifact_id_of(&query.payload)?,
+                )),
+            )],
+            "evidence.query" => vec![("evidence.read", None)],
             _ => Vec::new(),
         })
     }
@@ -1221,6 +1348,13 @@ impl Provider {
         // or the principal; the checks that do run at step 6, so an
         // already-bound issue still replays past them.
         let grant = grants::parse_issue(&id, &issuer, &command.payload)?;
+        // A constraint kind whose feature the issuing session did not negotiate
+        // is refused, not stored (CORE section 15.3).
+        if !grant.constraints.is_empty() && !self.selected_feature("evidence.work_binding") {
+            return Err(ProtocolError::unsupported_required_feature_message(
+                Value::Array(vec![Value::String("evidence.work_binding".into())]),
+            ));
+        }
         if let Some(stored) = self.admit_command(
             params,
             &command,
@@ -1252,6 +1386,8 @@ impl Provider {
                 recorded_at: &recorded_at,
                 also: Vec::new(),
                 effects: Vec::new(),
+                more_events: Vec::new(),
+                chunks: crate::store::Chunks::None,
                 grant: command.grant.as_deref(),
                 event: Some(crate::store::NewEvent {
                     event_type: "core.grant.issued".into(),
@@ -1325,6 +1461,8 @@ impl Provider {
                 recorded_at: &recorded_at,
                 also,
                 effects: Vec::new(),
+                more_events: Vec::new(),
+                chunks: crate::store::Chunks::None,
                 grant: command.grant.as_deref(),
                 event: Some(revoked_event(&command.caused_by)),
             },
@@ -1515,6 +1653,8 @@ impl Provider {
                 recorded_at: &recorded_at,
                 also: Vec::new(),
                 effects: Vec::new(),
+                more_events: Vec::new(),
+                chunks: crate::store::Chunks::None,
                 grant: command.grant.as_deref(),
                 event: Some(crate::store::NewEvent {
                     event_type: "core.effect.obligation.aborted".into(),
@@ -1566,6 +1706,12 @@ impl Provider {
                 error.code
             );
         }
+        if let Err(error) = self.tick_evidence() {
+            eprintln!(
+                "cbr-provider: evidence retention changes failed: {}",
+                error.code
+            );
+        }
     }
 
     fn tick_effects(&mut self) -> Result<(), ProtocolError> {
@@ -1604,7 +1750,7 @@ impl Provider {
                 id,
             };
             self.store
-                .commit_provider_change(&key, &value, events, &now)?;
+                .commit_provider_change(&key, &value, events, &now, false)?;
         }
         Ok(())
     }
@@ -1631,7 +1777,7 @@ impl Provider {
             id: id.into(),
         };
         self.store
-            .commit_provider_change(&key, &value, Vec::new(), &now)?;
+            .commit_provider_change(&key, &value, Vec::new(), &now, false)?;
         Ok(())
     }
 
@@ -2235,6 +2381,13 @@ impl Provider {
             Step6::Issue(grant) => self.authorize_issue(&grant)?,
             Step6::Revoke => self.authorize_revoke(command)?,
             Step6::Abort => self.authorize_abort(command)?,
+            Step6::Publish { artifact, work } => {
+                self.authorize_publish(command.grant.as_deref(), &artifact, work.as_ref())?
+            }
+            Step6::Release { hold } => self.authorize_release(command.grant.as_deref(), &hold)?,
+            Step6::Purge { artifact, holds } => {
+                self.authorize_purge(command.grant.as_deref(), &artifact, &holds)?
+            }
         };
 
         // Step 7: capabilities, then the authority epoch, then preconditions.
@@ -2368,6 +2521,8 @@ impl Provider {
                 recorded_at: &recorded_at,
                 also: Vec::new(),
                 effects: Vec::new(),
+                more_events: Vec::new(),
+                chunks: crate::store::Chunks::None,
                 grant: command.grant.as_deref(),
                 event: Some(crate::store::NewEvent {
                     event_type: "core-test.authority.claimed".into(),
@@ -2430,6 +2585,8 @@ impl Provider {
                 recorded_at: &recorded_at,
                 also: Vec::new(),
                 effects: Vec::new(),
+                more_events: Vec::new(),
+                chunks: crate::store::Chunks::None,
                 grant: command.grant.as_deref(),
                 event: Some(crate::store::NewEvent {
                     event_type: "core-test.subject.changed".into(),
@@ -2647,6 +2804,8 @@ mod tests {
                     generation: 1,
                     event: None,
                     also: Vec::new(),
+                    more_events: Vec::new(),
+                    chunks: crate::store::Chunks::None,
                     effects: vec![effects::NewEffect {
                         kind: "cbr.model_call".into(),
                         target: key.clone(),

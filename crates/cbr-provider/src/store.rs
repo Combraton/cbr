@@ -233,10 +233,33 @@ pub struct Commit<'a> {
     /// The grant the command acted under, recorded in each effect's
     /// authorization.
     pub grant: Option<&'a str>,
+    /// Further events on the primary subject, after `event`, at the same
+    /// revision: one change a command makes can have more than one fact to
+    /// record, as a purge confirmed at once records both its request and its
+    /// confirmation.
+    pub more_events: Vec<NewEvent>,
+    /// Staged evidence bytes this command appends or discards, in the same
+    /// transaction as the state change that accounts for them.
+    pub chunks: Chunks<'a>,
     /// The provider clock's instant for this command. Supplied rather than
     /// read here, so `recorded_at` follows a controlled clock like every other
     /// protocol-visible time, and so one command records one instant.
     pub recorded_at: &'a str,
+}
+
+/// Staged evidence bytes a command changes.
+#[derive(Default)]
+pub enum Chunks<'a> {
+    #[default]
+    None,
+    Append {
+        artifact: &'a str,
+        offset: i64,
+        bytes: &'a [u8],
+    },
+    Discard {
+        artifact: &'a str,
+    },
 }
 
 /// A further subject one command changes.
@@ -248,8 +271,6 @@ pub struct Change {
 
 pub struct Store {
     connection: Connection,
-    // Read only by `publish_object`, which lands ahead of its consumer.
-    #[allow(dead_code)]
     objects: PathBuf,
 }
 
@@ -366,6 +387,15 @@ impl Store {
                  provider_id TEXT    NOT NULL,
                  revision    INTEGER NOT NULL,
                  predicates  TEXT    NOT NULL
+             );
+             -- Bytes of a staged evidence upload, committed with the append
+             -- that brought them. Discarded when the upload seals or ends;
+             -- sealed bytes live in the object store.
+             CREATE TABLE IF NOT EXISTS evidence_chunks (
+                 artifact TEXT    NOT NULL,
+                 offset   INTEGER NOT NULL,
+                 bytes    BLOB    NOT NULL,
+                 PRIMARY KEY (artifact, offset)
              );
              CREATE TABLE IF NOT EXISTS commands (
                  principal  TEXT    NOT NULL,
@@ -686,6 +716,7 @@ impl Store {
         value: &str,
         events: Vec<NewEvent>,
         recorded_at: &str,
+        discard_chunks: bool,
     ) -> Result<i64, StoreError> {
         let transaction = self
             .connection
@@ -705,6 +736,12 @@ impl Store {
             "UPDATE subjects SET revision = ?3, value = ?4 WHERE kind = ?1 AND id = ?2",
             params![key.kind, key.id, revision, value],
         )?;
+        if discard_chunks {
+            transaction.execute(
+                "DELETE FROM evidence_chunks WHERE artifact = ?1",
+                params![key.id],
+            )?;
+        }
         // Several events for one change share its revision: two obligations
         // falling overdue together are one change to the effect.
         for event in events {
@@ -740,6 +777,114 @@ impl Store {
         }
         transaction.commit()?;
         Ok(revision)
+    }
+
+    /// Bind a command whose outcome changes nothing: no revision, no event,
+    /// only the command record, so a retransmission replays it. An already
+    /// sealed artifact resealed, or a purge repeated, is exactly that.
+    pub fn bind_command_only(
+        &mut self,
+        principal: &str,
+        command_id: &str,
+        digest: &str,
+        generation: i64,
+        result: &Value,
+    ) -> Result<(), StoreError> {
+        self.connection.execute(
+            "INSERT INTO commands (principal, command_id, digest, generation, result)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![
+                principal,
+                command_id,
+                digest,
+                generation,
+                String::from_utf8(cbr_encoding::to_canonical(result))
+                    .expect("canonical form is UTF-8")
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// The staged bytes of an upload, in offset order.
+    pub fn staged_bytes(&self, artifact: &str) -> Result<Vec<u8>, StoreError> {
+        let mut statement = self
+            .connection
+            .prepare("SELECT bytes FROM evidence_chunks WHERE artifact = ?1 ORDER BY offset")?;
+        let rows = statement.query_map(params![artifact], |row| row.get::<_, Vec<u8>>(0))?;
+        let mut out = Vec::new();
+        for row in rows {
+            out.extend(row?);
+        }
+        Ok(out)
+    }
+
+    fn object_path(&self, digest: &str) -> Option<PathBuf> {
+        let hex = digest.split_once(':').map(|(_, hex)| hex)?;
+        if hex.len() < 5 || !hex.bytes().all(|b| b.is_ascii_hexdigit()) {
+            return None;
+        }
+        Some(
+            self.objects
+                .join("sha256")
+                .join(&hex[0..2])
+                .join(&hex[2..4])
+                .join(&hex[4..]),
+        )
+    }
+
+    /// The bytes published under a digest, as they are on disk now. `None` if
+    /// there is no such object. The caller verifies them: an object that no
+    /// longer matches its name is an integrity failure, and is never served.
+    pub fn read_object(&self, digest: &str) -> Result<Option<Vec<u8>>, StoreError> {
+        let Some(path) = self.object_path(digest) else {
+            return Ok(None);
+        };
+        match fs::read(&path) {
+            Ok(bytes) => Ok(Some(bytes)),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(error) => Err(error.into()),
+        }
+    }
+
+    /// Physically delete a published object. Called only after the row that
+    /// records the purge has committed — the reverse of publication's order —
+    /// so a crash between them leaves an object no available row names, never
+    /// an available row naming a missing object.
+    pub fn delete_object(&self, digest: &str) -> Result<(), StoreError> {
+        let Some(path) = self.object_path(digest) else {
+            return Ok(());
+        };
+        match fs::remove_file(&path) {
+            Ok(()) => {
+                if let Some(parent) = path.parent() {
+                    fs::File::open(parent)?.sync_all()?;
+                }
+                Ok(())
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(error.into()),
+        }
+    }
+
+    /// Damage a published object in place. Test control only (the
+    /// `evidence.store` control's `corrupt`), so the integrity check that
+    /// refuses to serve it is exercised against real bytes on disk.
+    pub fn corrupt_object(&self, digest: &str) -> Result<(), StoreError> {
+        let Some(path) = self.object_path(digest) else {
+            return Ok(());
+        };
+        let mut bytes = fs::read(&path)?;
+        if let Some(first) = bytes.first_mut() {
+            *first ^= 0xff;
+        } else {
+            bytes.push(0);
+        }
+        let mut permissions = fs::metadata(&path)?.permissions();
+        #[allow(clippy::permissions_set_readonly_false)]
+        permissions.set_readonly(false);
+        fs::set_permissions(&path, permissions)?;
+        fs::write(&path, bytes)?;
+        Ok(())
     }
 
     /// The current capability snapshot: its revision and predicates, or `None`
@@ -920,6 +1065,28 @@ impl Store {
         };
         if let Some(event) = commit.event {
             append(&transaction, commit.key, revision, event)?;
+        }
+        for event in commit.more_events {
+            append(&transaction, commit.key, revision, event)?;
+        }
+        match commit.chunks {
+            Chunks::None => {}
+            Chunks::Append {
+                artifact,
+                offset,
+                bytes,
+            } => {
+                transaction.execute(
+                    "INSERT INTO evidence_chunks (artifact, offset, bytes) VALUES (?1, ?2, ?3)",
+                    params![artifact, offset, bytes],
+                )?;
+            }
+            Chunks::Discard { artifact } => {
+                transaction.execute(
+                    "DELETE FROM evidence_chunks WHERE artifact = ?1",
+                    params![artifact],
+                )?;
+            }
         }
         for change in commit.also {
             let existing: Option<(i64, i64)> = transaction
@@ -1375,8 +1542,20 @@ impl Store {
         fs::create_dir_all(&directory)?;
         let final_path = directory.join(&hex[4..]);
         if final_path.exists() {
-            // Content addressing means equal bytes are already published.
-            return Ok(final_path);
+            // Content addressing means equal bytes may already be published —
+            // by another artifact, or by a seal that crashed before its row
+            // committed. Reuse it only if it still verifies from disk; an
+            // object that no longer matches its name is replaced, not trusted.
+            if fs::read(&final_path)
+                .is_ok_and(|existing| cbr_encoding::digest_bytes(&existing) == digest)
+            {
+                return Ok(final_path);
+            }
+            let mut permissions = fs::metadata(&final_path)?.permissions();
+            #[allow(clippy::permissions_set_readonly_false)]
+            permissions.set_readonly(false);
+            fs::set_permissions(&final_path, permissions)?;
+            fs::remove_file(&final_path)?;
         }
 
         let staged = directory.join(format!(".staging-{hex}"));
@@ -1471,6 +1650,8 @@ mod tests {
                         also: Vec::new(),
                         effects: Vec::new(),
                         grant: None,
+                        more_events: Vec::new(),
+                        chunks: Chunks::None,
                         recorded_at: "2030-01-01T00:00:00Z",
                     },
                     |revision, _| Value::Object(vec![("revision".into(), Value::Int(revision))]),
@@ -1562,6 +1743,8 @@ mod tests {
                         also: Vec::new(),
                         effects: Vec::new(),
                         grant: None,
+                        more_events: Vec::new(),
+                        chunks: Chunks::None,
                         recorded_at: "2030-01-01T00:00:00Z",
                     },
                     |_, _| Value::Object(vec![]),

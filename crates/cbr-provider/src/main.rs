@@ -12,6 +12,7 @@ mod config;
 mod effects;
 mod envelope;
 mod errors;
+mod evidence;
 mod frames;
 mod grants;
 mod jsonrpc;

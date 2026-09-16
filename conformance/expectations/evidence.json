@@ -1,0 +1,9 @@
+{
+  "note": "Stage e claims evidence/1 with evidence.manifests, evidence.retention_control and evidence.work_binding, and the clock.file and evidence.store test controls, over the stdio descriptor. Derived from declared profiles, features and controls: all 16 reachable, none permanently unsupported. Confirmed by an unimplemented run with the profile, features and controls declared: 16 fail, 0 unsupported. One fixture reached beyond its own profile: evidence.publish-grant-bound-to-work issues grants with an evidence.work_binding constraint, so core.grant.issue gained that constraint kind; the feature is declared, but the dependency lands in a core operation.",
+  "suite": "evidence.",
+  "total": 16,
+  "pass": 16,
+  "runner_exit_status": 0,
+  "permanently_unsupported": 0,
+  "unsupported": []
+}
