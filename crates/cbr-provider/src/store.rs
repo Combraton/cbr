@@ -23,40 +23,6 @@ use std::path::{Path, PathBuf};
 use cbr_encoding::Value;
 use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params};
 
-/// The provider clock, as event metadata. Never an ordering: positions order
-/// events, and `recorded_at` says nothing about causality (CORE section 16.1).
-fn now() -> String {
-    let seconds = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
-    // A plain UTC instant, computed without a date library: the civil-time
-    // arithmetic below is the whole of what is needed.
-    let days = seconds / 86_400;
-    let time = seconds % 86_400;
-    let (year, month, day) = civil_from_days(days as i64);
-    format!(
-        "{year:04}-{month:02}-{day:02}T{:02}:{:02}:{:02}Z",
-        time / 3600,
-        (time % 3600) / 60,
-        time % 60
-    )
-}
-
-/// Howard Hinnant's `civil_from_days`, for days since 1970-01-01.
-fn civil_from_days(days: i64) -> (i64, u32, u32) {
-    let z = days + 719_468;
-    let era = z.div_euclid(146_097);
-    let doe = z.rem_euclid(146_097);
-    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
-    let y = yoe + era * 400;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let d = (doy - (153 * mp + 2) / 5 + 1) as u32;
-    let m = if mp < 10 { mp + 3 } else { mp - 9 } as u32;
-    (if m <= 2 { y + 1 } else { y }, m, d)
-}
-
 /// A provider-owned object, named by kind and id.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct SubjectKey {
@@ -253,6 +219,21 @@ pub struct Commit<'a> {
     pub generation: i64,
     /// The event this command appends, if any.
     pub event: Option<NewEvent>,
+    /// Further subjects the same command changes, each with its own event, in
+    /// the order they are appended. CORE section 16.3 requires the primary
+    /// subject first, which is why it is not simply one more entry here.
+    pub also: Vec<Change>,
+    /// The provider clock's instant for this command. Supplied rather than
+    /// read here, so `recorded_at` follows a controlled clock like every other
+    /// protocol-visible time, and so one command records one instant.
+    pub recorded_at: &'a str,
+}
+
+/// A further subject one command changes.
+pub struct Change {
+    pub key: SubjectKey,
+    pub value: String,
+    pub event: NewEvent,
 }
 
 pub struct Store {
@@ -367,6 +348,14 @@ impl Store {
                  epoch           INTEGER PRIMARY KEY,
                  vouched_through INTEGER NOT NULL,
                  closed          INTEGER NOT NULL
+             );
+             -- The capability snapshot (CORE section 17). One row: the
+             -- current predicates and the revision that numbers them.
+             CREATE TABLE IF NOT EXISTS capabilities (
+                 id          INTEGER PRIMARY KEY CHECK (id = 1),
+                 provider_id TEXT    NOT NULL,
+                 revision    INTEGER NOT NULL,
+                 predicates  TEXT    NOT NULL
              );
              CREATE TABLE IF NOT EXISTS commands (
                  principal  TEXT    NOT NULL,
@@ -581,6 +570,111 @@ impl Store {
             .optional()?)
     }
 
+    /// Bring the stored capability snapshot in line with what the provider
+    /// observes at launch, and return its revision.
+    ///
+    /// A new store's first snapshot is revision 1 and appends nothing. After
+    /// that, any difference raises the revision and appends one
+    /// provider-origin `core.capabilities.changed` event, in the same
+    /// transaction, so the snapshot and its history cannot disagree
+    /// (CORE section 17.3). An identical snapshot changes nothing, which is
+    /// what keeps the revision stable across a restart where nothing changed.
+    ///
+    /// The comparison is over canonical form, which is sound only because the
+    /// predicates carry no `observed_at`; a predicate that gains one must be
+    /// compared without it, or every restart would look like a change.
+    pub fn reconcile_capabilities(
+        &mut self,
+        provider_id: &str,
+        predicates: &Value,
+        recorded_at: &str,
+    ) -> Result<i64, StoreError> {
+        let canonical = String::from_utf8(cbr_encoding::to_canonical(predicates))
+            .expect("canonical form is UTF-8");
+        let transaction = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let stored: Option<(i64, String)> = transaction
+            .query_row(
+                "SELECT revision, predicates FROM capabilities WHERE id = 1",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()?;
+        let revision = match stored {
+            None => {
+                transaction.execute(
+                    "INSERT INTO capabilities (id, provider_id, revision, predicates)
+                     VALUES (1, ?1, 1, ?2)",
+                    params![provider_id, canonical],
+                )?;
+                1
+            }
+            Some((revision, previous)) if previous == canonical => revision,
+            Some((revision, _)) => {
+                let revision = revision + 1;
+                transaction.execute(
+                    "UPDATE capabilities SET provider_id = ?1, revision = ?2, predicates = ?3
+                     WHERE id = 1",
+                    params![provider_id, revision, canonical],
+                )?;
+                let epoch: i64 = transaction
+                    .query_row(
+                        "SELECT value FROM meta WHERE key = 'current_epoch'",
+                        [],
+                        |row| row.get(0),
+                    )
+                    .optional()?
+                    .unwrap_or(1);
+                let last: i64 = transaction.query_row(
+                    "SELECT COALESCE(MAX(sequence), 0) FROM events WHERE epoch = ?1",
+                    params![epoch],
+                    |row| row.get(0),
+                )?;
+                let payload = Value::Object(vec![("predicates".into(), predicates.clone())]);
+                // Provider origin: no operation caused it, so no operation_ref
+                // or command_id, and an empty caused_by (CORE section 16.2).
+                transaction.execute(
+                    "INSERT INTO events (epoch, sequence, type, subject_kind, subject_id, revision,
+                                         origin, operation_ref, command_id, caused_by, recorded_at, payload)
+                     VALUES (?1, ?2, 'core.capabilities.changed', 'core.capabilities', ?3, ?4,
+                             'provider', NULL, NULL, '[]', ?5, ?6)",
+                    params![
+                        epoch,
+                        last + 1,
+                        provider_id,
+                        revision,
+                        recorded_at,
+                        String::from_utf8(cbr_encoding::to_canonical(&payload))
+                            .expect("canonical form is UTF-8")
+                    ],
+                )?;
+                revision
+            }
+        };
+        transaction.commit()?;
+        Ok(revision)
+    }
+
+    /// Every subject of one kind, ordered by id, with its stored value.
+    ///
+    /// The store deliberately knows nothing about what a value means, so a
+    /// relationship between subjects — a grant's parent — is walked by the
+    /// caller over this rather than indexed here. A scan is proportionate to
+    /// v0.1's grant counts; an index belongs here only when a measurement says
+    /// so.
+    pub fn subjects_of_kind(&self, kind: &str) -> Result<Vec<(String, String)>, StoreError> {
+        let mut statement = self
+            .connection
+            .prepare("SELECT id, value FROM subjects WHERE kind = ?1 ORDER BY id")?;
+        let rows = statement.query_map(params![kind], |row| Ok((row.get(0)?, row.get(1)?)))?;
+        let mut out = Vec::new();
+        for row in rows {
+            out.push(row?);
+        }
+        Ok(out)
+    }
+
     pub fn applied_count(&self, key: &SubjectKey) -> Result<i64, StoreError> {
         Ok(self.subject(key)?.map_or(0, |state| state.applied_count))
     }
@@ -671,9 +765,15 @@ impl Store {
         )?;
         let operation_ref = format!("op-{operation_number}");
 
-        // The event commits here, in the same transaction as the state change
-        // and the command record. A crash between them is not representable.
-        if let Some(event) = commit.event {
+        // The events commit here, in the same transaction as the state changes
+        // and the command record. A crash between them is not representable,
+        // and a command that changes several subjects cannot leave some
+        // changed and others not.
+        let append = |transaction: &rusqlite::Transaction<'_>,
+                      key: &SubjectKey,
+                      revision: i64,
+                      event: NewEvent|
+         -> Result<(), StoreError> {
             let epoch: i64 = transaction
                 .query_row(
                     "SELECT value FROM meta WHERE key = 'current_epoch'",
@@ -682,6 +782,8 @@ impl Store {
                 )
                 .optional()?
                 .unwrap_or(1);
+            // Read inside the transaction, so each append sees the previous
+            // one and a multi-event command stays contiguous.
             let last: i64 = transaction.query_row(
                 "SELECT COALESCE(MAX(sequence), 0) FROM events WHERE epoch = ?1",
                 params![epoch],
@@ -695,8 +797,8 @@ impl Store {
                     epoch,
                     last + 1,
                     event.event_type,
-                    commit.key.kind,
-                    commit.key.id,
+                    key.kind,
+                    key.id,
                     revision,
                     operation_ref,
                     commit.command_id,
@@ -704,11 +806,39 @@ impl Store {
                         event.caused_by.iter().map(|c| Value::String(c.clone())).collect(),
                     )))
                     .expect("canonical form is UTF-8"),
-                    now(),
+                    commit.recorded_at,
                     String::from_utf8(cbr_encoding::to_canonical(&(event.payload)(revision)))
                         .expect("canonical form is UTF-8")
                 ],
             )?;
+            Ok(())
+        };
+        if let Some(event) = commit.event {
+            append(&transaction, commit.key, revision, event)?;
+        }
+        for change in commit.also {
+            let existing: Option<(i64, i64)> = transaction
+                .query_row(
+                    "SELECT revision, applied_count FROM subjects WHERE kind = ?1 AND id = ?2",
+                    params![change.key.kind, change.key.id],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )
+                .optional()?;
+            let (changed_revision, changed_applied) =
+                existing.map_or((1, 1), |(r, a)| (r + 1, a + 1));
+            transaction.execute(
+                "INSERT INTO subjects (kind, id, revision, value, applied_count)
+                 VALUES (?1, ?2, ?3, ?4, ?5)
+                 ON CONFLICT(kind, id) DO UPDATE SET revision = ?3, value = ?4, applied_count = ?5",
+                params![
+                    change.key.kind,
+                    change.key.id,
+                    changed_revision,
+                    change.value,
+                    changed_applied
+                ],
+            )?;
+            append(&transaction, &change.key, changed_revision, change.event)?;
         }
 
         let result = make_result(revision, &operation_ref);
@@ -857,6 +987,49 @@ impl Store {
                 ("revision".into(), Value::Int(revision)),
                 ("state".into(), state),
             ]));
+        }
+
+        // The capability snapshot is not a row in `subjects`, but once any
+        // change event has been recorded it is a subject "changed by an event
+        // at or before as_of", which a snapshot MUST list (CORE section 16.4).
+        // Revision 1 is the initial snapshot, which appended no event, so it
+        // is left out rather than listed on the section's permission alone.
+        let capabilities: Option<(String, i64, String)> = self
+            .connection
+            .query_row(
+                "SELECT provider_id, revision, predicates FROM capabilities WHERE id = 1",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .optional()?;
+        if let Some((provider_id, revision, predicates)) = capabilities
+            && revision > 1
+        {
+            let key = SubjectKey {
+                kind: "core.capabilities".into(),
+                id: provider_id.clone(),
+            };
+            if visible(&key) {
+                out.push(Value::Object(vec![
+                    (
+                        "subject".into(),
+                        Value::Object(vec![
+                            ("kind".into(), Value::String(key.kind)),
+                            ("id".into(), Value::String(provider_id)),
+                        ]),
+                    ),
+                    ("revision".into(), Value::Int(revision)),
+                    (
+                        "state".into(),
+                        Value::Object(vec![(
+                            "predicates".into(),
+                            cbr_encoding::parse(predicates.as_bytes()).unwrap_or(Value::Null),
+                        )]),
+                    ),
+                ]));
+            } else {
+                hidden = true;
+            }
         }
         Ok((out, hidden))
     }
@@ -1168,6 +1341,8 @@ mod tests {
                         digest: "sha256:aa",
                         generation: 1,
                         event: None,
+                        also: Vec::new(),
+                        recorded_at: "2030-01-01T00:00:00Z",
                     },
                     |revision, _| Value::Object(vec![("revision".into(), Value::Int(revision))]),
                 )
@@ -1180,6 +1355,58 @@ mod tests {
         // Deduplication scope is the principal, so another principal's use of
         // the same command id is a different command.
         assert!(store.command("bob", "cmd-1").unwrap().is_none());
+    }
+
+    #[test]
+    fn a_retention_snapshot_lists_the_capability_subject_once_it_has_changed() {
+        let directory = tempfile::tempdir().expect("temp dir");
+        let mut store = Store::open(directory.path()).unwrap();
+        let everything = |_: &SubjectKey| true;
+        let predicates = |status: &str| {
+            Value::Array(vec![Value::Object(vec![
+                ("name".into(), Value::String("core-test.writes".into())),
+                ("status".into(), Value::String(status.into())),
+            ])])
+        };
+        let listed = |store: &Store| {
+            store
+                .snapshot_subjects(&everything)
+                .unwrap()
+                .0
+                .iter()
+                .any(|entry| {
+                    entry.get("subject").and_then(|s| s.get("kind"))
+                        == Some(&Value::String("core.capabilities".into()))
+                })
+        };
+
+        // The initial snapshot appended no event, so nothing obliges listing it.
+        assert_eq!(
+            store
+                .reconcile_capabilities("p", &predicates("supported"), "2030-01-01T00:00:00Z")
+                .unwrap(),
+            1
+        );
+        assert!(!listed(&store));
+
+        // A change appends an event, and from then on the subject that event
+        // changed must appear in any snapshot covering it, even after
+        // retention has discarded the event itself.
+        assert_eq!(
+            store
+                .reconcile_capabilities("p", &predicates("unknown"), "2030-01-01T00:00:00Z")
+                .unwrap(),
+            2
+        );
+        assert!(listed(&store));
+
+        // And an unchanged snapshot is not a change.
+        assert_eq!(
+            store
+                .reconcile_capabilities("p", &predicates("unknown"), "2030-01-01T00:00:00Z")
+                .unwrap(),
+            2
+        );
     }
 
     #[test]
@@ -1203,6 +1430,8 @@ mod tests {
                         digest: "sha256:aa",
                         generation: current,
                         event: None,
+                        also: Vec::new(),
+                        recorded_at: "2030-01-01T00:00:00Z",
                     },
                     |_, _| Value::Object(vec![]),
                 )

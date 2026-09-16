@@ -9,6 +9,7 @@
 //! `stream` fixtures exercise. The store is in memory (see `store.rs`), no
 //! feature is implemented, and no test control is declared.
 
+mod clock;
 mod config;
 mod envelope;
 mod errors;
@@ -94,7 +95,10 @@ fn run() -> Result<(), String> {
     let args = parse_args()?;
     let config = config::Config::load(args.config.as_deref())?;
     let data_dir = args.data_dir.clone().unwrap_or_else(|| PathBuf::from("."));
-    let mut provider = Provider::open(config, &data_dir)
+    // Opened before the store, so a malformed clock file stops the launch
+    // before anything is written.
+    let clock = clock::Clock::open(config.clock.clone())?;
+    let mut provider = Provider::open(config, clock, &data_dir)
         .map_err(|error| format!("opening the store at {}: {error}", data_dir.display()))?;
 
     let stdin = std::io::stdin();

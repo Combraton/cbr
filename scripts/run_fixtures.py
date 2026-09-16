@@ -13,6 +13,7 @@ under coverage limits and are never counted as passes.
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -22,6 +23,37 @@ VENDOR = ROOT / "vendor" / "protocol" / "v0.1.0"
 RUNNER_IDENTITY = ROOT / "target" / "protocol-release" / "runner.json"
 PROVIDER = ROOT / "target" / "debug" / "cbr-provider"
 DESCRIPTOR = ROOT / "conformance" / "participants" / "cbr-provider.json"
+
+
+CHECKOUT_PLACEHOLDER = "{cbr_checkout}"
+
+# Anything still matching after redaction is a machine path this script does
+# not know how to name, and the run refuses to leave it in committed evidence.
+MACHINE_PATH = re.compile(r"/(?:Users|Volumes|home)/")
+
+
+def redact_checkout_root(out):
+    """Replace the checkout's absolute path in transcripts, at the recording
+    boundary, and refuse to finish if any other machine path remains.
+
+    Only transcripts are touched. The manifest stays byte-for-byte the runner's,
+    as below. Returns how many transcript files changed.
+    """
+    root = str(ROOT)
+    changed = 0
+    for path in sorted((out / "transcripts").glob("*.jsonl")):
+        text = path.read_text()
+        if root in text:
+            path.write_text(text.replace(root, CHECKOUT_PLACEHOLDER))
+            changed += 1
+    leftovers = [
+        str(path.relative_to(out))
+        for path in sorted(out.rglob("*"))
+        if path.is_file() and MACHINE_PATH.search(path.read_text(errors="replace"))
+    ]
+    if leftovers:
+        sys.exit(f"machine paths remain after redaction in {len(leftovers)} files: {leftovers[:5]}")
+    return changed
 
 
 def main():
@@ -61,6 +93,7 @@ def main():
         sys.exit(f"runner wrote no manifest to {manifest_path} (exit {completed.returncode})")
 
     manifest = json.loads(manifest_path.read_text())
+    redacted = redact_checkout_root(out)
 
     # Written beside the manifest, never into it. The manifest is the runner's
     # own output and stays byte-for-byte what the runner produced, so a reader
@@ -88,6 +121,20 @@ def main():
             "inventory_listing_sha256": pin["inventory_listing_sha256"],
             "verified_by": "scripts/verify_pin.py",
         },
+        "redactions": [
+            {
+                "files": redacted,
+                "replaced": "the absolute path of the CBR checkout the run was made from",
+                "with": CHECKOUT_PLACEHOLDER,
+                "where": "transcripts/*.jsonl only; manifest.json is untouched",
+                "reason": (
+                    "The runner expands {repo} in the descriptor's launch argv into an absolute "
+                    "path, which names the machine and its owner and says nothing about CBR's "
+                    "behaviour. The substitution is a fixed prefix, so it is reversible and "
+                    "changes no outcome."
+                ),
+            }
+        ],
         "outcomes": {},
         "unsupported": sorted(
             entry["fixture"] for entry in manifest.get("results", []) if entry.get("outcome") == "unsupported"

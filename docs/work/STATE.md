@@ -3,12 +3,70 @@
 This is a dated navigation snapshot. Reconcile it with Git, linked issues and current task evidence before acting. Issues own live progress; this file does not grant authority or maintain a second backlog.
 
 - **Updated:** 2026-09-16.
-- **Owner/task:** Claude Code session as implementation lead for standalone CBR. Active task: [issue #3](https://github.com/Combraton/cbr/issues/3), milestone M1 stage (c2), on branch `m1c2/core-events`. Parent: [issue #1](https://github.com/Combraton/cbr/issues/1). An independent reviewer session reviews this read-only.
-- **Merged:** PR #2 as `d68e9d6`, pinned to `877139f`. Stages (a) and (b) are PR #4 at head `630011c`, rebased onto `main`, retargeted, CI green, awaiting the owner's merge. All ten decisions are in [ADR 001](../decisions/001-standalone-v0.1-scope-and-stack.md).
+- **Owner/task:** Claude Code session as implementation lead for standalone CBR. Active task: [issue #3](https://github.com/Combraton/cbr/issues/3), milestone M1 stage (c3), on branch `m1c3/core-grants`. Parent: [issue #1](https://github.com/Combraton/cbr/issues/1). An independent reviewer session reviews this read-only.
+- **Merged:** PR #2 as `d68e9d6`, pinned to `877139f`; PR #4 as `a939446`, pinned to `630011c`; PR #5 (c1) as `8b75129`; **PR #6 (c2) pinned to `b00ec49`, confirmed from `merged: true` and `merged_at: 2026-09-16T14:26:34Z`**, the draft marked ready first and the head re-read unchanged before merging. All ten decisions and both formerly open owner lines are in [ADR 001](../decisions/001-standalone-v0.1-scope-and-stack.md).
 - **Merge rule, 2026-09-16, superseded the same day.** This session ran `gh pr merge` on PR #2 after the owner replied "you can merge PR 2" in-session, having first reported the contradicting claim with evidence and waited. It landed the exact reviewed head `877139f` and is kept. A stricter rule was then recorded, and the owner then **granted merge authority under four conditions**, now in [AGENTS.md](../../AGENTS.md): pin with `--match-head-commit`; the head's CI is green; the reviewer has seen that head; no squash. Confirm from `merged` and `merged_at` afterwards, **never `merge_commit_sha`** — GitHub populates that on an open pull request with the test-merge candidate. Tags and releases remain the owner's alone.
 - **Inspected revisions:** protocol `v0.1.0` = `cbf8e4df9df2ca8a9b50264df6acace6e4c3a0fc`; combraton `9af69ce`; pio `e65b7c0`; benchmarks `c8d5878`.
 
-## This change — M1 stage (c2)
+## This change — M1 stage (c3)
+
+`core.grants`: grant records, issue, inspect and revoke, delegation, expiry against a controlled clock, cascading revocation, and step-6 authorization with the existence-hiding rule. Three commits: the owner's decisions recorded, then issue/inspect/revoke, then delegation and expiry.
+
+| Command | Exit | Result |
+|---|---|---|
+| `check_docs.py` / `verify_pin.py` | 0 / 0 | 21 files, 0 errors; 429 and 420 files match their anchors |
+| `cargo fmt --all -- --check` | 0 | — |
+| `cargo clippy --workspace --all-targets --locked -- -D warnings` | 0 | — |
+| `cargo build --workspace --locked` | 0 | — |
+| `cargo test --workspace --locked` | 0 | **47 tests**: 19 encoding, 23 provider unit, 5 against the real binary |
+| `git diff --check` | 0 | — |
+| `run_fixtures.py --filter stream.` + `check_results.py` | 0 | 24 of 24, unchanged |
+| `run_fixtures.py --filter core.` + `check_results.py` | 0 | **122 pass, 13 unsupported by name, 0 fail** |
+
+**Expected versus measured.** `core-c3.json` was computed from declared features **before** implementing, then confirmed by a measured run with `core.grants` declared and nothing implemented: 80 pass, 40 fail, 15 unsupported. The two unsupported beyond the computed 13 were exactly the two fixtures needing `clock.file` — `core.grants.test-clock-never-moves-backward` and `core.events.subscription-ends-at-grant-expiry` — so the reviewer's count of two is measured, not only read from the fixture files. `clock.file` was declared in the descriptor only once implemented. After the first grants commit: 107 pass, 13 fail, 15 unsupported, every failure delegation or expiry. At the head: **122 / 13 / 0**, as computed.
+
+**Where the model was short.** At 121 one fixture still failed: `core.events.visibility-follows-direct-read-authority` declares only `core.events` and `core.grants`, but restarts with `capabilities: {"core-test.writes": "unknown"}` and expects the provider-origin `core.capabilities.changed` event at sequence 7. Event recording is not gated on negotiation (CORE §16.3), so the fixture is right and a features-only computation cannot see the dependency. CBR now records the capability snapshot and its change event, and a retention snapshot lists `core.capabilities` once it has changed, as CORE §16.4 requires — no fixture combines the two, so a store test covers it. The `core.capabilities` query and the `capability_unavailable` refusal stay in c4, and the feature is not claimed. **The c4 expectation should be read as a lower bound on what c4 needs, for the same reason.**
+
+### What changed
+
+- **A grant is a subject** of kind `core.grant` whose record is the subject value, so revisions, the command transaction and durability are the store's, not a second table that could disagree with the first.
+- **Step 6 moved.** It ran in `handle()` before digest and deduplication, which was harmless while authorization was a session property. With grants it is wrong: CORE §15.5 has a replay skip step 6. Commands now authorize **between** deduplication and preconditions; queries still authorize first, with nothing to deduplicate.
+- **The decision returns a reason, not a boolean.** The holder check is part of *finding* a grant, so another principal's revoked grant is `grant_not_found`, and rights are all checked before any resource.
+- **Disclosure follows read authority.** A current revision in `precondition_failed` and a current epoch in `stale_authority_epoch` are shown only to a principal that may read the subject. Event and snapshot filtering use the same function, so "could this principal read that subject" has one answer.
+- **Issuing checks validity before authority**: audience, expiry, binding scope, then the issuing rules. A delegated grant's parent is found as the issuer's own, then must be usable, then may not be exceeded — rights, resources, expiry, depth and authority binding.
+- **Revocation cascades in one transaction**, primary first, walking *through* already-revoked grants rather than stopping at them, so the cascade does not depend on an invariant holding forever. `Commit` gained `also` for the further subjects.
+- **A subscription remembers its grant by id** and re-resolves it before every delivery; a captured copy could not notice a revocation.
+- **The provider clock** (`clock.rs`) is the only source of protocol-visible time. `clock.file` follows forward writes, ignores backward and malformed ones, and refuses to start on a malformed file. `recorded_at` now comes from it, and the store's duplicate date arithmetic is gone.
+- **Transcripts are redacted at the recording boundary.** The runner expands `{repo}` into the checkout's absolute path; `run_fixtures.py` now substitutes `{cbr_checkout}`, records it in `cbr-run.json`, and refuses to finish if any machine path remains.
+
+### Mutants
+
+All observed, all restored; the suite returned to 122 / 13 / 0 after each. Steps are the runner's own numbering.
+
+| Mutant | Killed by | At |
+|---|---|---|
+| **Carried from c2:** no per-delivery re-check — the subscription continues under its grant, never re-authorized | `core.events.subscription-ends-at-grant-expiry` | step 11, **timeout**: `no frame within 2000 ms` |
+| | `core.events.subscription-ends-when-grant-revoked` | step 9, **timeout**: `no frame within 5000 ms` |
+| | `core.events.subscription-ends-when-grant-stops-authorizing` | step 10, `params/ended: missing` |
+| Revocation does not cascade | `core.grants.revocation-cascades` | step 10, `result/outcome/revoked: expected length 2, found 1` |
+| | `core.events.multi-event-command-contiguous` | step 11, `result/items: expected 4 items, found 3` |
+| A grant honoured past its expiry | `core.grants.expired-grant-refused` | step 10, `expected error permission_denied, received success` |
+| | `core.grants.expiry-instant-is-exclusive` | step 11, same |
+| | `core.grants.test-clock-never-moves-backward` | step 8, same |
+| | `core.events.subscription-ends-at-grant-expiry` | step 11, **timeout** |
+| A grant held by anyone authorizes | `core.grants.holder-only` | step 6, `expected error permission_denied, received success` |
+| | `core.grants.denial-reason-order` | step 8, `expected "grant_not_found", found "revoked"` |
+| Step 6 before deduplication for a command naming a grant | `core.grants.revoked-grant-refused-replay-kept` | step 14, `expected success, received error … "revoked"` |
+| A revocation acknowledged but not written | `a_grant_and_its_revocation_both_survive_sigkill` | "a grant revoked before the kill is still refused after it" |
+| A changed capability subject never listed in a retention snapshot | `a_retention_snapshot_lists_the_capability_subject_once_it_has_changed` | — |
+
+**On "declared steps", stated exactly.** Of the fixtures above, **none declares a kill step for these mutants.** Several name them — `subscription-survives-authorization-loss`, `no-revocation-cascade`, `ignore-expiry`, `accept-any-holder`, `deny-replay-after-revocation` — with `kill_expectations` absent, so the steps in the table are the observed ones. Where a fixture declares a step for a *related* mutant, the observation agrees with it: `subscription-ends-at-grant-expiry` declares `clock-file-ignored` at step 11 with reason `no frame within`, which is where and how both the re-check and the expiry mutants failed. `test-clock-never-moves-backward` declares steps 10 and 12 for its clock mutants; the expiry mutant fails earlier, at step 8, the first expired check, which is what removing expiry altogether should do. **The carried kill is now logged, because it was observed.**
+
+### Coverage limits
+
+`socket` (13) and `evidence` (16) have **not** been run. The 13 unsupported are named in `core-c3.json`; all need `core.capabilities`, eight arrive in c4 and five never will. **One constraint kind is implemented: none.** Issuing a grant with any constraint is refused at `/payload/constraints/0/kind` rather than silently widened; no fixture in scope exercises it. The only authority scope tracked is `core-test`. Grant descendants are found by scanning grant subjects, proportionate to v0.1's counts and not measured beyond them. The `m1b` and `m1c2` transcripts still carry the checkout's absolute path; they are unchanged because rewriting committed evidence, or history, is the owner's call.
+
+## Earlier — M1 stage (c2)
 
 `core.events`: the durable event log, positions, cursors, epochs, retention gaps, subscriptions and the per-connection outbox.
 
@@ -52,8 +110,6 @@ All restored; the suite returned to 80 of 135 with 0 failing.
 `socket` (13) and `evidence` (16) have **not** been run. The 55 unsupported are named in `conformance/expectations/core-c2.json`; 50 arrive in c3 and c4, five never will. **`core.events.backpressure` is not negotiated**, so no backpressure guarantee is declared and the output bound is CBR's own discipline; `consumer_too_slow` is not implemented. `core.effects` is named by no non-execution `core` fixture. The object store still has no fixture and rests on its own tests.
 
 ## Earlier — M1 stage (c1)
-
-## This change — M1 stage (c1)
 
 The durable store and the Core command path, gated at **62 pass / 73 unsupported / 0 fail**.
 

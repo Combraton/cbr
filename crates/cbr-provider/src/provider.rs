@@ -111,6 +111,18 @@ fn key_of(subject: &Value) -> SubjectKey {
     }
 }
 
+/// The `core.grant.revoked` event: one per revoked grant, payload fixed by
+/// CORE section 16.2.
+fn revoked_event(caused_by: &[String]) -> crate::store::NewEvent {
+    crate::store::NewEvent {
+        event_type: "core.grant.revoked".into(),
+        caused_by: caused_by.to_vec(),
+        payload: Box::new(|_| {
+            Value::Object(vec![("state".into(), Value::String("revoked".into()))])
+        }),
+    }
+}
+
 /// The response to an accepted command: the acknowledgment, the outcome and
 /// `replay: false` (CORE section 11).
 fn accepted(
@@ -150,6 +162,7 @@ fn is_grant_operation(operation: &str) -> bool {
 
 pub struct Provider {
     pub config: Config,
+    clock: crate::clock::Clock,
     store: Store,
     negotiated: Option<Vec<(String, i64, Vec<String>)>>,
     dedupe_current: i64,
@@ -165,6 +178,7 @@ impl Provider {
     /// generation for this process.
     pub fn open(
         config: Config,
+        clock: crate::clock::Clock,
         data_dir: &std::path::Path,
     ) -> Result<Self, crate::store::StoreError> {
         let mut store = Store::open(data_dir)?;
@@ -176,12 +190,46 @@ impl Provider {
         if let Some(retain) = config.events_retain_last {
             store.retain_last_events(retain)?;
         }
+        // The capability snapshot is reconciled at launch, after any epoch
+        // change, so its change event lands in the epoch the process serves.
+        //
+        // Only the snapshot and its change event live here, and only because
+        // an in-scope fixture needs them: event recording is not gated on
+        // negotiation (CORE section 16.3), so
+        // `core.events.visibility-follows-direct-read-authority` expects the
+        // `core.capabilities.changed` event a restart with a changed predicate
+        // records, while declaring only `core.events` and `core.grants`. The
+        // `core.capabilities` query and the `capability_unavailable` refusal
+        // are the negotiated feature, and are not claimed.
+        if config.mode == crate::config::Mode::Conformance {
+            let status = config
+                .capabilities
+                .iter()
+                .find(|(name, _)| name == "core-test.writes")
+                .map_or("supported", |(_, status)| status.as_str());
+            let predicates = Value::Array(vec![Value::Object(vec![
+                ("name".into(), Value::String("core-test.writes".into())),
+                ("status".into(), Value::String(status.into())),
+                (
+                    "evidence".into(),
+                    // In a conformance launch this predicate is whatever the
+                    // launch configuration says, defaulted or explicit, so the
+                    // source names that rather than claiming a probe.
+                    Value::Object(vec![(
+                        "source".into(),
+                        Value::String("launch-configuration".into()),
+                    )]),
+                ),
+            ])]);
+            store.reconcile_capabilities(&config.provider_id, &predicates, &clock.now())?;
+        }
         let (current, oldest) = store.start_generation(
             config.dedupe_advance_on_start,
             config.dedupe_retain_generations,
         )?;
         Ok(Self {
             config,
+            clock,
             store,
             negotiated: None,
             dedupe_current: current,
@@ -712,13 +760,55 @@ impl Provider {
         }
     }
 
+    /// Every grant delegated from `root`, directly or transitively, that is
+    /// still active, in a stable breadth-first order.
+    ///
+    /// The walk passes **through** revoked grants rather than stopping at
+    /// them. Today that changes nothing, because a revoked grant cannot gain a
+    /// child and its children were revoked with it; but stopping would make
+    /// the cascade depend on that invariant holding forever, and a cascade that
+    /// silently leaves a grant authorizing is the failure this exists to rule
+    /// out.
+    fn active_descendants(&self, root: &str) -> Result<Vec<Grant>, ProtocolError> {
+        let mut all = Vec::new();
+        for (_, value) in self.store.subjects_of_kind(grants::KIND)? {
+            let parsed = cbr_encoding::parse(value.as_bytes())
+                .ok()
+                .and_then(|value| Grant::from_value(&value))
+                .ok_or_else(ProtocolError::new_internal_error)?;
+            all.push(parsed);
+        }
+        let mut frontier = vec![root.to_string()];
+        let mut seen = std::collections::HashSet::from([root.to_string()]);
+        let mut active = Vec::new();
+        while !frontier.is_empty() {
+            let mut next = Vec::new();
+            for grant in &all {
+                if let Some(parent) = &grant.parent
+                    && frontier.contains(parent)
+                    && seen.insert(grant.id.clone())
+                {
+                    next.push(grant.id.clone());
+                    if !grant.revoked {
+                        active.push(grant.clone());
+                    }
+                }
+            }
+            frontier = next;
+        }
+        Ok(active)
+    }
+
     /// The current epoch of every authority scope this provider tracks.
     fn authority_context(&self) -> Result<grants::Context, ProtocolError> {
         let mut epochs = Vec::new();
         for scope in grants::KNOWN_SCOPES {
             epochs.push((scope.to_string(), self.store.epoch(scope)?));
         }
-        Ok(grants::Context { epochs })
+        Ok(grants::Context {
+            now: self.clock.now(),
+            epochs,
+        })
     }
 
     /// Step 6 for an operation a profile protects (CORE section 15.5).
@@ -784,6 +874,9 @@ impl Provider {
                 other.holder == self.config.principal || other.issuer == self.config.principal
             }),
             kind if kind.starts_with("core-test.") => grant.may_read(key, "core-test.read"),
+            // No profile defines a read right for capabilities, so resources
+            // alone decide (CORE section 16.6).
+            "core.capabilities" => grant.covers(key),
             // A kind no profile defines is never readable under a grant.
             _ => false,
         }
@@ -835,10 +928,23 @@ impl Provider {
     /// lacked authority, and the two checks cannot be swapped without
     /// `core.grants.issue-validity-check-order` failing at a named step.
     fn authorize_issue(&self, grant: &Grant) -> Result<Option<Grant>, ProtocolError> {
+        // One instant for the whole decision, so the expiry check below and a
+        // parent's own expiry are judged against the same time.
+        let context = self.authority_context()?;
         if grant.audience != self.config.provider_id {
             return Err(ProtocolError::invalid_envelope(
                 "/payload/audience",
                 "not this provider",
+            ));
+        }
+        // "Not after the provider's current time": an expiry equal to now is
+        // already expired, so issuing it would mint a grant that never worked.
+        if let Some(expiry) = &grant.expires_at
+            && expiry.as_str() <= context.now.as_str()
+        {
+            return Err(ProtocolError::invalid_envelope(
+                "/payload/expires_at",
+                "not after the provider's current time",
             ));
         }
         if let Some(binding) = &grant.authority_binding
@@ -849,12 +955,26 @@ impl Provider {
                 "not an authority scope this provider tracks",
             ));
         }
-        // A grant without a parent may be issued only by an authority.
-        // Delegation, which is the other half of this rule, arrives with the
-        // clock in the next commit.
-        if !self.config.is_authority(&self.config.principal) {
-            return Err(grants::Denial::NotAuthority.into());
-        }
+
+        let Some(parent_id) = &grant.parent else {
+            // A grant without a parent may be issued only by an authority.
+            if !self.config.is_authority(&self.config.principal) {
+                return Err(grants::Denial::NotAuthority.into());
+            }
+            return Ok(None);
+        };
+        // A delegated grant may be issued only by the parent's holder. The
+        // parent is found the way `authorize` finds a grant, so a parent held
+        // by someone else is `grant_not_found`, not a hint that it exists.
+        let parent = self
+            .grant(parent_id)?
+            .filter(|parent| parent.holder == self.config.principal)
+            .ok_or(grants::Denial::GrantNotFound)?;
+        // Then usable — active, unexpired, bound to a current epoch — before
+        // its delegation terms are read at all, so a revoked parent says
+        // `revoked` rather than `delegation_exceeded`.
+        parent.usable(&context)?;
+        parent.may_delegate_to(grant)?;
         Ok(None)
     }
 
@@ -930,6 +1050,7 @@ impl Provider {
         let subject = command.subject.clone();
         let command_id = command.command_id.clone();
         let event_record = record.clone();
+        let recorded_at = self.clock.now();
         let result = self.store.commit_command(
             crate::store::Commit {
                 key: &key,
@@ -938,6 +1059,8 @@ impl Provider {
                 command_id: &command_id,
                 digest: &digest,
                 generation: command.dedupe_generation,
+                recorded_at: &recorded_at,
+                also: Vec::new(),
                 event: Some(crate::store::NewEvent {
                     event_type: "core.grant.issued".into(),
                     caused_by: command.caused_by.clone(),
@@ -979,7 +1102,26 @@ impl Provider {
         let digest = command.command_digest.clone();
         let subject = command.subject.clone();
         let command_id = command.command_id.clone();
-        let revoked = Value::Array(vec![Value::String(id.clone())]);
+
+        // Revocation cascades to every grant delegated from this one, directly
+        // or transitively, in the same transaction: a crash cannot leave a
+        // parent revoked and a child still authorizing. Descendants already
+        // revoked are neither listed nor changed (CORE section 15.3).
+        let descendants = self.active_descendants(&id)?;
+        let mut revoked = vec![Value::String(id.clone())];
+        let mut also = Vec::new();
+        for mut child in descendants {
+            revoked.push(Value::String(child.id.clone()));
+            child.revoked = true;
+            also.push(crate::store::Change {
+                key: Grant::key(&child.id),
+                value: String::from_utf8(cbr_encoding::to_canonical(&child.to_value()))
+                    .expect("canonical form is UTF-8"),
+                event: revoked_event(&command.caused_by),
+            });
+        }
+        let revoked = Value::Array(revoked);
+        let recorded_at = self.clock.now();
         let result = self.store.commit_command(
             crate::store::Commit {
                 key: &key,
@@ -988,13 +1130,9 @@ impl Provider {
                 command_id: &command_id,
                 digest: &digest,
                 generation: command.dedupe_generation,
-                event: Some(crate::store::NewEvent {
-                    event_type: "core.grant.revoked".into(),
-                    caused_by: command.caused_by.clone(),
-                    payload: Box::new(|_| {
-                        Value::Object(vec![("state".into(), Value::String("revoked".into()))])
-                    }),
-                }),
+                recorded_at: &recorded_at,
+                also,
+                event: Some(revoked_event(&command.caused_by)),
             },
             |revision, operation_ref| {
                 accepted(
@@ -1631,6 +1769,7 @@ impl Provider {
         let subject = command.subject.clone();
         let command_id = command.command_id.clone();
         let caused_by = command.caused_by.clone();
+        let recorded_at = self.clock.now();
         let result = self.store.commit_command(
             crate::store::Commit {
                 key: &key,
@@ -1639,6 +1778,8 @@ impl Provider {
                 command_id: &command_id,
                 digest: &command_digest,
                 generation: command.dedupe_generation,
+                recorded_at: &recorded_at,
+                also: Vec::new(),
                 event: Some(crate::store::NewEvent {
                     event_type: "core-test.authority.claimed".into(),
                     payload: Box::new(|epoch| {
@@ -1688,6 +1829,7 @@ impl Provider {
         let caused_by = command.caused_by.clone();
         let stored_value = value.clone();
         let event_value = value.clone();
+        let recorded_at = self.clock.now();
         let result = self.store.commit_command(
             crate::store::Commit {
                 key: &key,
@@ -1696,6 +1838,8 @@ impl Provider {
                 command_id: &command_id,
                 digest: &command_digest,
                 generation: command.dedupe_generation,
+                recorded_at: &recorded_at,
+                also: Vec::new(),
                 event: Some(crate::store::NewEvent {
                     event_type: "core-test.subject.changed".into(),
                     caused_by: caused_by.clone(),
@@ -1812,7 +1956,8 @@ mod tests {
             authority_principals: vec!["owner".into()],
             ..Config::default()
         };
-        Provider::open(config, directory).expect("opens")
+        let clock = crate::clock::Clock::open(crate::clock::Source::System).expect("clock");
+        Provider::open(config, clock, directory).expect("opens")
     }
 
     /// A subscription must not outlive the authority it was created under.

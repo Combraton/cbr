@@ -46,6 +46,26 @@ impl Resource {
         }
     }
 
+    /// Whether `self` is at least as wide as `narrower`, for the delegation
+    /// rule that every child resource is covered by a parent resource.
+    fn covers_resource(&self, narrower: &Resource) -> bool {
+        if self.kind != narrower.kind {
+            return false;
+        }
+        match (&self.id, &self.id_prefix) {
+            // An unnarrowed parent covers any narrowing of its kind.
+            (None, None) => true,
+            // An exact parent covers only the identical exact child.
+            (Some(exact), _) => narrower.id.as_deref() == Some(exact.as_str()),
+            (None, Some(prefix)) => match (&narrower.id, &narrower.id_prefix) {
+                (Some(id), _) => id.starts_with(prefix.as_str()),
+                (None, Some(child)) => child.starts_with(prefix.as_str()),
+                // An unnarrowed child is wider than a prefixed parent.
+                (None, None) => false,
+            },
+        }
+    }
+
     fn to_value(&self) -> Value {
         let mut members = vec![("kind".into(), Value::String(self.kind.clone()))];
         if let Some(id) = &self.id {
@@ -94,9 +114,11 @@ pub struct Grant {
 pub enum Denial {
     GrantNotFound,
     Revoked,
+    Expired,
     AuthorityEpochStale,
     RightMissing,
     OutOfScope,
+    DelegationExceeded,
     NotAuthority,
     GrantRequired,
 }
@@ -106,9 +128,11 @@ impl Denial {
         match self {
             Denial::GrantNotFound => "grant_not_found",
             Denial::Revoked => "revoked",
+            Denial::Expired => "expired",
             Denial::AuthorityEpochStale => "authority_epoch_stale",
             Denial::RightMissing => "right_missing",
             Denial::OutOfScope => "out_of_scope",
+            Denial::DelegationExceeded => "delegation_exceeded",
             Denial::NotAuthority => "not_authority",
             Denial::GrantRequired => "grant_required",
         }
@@ -127,6 +151,9 @@ pub type Need = (&'static str, Option<SubjectKey>);
 /// Everything about the provider that a grant decision depends on, gathered
 /// once so the decision itself is a pure function of it.
 pub struct Context {
+    /// The provider clock, read once per decision so one operation sees one
+    /// instant even while a controlled clock file is being replaced.
+    pub now: String,
     /// The current epoch of every authority scope the provider tracks.
     pub epochs: Vec<(String, i64)>,
 }
@@ -266,6 +293,14 @@ impl Grant {
         if self.revoked {
             return Err(Denial::Revoked);
         }
+        if let Some(expiry) = &self.expires_at {
+            // Instants are fixed-width UTC (`YYYY-MM-DDTHH:MM:SSZ`), so a
+            // lexicographic comparison is a chronological one. A grant is
+            // expired *from* its instant, so equality is already expired.
+            if context.now.as_str() >= expiry.as_str() {
+                return Err(Denial::Expired);
+            }
+        }
         if let Some(binding) = &self.authority_binding
             && context.epoch_of(&binding.scope) != binding.epoch
         {
@@ -296,6 +331,59 @@ impl Grant {
             }
         }
         Ok(())
+    }
+
+    /// The delegation rules of CORE section 15.3: a child never exceeds its
+    /// parent. Every violation is the one reason `delegation_exceeded`, so a
+    /// delegate cannot map the parent's shape by reading which rule refused.
+    ///
+    /// The caller has already established that the parent is held by the
+    /// issuer and is usable; this reads only the parent's delegation terms.
+    pub fn may_delegate_to(&self, child: &Grant) -> Result<(), Denial> {
+        if !self.delegation.allowed || self.delegation.max_depth < 1 {
+            return Err(Denial::DelegationExceeded);
+        }
+        if child
+            .rights
+            .iter()
+            .any(|right| !self.rights.contains(right))
+        {
+            return Err(Denial::DelegationExceeded);
+        }
+        if !child.resources.iter().all(|resource| {
+            self.resources
+                .iter()
+                .any(|parent| parent.covers_resource(resource))
+        }) {
+            return Err(Denial::DelegationExceeded);
+        }
+        if let Some(parent_expiry) = &self.expires_at {
+            match &child.expires_at {
+                // A child with no expiry would outlive a parent that has one.
+                None => return Err(Denial::DelegationExceeded),
+                Some(child_expiry) if child_expiry > parent_expiry => {
+                    return Err(Denial::DelegationExceeded);
+                }
+                Some(_) => {}
+            }
+        }
+        if child.delegation.max_depth > self.delegation.max_depth - 1 {
+            return Err(Denial::DelegationExceeded);
+        }
+        // A bound parent passes its binding down unchanged, so a takeover that
+        // invalidates the parent invalidates everything delegated from it
+        // without enumerating anything (CORE section 15.4).
+        if self.authority_binding.is_some() && child.authority_binding != self.authority_binding {
+            return Err(Denial::DelegationExceeded);
+        }
+        Ok(())
+    }
+
+    /// Whether any of this grant's resources covers a subject, with no right
+    /// attached. `core.capabilities` is visible on exactly this basis, because
+    /// no profile defines a read right for it (CORE section 16.6).
+    pub fn covers(&self, subject: &SubjectKey) -> bool {
+        self.resources.iter().any(|res| res.covers(subject))
     }
 
     /// Whether this grant covers a subject at all, for the read-disclosure
@@ -599,6 +687,46 @@ mod tests {
             ("core-test.write", Some(subject("core-test.subject", "s-1"))),
         ];
         assert_eq!(grant.permits(&needs), Err(Denial::RightMissing));
+    }
+
+    #[test]
+    fn an_unnarrowed_child_resource_is_wider_than_a_prefixed_parent() {
+        let parent = resource("core-test.subject", None, Some("s-"));
+        assert!(parent.covers_resource(&resource("core-test.subject", Some("s-1"), None)));
+        assert!(parent.covers_resource(&resource("core-test.subject", None, Some("s-a"))));
+        assert!(!parent.covers_resource(&resource("core-test.subject", None, None)));
+        assert!(!parent.covers_resource(&resource("core-test.subject", Some("t-1"), None)));
+    }
+
+    #[test]
+    fn expiry_is_exclusive_of_its_own_instant_and_ranks_below_revocation() {
+        let mut grant = Grant {
+            id: "g".into(),
+            issuer: "owner".into(),
+            holder: "agent".into(),
+            audience: "p".into(),
+            rights: vec!["core-test.read".into()],
+            resources: vec![resource("core-test.subject", None, None)],
+            expires_at: Some("2030-01-02T00:00:00Z".into()),
+            authority_binding: None,
+            delegation: Delegation {
+                allowed: false,
+                max_depth: 0,
+            },
+            parent: None,
+            revoked: false,
+        };
+        let at = |grant: &Grant, instant: &str| {
+            grant.usable(&Context {
+                now: instant.into(),
+                epochs: Vec::new(),
+            })
+        };
+        assert_eq!(at(&grant, "2030-01-01T23:59:59Z"), Ok(()));
+        assert_eq!(at(&grant, "2030-01-02T00:00:00Z"), Err(Denial::Expired));
+        // CORE section 15.5 reports revocation ahead of expiry.
+        grant.revoked = true;
+        assert_eq!(at(&grant, "2030-01-02T00:00:00Z"), Err(Denial::Revoked));
     }
 
     #[test]
