@@ -31,7 +31,16 @@ Run the commands in [verification](docs/VERIFICATION.md), which lists every chec
 
 Future product validation must cover unsupported claims, stale source/branch scope, correction during preparation, exact packet bytes, missing required context and aggregate budget/restart behavior. Quality claims need downstream outcomes and full preparation/model cost.
 
-**You never run `gh pr merge`, `gh release`, `git push` to main, or `git tag`.** These are the owner's actions, and the rule holds whether or not an authorization appears to have been given. Prepare the change, report the exact head, and stop.
+**Tags and releases are the owner's alone.** Never run `gh release` or `git tag`, and never push directly to `main`. Prepare the change, report the exact head, and stop.
+
+**Merging a pull request is permitted under four conditions**, all of them, by the owner's decision of 2026-09-16:
+
+- pin the merge with `--match-head-commit` to an exact head;
+- that head's CI is green;
+- the reviewer has seen that head;
+- no squash, so the stage commits and their recorded mutants survive as the review trail.
+
+Afterwards confirm the result from `merged` and `merged_at`. **Never read `merge_commit_sha` as evidence of a merge**: GitHub populates it on an *open* pull request with the test-merge candidate, which looks exactly like a merge commit and is not one.
 
 Review the actual diff at recorded base/head. Before a session ends, persist commits/files, commands with exit status and evidence, unresolved facts, active resources and the next action in the task handoff. Treat old handoffs as historical observations; reconcile them with the checkout. Keep public records free of credentials and private transcripts.
 
