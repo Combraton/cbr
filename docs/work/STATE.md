@@ -3,12 +3,28 @@
 This is a dated navigation snapshot. Reconcile it with Git, linked issues and current task evidence before acting. Issues own live progress; this file does not grant authority or maintain a second backlog.
 
 - **Updated:** 2026-09-16.
-- **Owner/task:** Claude Code session as implementation lead for standalone CBR. Active task: [issue #3](https://github.com/Combraton/cbr/issues/3), milestone M1 stage (e), the last, on branch `m1e/evidence-profile`, stacked on stage (d)'s PR #10, which is not yet merged. Parent: [issue #1](https://github.com/Combraton/cbr/issues/1). An independent reviewer session reviews this read-only.
-- **Merged:** PR #2 as `d68e9d6`, pinned to `877139f`; PR #4 as `a939446`, pinned to `630011c`; PR #5 (c1) as `8b75129`; PR #6 (c2) as `da1e650`, pinned to `b00ec49`; **PR #7 (c3) as `8ba2594`, pinned to `5b98a9f`, confirmed from `merged: true` and `merged_at: 2026-09-16T15:31:51Z`**. Earlier: PR #6 pinned to `b00ec49`, confirmed from `merged: true` and `merged_at: 2026-09-16T14:26:34Z`**, the draft marked ready first and the head re-read unchanged before merging. Every owner decision, including the ceiling, is in [ADR 001](../decisions/001-standalone-v0.1-scope-and-stack.md). **PR #8 (owner follow-ups) as `f00faaf`, pinned to `40cb30b`, `merged_at: 2026-09-16T16:57:29Z`; PR #9 (c4) as `9a7b8f5`, pinned to `5db9d7c`, `merged_at: 2026-09-16T16:57:53Z`**, in that order, each confirmed from `merged` and `merged_at`.
+- **Owner/task:** Claude Code session as implementation lead for standalone CBR. **M1 is complete**: [issue #3](https://github.com/Combraton/cbr/issues/3) is closed, and its closing record is committed as [m1/CLOSEOUT.md](m1/CLOSEOUT.md). Active task: **M2, Knowledge, [issue #12](https://github.com/Combraton/cbr/issues/12)**. This change, the M1 close-out and README, is on branch `m1/closeout-and-readme`; M2 is stacked on it. Parent: [issue #1](https://github.com/Combraton/cbr/issues/1). An independent reviewer session reviews this read-only.
+- **Merged:** PR #2 as `d68e9d6`, pinned to `877139f`; PR #4 as `a939446`, pinned to `630011c`; PR #5 (c1) as `8b75129`; PR #6 (c2) as `da1e650`, pinned to `b00ec49`; **PR #7 (c3) as `8ba2594`, pinned to `5b98a9f`, confirmed from `merged: true` and `merged_at: 2026-09-16T15:31:51Z`**. Earlier: PR #6 pinned to `b00ec49`, confirmed from `merged: true` and `merged_at: 2026-09-16T14:26:34Z`**, the draft marked ready first and the head re-read unchanged before merging. Every owner decision, including the ceiling, is in [ADR 001](../decisions/001-standalone-v0.1-scope-and-stack.md). **PR #8 (owner follow-ups) as `f00faaf`, pinned to `40cb30b`, `merged_at: 2026-09-16T16:57:29Z`; PR #9 (c4) as `9a7b8f5`, pinned to `5db9d7c`, `merged_at: 2026-09-16T16:57:53Z`**, in that order, each confirmed from `merged` and `merged_at`. **PR #10 (d) as `96a33f2`, pinned to `a1048e6`, `merged_at: 2026-09-16T18:17:38Z`; then PR #11 (e) as `6c63d91`, pinned to `c2a262d`, `merged_at: 2026-09-16T18:17:56Z`**. PR #11 was stacked on #10's branch, so it was retargeted to `main` after #10 merged and before its own merge; retargeting leaves the head unchanged, and `c2a262d` was re-read before merging.
 - **Merge rule, 2026-09-16, superseded the same day.** This session ran `gh pr merge` on PR #2 after the owner replied "you can merge PR 2" in-session, having first reported the contradicting claim with evidence and waited. It landed the exact reviewed head `877139f` and is kept. A stricter rule was then recorded, and the owner then **granted merge authority under four conditions**, now in [AGENTS.md](../../AGENTS.md): pin with `--match-head-commit`; the head's CI is green; the reviewer has seen that head; no squash. Confirm from `merged` and `merged_at` afterwards, **never `merge_commit_sha`** — GitHub populates that on an open pull request with the test-merge candidate. Tags and releases remain the owner's alone.
 - **Inspected revisions:** protocol `v0.1.0` = `cbf8e4df9df2ca8a9b50264df6acace6e4c3a0fc`; combraton `9af69ce`; pio `e65b7c0`; benchmarks `c8d5878`.
 
-## This change — M1 stage (e)
+## This change — M1 close-out and README
+
+Three things the reviewer asked for immediately after the merges, done in that order:
+
+1. **Issue #3 closed** with the [close-out comment](https://github.com/Combraton/cbr/issues/3#issuecomment-5702383702): the outcome table across the five result sets (the encoding vectors plus `stream`, `core`, `socket` and `evidence`), the permanent coverage limits, and every mutant from stages (a) to (e). The same text is committed as [m1/CLOSEOUT.md](m1/CLOSEOUT.md) (`342eab7`).
+2. **README no longer says no product runtime or installation command exists** (`46285ad`). It states what exists and what does not. There is still no release and no install command, only a build from source, and the README's snippet was run before it was written down. The documentation map, the work README and VERIFICATION's opening paragraph were updated to match.
+3. **M2 opened as [issue #12](https://github.com/Combraton/cbr/issues/12)**, expecting `knowledge` **10 / 0 / 0 with `knowledge.store`**. That expectation was measured by a run against M1's binary with the claims declared and nothing implemented, using an uncommitted scratch descriptor: 10 fail / 0 unsupported with the control, and 9 fail / 1 unsupported without it (`knowledge.applicability-follows-precedence`).
+
+| Command | Exit | Result |
+|---|---|---|
+| `check_docs.py` | 0 | 22 files, 124 links, 0 errors |
+| `git diff --check` | 0 | — |
+| The README snippet (build, private socket directory, provider, `cbr ingest`, `cbr fetch`, `cmp`) | 0 | byte-identical |
+
+**Found while running the snippet:** a Unix socket path must fit the platform's `sun_path` limit, 104 bytes on macOS. The provider refuses a longer path at bind (`path must be shorter than SUN_LEN`), before listening. The README says to keep the path short.
+
+## Earlier — M1 stage (e)
 
 The Evidence profile, the `cbr` CLI, and the storage crash matrix. Three commits: the profile (`c0c974b`), the CLI with credential administration (`56fe7ee`), and the crash matrix with results and documentation.
 
