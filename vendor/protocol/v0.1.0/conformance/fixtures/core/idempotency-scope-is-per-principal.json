@@ -1,0 +1,124 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "core.idempotency.scope-is-per-principal",
+  "version": 1,
+  "title": "Another principal's command identity is a new command",
+  "requirements": [
+    "CORE-7",
+    "CORE-12"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/CORE.md#62-deduplication-scope-and-binding"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "core-test",
+      "major": 1
+    }
+  ],
+  "polarity": "negative",
+  "kills": [
+    "global-dedupe-scope"
+  ],
+  "steps": [
+    {
+      "step": "start",
+      "config": {
+        "principal": "alice"
+      }
+    },
+    {
+      "step": "negotiate"
+    },
+    {
+      "step": "command",
+      "operation": "core-test.subject.put",
+      "command_id": "cmd-1",
+      "subject": {
+        "kind": "core-test.subject",
+        "id": "s-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core-test.subject",
+            "id": "s-1"
+          },
+          "revision": 0
+        }
+      ],
+      "authority_epoch": 0,
+      "payload": {
+        "value": "a"
+      }
+    },
+    {
+      "step": "stop"
+    },
+    {
+      "step": "start",
+      "config": {
+        "principal": "bob"
+      }
+    },
+    {
+      "step": "negotiate"
+    },
+    {
+      "step": "command",
+      "operation": "core-test.subject.put",
+      "command_id": "cmd-1",
+      "subject": {
+        "kind": "core-test.subject",
+        "id": "s-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core-test.subject",
+            "id": "s-1"
+          },
+          "revision": 0
+        }
+      ],
+      "authority_epoch": 0,
+      "payload": {
+        "value": "a"
+      },
+      "expect": {
+        "error": "precondition_failed"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "core-test.subject.put",
+      "command_id": "cmd-1",
+      "subject": {
+        "kind": "core-test.subject",
+        "id": "s-2"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core-test.subject",
+            "id": "s-2"
+          },
+          "revision": 0
+        }
+      ],
+      "authority_epoch": 0,
+      "payload": {
+        "value": "b"
+      },
+      "expect": {
+        "ok": {
+          "replay": false
+        }
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

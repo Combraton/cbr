@@ -1,0 +1,114 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "core.preconditions.multi-object-atomic",
+  "version": 1,
+  "title": "If any precondition fails, no part of the command takes effect",
+  "requirements": [
+    "CORE-9"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/CORE.md#7-preconditions-and-revisions"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "core-test",
+      "major": 1
+    }
+  ],
+  "polarity": "negative",
+  "kills": [
+    "partial-preconditions",
+    "ignore-preconditions"
+  ],
+  "steps": [
+    {
+      "step": "start"
+    },
+    {
+      "step": "negotiate"
+    },
+    {
+      "step": "command",
+      "operation": "core-test.subject.put",
+      "command_id": "cmd-1",
+      "subject": {
+        "kind": "core-test.subject",
+        "id": "s-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core-test.subject",
+            "id": "s-1"
+          },
+          "revision": 0
+        }
+      ],
+      "authority_epoch": 0,
+      "payload": {
+        "value": "a"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "core-test.subject.put",
+      "command_id": "cmd-2",
+      "subject": {
+        "kind": "core-test.subject",
+        "id": "s-2"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core-test.subject",
+            "id": "s-2"
+          },
+          "revision": 0
+        },
+        {
+          "subject": {
+            "kind": "core-test.subject",
+            "id": "s-1"
+          },
+          "revision": 5
+        }
+      ],
+      "authority_epoch": 0,
+      "payload": {
+        "value": "b"
+      },
+      "expect": {
+        "error": "precondition_failed",
+        "details": {
+          "failed": [
+            {
+              "subject": {
+                "kind": "core-test.subject",
+                "id": "s-1"
+              },
+              "expected": 5,
+              "current": 1
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core-test.subject.get",
+      "payload": {
+        "subject": {
+          "kind": "core-test.subject",
+          "id": "s-2"
+        }
+      },
+      "expect": {
+        "error": "not_found"
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

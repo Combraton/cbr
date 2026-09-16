@@ -1,0 +1,578 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "evidence.seal-refuses-digest-mismatch-and-is-idempotent",
+  "version": 3,
+  "title": "A digest mismatch at seal is content_digest_mismatch and the artifact stays staged until abandoned; a sealed artifact reseals with already_sealed and no new revision or event",
+  "requirements": [
+    "EVD-2"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/EVIDENCE.md#4-upload-and-seal-owner-decision-m4-q1",
+    "docs/spec/profiles/EVIDENCE.md#6-errors"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "evidence",
+      "major": 1
+    }
+  ],
+  "features": [
+    "core.events"
+  ],
+  "polarity": "negative",
+  "kills": [
+    "seal-unverified",
+    "seal-twice-appends-event",
+    "abandon-sealed-accepted"
+  ],
+  "steps": [
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ]
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "evidence",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": [
+              "evidence.manifests",
+              "evidence.retention_control"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.upload.prepare",
+      "command_id": "prepare-d-1",
+      "subject": {
+        "kind": "evidence.artifact",
+        "id": "d-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.artifact",
+            "id": "d-1"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "digest": "sha256:17c28b9181e04bc25b28dfce94263b8a1c4bd8911004ced32a0db4ca9a0e60eb",
+        "size": 32,
+        "media_type": "text/plain",
+        "producer": {
+          "producer_id": "fixture-producer"
+        },
+        "source": {
+          "kind": "test_report",
+          "id": "run-1"
+        },
+        "scope": "project-a",
+        "capture": {
+          "captured_at": "2030-01-01T00:00:00Z",
+          "uncertainty": {
+            "not_before": "2029-12-31T23:59:58Z",
+            "not_after": "2030-01-01T00:00:00Z"
+          },
+          "anchors": [
+            {
+              "kind": "code_tree",
+              "id": "tree-1"
+            }
+          ]
+        },
+        "coverage": {
+          "completeness": "complete"
+        },
+        "retention_class": "standard"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.upload.append",
+      "command_id": "append-d-1-0",
+      "subject": {
+        "kind": "evidence.artifact",
+        "id": "d-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.artifact",
+            "id": "d-1"
+          },
+          "revision": 1
+        }
+      ],
+      "payload": {
+        "offset": 0,
+        "data_base64": "b3RoZXIgY29udGVudCB3aXRoIHRoZSBzYW1lIHNpemU="
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.seal",
+      "command_id": "seal-d-1",
+      "subject": {
+        "kind": "evidence.artifact",
+        "id": "d-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.artifact",
+            "id": "d-1"
+          },
+          "revision": 2
+        }
+      ],
+      "payload": {},
+      "expect": {
+        "error": "content_digest_mismatch",
+        "details": {
+          "computed": "sha256:767fa2fbb30210278ed4d9fa35a48c9081ccbe353ed67b56989debd47c8c00f6"
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "evidence.inspect",
+      "payload": {
+        "artifact": {
+          "kind": "evidence.artifact",
+          "id": "d-1"
+        }
+      },
+      "expect": {
+        "ok": {
+          "state": "staged",
+          "received": 32,
+          "revision": 2
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.upload.abandon",
+      "command_id": "abandon-d-1",
+      "subject": {
+        "kind": "evidence.artifact",
+        "id": "d-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.artifact",
+            "id": "d-1"
+          },
+          "revision": 2
+        }
+      ],
+      "payload": {},
+      "expect": {
+        "ok": {
+          "outcome": {
+            "state": "abandoned"
+          },
+          "acknowledgment": {
+            "revision": 3
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "evidence.inspect",
+      "payload": {
+        "artifact": {
+          "kind": "evidence.artifact",
+          "id": "d-1"
+        }
+      },
+      "expect": {
+        "ok": {
+          "state": "abandoned",
+          "abandoned_reason": "abandoned_by_producer",
+          "revision": 3,
+          "descriptor": {
+            "digest": "sha256:17c28b9181e04bc25b28dfce94263b8a1c4bd8911004ced32a0db4ca9a0e60eb"
+          },
+          "availability": {
+            "state": "unavailable",
+            "reason": "abandoned_by_producer"
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "evidence.fetch",
+      "payload": {
+        "artifact": {
+          "kind": "evidence.artifact",
+          "id": "d-1"
+        },
+        "digest": "sha256:17c28b9181e04bc25b28dfce94263b8a1c4bd8911004ced32a0db4ca9a0e60eb"
+      },
+      "expect": {
+        "error": "not_found"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.upload.append",
+      "command_id": "append-d-1-again",
+      "subject": {
+        "kind": "evidence.artifact",
+        "id": "d-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.artifact",
+            "id": "d-1"
+          },
+          "revision": 3
+        }
+      ],
+      "payload": {
+        "offset": 0,
+        "data_base64": "dGhlIGRlY2xhcmVkIGNvbnRlbnQsIDMyIGJ5dGVzISE="
+      },
+      "expect": {
+        "error": "not_found"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.upload.prepare",
+      "command_id": "prepare-d-2",
+      "subject": {
+        "kind": "evidence.artifact",
+        "id": "d-2"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.artifact",
+            "id": "d-2"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "digest": "sha256:17c28b9181e04bc25b28dfce94263b8a1c4bd8911004ced32a0db4ca9a0e60eb",
+        "size": 32,
+        "media_type": "text/plain",
+        "producer": {
+          "producer_id": "fixture-producer"
+        },
+        "source": {
+          "kind": "test_report",
+          "id": "run-1"
+        },
+        "scope": "project-a",
+        "capture": {
+          "captured_at": "2030-01-01T00:00:00Z",
+          "uncertainty": {
+            "not_before": "2029-12-31T23:59:58Z",
+            "not_after": "2030-01-01T00:00:00Z"
+          },
+          "anchors": [
+            {
+              "kind": "code_tree",
+              "id": "tree-1"
+            }
+          ]
+        },
+        "coverage": {
+          "completeness": "complete"
+        },
+        "retention_class": "standard"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.upload.append",
+      "command_id": "append-d-2-0",
+      "subject": {
+        "kind": "evidence.artifact",
+        "id": "d-2"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.artifact",
+            "id": "d-2"
+          },
+          "revision": 1
+        }
+      ],
+      "payload": {
+        "offset": 0,
+        "data_base64": "dGhlIGRlY2xhcmVkIGNvbnRlbnQsIDMyIGJ5dGVzISE="
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.seal",
+      "command_id": "seal-d-2",
+      "subject": {
+        "kind": "evidence.artifact",
+        "id": "d-2"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.artifact",
+            "id": "d-2"
+          },
+          "revision": 2
+        }
+      ],
+      "payload": {},
+      "expect": {
+        "ok": {
+          "outcome": {
+            "state": "sealed",
+            "digest": "sha256:17c28b9181e04bc25b28dfce94263b8a1c4bd8911004ced32a0db4ca9a0e60eb"
+          },
+          "acknowledgment": {
+            "revision": 3
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.seal",
+      "command_id": "seal-d-2",
+      "subject": {
+        "kind": "evidence.artifact",
+        "id": "d-2"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.artifact",
+            "id": "d-2"
+          },
+          "revision": 2
+        }
+      ],
+      "payload": {},
+      "expect": {
+        "ok": {
+          "replay": true,
+          "outcome": {
+            "already_sealed": false
+          },
+          "acknowledgment": {
+            "revision": 3
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.seal",
+      "command_id": "seal-d-2-again",
+      "subject": {
+        "kind": "evidence.artifact",
+        "id": "d-2"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.artifact",
+            "id": "d-2"
+          },
+          "revision": 3
+        }
+      ],
+      "payload": {},
+      "expect": {
+        "ok": {
+          "replay": false,
+          "outcome": {
+            "state": "sealed",
+            "digest": "sha256:17c28b9181e04bc25b28dfce94263b8a1c4bd8911004ced32a0db4ca9a0e60eb",
+            "already_sealed": true
+          },
+          "acknowledgment": {
+            "revision": 3
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "evidence.inspect",
+      "payload": {
+        "artifact": {
+          "kind": "evidence.artifact",
+          "id": "d-2"
+        }
+      },
+      "expect": {
+        "ok": {
+          "revision": 3
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.upload.abandon",
+      "command_id": "abandon-d-2-sealed",
+      "subject": {
+        "kind": "evidence.artifact",
+        "id": "d-2"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.artifact",
+            "id": "d-2"
+          },
+          "revision": 3
+        }
+      ],
+      "payload": {},
+      "expect": {
+        "error": "not_found"
+      }
+    },
+    {
+      "step": "query",
+      "operation": "evidence.fetch",
+      "payload": {
+        "artifact": {
+          "kind": "evidence.artifact",
+          "id": "d-2"
+        },
+        "digest": "sha256:17c28b9181e04bc25b28dfce94263b8a1c4bd8911004ced32a0db4ca9a0e60eb"
+      },
+      "expect": {
+        "ok": {
+          "availability": {
+            "state": "available"
+          },
+          "data_base64": "dGhlIGRlY2xhcmVkIGNvbnRlbnQsIDMyIGJ5dGVzISE="
+        }
+      },
+      "note": "abandon never discards a sealed artifact"
+    },
+    {
+      "step": "query",
+      "operation": "core.events.read",
+      "payload": {
+        "from": "start",
+        "limit": 100,
+        "kinds": [
+          "evidence.artifact"
+        ]
+      },
+      "expect": {
+        "ok": {
+          "items": [
+            {
+              "event": {
+                "type": "evidence.artifact.staged",
+                "subject": {
+                  "kind": "evidence.artifact",
+                  "id": "d-1"
+                }
+              }
+            },
+            {
+              "event": {
+                "type": "evidence.artifact.appended",
+                "subject": {
+                  "kind": "evidence.artifact",
+                  "id": "d-1"
+                }
+              }
+            },
+            {
+              "event": {
+                "type": "evidence.artifact.abandoned",
+                "subject": {
+                  "kind": "evidence.artifact",
+                  "id": "d-1"
+                },
+                "payload": {
+                  "reason": "abandoned_by_producer"
+                }
+              }
+            },
+            {
+              "event": {
+                "type": "evidence.artifact.staged",
+                "subject": {
+                  "kind": "evidence.artifact",
+                  "id": "d-2"
+                }
+              }
+            },
+            {
+              "event": {
+                "type": "evidence.artifact.appended",
+                "subject": {
+                  "kind": "evidence.artifact",
+                  "id": "d-2"
+                }
+              }
+            },
+            {
+              "event": {
+                "type": "evidence.artifact.sealed",
+                "subject": {
+                  "kind": "evidence.artifact",
+                  "id": "d-2"
+                },
+                "revision": 3
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

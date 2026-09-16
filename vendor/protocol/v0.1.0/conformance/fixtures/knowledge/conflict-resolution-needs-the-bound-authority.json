@@ -1,0 +1,681 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "knowledge.conflict-resolution-needs-the-bound-authority",
+  "version": 1,
+  "title": "A model producer may open a conflict with a suggested observation but cannot resolve it; a newer revision resolves nothing; only the bound authority resolves, the resolution changes no revision or reliance, and a resolved record cannot be resolved again",
+  "requirements": [
+    "KNW-5"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/KNOWLEDGE.md#7-conflicts-and-drift-knw-2-knw-5-m5-q1"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "knowledge",
+      "major": 1
+    }
+  ],
+  "features": [
+    "core.events",
+    "core.grants"
+  ],
+  "polarity": "negative",
+  "kills": [
+    "resolve-without-authority"
+  ],
+  "steps": [
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ]
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.grants"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "knowledge",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "core.grant.issue",
+      "command_id": "grant-issue-g-lead",
+      "subject": {
+        "kind": "core.grant",
+        "id": "g-lead"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core.grant",
+            "id": "g-lead"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "holder": "lead",
+        "audience": "conformance-provider",
+        "rights": [
+          "knowledge.propose",
+          "knowledge.read",
+          "knowledge.decide"
+        ],
+        "resources": [
+          {
+            "kind": "knowledge.claim"
+          },
+          {
+            "kind": "knowledge.decision"
+          },
+          {
+            "kind": "knowledge.conflict"
+          },
+          {
+            "kind": "knowledge.evaluation"
+          },
+          {
+            "kind": "knowledge.authority"
+          }
+        ],
+        "delegation": {
+          "allowed": false,
+          "max_depth": 0
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "core.grant.issue",
+      "command_id": "grant-issue-g-model",
+      "subject": {
+        "kind": "core.grant",
+        "id": "g-model"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core.grant",
+            "id": "g-model"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "holder": "model",
+        "audience": "conformance-provider",
+        "rights": [
+          "knowledge.propose",
+          "knowledge.read",
+          "knowledge.decide"
+        ],
+        "resources": [
+          {
+            "kind": "knowledge.claim"
+          },
+          {
+            "kind": "knowledge.decision"
+          },
+          {
+            "kind": "knowledge.conflict"
+          },
+          {
+            "kind": "knowledge.evaluation"
+          },
+          {
+            "kind": "knowledge.authority"
+          }
+        ],
+        "delegation": {
+          "allowed": false,
+          "max_depth": 0
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.authority.bind",
+      "command_id": "authority-bind-svc",
+      "subject": {
+        "kind": "knowledge.authority",
+        "id": "svc"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.authority",
+            "id": "svc"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "authority": "lead"
+      }
+    },
+    {
+      "step": "stop"
+    },
+    {
+      "step": "start",
+      "config": {
+        "principal": "model",
+        "authority_principals": [
+          "owner"
+        ]
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.grants"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "knowledge",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.claim.propose",
+      "command_id": "claim-propose-retry-a",
+      "subject": {
+        "kind": "knowledge.claim",
+        "id": "retry-a"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.claim",
+            "id": "retry-a"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "plane": "interpretive",
+        "statement": {
+          "subject": {
+            "kind": "app.service",
+            "id": "billing"
+          },
+          "predicate": "retry_limit",
+          "value": 3,
+          "cardinality": "single"
+        },
+        "scope": {
+          "id": "svc",
+          "qualifiers": {}
+        },
+        "support": [],
+        "derivation": {
+          "kind": "deterministic",
+          "inputs": []
+        }
+      },
+      "set": {
+        "grant": "g-model"
+      },
+      "capture": {
+        "d_retry-a": "/result/outcome/reference/digest"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.claim.propose",
+      "command_id": "claim-propose-retry-b",
+      "subject": {
+        "kind": "knowledge.claim",
+        "id": "retry-b"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.claim",
+            "id": "retry-b"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "plane": "interpretive",
+        "statement": {
+          "subject": {
+            "kind": "app.service",
+            "id": "billing"
+          },
+          "predicate": "retry_limit",
+          "value": 5,
+          "cardinality": "single"
+        },
+        "scope": {
+          "id": "svc",
+          "qualifiers": {}
+        },
+        "support": [],
+        "derivation": {
+          "kind": "deterministic",
+          "inputs": []
+        }
+      },
+      "set": {
+        "grant": "g-model"
+      },
+      "capture": {
+        "d_retry-b": "/result/outcome/reference/digest"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.conflict.open",
+      "command_id": "conflict-open-x-retry",
+      "subject": {
+        "kind": "knowledge.conflict",
+        "id": "x-retry"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.conflict",
+            "id": "x-retry"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "revisions": [
+          {
+            "provider": "conformance-provider",
+            "claim": "retry-a",
+            "revision": 1,
+            "digest": {
+              "$var": "d_retry-a"
+            }
+          },
+          {
+            "provider": "conformance-provider",
+            "claim": "retry-b",
+            "revision": 1,
+            "digest": {
+              "$var": "d_retry-b"
+            }
+          }
+        ],
+        "note": "run the retry test against both limits"
+      },
+      "set": {
+        "grant": "g-model"
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "kind": "conflict",
+            "status": "potential"
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.conflict.resolve",
+      "command_id": "conflict-resolve-x-retry",
+      "subject": {
+        "kind": "knowledge.conflict",
+        "id": "x-retry"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.conflict",
+            "id": "x-retry"
+          },
+          "revision": 1
+        }
+      ],
+      "payload": {
+        "resolution": "select",
+        "selected": {
+          "provider": "conformance-provider",
+          "claim": "retry-b",
+          "revision": 1,
+          "digest": {
+            "$var": "d_retry-b"
+          }
+        },
+        "rationale": "newest wins"
+      },
+      "set": {
+        "grant": "g-model",
+        "authority_epoch": 1
+      },
+      "expect": {
+        "error": "permission_denied",
+        "details": {
+          "reason": "not_authority"
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.claim.revise",
+      "command_id": "claim-revise-retry-b",
+      "subject": {
+        "kind": "knowledge.claim",
+        "id": "retry-b"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.claim",
+            "id": "retry-b"
+          },
+          "revision": 1
+        }
+      ],
+      "payload": {
+        "plane": "interpretive",
+        "statement": {
+          "subject": {
+            "kind": "app.service",
+            "id": "billing"
+          },
+          "predicate": "retry_limit",
+          "value": 5,
+          "cardinality": "single"
+        },
+        "scope": {
+          "id": "svc",
+          "qualifiers": {}
+        },
+        "support": [],
+        "derivation": {
+          "kind": "deterministic",
+          "inputs": []
+        },
+        "supersedes": {
+          "revision": 1,
+          "digest": {
+            "$var": "d_retry-b"
+          }
+        }
+      },
+      "set": {
+        "grant": "g-model"
+      }
+    },
+    {
+      "step": "query",
+      "operation": "knowledge.claim.inspect",
+      "payload": {
+        "claim": "retry-a"
+      },
+      "set": {
+        "grant": "g-model"
+      },
+      "expect": {
+        "ok": {
+          "conflicts": [
+            {
+              "conflict": "x-retry",
+              "state": "open"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "stop"
+    },
+    {
+      "step": "start",
+      "config": {
+        "principal": "lead",
+        "authority_principals": [
+          "owner"
+        ]
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.grants"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "knowledge",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.conflict.resolve",
+      "command_id": "resolve-x-retry-no-selection",
+      "subject": {
+        "kind": "knowledge.conflict",
+        "id": "x-retry"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.conflict",
+            "id": "x-retry"
+          },
+          "revision": 1
+        }
+      ],
+      "payload": {
+        "resolution": "select",
+        "rationale": "missing selection"
+      },
+      "set": {
+        "grant": "g-lead",
+        "authority_epoch": 1
+      },
+      "expect": {
+        "error": "invalid_envelope",
+        "details": {
+          "path": "/payload/selected"
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.conflict.resolve",
+      "command_id": "conflict-resolve-x-retry",
+      "subject": {
+        "kind": "knowledge.conflict",
+        "id": "x-retry"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.conflict",
+            "id": "x-retry"
+          },
+          "revision": 1
+        }
+      ],
+      "payload": {
+        "resolution": "narrow_scope",
+        "rationale": "the limits apply to different queues"
+      },
+      "set": {
+        "grant": "g-lead",
+        "authority_epoch": 1
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "state": "resolved",
+            "resolution": "narrow_scope"
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.conflict.resolve",
+      "command_id": "resolve-x-retry-again",
+      "subject": {
+        "kind": "knowledge.conflict",
+        "id": "x-retry"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.conflict",
+            "id": "x-retry"
+          },
+          "revision": 2
+        }
+      ],
+      "payload": {
+        "resolution": "not_a_conflict",
+        "rationale": "again"
+      },
+      "set": {
+        "grant": "g-lead",
+        "authority_epoch": 1
+      },
+      "expect": {
+        "error": "not_found"
+      }
+    },
+    {
+      "step": "query",
+      "operation": "knowledge.claim.inspect",
+      "payload": {
+        "claim": "retry-a"
+      },
+      "set": {
+        "grant": "g-lead"
+      },
+      "expect": {
+        "ok": {
+          "record": {
+            "statement": {
+              "value": 3
+            }
+          },
+          "reliance": {
+            "state": "proposed"
+          },
+          "conflicts": [
+            {
+              "conflict": "x-retry",
+              "state": "resolved"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "knowledge.claim.inspect",
+      "payload": {
+        "claim": "retry-b",
+        "revision": 1
+      },
+      "set": {
+        "grant": "g-lead"
+      },
+      "expect": {
+        "ok": {
+          "record": {
+            "statement": {
+              "value": 5
+            }
+          },
+          "reliance": {
+            "state": "proposed"
+          }
+        }
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

@@ -1,0 +1,781 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "evidence.publish-grant-bound-to-work",
+  "version": 2,
+  "title": "Only an explicit evidence.work_binding constraint binds a publish grant to work: destination and work must both match, missing or other work is binding_violation, unrelated resources in a grant bind nothing, and delegation keeps the constraint",
+  "requirements": [
+    "EVD-8"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/EVIDENCE.md#10-work-bindings",
+    "docs/spec/profiles/CORE.md#153-operations"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "evidence",
+      "major": 1
+    }
+  ],
+  "features": [
+    "core.events",
+    "core.grants",
+    "evidence.work_binding"
+  ],
+  "polarity": "negative",
+  "kills": [
+    "work-binding-ignored",
+    "work-constraint-inferred"
+  ],
+  "steps": [
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ]
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.grants"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "evidence",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "core.grant.issue",
+      "command_id": "issue-g-nofeature",
+      "subject": {
+        "kind": "core.grant",
+        "id": "g-nofeature"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core.grant",
+            "id": "g-nofeature"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "holder": "exec-1",
+        "audience": "conformance-provider",
+        "rights": [
+          "evidence.publish"
+        ],
+        "resources": [
+          {
+            "kind": "evidence.artifact",
+            "id_prefix": "output.e-1."
+          }
+        ],
+        "delegation": {
+          "allowed": false,
+          "max_depth": 0
+        },
+        "constraints": [
+          {
+            "kind": "evidence.work_binding",
+            "work": {
+              "kind": "execution.execution",
+              "id": "e-1"
+            }
+          }
+        ]
+      },
+      "expect": {
+        "error": "unsupported_required_feature",
+        "details": {
+          "features": [
+            "evidence.work_binding"
+          ]
+        }
+      }
+    },
+    {
+      "step": "stop"
+    },
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ]
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.grants"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "evidence",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "evidence.work_binding"
+            ],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "core.grant.issue",
+      "command_id": "issue-g-unknown",
+      "subject": {
+        "kind": "core.grant",
+        "id": "g-unknown"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core.grant",
+            "id": "g-unknown"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "holder": "exec-1",
+        "audience": "conformance-provider",
+        "rights": [
+          "evidence.publish"
+        ],
+        "resources": [
+          {
+            "kind": "evidence.artifact",
+            "id_prefix": "output.e-1."
+          }
+        ],
+        "delegation": {
+          "allowed": false,
+          "max_depth": 0
+        },
+        "constraints": [
+          {
+            "kind": "evidence.something_else"
+          }
+        ]
+      },
+      "expect": {
+        "error": "invalid_envelope",
+        "details": {
+          "path": "/payload/constraints/0/kind"
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "core.grant.issue",
+      "command_id": "issue-g-work",
+      "subject": {
+        "kind": "core.grant",
+        "id": "g-work"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core.grant",
+            "id": "g-work"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "holder": "exec-1",
+        "audience": "conformance-provider",
+        "rights": [
+          "evidence.publish"
+        ],
+        "resources": [
+          {
+            "kind": "evidence.artifact",
+            "id_prefix": "output.e-1."
+          }
+        ],
+        "delegation": {
+          "allowed": false,
+          "max_depth": 0
+        },
+        "constraints": [
+          {
+            "kind": "evidence.work_binding",
+            "work": {
+              "kind": "execution.execution",
+              "id": "e-1"
+            }
+          }
+        ]
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "grant": {
+              "constraints": [
+                {
+                  "kind": "evidence.work_binding",
+                  "work": {
+                    "kind": "execution.execution",
+                    "id": "e-1"
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "core.grant.issue",
+      "command_id": "issue-g-combined",
+      "subject": {
+        "kind": "core.grant",
+        "id": "g-combined"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core.grant",
+            "id": "g-combined"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "holder": "exec-1",
+        "audience": "conformance-provider",
+        "rights": [
+          "evidence.publish",
+          "execution.read"
+        ],
+        "resources": [
+          {
+            "kind": "evidence.artifact",
+            "id_prefix": "output.e-1."
+          },
+          {
+            "kind": "execution.execution",
+            "id": "e-2"
+          }
+        ],
+        "delegation": {
+          "allowed": false,
+          "max_depth": 0
+        }
+      },
+      "expect": {
+        "ok": {
+          "outcome": {}
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "core.grant.issue",
+      "command_id": "issue-g-parent",
+      "subject": {
+        "kind": "core.grant",
+        "id": "g-parent"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core.grant",
+            "id": "g-parent"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "holder": "exec-1",
+        "audience": "conformance-provider",
+        "rights": [
+          "evidence.publish"
+        ],
+        "resources": [
+          {
+            "kind": "evidence.artifact",
+            "id_prefix": "output.e-1."
+          }
+        ],
+        "delegation": {
+          "allowed": true,
+          "max_depth": 1
+        },
+        "constraints": [
+          {
+            "kind": "evidence.work_binding",
+            "work": {
+              "kind": "execution.execution",
+              "id": "e-1"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "step": "stop"
+    },
+    {
+      "step": "start",
+      "config": {
+        "principal": "exec-1",
+        "authority_principals": [
+          "owner"
+        ]
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.grants"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "evidence",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "evidence.work_binding"
+            ],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.upload.prepare",
+      "command_id": "prepare-output.e-1.c-1-e-2",
+      "subject": {
+        "kind": "evidence.artifact",
+        "id": "output.e-1.c-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.artifact",
+            "id": "output.e-1.c-1"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "digest": "sha256:a4c3ed04a95a3da14a9d235c83d868bed7c0f45cf7f3faa751ee8f50598d2211",
+        "size": 4,
+        "media_type": "text/plain",
+        "producer": {
+          "producer_id": "executor"
+        },
+        "source": {
+          "kind": "execution.completion",
+          "id": "output.e-1.c-1"
+        },
+        "scope": "execution",
+        "capture": {
+          "captured_at": "2030-01-01T00:00:00Z",
+          "anchors": []
+        },
+        "coverage": {
+          "completeness": "complete"
+        },
+        "retention_class": "execution-output",
+        "work": {
+          "kind": "execution.execution",
+          "id": "e-2"
+        }
+      },
+      "expect": {
+        "error": "permission_denied",
+        "details": {
+          "$exact": {
+            "reason": "binding_violation"
+          }
+        }
+      },
+      "set": {
+        "grant": "g-work"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.upload.prepare",
+      "command_id": "prepare-output.e-1.c-1-none",
+      "subject": {
+        "kind": "evidence.artifact",
+        "id": "output.e-1.c-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.artifact",
+            "id": "output.e-1.c-1"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "digest": "sha256:a4c3ed04a95a3da14a9d235c83d868bed7c0f45cf7f3faa751ee8f50598d2211",
+        "size": 4,
+        "media_type": "text/plain",
+        "producer": {
+          "producer_id": "executor"
+        },
+        "source": {
+          "kind": "execution.completion",
+          "id": "output.e-1.c-1"
+        },
+        "scope": "execution",
+        "capture": {
+          "captured_at": "2030-01-01T00:00:00Z",
+          "anchors": []
+        },
+        "coverage": {
+          "completeness": "complete"
+        },
+        "retention_class": "execution-output"
+      },
+      "expect": {
+        "error": "permission_denied",
+        "details": {
+          "$exact": {
+            "reason": "binding_violation"
+          }
+        }
+      },
+      "set": {
+        "grant": "g-work"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.upload.prepare",
+      "command_id": "prepare-output.e-2.c-1-e-1",
+      "subject": {
+        "kind": "evidence.artifact",
+        "id": "output.e-2.c-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.artifact",
+            "id": "output.e-2.c-1"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "digest": "sha256:a4c3ed04a95a3da14a9d235c83d868bed7c0f45cf7f3faa751ee8f50598d2211",
+        "size": 4,
+        "media_type": "text/plain",
+        "producer": {
+          "producer_id": "executor"
+        },
+        "source": {
+          "kind": "execution.completion",
+          "id": "output.e-2.c-1"
+        },
+        "scope": "execution",
+        "capture": {
+          "captured_at": "2030-01-01T00:00:00Z",
+          "anchors": []
+        },
+        "coverage": {
+          "completeness": "complete"
+        },
+        "retention_class": "execution-output",
+        "work": {
+          "kind": "execution.execution",
+          "id": "e-1"
+        }
+      },
+      "expect": {
+        "error": "permission_denied",
+        "details": {
+          "$exact": {
+            "reason": "out_of_scope"
+          }
+        }
+      },
+      "set": {
+        "grant": "g-work"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.upload.prepare",
+      "command_id": "prepare-output.e-1.c-1-e-1",
+      "subject": {
+        "kind": "evidence.artifact",
+        "id": "output.e-1.c-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.artifact",
+            "id": "output.e-1.c-1"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "digest": "sha256:a4c3ed04a95a3da14a9d235c83d868bed7c0f45cf7f3faa751ee8f50598d2211",
+        "size": 4,
+        "media_type": "text/plain",
+        "producer": {
+          "producer_id": "executor"
+        },
+        "source": {
+          "kind": "execution.completion",
+          "id": "output.e-1.c-1"
+        },
+        "scope": "execution",
+        "capture": {
+          "captured_at": "2030-01-01T00:00:00Z",
+          "anchors": []
+        },
+        "coverage": {
+          "completeness": "complete"
+        },
+        "retention_class": "execution-output",
+        "work": {
+          "kind": "execution.execution",
+          "id": "e-1"
+        }
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "state": "staged"
+          }
+        }
+      },
+      "set": {
+        "grant": "g-work"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.upload.prepare",
+      "command_id": "prepare-output.e-1.c-2-combined",
+      "subject": {
+        "kind": "evidence.artifact",
+        "id": "output.e-1.c-2"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.artifact",
+            "id": "output.e-1.c-2"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "digest": "sha256:a4c3ed04a95a3da14a9d235c83d868bed7c0f45cf7f3faa751ee8f50598d2211",
+        "size": 4,
+        "media_type": "text/plain",
+        "producer": {
+          "producer_id": "executor"
+        },
+        "source": {
+          "kind": "execution.completion",
+          "id": "output.e-1.c-2"
+        },
+        "scope": "execution",
+        "capture": {
+          "captured_at": "2030-01-01T00:00:00Z",
+          "anchors": []
+        },
+        "coverage": {
+          "completeness": "complete"
+        },
+        "retention_class": "execution-output",
+        "work": {
+          "kind": "execution.execution",
+          "id": "e-7"
+        }
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "state": "staged"
+          }
+        }
+      },
+      "set": {
+        "grant": "g-combined"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "core.grant.issue",
+      "command_id": "issue-g-child-loose",
+      "subject": {
+        "kind": "core.grant",
+        "id": "g-child-loose"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core.grant",
+            "id": "g-child-loose"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "holder": "exec-2",
+        "audience": "conformance-provider",
+        "rights": [
+          "evidence.publish"
+        ],
+        "resources": [
+          {
+            "kind": "evidence.artifact",
+            "id_prefix": "output.e-1."
+          }
+        ],
+        "delegation": {
+          "allowed": false,
+          "max_depth": 0
+        },
+        "parent": "g-parent"
+      },
+      "expect": {
+        "error": "permission_denied",
+        "details": {
+          "reason": "delegation_exceeded"
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "core.grant.issue",
+      "command_id": "issue-g-child",
+      "subject": {
+        "kind": "core.grant",
+        "id": "g-child"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core.grant",
+            "id": "g-child"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "holder": "exec-2",
+        "audience": "conformance-provider",
+        "rights": [
+          "evidence.publish"
+        ],
+        "resources": [
+          {
+            "kind": "evidence.artifact",
+            "id_prefix": "output.e-1."
+          }
+        ],
+        "delegation": {
+          "allowed": false,
+          "max_depth": 0
+        },
+        "constraints": [
+          {
+            "kind": "evidence.work_binding",
+            "work": {
+              "kind": "execution.execution",
+              "id": "e-1"
+            }
+          }
+        ],
+        "parent": "g-parent"
+      },
+      "expect": {
+        "ok": {
+          "outcome": {}
+        }
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

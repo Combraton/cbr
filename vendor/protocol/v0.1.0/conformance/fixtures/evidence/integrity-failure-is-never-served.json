@@ -1,0 +1,578 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "evidence.integrity-failure-is-never-served",
+  "version": 2,
+  "title": "Stored bytes that fail their digest are reported unavailable with integrity_failed and never served; bytes the store cannot serve are unavailable without data",
+  "requirements": [
+    "EVD-6"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/EVIDENCE.md#5-inspect-query-and-fetch",
+    "docs/spec/profiles/EVIDENCE.md#9-availability-and-retention-owner-decision-m4-q6",
+    "docs/spec/profiles/EVIDENCE.md#14-conformance-and-test-controls"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "evidence",
+      "major": 1
+    }
+  ],
+  "features": [
+    "core.events"
+  ],
+  "requires_controls": [
+    "evidence.store"
+  ],
+  "polarity": "negative",
+  "kills": [
+    "corrupted-bytes-served"
+  ],
+  "steps": [
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ],
+        "evidence_store": {
+          "corrupt": [
+            "c-1"
+          ],
+          "unavailable": [
+            "u-1"
+          ]
+        }
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "evidence",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": [
+              "evidence.manifests",
+              "evidence.retention_control"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.upload.prepare",
+      "command_id": "prepare-c-1",
+      "subject": {
+        "kind": "evidence.artifact",
+        "id": "c-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.artifact",
+            "id": "c-1"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "digest": "sha256:827d0ba697231f50242827fa8e12c2932d81c9bf561a830839096695d5aa901d",
+        "size": 27,
+        "media_type": "text/plain",
+        "producer": {
+          "producer_id": "fixture-producer"
+        },
+        "source": {
+          "kind": "test_report",
+          "id": "run-1"
+        },
+        "scope": "project-a",
+        "capture": {
+          "captured_at": "2030-01-01T00:00:00Z",
+          "uncertainty": {
+            "not_before": "2029-12-31T23:59:58Z",
+            "not_after": "2030-01-01T00:00:00Z"
+          },
+          "anchors": [
+            {
+              "kind": "code_tree",
+              "id": "tree-1"
+            }
+          ]
+        },
+        "coverage": {
+          "completeness": "complete"
+        },
+        "retention_class": "standard"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.upload.append",
+      "command_id": "append-c-1-0",
+      "subject": {
+        "kind": "evidence.artifact",
+        "id": "c-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.artifact",
+            "id": "c-1"
+          },
+          "revision": 1
+        }
+      ],
+      "payload": {
+        "offset": 0,
+        "data_base64": "Ynl0ZXMgdGhhdCByb3QgaW4gdGhlIHN0b3Jl"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.seal",
+      "command_id": "seal-c-1",
+      "subject": {
+        "kind": "evidence.artifact",
+        "id": "c-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.artifact",
+            "id": "c-1"
+          },
+          "revision": 2
+        }
+      ],
+      "payload": {},
+      "expect": {
+        "ok": {
+          "outcome": {
+            "state": "sealed",
+            "digest": "sha256:827d0ba697231f50242827fa8e12c2932d81c9bf561a830839096695d5aa901d"
+          },
+          "acknowledgment": {
+            "revision": 3
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.upload.prepare",
+      "command_id": "prepare-u-1",
+      "subject": {
+        "kind": "evidence.artifact",
+        "id": "u-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.artifact",
+            "id": "u-1"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "digest": "sha256:c5bca95e03e7d1f95244372383ff911886414cd2bccd874c7bb42cdfdd783a6b",
+        "size": 28,
+        "media_type": "text/plain",
+        "producer": {
+          "producer_id": "fixture-producer"
+        },
+        "source": {
+          "kind": "test_report",
+          "id": "run-1"
+        },
+        "scope": "project-a",
+        "capture": {
+          "captured_at": "2030-01-01T00:00:00Z",
+          "uncertainty": {
+            "not_before": "2029-12-31T23:59:58Z",
+            "not_after": "2030-01-01T00:00:00Z"
+          },
+          "anchors": [
+            {
+              "kind": "code_tree",
+              "id": "tree-1"
+            }
+          ]
+        },
+        "coverage": {
+          "completeness": "complete"
+        },
+        "retention_class": "standard"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.upload.append",
+      "command_id": "append-u-1-0",
+      "subject": {
+        "kind": "evidence.artifact",
+        "id": "u-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.artifact",
+            "id": "u-1"
+          },
+          "revision": 1
+        }
+      ],
+      "payload": {
+        "offset": 0,
+        "data_base64": "Ynl0ZXMgdGhlIHN0b3JlIGNhbm5vdCBzZXJ2ZQ=="
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.seal",
+      "command_id": "seal-u-1",
+      "subject": {
+        "kind": "evidence.artifact",
+        "id": "u-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.artifact",
+            "id": "u-1"
+          },
+          "revision": 2
+        }
+      ],
+      "payload": {},
+      "expect": {
+        "ok": {
+          "outcome": {
+            "state": "sealed",
+            "digest": "sha256:c5bca95e03e7d1f95244372383ff911886414cd2bccd874c7bb42cdfdd783a6b"
+          },
+          "acknowledgment": {
+            "revision": 3
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.upload.prepare",
+      "command_id": "prepare-ok-1",
+      "subject": {
+        "kind": "evidence.artifact",
+        "id": "ok-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.artifact",
+            "id": "ok-1"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "digest": "sha256:136c5ec68e5cf99f3e4a56f1abee2f32c6bbb74536bfe3fa9010a82b37a96985",
+        "size": 12,
+        "media_type": "text/plain",
+        "producer": {
+          "producer_id": "fixture-producer"
+        },
+        "source": {
+          "kind": "test_report",
+          "id": "run-1"
+        },
+        "scope": "project-a",
+        "capture": {
+          "captured_at": "2030-01-01T00:00:00Z",
+          "uncertainty": {
+            "not_before": "2029-12-31T23:59:58Z",
+            "not_after": "2030-01-01T00:00:00Z"
+          },
+          "anchors": [
+            {
+              "kind": "code_tree",
+              "id": "tree-1"
+            }
+          ]
+        },
+        "coverage": {
+          "completeness": "complete"
+        },
+        "retention_class": "standard"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.upload.append",
+      "command_id": "append-ok-1-0",
+      "subject": {
+        "kind": "evidence.artifact",
+        "id": "ok-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.artifact",
+            "id": "ok-1"
+          },
+          "revision": 1
+        }
+      ],
+      "payload": {
+        "offset": 0,
+        "data_base64": "aW50YWN0IGJ5dGVz"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.seal",
+      "command_id": "seal-ok-1",
+      "subject": {
+        "kind": "evidence.artifact",
+        "id": "ok-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.artifact",
+            "id": "ok-1"
+          },
+          "revision": 2
+        }
+      ],
+      "payload": {},
+      "expect": {
+        "ok": {
+          "outcome": {
+            "state": "sealed",
+            "digest": "sha256:136c5ec68e5cf99f3e4a56f1abee2f32c6bbb74536bfe3fa9010a82b37a96985"
+          },
+          "acknowledgment": {
+            "revision": 3
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "evidence.inspect",
+      "payload": {
+        "artifact": {
+          "kind": "evidence.artifact",
+          "id": "c-1"
+        }
+      },
+      "expect": {
+        "ok": {
+          "state": "sealed",
+          "availability": {
+            "state": "unavailable",
+            "reason": "integrity_failed"
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "evidence.fetch",
+      "payload": {
+        "artifact": {
+          "kind": "evidence.artifact",
+          "id": "c-1"
+        },
+        "digest": "sha256:827d0ba697231f50242827fa8e12c2932d81c9bf561a830839096695d5aa901d"
+      },
+      "expect": {
+        "ok": {
+          "availability": {
+            "state": "unavailable",
+            "reason": "integrity_failed"
+          },
+          "data_base64": "",
+          "offset": 0,
+          "next_offset": 0
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "evidence.fetch",
+      "payload": {
+        "artifact": {
+          "kind": "evidence.artifact",
+          "id": "u-1"
+        },
+        "digest": "sha256:c5bca95e03e7d1f95244372383ff911886414cd2bccd874c7bb42cdfdd783a6b"
+      },
+      "expect": {
+        "ok": {
+          "availability": {
+            "state": "unavailable",
+            "reason": "store_unavailable"
+          },
+          "data_base64": "",
+          "next_offset": 0
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "evidence.fetch",
+      "payload": {
+        "artifact": {
+          "kind": "evidence.artifact",
+          "id": "ok-1"
+        },
+        "digest": "sha256:136c5ec68e5cf99f3e4a56f1abee2f32c6bbb74536bfe3fa9010a82b37a96985"
+      },
+      "expect": {
+        "ok": {
+          "availability": {
+            "state": "available"
+          },
+          "data_base64": "aW50YWN0IGJ5dGVz"
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "evidence.query",
+      "payload": {},
+      "expect": {
+        "ok": {
+          "items": [
+            {
+              "artifact": {
+                "kind": "evidence.artifact",
+                "id": "c-1"
+              },
+              "availability": {
+                "state": "unavailable",
+                "reason": "integrity_failed"
+              }
+            },
+            {
+              "artifact": {
+                "kind": "evidence.artifact",
+                "id": "ok-1"
+              },
+              "availability": {
+                "state": "available"
+              }
+            },
+            {
+              "artifact": {
+                "kind": "evidence.artifact",
+                "id": "u-1"
+              },
+              "availability": {
+                "state": "unavailable",
+                "reason": "store_unavailable"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "evidence.query",
+      "payload": {
+        "limit": 2
+      },
+      "expect": {
+        "ok": {
+          "items": [
+            {
+              "artifact": {
+                "kind": "evidence.artifact",
+                "id": "c-1"
+              }
+            },
+            {
+              "artifact": {
+                "kind": "evidence.artifact",
+                "id": "ok-1"
+              }
+            }
+          ],
+          "next_cursor": {
+            "$type": "string"
+          }
+        }
+      },
+      "capture": {
+        "page": "/result/next_cursor"
+      },
+      "note": "results are in artifact ID order"
+    },
+    {
+      "step": "query",
+      "operation": "evidence.query",
+      "payload": {
+        "limit": 2,
+        "cursor": {
+          "$var": "page"
+        }
+      },
+      "expect": {
+        "ok": {
+          "items": [
+            {
+              "artifact": {
+                "kind": "evidence.artifact",
+                "id": "u-1"
+              }
+            }
+          ],
+          "next_cursor": {
+            "$absent": true
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "evidence.query",
+      "payload": {
+        "cursor": "not-a-cursor-from-this-provider"
+      },
+      "expect": {
+        "error": "invalid_cursor"
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

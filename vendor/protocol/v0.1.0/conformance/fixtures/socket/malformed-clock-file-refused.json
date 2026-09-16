@@ -1,0 +1,44 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "socket.malformed-clock-file-refused",
+  "version": 1,
+  "title": "A provider refuses to start when its controlled clock file is malformed",
+  "requirements": [
+    "REL-12"
+  ],
+  "spec_refs": [
+    "docs/decisions/007-execution-test-controls.md"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "core-test",
+      "major": 1
+    }
+  ],
+  "features": [],
+  "binding": "unix",
+  "requires_controls": [
+    "clock.file"
+  ],
+  "polarity": "negative",
+  "kills": [
+    "clock-file-start-unchecked"
+  ],
+  "kill_expectations": {
+    "clock-file-start-unchecked": {
+      "step": 0,
+      "reason_contains": "listened"
+    }
+  },
+  "steps": [
+    {
+      "step": "expect_start_failure",
+      "config": {
+        "clock": {
+          "controlled_raw": "2030-13-99 not an instant"
+        }
+      }
+    }
+  ]
+}

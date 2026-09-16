@@ -1,0 +1,72 @@
+name: Checks
+
+# Runs exactly the commands in docs/VERIFICATION.md, on both supported
+# platforms. Each command is its own step so a failure names itself, and no
+# step pipes a command into another process, which would replace the producing
+# command's exit status with the consumer's.
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4, pinned at setup
+        with:
+          persist-credentials: false
+
+      # rust-toolchain.toml pins the version; this installs it and nothing else.
+      - name: Record toolchain
+        run: |
+          rustc --version
+          cargo --version
+          python3 --version
+
+      - name: Documentation structure
+        run: python3 scripts/check_docs.py
+
+      - name: Protocol pin
+        run: python3 scripts/verify_pin.py
+
+      - name: Formatting
+        run: cargo fmt --all -- --check
+
+      - name: Lints
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Build
+        run: cargo build --workspace --locked
+
+      - name: Tests
+        run: cargo test --workspace --locked
+
+      - name: Whitespace
+        run: git diff --check
+
+      # Conformance needs the runner, built from the published release archive
+      # rather than from this workspace. Results go to a scratch directory:
+      # the committed manifest under conformance/results/ is recorded evidence
+      # from a named run and must not be rewritten by CI.
+      - name: Build the conformance runner
+        run: python3 scripts/build_runner.py
+
+      - name: Stream fixtures
+        run: python3 scripts/run_fixtures.py --filter stream. --out target/ci-results/stream
+
+      # The runner leaves `coverage_limits` empty even when fixtures are
+      # reported `unsupported`, so "no coverage limits" is not a gate: a run in
+      # which every fixture was skipped for want of a claimed feature would
+      # satisfy it. The gate is the exact outcome multiset and the exact named
+      # unsupported set.
+      - name: Stream outcomes match the recorded expectation exactly
+        run: python3 scripts/check_results.py target/ci-results/stream conformance/expectations/stream.json

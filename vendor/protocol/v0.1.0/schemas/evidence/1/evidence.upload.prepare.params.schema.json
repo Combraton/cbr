@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Combraton/protocol/schemas/evidence/1/evidence.upload.prepare.params.schema.json",
+  "title": "evidence.upload.prepare params",
+  "allOf": [
+    {
+      "$ref": "../../core/1/command.schema.json"
+    }
+  ],
+  "properties": {
+    "operation": {
+      "const": "evidence.upload.prepare"
+    },
+    "payload": {
+      "$ref": "common.schema.json#/$defs/descriptor_request"
+    },
+    "subject": {
+      "$ref": "common.schema.json#/$defs/artifact_subject"
+    },
+    "preconditions": {
+      "minItems": 1,
+      "maxItems": 1
+    }
+  },
+  "unevaluatedProperties": false
+}

@@ -1,0 +1,312 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "evidence.purge-appends-the-artifact-events-first",
+  "version": 1,
+  "title": "A purge that releases named holds appends the purged artifact's own events first, then each released hold's event, in one command",
+  "requirements": [
+    "EVD-6",
+    "CORE-12"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/EVIDENCE.md#9-availability-and-retention-owner-decision-m4-q6",
+    "docs/spec/profiles/CORE.md#16-events-and-subscriptions"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "evidence",
+      "major": 1
+    }
+  ],
+  "features": [
+    "core.events",
+    "evidence.retention_control"
+  ],
+  "polarity": "negative",
+  "kills": [
+    "purge-events-holds-first"
+  ],
+  "steps": [
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ]
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "evidence",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": [
+              "evidence.manifests",
+              "evidence.retention_control"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.upload.prepare",
+      "command_id": "prepare-o-1",
+      "subject": {
+        "kind": "evidence.artifact",
+        "id": "o-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.artifact",
+            "id": "o-1"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "digest": "sha256:7be7a169948b166b78908c7cf6b7280650a129680a478ef1243fba2d52459c21",
+        "size": 33,
+        "media_type": "text/plain",
+        "producer": {
+          "producer_id": "fixture-producer"
+        },
+        "source": {
+          "kind": "test_report",
+          "id": "run-1"
+        },
+        "scope": "project-a",
+        "capture": {
+          "captured_at": "2030-01-01T00:00:00Z",
+          "uncertainty": {
+            "not_before": "2029-12-31T23:59:58Z",
+            "not_after": "2030-01-01T00:00:00Z"
+          },
+          "anchors": [
+            {
+              "kind": "code_tree",
+              "id": "tree-1"
+            }
+          ]
+        },
+        "coverage": {
+          "completeness": "complete"
+        },
+        "retention_class": "standard"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.upload.append",
+      "command_id": "append-o-1-0",
+      "subject": {
+        "kind": "evidence.artifact",
+        "id": "o-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.artifact",
+            "id": "o-1"
+          },
+          "revision": 1
+        }
+      ],
+      "payload": {
+        "offset": 0,
+        "data_base64": "YXJ0aWZhY3QgcHVyZ2VkIHdpdGggYSBuYW1lZCBob2xk"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.seal",
+      "command_id": "seal-o-1",
+      "subject": {
+        "kind": "evidence.artifact",
+        "id": "o-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.artifact",
+            "id": "o-1"
+          },
+          "revision": 2
+        }
+      ],
+      "payload": {},
+      "expect": {
+        "ok": {
+          "outcome": {
+            "state": "sealed",
+            "digest": "sha256:7be7a169948b166b78908c7cf6b7280650a129680a478ef1243fba2d52459c21"
+          },
+          "acknowledgment": {
+            "revision": 3
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.hold",
+      "command_id": "hold-h-o",
+      "subject": {
+        "kind": "evidence.hold",
+        "id": "h-o"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.hold",
+            "id": "h-o"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "artifact": {
+          "kind": "evidence.artifact",
+          "id": "o-1"
+        },
+        "holder_ref": {
+          "kind": "fixture.case",
+          "id": "h-o"
+        },
+        "reason": "audit"
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core.events.read",
+      "payload": {
+        "from": "start",
+        "limit": 100
+      },
+      "expect": {
+        "ok": {}
+      },
+      "capture": {
+        "before": "/result/next_cursor"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.purge",
+      "command_id": "purge-o-1",
+      "subject": {
+        "kind": "evidence.artifact",
+        "id": "o-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.artifact",
+            "id": "o-1"
+          },
+          "revision": 3
+        },
+        {
+          "subject": {
+            "kind": "evidence.hold",
+            "id": "h-o"
+          },
+          "revision": 1
+        }
+      ],
+      "payload": {
+        "release_holds": [
+          "h-o"
+        ]
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "availability": "purged",
+            "released_holds": [
+              {
+                "kind": "evidence.hold",
+                "id": "h-o"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core.events.read",
+      "payload": {
+        "cursor": {
+          "$var": "before"
+        },
+        "limit": 100
+      },
+      "expect": {
+        "ok": {
+          "items": [
+            {
+              "event": {
+                "type": "evidence.artifact.purge_requested",
+                "subject": {
+                  "kind": "evidence.artifact",
+                  "id": "o-1"
+                },
+                "command_id": "purge-o-1"
+              }
+            },
+            {
+              "event": {
+                "type": "evidence.artifact.purged",
+                "subject": {
+                  "kind": "evidence.artifact",
+                  "id": "o-1"
+                },
+                "command_id": "purge-o-1"
+              }
+            },
+            {
+              "event": {
+                "type": "evidence.hold.released",
+                "subject": {
+                  "kind": "evidence.hold",
+                  "id": "h-o"
+                },
+                "command_id": "purge-o-1"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

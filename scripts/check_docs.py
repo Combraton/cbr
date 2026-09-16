@@ -17,7 +17,7 @@ def check(root, workspace=None):
     claude = root / 'CLAUDE.md'
     if claude.exists() and not re.search(r'^@AGENTS\.md\s*$', claude.read_text(), re.M):
         errors.append('CLAUDE.md must import the local AGENTS.md')
-    paths = sorted(p for p in root.rglob('*.md') if not any(part in {'.git', '.worktrees', 'node_modules', 'target', '.venv'} for part in p.relative_to(root).parts))
+    paths = sorted(p for p in root.rglob('*.md') if not any(part in {'.git', '.worktrees', 'node_modules', 'target', '.venv', 'vendor'} for part in p.relative_to(root).parts))
     for path in paths:
         content = path.read_text(encoding='utf-8')
         rel = path.relative_to(root)
@@ -79,7 +79,7 @@ def main():
     for error in errors:
         print(error, file=sys.stderr)
     print(f'{root.name}: {files} Markdown files, {links} file links, {len(errors)} errors; {skipped} cross-repository links not checked')
-    print('Checks entrypoints, local imports, ordinary file links and fences. Does not validate remote URLs, fragments, Mermaid syntax or product behavior.')
+    print('Checks entrypoints, local imports, ordinary file links and fences. Skips vendor/, whose Markdown belongs to another repository and is verified by scripts/verify_pin.py instead. Does not validate remote URLs, fragments, Mermaid syntax or product behavior.')
     return 1 if errors else 0
 
 

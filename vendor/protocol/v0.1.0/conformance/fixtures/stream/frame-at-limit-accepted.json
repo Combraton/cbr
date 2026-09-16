@@ -1,0 +1,61 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "stream.frame-at-limit-accepted",
+  "version": 1,
+  "title": "A frame exactly at the pre-negotiation limit is processed",
+  "requirements": [
+    "TRN-2",
+    "CORE-5"
+  ],
+  "spec_refs": [
+    "docs/spec/bindings/STREAM.md#1-frames"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "core",
+      "major": 1
+    }
+  ],
+  "polarity": "positive",
+  "kills": [
+    "strict-off-by-one-limit"
+  ],
+  "steps": [
+    {
+      "step": "start"
+    },
+    {
+      "step": "raw",
+      "padded": {
+        "message": {
+          "jsonrpc": "2.0",
+          "id": 900,
+          "method": "core.describe",
+          "params": {
+            "operation": "core.describe",
+            "message_id": "msg-describe",
+            "payload": {}
+          }
+        },
+        "frame_bytes": 1048576
+      }
+    },
+    {
+      "step": "expect_frame",
+      "expect": {
+        "frame": {
+          "id": 900,
+          "result": {
+            "provider": {
+              "$any": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

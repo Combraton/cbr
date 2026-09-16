@@ -1,0 +1,561 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "context.limits-are-separate-and-mandatory-content-is-never-dropped",
+  "version": 2,
+  "title": "Investigation budget exhaustion, output capacity and the deadline are reported as separate limits; mandatory items that cannot fit are refused with budget_insufficient and the needed size",
+  "requirements": [
+    "CTX-4",
+    "CTX-8"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/CONTEXT.md#3-requests",
+    "docs/spec/profiles/CONTEXT.md#5-results-and-packets"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "context",
+      "major": 1
+    }
+  ],
+  "features": [
+    "core.events"
+  ],
+  "requires_controls": [
+    "context.script",
+    "clock.file"
+  ],
+  "polarity": "negative",
+  "kills": [
+    "limits-collapsed",
+    "mandatory-items-dropped"
+  ],
+  "steps": [
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ],
+        "context": {
+          "scripts": {
+            "r-budget": [
+              {
+                "investigate": 6
+              },
+              {
+                "section": {
+                  "section_id": "s-1",
+                  "label": "source_inspected",
+                  "content": "found it",
+                  "item_id": "i-1",
+                  "source": {
+                    "repository": "repo-a",
+                    "path": "src/i-1",
+                    "tree": "tree-1"
+                  }
+                }
+              },
+              {
+                "investigate": 6
+              },
+              {
+                "section": {
+                  "section_id": "s-2",
+                  "label": "source_inspected",
+                  "content": "too late",
+                  "item_id": "i-2",
+                  "source": {
+                    "repository": "repo-a",
+                    "path": "src/i-2",
+                    "tree": "tree-1"
+                  }
+                }
+              },
+              {
+                "publish": {}
+              }
+            ],
+            "r-capacity": [
+              {
+                "section": {
+                  "section_id": "s-a",
+                  "label": "binding",
+                  "content": "0123456789",
+                  "item_id": "i-a",
+                  "source": {
+                    "repository": "repo-a",
+                    "path": "src/i-a",
+                    "tree": "tree-1"
+                  }
+                }
+              },
+              {
+                "section": {
+                  "section_id": "s-b",
+                  "label": "observation",
+                  "content": "012345678901234",
+                  "item_id": "i-b",
+                  "source": {
+                    "repository": "repo-a",
+                    "path": "src/i-b",
+                    "tree": "tree-1"
+                  }
+                }
+              },
+              {
+                "publish": {}
+              }
+            ],
+            "r-small": [
+              {
+                "section": {
+                  "section_id": "s-m",
+                  "label": "binding",
+                  "content": "0123456789",
+                  "item_id": "i-m",
+                  "source": {
+                    "repository": "repo-a",
+                    "path": "src/i-m",
+                    "tree": "tree-1"
+                  }
+                }
+              },
+              {
+                "publish": {}
+              }
+            ]
+          }
+        },
+        "clock": {
+          "controlled": "2030-01-01T00:00:00Z"
+        }
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "context",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": [
+              "context.advisory",
+              "context.required_before_start",
+              "context.required_before_transition",
+              "context.shared_jobs",
+              "context.updates",
+              "context.expand"
+            ]
+          },
+          {
+            "name": "evidence",
+            "majors": [
+              1
+            ],
+            "required": false,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "context.request.submit",
+      "command_id": "submit-r-budget",
+      "subject": {
+        "kind": "context.request",
+        "id": "r-budget"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "context.request",
+            "id": "r-budget"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "consumer": {
+          "task": "fix the build",
+          "principal": "agent-1"
+        },
+        "basis": {
+          "repositories": [
+            {
+              "id": "repo-a",
+              "tree": "tree-1",
+              "workspace": "clean",
+              "dirty": null
+            }
+          ],
+          "completeness": "complete"
+        },
+        "items": [
+          {
+            "item_id": "i-1",
+            "selector": {
+              "kind": "path",
+              "value": "src/i-1"
+            },
+            "obligation": "required_before_start",
+            "reliance": "binding",
+            "selected_by": "owner",
+            "check": {
+              "kind": "source_included",
+              "repository": "repo-a",
+              "path": "src/i-1"
+            }
+          },
+          {
+            "item_id": "i-2",
+            "selector": {
+              "kind": "path",
+              "value": "src/i-2"
+            },
+            "obligation": "required_before_start",
+            "reliance": "binding",
+            "selected_by": "owner",
+            "check": {
+              "kind": "source_included",
+              "repository": "repo-a",
+              "path": "src/i-2"
+            }
+          }
+        ],
+        "limits": {
+          "deadline": "2030-01-01T01:00:00Z",
+          "investigation": {
+            "units": "queries",
+            "amount": 10
+          },
+          "output_capacity": {
+            "units": "bytes",
+            "amount": 4096
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "context.request.inspect",
+      "payload": {
+        "request": "r-budget"
+      },
+      "expect": {
+        "ok": {
+          "state": "unmet",
+          "limits": {
+            "deadline": "2030-01-01T01:00:00Z",
+            "investigation": {
+              "units": "queries",
+              "amount": 10
+            },
+            "output_capacity": {
+              "units": "bytes",
+              "amount": 4096
+            }
+          },
+          "items": [
+            {
+              "item_id": "i-1",
+              "result": "satisfied"
+            },
+            {
+              "item_id": "i-2",
+              "result": "unmet",
+              "reason": "investigation_budget_exhausted"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core.events.read",
+      "payload": {
+        "from": "start",
+        "limit": 100,
+        "kinds": [
+          "context.job"
+        ]
+      },
+      "expect": {
+        "ok": {
+          "items": [
+            {
+              "event": {
+                "type": "context.job.ended",
+                "subject": {
+                  "kind": "context.job",
+                  "id": "r-budget"
+                },
+                "payload": {
+                  "reason": "investigation_budget_exhausted"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "context.request.submit",
+      "command_id": "submit-r-capacity",
+      "subject": {
+        "kind": "context.request",
+        "id": "r-capacity"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "context.request",
+            "id": "r-capacity"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "consumer": {
+          "task": "fix the build",
+          "principal": "agent-1"
+        },
+        "basis": {
+          "repositories": [
+            {
+              "id": "repo-a",
+              "tree": "tree-1",
+              "workspace": "clean",
+              "dirty": null
+            }
+          ],
+          "completeness": "complete"
+        },
+        "items": [
+          {
+            "item_id": "i-a",
+            "selector": {
+              "kind": "path",
+              "value": "src/i-a"
+            },
+            "obligation": "required_before_start",
+            "reliance": "binding",
+            "selected_by": "owner",
+            "check": {
+              "kind": "source_included",
+              "repository": "repo-a",
+              "path": "src/i-a"
+            }
+          },
+          {
+            "item_id": "i-b",
+            "selector": {
+              "kind": "path",
+              "value": "src/i-b"
+            },
+            "obligation": "advisory",
+            "reliance": "reference",
+            "selected_by": "owner",
+            "check": {
+              "kind": "source_included",
+              "repository": "repo-a",
+              "path": "src/i-b"
+            }
+          }
+        ],
+        "limits": {
+          "deadline": "2030-01-01T01:00:00Z",
+          "investigation": {
+            "units": "queries",
+            "amount": 100
+          },
+          "output_capacity": {
+            "units": "bytes",
+            "amount": 20
+          }
+        },
+        "fallback": "proceed_with_gap"
+      }
+    },
+    {
+      "step": "query",
+      "operation": "context.request.inspect",
+      "payload": {
+        "request": "r-capacity"
+      },
+      "expect": {
+        "ok": {
+          "state": "partial",
+          "limits": {
+            "deadline": "2030-01-01T01:00:00Z",
+            "investigation": {
+              "units": "queries",
+              "amount": 100
+            },
+            "output_capacity": {
+              "units": "bytes",
+              "amount": 20
+            }
+          },
+          "items": [
+            {
+              "item_id": "i-a",
+              "result": "satisfied"
+            },
+            {
+              "item_id": "i-b",
+              "result": "degraded",
+              "reason": "output_capacity"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "context.packet.inspect",
+      "payload": {
+        "packet": "r-capacity",
+        "revision": 1
+      },
+      "expect": {
+        "ok": {
+          "inclusions": [
+            "s-a"
+          ],
+          "omissions": [
+            {
+              "section_id": "s-b",
+              "item_id": "i-b",
+              "reason": "output_capacity"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "context.request.submit",
+      "command_id": "submit-r-small",
+      "subject": {
+        "kind": "context.request",
+        "id": "r-small"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "context.request",
+            "id": "r-small"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "consumer": {
+          "task": "fix the build",
+          "principal": "agent-1"
+        },
+        "basis": {
+          "repositories": [
+            {
+              "id": "repo-a",
+              "tree": "tree-1",
+              "workspace": "clean",
+              "dirty": null
+            }
+          ],
+          "completeness": "complete"
+        },
+        "items": [
+          {
+            "item_id": "i-m",
+            "selector": {
+              "kind": "path",
+              "value": "src/i-m"
+            },
+            "obligation": "required_before_start",
+            "reliance": "binding",
+            "selected_by": "owner",
+            "check": {
+              "kind": "source_included",
+              "repository": "repo-a",
+              "path": "src/i-m"
+            }
+          }
+        ],
+        "limits": {
+          "deadline": "2030-01-01T01:00:00Z",
+          "investigation": {
+            "units": "queries",
+            "amount": 100
+          },
+          "output_capacity": {
+            "units": "bytes",
+            "amount": 5
+          }
+        }
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "state": "refused",
+            "reason": "budget_insufficient",
+            "needed": {
+              "units": "bytes",
+              "amount": 10
+            },
+            "job": {
+              "$absent": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "context.request.inspect",
+      "payload": {
+        "request": "r-small"
+      },
+      "expect": {
+        "ok": {
+          "state": "refused",
+          "reason": "budget_insufficient",
+          "needed": {
+            "amount": 10
+          },
+          "packets": []
+        }
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

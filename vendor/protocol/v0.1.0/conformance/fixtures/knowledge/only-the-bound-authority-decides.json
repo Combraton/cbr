@@ -1,0 +1,1628 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "knowledge.only-the-bound-authority-decides",
+  "version": 4,
+  "title": "Only the scope's bound authority records reliance decisions: grants and derivation labels confer nothing, a second binding and stale or unknown epochs are refused, the authority may adopt its own claim recorded as author and decider, and a transfer keeps earlier decisions in effect",
+  "requirements": [
+    "KNW-6"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/KNOWLEDGE.md#6-authority-bindings-and-reliance-decisions-knw-6-m5-q3"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "knowledge",
+      "major": 1
+    }
+  ],
+  "features": [
+    "core.events",
+    "core.grants"
+  ],
+  "polarity": "negative",
+  "kills": [
+    "decide-by-grant-right",
+    "derivation-label-authorizes",
+    "self-adoption-unrecorded",
+    "transfer-resets-reliance",
+    "decision-epoch-optional",
+    "decision-supersession-unchecked",
+    "bind-by-grant",
+    "authority-binds-under-grant",
+    "knowledge-epoch-after-preconditions",
+    "decision-claim-read-unchecked"
+  ],
+  "steps": [
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ]
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.grants"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "knowledge",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "core.grant.issue",
+      "command_id": "grant-issue-g-lead",
+      "subject": {
+        "kind": "core.grant",
+        "id": "g-lead"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core.grant",
+            "id": "g-lead"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "holder": "lead",
+        "audience": "conformance-provider",
+        "rights": [
+          "knowledge.propose",
+          "knowledge.read",
+          "knowledge.decide"
+        ],
+        "resources": [
+          {
+            "kind": "knowledge.claim"
+          },
+          {
+            "kind": "knowledge.decision"
+          },
+          {
+            "kind": "knowledge.conflict"
+          },
+          {
+            "kind": "knowledge.evaluation"
+          },
+          {
+            "kind": "knowledge.authority"
+          }
+        ],
+        "delegation": {
+          "allowed": false,
+          "max_depth": 0
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "core.grant.issue",
+      "command_id": "grant-issue-g-lead-noread",
+      "subject": {
+        "kind": "core.grant",
+        "id": "g-lead-noread"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core.grant",
+            "id": "g-lead-noread"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "holder": "lead",
+        "audience": "conformance-provider",
+        "rights": [
+          "knowledge.decide",
+          "knowledge.propose"
+        ],
+        "resources": [
+          {
+            "kind": "knowledge.decision"
+          }
+        ],
+        "delegation": {
+          "allowed": false,
+          "max_depth": 0
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "core.grant.issue",
+      "command_id": "grant-issue-g-model",
+      "subject": {
+        "kind": "core.grant",
+        "id": "g-model"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core.grant",
+            "id": "g-model"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "holder": "model",
+        "audience": "conformance-provider",
+        "rights": [
+          "knowledge.propose",
+          "knowledge.read",
+          "knowledge.decide"
+        ],
+        "resources": [
+          {
+            "kind": "knowledge.claim"
+          },
+          {
+            "kind": "knowledge.decision"
+          },
+          {
+            "kind": "knowledge.conflict"
+          },
+          {
+            "kind": "knowledge.evaluation"
+          },
+          {
+            "kind": "knowledge.authority"
+          }
+        ],
+        "delegation": {
+          "allowed": false,
+          "max_depth": 0
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "core.grant.issue",
+      "command_id": "grant-issue-g-lead2",
+      "subject": {
+        "kind": "core.grant",
+        "id": "g-lead2"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core.grant",
+            "id": "g-lead2"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "holder": "lead2",
+        "audience": "conformance-provider",
+        "rights": [
+          "knowledge.propose",
+          "knowledge.read",
+          "knowledge.decide"
+        ],
+        "resources": [
+          {
+            "kind": "knowledge.claim"
+          },
+          {
+            "kind": "knowledge.decision"
+          },
+          {
+            "kind": "knowledge.conflict"
+          },
+          {
+            "kind": "knowledge.evaluation"
+          },
+          {
+            "kind": "knowledge.authority"
+          }
+        ],
+        "delegation": {
+          "allowed": false,
+          "max_depth": 0
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "core.grant.issue",
+      "command_id": "grant-issue-g-owner",
+      "subject": {
+        "kind": "core.grant",
+        "id": "g-owner"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core.grant",
+            "id": "g-owner"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "holder": "owner",
+        "audience": "conformance-provider",
+        "rights": [
+          "knowledge.propose",
+          "knowledge.read",
+          "knowledge.decide"
+        ],
+        "resources": [
+          {
+            "kind": "knowledge.claim"
+          },
+          {
+            "kind": "knowledge.decision"
+          },
+          {
+            "kind": "knowledge.conflict"
+          },
+          {
+            "kind": "knowledge.evaluation"
+          },
+          {
+            "kind": "knowledge.authority"
+          }
+        ],
+        "delegation": {
+          "allowed": false,
+          "max_depth": 0
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.authority.bind",
+      "command_id": "authority-bind-owned-under-grant",
+      "subject": {
+        "kind": "knowledge.authority",
+        "id": "owned-under-grant"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.authority",
+            "id": "owned-under-grant"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "authority": "owner"
+      },
+      "set": {
+        "grant": "g-owner"
+      },
+      "expect": {
+        "error": "permission_denied",
+        "details": {
+          "reason": "not_authority"
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.authority.bind",
+      "command_id": "authority-bind-svc",
+      "subject": {
+        "kind": "knowledge.authority",
+        "id": "svc"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.authority",
+            "id": "svc"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "authority": "lead"
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "scope": "svc",
+            "authority": "lead",
+            "epoch": 1
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.authority.bind",
+      "command_id": "bind-svc-again",
+      "subject": {
+        "kind": "knowledge.authority",
+        "id": "svc"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.authority",
+            "id": "svc"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "authority": "model"
+      },
+      "expect": {
+        "error": "precondition_failed"
+      }
+    },
+    {
+      "step": "stop"
+    },
+    {
+      "step": "start",
+      "config": {
+        "principal": "model",
+        "authority_principals": [
+          "owner"
+        ]
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.grants"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "knowledge",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.authority.bind",
+      "command_id": "authority-bind-other",
+      "subject": {
+        "kind": "knowledge.authority",
+        "id": "other"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.authority",
+            "id": "other"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "authority": "model"
+      },
+      "set": {
+        "grant": "g-model"
+      },
+      "expect": {
+        "error": "permission_denied",
+        "details": {
+          "reason": "not_authority"
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.claim.propose",
+      "command_id": "claim-propose-c-model",
+      "subject": {
+        "kind": "knowledge.claim",
+        "id": "c-model"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.claim",
+            "id": "c-model"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "plane": "normative",
+        "statement": {
+          "subject": {
+            "kind": "app.service",
+            "id": "billing"
+          },
+          "predicate": "queue",
+          "value": "v9",
+          "cardinality": "single"
+        },
+        "scope": {
+          "id": "svc",
+          "qualifiers": {}
+        },
+        "support": [],
+        "derivation": {
+          "kind": "human",
+          "inputs": []
+        }
+      },
+      "set": {
+        "grant": "g-model"
+      },
+      "capture": {
+        "d_c-model": "/result/outcome/reference/digest"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.decision.record",
+      "command_id": "decision-record-dec-model",
+      "subject": {
+        "kind": "knowledge.decision",
+        "id": "dec-model"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.decision",
+            "id": "dec-model"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "claim": {
+          "provider": "conformance-provider",
+          "claim": "c-model",
+          "revision": 1,
+          "digest": {
+            "$var": "d_c-model"
+          }
+        },
+        "decision": "accepted_for_use",
+        "validation_basis": {
+          "evidence": [],
+          "receipts": []
+        },
+        "rationale": "accepted_for_use c-model",
+        "permitted_use": "binding"
+      },
+      "set": {
+        "authority_epoch": 1,
+        "grant": "g-model"
+      },
+      "expect": {
+        "error": "permission_denied",
+        "details": {
+          "reason": "not_authority"
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.claim.propose",
+      "command_id": "claim-propose-c-unbound",
+      "subject": {
+        "kind": "knowledge.claim",
+        "id": "c-unbound"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.claim",
+            "id": "c-unbound"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "plane": "normative",
+        "statement": {
+          "subject": {
+            "kind": "app.service",
+            "id": "billing"
+          },
+          "predicate": "queue",
+          "value": "x",
+          "cardinality": "single"
+        },
+        "scope": {
+          "id": "unbound",
+          "qualifiers": {}
+        },
+        "support": [],
+        "derivation": {
+          "kind": "deterministic",
+          "inputs": []
+        }
+      },
+      "set": {
+        "grant": "g-model"
+      },
+      "capture": {
+        "d_c-unbound": "/result/outcome/reference/digest"
+      }
+    },
+    {
+      "step": "stop"
+    },
+    {
+      "step": "start",
+      "config": {
+        "principal": "lead",
+        "authority_principals": [
+          "owner"
+        ]
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.grants"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "knowledge",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.claim.propose",
+      "command_id": "claim-propose-c-lead",
+      "subject": {
+        "kind": "knowledge.claim",
+        "id": "c-lead"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.claim",
+            "id": "c-lead"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "plane": "normative",
+        "statement": {
+          "subject": {
+            "kind": "app.service",
+            "id": "billing"
+          },
+          "predicate": "queue",
+          "value": "v2",
+          "cardinality": "single"
+        },
+        "scope": {
+          "id": "svc",
+          "qualifiers": {}
+        },
+        "support": [],
+        "derivation": {
+          "kind": "human",
+          "inputs": []
+        }
+      },
+      "set": {
+        "grant": "g-lead"
+      },
+      "capture": {
+        "d_c-lead": "/result/outcome/reference/digest"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.decision.record",
+      "command_id": "decision-record-dec-no-epoch",
+      "subject": {
+        "kind": "knowledge.decision",
+        "id": "dec-no-epoch"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.decision",
+            "id": "dec-no-epoch"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "claim": {
+          "provider": "conformance-provider",
+          "claim": "c-lead",
+          "revision": 1,
+          "digest": {
+            "$var": "d_c-lead"
+          }
+        },
+        "decision": "accepted_for_use",
+        "validation_basis": {
+          "evidence": [],
+          "receipts": []
+        },
+        "rationale": "accepted_for_use c-lead",
+        "permitted_use": "binding"
+      },
+      "set": {
+        "grant": "g-lead"
+      },
+      "expect": {
+        "error": "invalid_envelope",
+        "details": {
+          "path": "/authority_epoch"
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.decision.record",
+      "command_id": "decision-record-dec-noread",
+      "subject": {
+        "kind": "knowledge.decision",
+        "id": "dec-noread"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.decision",
+            "id": "dec-noread"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "claim": {
+          "provider": "conformance-provider",
+          "claim": "c-lead",
+          "revision": 1,
+          "digest": {
+            "$var": "d_c-lead"
+          }
+        },
+        "decision": "accepted_for_use",
+        "validation_basis": {
+          "evidence": [],
+          "receipts": []
+        },
+        "rationale": "accepted_for_use c-lead",
+        "permitted_use": "binding"
+      },
+      "set": {
+        "authority_epoch": 1,
+        "grant": "g-lead-noread"
+      },
+      "expect": {
+        "error": "permission_denied",
+        "details": {
+          "reason": "right_missing"
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.decision.record",
+      "command_id": "decision-record-dec-unbound",
+      "subject": {
+        "kind": "knowledge.decision",
+        "id": "dec-unbound"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.decision",
+            "id": "dec-unbound"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "claim": {
+          "provider": "conformance-provider",
+          "claim": "c-unbound",
+          "revision": 1,
+          "digest": {
+            "$var": "d_c-unbound"
+          }
+        },
+        "decision": "accepted_for_use",
+        "validation_basis": {
+          "evidence": [],
+          "receipts": []
+        },
+        "rationale": "accepted_for_use c-unbound",
+        "permitted_use": "binding"
+      },
+      "set": {
+        "authority_epoch": 1,
+        "grant": "g-lead"
+      },
+      "expect": {
+        "error": "permission_denied",
+        "details": {
+          "reason": "not_authority"
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.decision.record",
+      "command_id": "decision-record-dec-lead-adopts",
+      "subject": {
+        "kind": "knowledge.decision",
+        "id": "dec-lead-adopts"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.decision",
+            "id": "dec-lead-adopts"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "claim": {
+          "provider": "conformance-provider",
+          "claim": "c-lead",
+          "revision": 1,
+          "digest": {
+            "$var": "d_c-lead"
+          }
+        },
+        "decision": "accepted_for_use",
+        "validation_basis": {
+          "evidence": [],
+          "receipts": []
+        },
+        "rationale": "accepted_for_use c-lead",
+        "permitted_use": "binding"
+      },
+      "set": {
+        "authority_epoch": 1,
+        "grant": "g-lead"
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "value": "accepted_for_use",
+            "permitted_use": "binding",
+            "author_is_decider": true,
+            "epoch": 1
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.decision.record",
+      "command_id": "decision-record-dec-lead-model",
+      "subject": {
+        "kind": "knowledge.decision",
+        "id": "dec-lead-model"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.decision",
+            "id": "dec-lead-model"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "claim": {
+          "provider": "conformance-provider",
+          "claim": "c-model",
+          "revision": 1,
+          "digest": {
+            "$var": "d_c-model"
+          }
+        },
+        "decision": "accepted_for_use",
+        "validation_basis": {
+          "evidence": [],
+          "receipts": []
+        },
+        "rationale": "accepted_for_use c-model",
+        "permitted_use": "hypothesis"
+      },
+      "set": {
+        "authority_epoch": 1,
+        "grant": "g-lead"
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "author_is_decider": false
+          }
+        }
+      }
+    },
+    {
+      "step": "stop"
+    },
+    {
+      "step": "start",
+      "config": {
+        "principal": "model",
+        "authority_principals": [
+          "owner"
+        ]
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.grants"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "knowledge",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.decision.record",
+      "command_id": "model-reuses-decision-id",
+      "subject": {
+        "kind": "knowledge.decision",
+        "id": "dec-lead-adopts"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.decision",
+            "id": "dec-lead-adopts"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "claim": {
+          "provider": "conformance-provider",
+          "claim": "c-model",
+          "revision": 1,
+          "digest": {
+            "$var": "d_c-model"
+          }
+        },
+        "decision": "rejected",
+        "validation_basis": {
+          "evidence": [],
+          "receipts": []
+        },
+        "rationale": "reusing a decision ID"
+      },
+      "set": {
+        "authority_epoch": 1,
+        "grant": "g-model"
+      },
+      "expect": {
+        "error": "precondition_failed",
+        "details": {
+          "failed": [
+            {
+              "subject": {
+                "kind": "knowledge.decision",
+                "id": "dec-lead-adopts"
+              },
+              "expected": 0
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "stop"
+    },
+    {
+      "step": "start",
+      "config": {
+        "principal": "lead",
+        "authority_principals": [
+          "owner"
+        ]
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.grants"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "knowledge",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.decision.record",
+      "command_id": "decision-record-dec-bad-digest",
+      "subject": {
+        "kind": "knowledge.decision",
+        "id": "dec-bad-digest"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.decision",
+            "id": "dec-bad-digest"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "claim": {
+          "provider": "conformance-provider",
+          "claim": "c-lead",
+          "revision": 1,
+          "digest": {
+            "$var": "d_c-model"
+          }
+        },
+        "decision": "rejected",
+        "validation_basis": {
+          "evidence": [],
+          "receipts": []
+        },
+        "rationale": "wrong digest"
+      },
+      "set": {
+        "authority_epoch": 1,
+        "grant": "g-lead"
+      },
+      "expect": {
+        "error": "invalid_envelope",
+        "details": {
+          "path": "/payload/claim/digest"
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "knowledge.claim.inspect",
+      "payload": {
+        "claim": "c-lead"
+      },
+      "set": {
+        "grant": "g-lead"
+      },
+      "expect": {
+        "ok": {
+          "reliance": {
+            "state": "accepted_for_use",
+            "permitted_use": "binding",
+            "decision": "dec-lead-adopts",
+            "author_is_decider": true
+          }
+        }
+      }
+    },
+    {
+      "step": "stop"
+    },
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ]
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.grants"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "knowledge",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.authority.transfer",
+      "command_id": "authority-transfer-svc",
+      "subject": {
+        "kind": "knowledge.authority",
+        "id": "svc"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.authority",
+            "id": "svc"
+          },
+          "revision": 1
+        }
+      ],
+      "payload": {
+        "authority": "lead2"
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "scope": "svc",
+            "authority": "lead2",
+            "epoch": 2
+          }
+        }
+      }
+    },
+    {
+      "step": "stop"
+    },
+    {
+      "step": "start",
+      "config": {
+        "principal": "lead",
+        "authority_principals": [
+          "owner"
+        ]
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.grants"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "knowledge",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.decision.record",
+      "command_id": "decision-record-dec-lead-late",
+      "subject": {
+        "kind": "knowledge.decision",
+        "id": "dec-lead-late"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.decision",
+            "id": "dec-lead-late"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "claim": {
+          "provider": "conformance-provider",
+          "claim": "c-lead",
+          "revision": 1,
+          "digest": {
+            "$var": "d_c-lead"
+          }
+        },
+        "decision": "rejected",
+        "validation_basis": {
+          "evidence": [],
+          "receipts": []
+        },
+        "rationale": "rejected c-lead",
+        "supersedes_decision": "dec-lead-adopts"
+      },
+      "set": {
+        "authority_epoch": 2,
+        "grant": "g-lead"
+      },
+      "expect": {
+        "error": "permission_denied",
+        "details": {
+          "reason": "not_authority"
+        }
+      }
+    },
+    {
+      "step": "stop"
+    },
+    {
+      "step": "start",
+      "config": {
+        "principal": "lead2",
+        "authority_principals": [
+          "owner"
+        ]
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.grants"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "knowledge",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "query",
+      "operation": "knowledge.claim.inspect",
+      "payload": {
+        "claim": "c-lead"
+      },
+      "set": {
+        "grant": "g-lead2"
+      },
+      "expect": {
+        "ok": {
+          "reliance": {
+            "state": "accepted_for_use",
+            "decision": "dec-lead-adopts"
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.decision.record",
+      "command_id": "decision-record-dec-stale",
+      "subject": {
+        "kind": "knowledge.decision",
+        "id": "dec-stale"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.decision",
+            "id": "dec-stale"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "claim": {
+          "provider": "conformance-provider",
+          "claim": "c-lead",
+          "revision": 1,
+          "digest": {
+            "$var": "d_c-lead"
+          }
+        },
+        "decision": "rejected",
+        "validation_basis": {
+          "evidence": [],
+          "receipts": []
+        },
+        "rationale": "rejected c-lead",
+        "supersedes_decision": "dec-lead-adopts"
+      },
+      "set": {
+        "authority_epoch": 1,
+        "grant": "g-lead2"
+      },
+      "expect": {
+        "error": "stale_authority_epoch"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.decision.record",
+      "command_id": "stale-epoch-reused-id",
+      "subject": {
+        "kind": "knowledge.decision",
+        "id": "dec-lead-adopts"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.decision",
+            "id": "dec-lead-adopts"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "claim": {
+          "provider": "conformance-provider",
+          "claim": "c-lead",
+          "revision": 1,
+          "digest": {
+            "$var": "d_c-lead"
+          }
+        },
+        "decision": "rejected",
+        "supersedes_decision": "dec-lead-adopts",
+        "validation_basis": {
+          "evidence": [],
+          "receipts": []
+        },
+        "rationale": "stale epoch and a reused decision ID"
+      },
+      "set": {
+        "authority_epoch": 1,
+        "grant": "g-lead2"
+      },
+      "expect": {
+        "error": "stale_authority_epoch"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.decision.record",
+      "command_id": "decision-record-dec-future",
+      "subject": {
+        "kind": "knowledge.decision",
+        "id": "dec-future"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.decision",
+            "id": "dec-future"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "claim": {
+          "provider": "conformance-provider",
+          "claim": "c-lead",
+          "revision": 1,
+          "digest": {
+            "$var": "d_c-lead"
+          }
+        },
+        "decision": "rejected",
+        "validation_basis": {
+          "evidence": [],
+          "receipts": []
+        },
+        "rationale": "rejected c-lead",
+        "supersedes_decision": "dec-lead-adopts"
+      },
+      "set": {
+        "authority_epoch": 3,
+        "grant": "g-lead2"
+      },
+      "expect": {
+        "error": "unknown_authority_epoch"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.decision.record",
+      "command_id": "decision-record-dec-unlinked",
+      "subject": {
+        "kind": "knowledge.decision",
+        "id": "dec-unlinked"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.decision",
+            "id": "dec-unlinked"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "claim": {
+          "provider": "conformance-provider",
+          "claim": "c-lead",
+          "revision": 1,
+          "digest": {
+            "$var": "d_c-lead"
+          }
+        },
+        "decision": "rejected",
+        "validation_basis": {
+          "evidence": [],
+          "receipts": []
+        },
+        "rationale": "rejected c-lead"
+      },
+      "set": {
+        "authority_epoch": 2,
+        "grant": "g-lead2"
+      },
+      "expect": {
+        "error": "precondition_failed",
+        "details": {
+          "latest_decision": "dec-lead-adopts"
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.decision.record",
+      "command_id": "decision-record-dec-reject",
+      "subject": {
+        "kind": "knowledge.decision",
+        "id": "dec-reject"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.decision",
+            "id": "dec-reject"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "claim": {
+          "provider": "conformance-provider",
+          "claim": "c-lead",
+          "revision": 1,
+          "digest": {
+            "$var": "d_c-lead"
+          }
+        },
+        "decision": "rejected",
+        "validation_basis": {
+          "evidence": [],
+          "receipts": []
+        },
+        "rationale": "rejected c-lead",
+        "supersedes_decision": "dec-lead-adopts"
+      },
+      "set": {
+        "authority_epoch": 2,
+        "grant": "g-lead2"
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "value": "rejected",
+            "author_is_decider": false,
+            "epoch": 2
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "knowledge.claim.inspect",
+      "payload": {
+        "claim": "c-lead"
+      },
+      "set": {
+        "grant": "g-lead2"
+      },
+      "expect": {
+        "ok": {
+          "reliance": {
+            "state": "rejected",
+            "decision": "dec-reject",
+            "author_is_decider": false
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "knowledge.authority.get",
+      "payload": {
+        "scope": "svc"
+      },
+      "set": {
+        "grant": "g-lead2"
+      },
+      "expect": {
+        "ok": {
+          "scope": "svc",
+          "authority": "lead2",
+          "epoch": 2,
+          "revision": 2
+        }
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

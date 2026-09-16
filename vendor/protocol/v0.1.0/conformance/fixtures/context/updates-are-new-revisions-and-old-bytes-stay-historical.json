@@ -1,0 +1,674 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "context.updates-are-new-revisions-and-old-bytes-stay-historical",
+  "version": 2,
+  "title": "An update is a new packet revision with its own artifact and digest that supersedes the earlier one; the earlier revision stays retrievable, keeps its artifact and is never current again; requests without context.updates keep revision 1",
+  "requirements": [
+    "CTX-12",
+    "CTX-5"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/CONTEXT.md#5-results-and-packets",
+    "docs/spec/profiles/CONTEXT.md#8-updates-corrections-and-staleness"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "context",
+      "major": 1
+    }
+  ],
+  "features": [
+    "core.events",
+    "context.updates"
+  ],
+  "requires_controls": [
+    "context.script",
+    "clock.file"
+  ],
+  "polarity": "negative",
+  "kills": [
+    "packet-mutated-in-place",
+    "old-revision-relabeled-current",
+    "revision-remapped"
+  ],
+  "steps": [
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ],
+        "context": {
+          "scripts": {
+            "r-1": [
+              {
+                "section": {
+                  "section_id": "s-1",
+                  "label": "observation",
+                  "content": "first finding",
+                  "item_id": "i-1",
+                  "source": {
+                    "repository": "repo-a",
+                    "path": "src/i-1",
+                    "tree": "tree-1"
+                  }
+                }
+              },
+              {
+                "publish": {}
+              },
+              {
+                "wait_until": "2030-01-01T00:00:30Z"
+              },
+              {
+                "section": {
+                  "section_id": "s-2",
+                  "label": "observation",
+                  "content": "second finding",
+                  "item_id": "i-1",
+                  "source": {
+                    "repository": "repo-a",
+                    "path": "src/i-1",
+                    "tree": "tree-1"
+                  }
+                }
+              },
+              {
+                "publish": {}
+              }
+            ],
+            "r-2": [
+              {
+                "section": {
+                  "section_id": "s-1",
+                  "label": "observation",
+                  "content": "first finding",
+                  "item_id": "i-2",
+                  "source": {
+                    "repository": "repo-a",
+                    "path": "src/i-2",
+                    "tree": "tree-1"
+                  }
+                }
+              },
+              {
+                "publish": {}
+              },
+              {
+                "wait_until": "2030-01-01T00:00:30Z"
+              },
+              {
+                "section": {
+                  "section_id": "s-2",
+                  "label": "observation",
+                  "content": "second finding",
+                  "item_id": "i-2",
+                  "source": {
+                    "repository": "repo-a",
+                    "path": "src/i-2",
+                    "tree": "tree-1"
+                  }
+                }
+              },
+              {
+                "publish": {}
+              }
+            ]
+          }
+        },
+        "clock": {
+          "controlled": "2030-01-01T00:00:00Z"
+        }
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "context",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": [
+              "context.advisory",
+              "context.required_before_start",
+              "context.required_before_transition",
+              "context.shared_jobs",
+              "context.updates",
+              "context.expand"
+            ]
+          },
+          {
+            "name": "evidence",
+            "majors": [
+              1
+            ],
+            "required": false,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "context.request.submit",
+      "command_id": "submit-r-1",
+      "subject": {
+        "kind": "context.request",
+        "id": "r-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "context.request",
+            "id": "r-1"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "consumer": {
+          "task": "fix the build",
+          "principal": "agent-1"
+        },
+        "basis": {
+          "repositories": [
+            {
+              "id": "repo-a",
+              "tree": "tree-1",
+              "workspace": "clean",
+              "dirty": null
+            }
+          ],
+          "completeness": "complete"
+        },
+        "items": [
+          {
+            "item_id": "i-1",
+            "selector": {
+              "kind": "path",
+              "value": "src/i-1"
+            },
+            "obligation": "required_before_start",
+            "reliance": "binding",
+            "selected_by": "owner",
+            "check": {
+              "kind": "source_included",
+              "repository": "repo-a",
+              "path": "src/i-1"
+            }
+          }
+        ],
+        "limits": {
+          "deadline": "2030-01-01T01:00:00Z",
+          "investigation": {
+            "units": "queries",
+            "amount": 100
+          },
+          "output_capacity": {
+            "units": "bytes",
+            "amount": 4096
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "context.request.inspect",
+      "payload": {
+        "request": "r-1"
+      },
+      "expect": {
+        "ok": {
+          "state": "ready",
+          "packets": [
+            {
+              "reference": {
+                "revision": 1,
+                "artifact": {
+                  "artifact": {
+                    "kind": "evidence.artifact",
+                    "id": "packet.r-1.1"
+                  }
+                }
+              },
+              "current": true
+            }
+          ]
+        }
+      },
+      "capture": {
+        "d1": "/result/packets/0/reference/artifact/digest"
+      }
+    },
+    {
+      "step": "stop"
+    },
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ],
+        "context": {
+          "scripts": {
+            "r-1": [
+              {
+                "section": {
+                  "section_id": "s-1",
+                  "label": "observation",
+                  "content": "first finding",
+                  "item_id": "i-1",
+                  "source": {
+                    "repository": "repo-a",
+                    "path": "src/i-1",
+                    "tree": "tree-1"
+                  }
+                }
+              },
+              {
+                "publish": {}
+              },
+              {
+                "wait_until": "2030-01-01T00:00:30Z"
+              },
+              {
+                "section": {
+                  "section_id": "s-2",
+                  "label": "observation",
+                  "content": "second finding",
+                  "item_id": "i-1",
+                  "source": {
+                    "repository": "repo-a",
+                    "path": "src/i-1",
+                    "tree": "tree-1"
+                  }
+                }
+              },
+              {
+                "publish": {}
+              }
+            ],
+            "r-2": [
+              {
+                "section": {
+                  "section_id": "s-1",
+                  "label": "observation",
+                  "content": "first finding",
+                  "item_id": "i-2",
+                  "source": {
+                    "repository": "repo-a",
+                    "path": "src/i-2",
+                    "tree": "tree-1"
+                  }
+                }
+              },
+              {
+                "publish": {}
+              },
+              {
+                "wait_until": "2030-01-01T00:00:30Z"
+              },
+              {
+                "section": {
+                  "section_id": "s-2",
+                  "label": "observation",
+                  "content": "second finding",
+                  "item_id": "i-2",
+                  "source": {
+                    "repository": "repo-a",
+                    "path": "src/i-2",
+                    "tree": "tree-1"
+                  }
+                }
+              },
+              {
+                "publish": {}
+              }
+            ]
+          }
+        },
+        "clock": {
+          "controlled": "2030-01-01T00:00:00Z"
+        }
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "context",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": [
+              "context.advisory",
+              "context.required_before_start",
+              "context.required_before_transition",
+              "context.shared_jobs",
+              "context.expand"
+            ]
+          },
+          {
+            "name": "evidence",
+            "majors": [
+              1
+            ],
+            "required": false,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "context.request.submit",
+      "command_id": "submit-r-2",
+      "subject": {
+        "kind": "context.request",
+        "id": "r-2"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "context.request",
+            "id": "r-2"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "consumer": {
+          "task": "fix the build",
+          "principal": "agent-1"
+        },
+        "basis": {
+          "repositories": [
+            {
+              "id": "repo-a",
+              "tree": "tree-1",
+              "workspace": "clean",
+              "dirty": null
+            }
+          ],
+          "completeness": "complete"
+        },
+        "items": [
+          {
+            "item_id": "i-2",
+            "selector": {
+              "kind": "path",
+              "value": "src/i-2"
+            },
+            "obligation": "required_before_start",
+            "reliance": "binding",
+            "selected_by": "owner",
+            "check": {
+              "kind": "source_included",
+              "repository": "repo-a",
+              "path": "src/i-2"
+            }
+          }
+        ],
+        "limits": {
+          "deadline": "2030-01-01T01:00:00Z",
+          "investigation": {
+            "units": "queries",
+            "amount": 100
+          },
+          "output_capacity": {
+            "units": "bytes",
+            "amount": 4096
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "context.request.inspect",
+      "payload": {
+        "request": "r-2"
+      },
+      "expect": {
+        "ok": {
+          "state": "ready",
+          "job": {
+            "kind": "context.job",
+            "id": "r-2"
+          },
+          "packets": {
+            "$len": 1
+          }
+        }
+      }
+    },
+    {
+      "step": "set_clock",
+      "instant": "2030-01-01T00:00:30Z"
+    },
+    {
+      "step": "query",
+      "operation": "context.request.inspect",
+      "payload": {
+        "request": "r-1"
+      },
+      "expect": {
+        "ok": {
+          "packets": [
+            {
+              "reference": {
+                "revision": 1,
+                "artifact": {
+                  "artifact": {
+                    "kind": "evidence.artifact",
+                    "id": "packet.r-1.1"
+                  },
+                  "digest": {
+                    "$var": "d1"
+                  }
+                }
+              },
+              "current": false,
+              "supersedes": {
+                "$absent": true
+              }
+            },
+            {
+              "reference": {
+                "revision": 2,
+                "artifact": {
+                  "artifact": {
+                    "kind": "evidence.artifact",
+                    "id": "packet.r-1.2"
+                  },
+                  "digest": {
+                    "$ne_var": "d1"
+                  }
+                }
+              },
+              "current": true,
+              "supersedes": {
+                "revision": 1
+              }
+            }
+          ]
+        }
+      },
+      "capture": {
+        "d2": "/result/packets/1/reference/artifact/digest"
+      }
+    },
+    {
+      "step": "query",
+      "operation": "context.request.inspect",
+      "payload": {
+        "request": "r-2"
+      },
+      "expect": {
+        "ok": {
+          "packets": [
+            {
+              "reference": {
+                "revision": 1
+              },
+              "current": true
+            }
+          ]
+        }
+      },
+      "note": "no context.updates for this request"
+    },
+    {
+      "step": "query",
+      "operation": "context.packet.inspect",
+      "payload": {
+        "packet": "r-1",
+        "revision": 1
+      },
+      "expect": {
+        "ok": {
+          "current": false,
+          "reference": {
+            "artifact": {
+              "artifact": {
+                "kind": "evidence.artifact",
+                "id": "packet.r-1.1"
+              },
+              "digest": {
+                "$var": "d1"
+              }
+            }
+          },
+          "inclusions": [
+            "s-1"
+          ]
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "context.packet.inspect",
+      "payload": {
+        "packet": "r-1",
+        "revision": 2
+      },
+      "expect": {
+        "ok": {
+          "current": true,
+          "supersedes": {
+            "revision": 1
+          },
+          "reference": {
+            "artifact": {
+              "artifact": {
+                "kind": "evidence.artifact",
+                "id": "packet.r-1.2"
+              },
+              "digest": {
+                "$var": "d2"
+              }
+            }
+          },
+          "inclusions": [
+            "s-1",
+            "s-2"
+          ]
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "evidence.fetch",
+      "payload": {
+        "artifact": {
+          "kind": "evidence.artifact",
+          "id": "packet.r-1.1"
+        },
+        "digest": {
+          "$var": "d1"
+        }
+      },
+      "expect": {
+        "ok": {
+          "data_base64": {
+            "$sha256_base64": {
+              "$var": "d1"
+            }
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "evidence.fetch",
+      "payload": {
+        "artifact": {
+          "kind": "evidence.artifact",
+          "id": "packet.r-1.2"
+        },
+        "digest": {
+          "$var": "d2"
+        }
+      },
+      "expect": {
+        "ok": {
+          "data_base64": {
+            "$sha256_base64": {
+              "$var": "d2"
+            }
+          }
+        }
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

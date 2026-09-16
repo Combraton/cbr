@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Combraton/protocol/schemas/evidence/1/evidence.hold.params.schema.json",
+  "title": "evidence.hold params",
+  "allOf": [
+    {
+      "$ref": "../../core/1/command.schema.json"
+    }
+  ],
+  "properties": {
+    "operation": {
+      "const": "evidence.hold"
+    },
+    "payload": {
+      "type": "object",
+      "required": [
+        "artifact",
+        "holder_ref",
+        "reason"
+      ],
+      "properties": {
+        "artifact": {
+          "$ref": "common.schema.json#/$defs/artifact_subject"
+        },
+        "holder_ref": {
+          "$ref": "../../core/1/common.schema.json#/$defs/subject"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "expires_at": {
+          "$ref": "../../core/1/common.schema.json#/$defs/instant"
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "subject": {
+      "$ref": "common.schema.json#/$defs/hold_subject"
+    },
+    "preconditions": {
+      "minItems": 1,
+      "maxItems": 1
+    }
+  },
+  "unevaluatedProperties": false
+}

@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Combraton/protocol/schemas/knowledge/1/knowledge.applicability.evaluate.result.schema.json",
+  "title": "knowledge.applicability.evaluate result",
+  "type": "object",
+  "required": [
+    "acknowledgment",
+    "outcome",
+    "replay"
+  ],
+  "properties": {
+    "acknowledgment": {
+      "$ref": "../../core/1/common.schema.json#/$defs/acknowledgment"
+    },
+    "replay": {
+      "type": "boolean"
+    },
+    "outcome": {
+      "type": "object",
+      "required": [
+        "evaluation",
+        "claim",
+        "result",
+        "evaluator",
+        "findings",
+        "supersedes_evaluation"
+      ],
+      "properties": {
+        "evaluation": {
+          "$ref": "common.schema.json#/$defs/evaluation_subject"
+        },
+        "claim": {
+          "$ref": "common.schema.json#/$defs/claim_reference"
+        },
+        "result": {
+          "$ref": "common.schema.json#/$defs/applicability_result"
+        },
+        "evaluator": {
+          "$ref": "common.schema.json#/$defs/evaluator"
+        },
+        "findings": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/finding"
+          }
+        },
+        "supersedes_evaluation": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "../../core/1/common.schema.json#/$defs/identifier"
+            }
+          ]
+        }
+      },
+      "unevaluatedProperties": false
+    }
+  },
+  "unevaluatedProperties": false
+}

@@ -1,0 +1,1019 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "verification.results-are-scoped-and-grant-no-authority",
+  "version": 1,
+  "title": "A failing receipt about an execution leaves every execution axis and its event stream unchanged; a satisfied assessment leaves a claim proposed, the verifier cannot decide by citing its receipt, and only the bound authority's own decision may rely on it",
+  "requirements": [
+    "VER-2",
+    "VER-5"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/VERIFICATION.md#6-results-are-scoped-observations-ver-2",
+    "docs/spec/profiles/VERIFICATION.md#9-verification-grants-no-authority",
+    "docs/spec/profiles/KNOWLEDGE.md#6-authority-bindings-and-reliance-decisions-knw-6-m5-q3"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "verification",
+      "major": 1
+    },
+    {
+      "name": "evidence",
+      "major": 1
+    },
+    {
+      "name": "knowledge",
+      "major": 1
+    },
+    {
+      "name": "execution",
+      "major": 1
+    }
+  ],
+  "features": [
+    "core.events",
+    "core.grants",
+    "core.capabilities",
+    "core.effects",
+    "verification.record"
+  ],
+  "requires_controls": [
+    "clock.file",
+    "executor.script"
+  ],
+  "polarity": "negative",
+  "kills": [
+    "failure-marks-execution",
+    "receipt-authorizes-decision"
+  ],
+  "steps": [
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ],
+        "clock": {
+          "controlled": "2030-01-01T00:03:20Z"
+        },
+        "executor": {
+          "default_script": [
+            {
+              "stall": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.grants",
+              "core.capabilities",
+              "core.effects"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "verification",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": [
+              "verification.jobs",
+              "verification.record"
+            ]
+          },
+          {
+            "name": "evidence",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          },
+          {
+            "name": "knowledge",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          },
+          {
+            "name": "execution",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.upload.prepare",
+      "command_id": "upload-prepare-c-upload",
+      "subject": {
+        "kind": "evidence.artifact",
+        "id": "c-upload"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.artifact",
+            "id": "c-upload"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "digest": "sha256:b6a846cf41d9f0cd7ba8632555dc505aca03369dbdb3d6475bb40e40a9b4822a",
+        "size": 609,
+        "media_type": "text/plain",
+        "producer": {
+          "producer_id": "fixture-producer"
+        },
+        "source": {
+          "kind": "test_report",
+          "id": "run-1"
+        },
+        "scope": "project-a",
+        "capture": {
+          "captured_at": "2030-01-01T00:00:00Z",
+          "anchors": [
+            {
+              "kind": "code_tree",
+              "id": "tree-1"
+            }
+          ]
+        },
+        "coverage": {
+          "completeness": "complete",
+          "covered": [
+            "report"
+          ],
+          "gaps": []
+        },
+        "retention_class": "standard"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.upload.append",
+      "command_id": "upload-append-c-upload",
+      "subject": {
+        "kind": "evidence.artifact",
+        "id": "c-upload"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.artifact",
+            "id": "c-upload"
+          },
+          "revision": 1
+        }
+      ],
+      "payload": {
+        "offset": 0,
+        "data_base64": "eyJlbnZpcm9ubWVudCI6eyJyZXF1aXJlZF9hbmNob3JzIjpbXX0sImV2YWx1YXRvcnMiOm51bGwsImZvcm1hdCI6ImNvbWJyYXRvbi12ZXJpZmljYXRpb24tY29udHJhY3QvMSIsImZyZXNobmVzcyI6bnVsbCwib3V0Y29tZSI6InVwbG9hZCBwcm9kdWNlcyB0aGUgZXhwZWN0ZWQgYXJ0aWZhY3QiLCJwcm9wZXJ0aWVzIjpbeyJsYXllciI6ImNvbXBvbmVudCIsInByb3BlcnR5X2lkIjoicGFyc2VyLnVuaXQiLCJyZXF1aXJlZCI6dHJ1ZSwic3RhdGVtZW50IjoidGhlIHBhcnNlciBoYW5kbGVzIGEgQk9NIn0seyJsYXllciI6ImpvdXJuZXkiLCJwcm9wZXJ0eV9pZCI6InVwbG9hZC5qb3VybmV5IiwicmVxdWlyZWQiOnRydWUsInN0YXRlbWVudCI6ImFuIHVwbG9hZCBwcm9kdWNlcyB0aGUgYXJ0aWZhY3QifSx7ImxheWVyIjoicXVhbGl0YXRpdmUiLCJwcm9wZXJ0eV9pZCI6ImRvY3MucmV2aWV3IiwicmVxdWlyZWQiOmZhbHNlLCJzdGF0ZW1lbnQiOiJ0aGUgaGVscCB0ZXh0IHJlYWRzIHdlbGwifV0sInN1YmplY3RzIjpbeyJraW5kIjoicmVwb3NpdG9yeV90cmVlIiwicm9sZSI6InRyZWUifSx7ImtpbmQiOiJldmlkZW5jZS5hcnRpZmFjdCIsInJvbGUiOiJvdXRwdXQifV19"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.seal",
+      "command_id": "seal-c-upload",
+      "subject": {
+        "kind": "evidence.artifact",
+        "id": "c-upload"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.artifact",
+            "id": "c-upload"
+          },
+          "revision": 2
+        }
+      ],
+      "payload": {},
+      "expect": {
+        "ok": {
+          "outcome": {
+            "state": "sealed"
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "execution.submit",
+      "command_id": "submit-e-5",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "e-5"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "e-5"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "brief": {
+          "digest": "sha256:abababababababababababababababababababababababababababababababab",
+          "media_type": "text/plain"
+        }
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "admission": "admitted"
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "execution.inspect",
+      "payload": {
+        "execution": "e-5"
+      },
+      "capture": {
+        "e5_revision": "/result/revision",
+        "e5_runtime": "/result/runtime",
+        "e5_delivery": "/result/delivery"
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core.events.read",
+      "payload": {
+        "from": "start",
+        "limit": 100,
+        "kinds": [
+          "execution.execution"
+        ]
+      },
+      "capture": {
+        "after_submit": "/result/next_cursor"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "verification.receipt.record",
+      "command_id": "receipt-record-r-fail",
+      "subject": {
+        "kind": "verification.receipt",
+        "id": "r-fail"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "verification.receipt",
+            "id": "r-fail"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "subjects": [
+          {
+            "role": "tree",
+            "digest": "t12"
+          },
+          {
+            "role": "output",
+            "digest": "sha256:db6ac92fefefaf3fa8610a74cd8dcef8815d173fbd7853f2ed5ac18c8ac1ff45"
+          }
+        ],
+        "contract": {
+          "provider": "conformance-provider",
+          "artifact": {
+            "kind": "evidence.artifact",
+            "id": "c-upload"
+          },
+          "digest": "sha256:b6a846cf41d9f0cd7ba8632555dc505aca03369dbdb3d6475bb40e40a9b4822a"
+        },
+        "evaluator": {
+          "id": "journey",
+          "version": "1"
+        },
+        "environment": {
+          "anchors": {}
+        },
+        "inputs": [],
+        "properties": [
+          {
+            "property_id": "parser.unit",
+            "result": "fail",
+            "evidence": []
+          },
+          {
+            "property_id": "upload.journey",
+            "result": "fail",
+            "evidence": []
+          },
+          {
+            "property_id": "docs.review",
+            "result": "pass",
+            "evidence": []
+          }
+        ],
+        "observed_from": "2030-01-01T00:00:00Z",
+        "observed_until": "2030-01-01T00:01:40Z",
+        "valid_until": null,
+        "scope": "upload journey on staging",
+        "provenance": [
+          {
+            "kind": "execution.execution",
+            "id": "e-5"
+          }
+        ]
+      },
+      "capture": {
+        "ra_r-fail": "/result/outcome/reference/artifact/digest"
+      }
+    },
+    {
+      "step": "query",
+      "operation": "verification.receipt.assess",
+      "payload": {
+        "receipt": {
+          "provider": "conformance-provider",
+          "receipt": "r-fail",
+          "artifact": {
+            "provider": "conformance-provider",
+            "artifact": {
+              "kind": "evidence.artifact",
+              "id": "receipt.r-fail"
+            },
+            "digest": {
+              "$var": "ra_r-fail"
+            }
+          }
+        },
+        "contract": {
+          "provider": "conformance-provider",
+          "artifact": {
+            "kind": "evidence.artifact",
+            "id": "c-upload"
+          },
+          "digest": "sha256:b6a846cf41d9f0cd7ba8632555dc505aca03369dbdb3d6475bb40e40a9b4822a"
+        },
+        "subjects": [
+          {
+            "role": "tree",
+            "digest": "t12"
+          },
+          {
+            "role": "output",
+            "digest": "sha256:db6ac92fefefaf3fa8610a74cd8dcef8815d173fbd7853f2ed5ac18c8ac1ff45"
+          }
+        ]
+      },
+      "expect": {
+        "ok": {
+          "overall": "failed"
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "execution.inspect",
+      "payload": {
+        "execution": "e-5"
+      },
+      "expect": {
+        "ok": {
+          "revision": {
+            "$var": "e5_revision"
+          },
+          "runtime": {
+            "$var": "e5_runtime"
+          },
+          "delivery": {
+            "$var": "e5_delivery"
+          },
+          "evaluation": "not_requested",
+          "cancellation": {
+            "$absent": true
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core.events.read",
+      "payload": {
+        "cursor": {
+          "$var": "after_submit"
+        },
+        "limit": 100,
+        "kinds": [
+          "execution.execution"
+        ]
+      },
+      "expect": {
+        "ok": {
+          "items": []
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.authority.bind",
+      "command_id": "authority-bind-svc",
+      "subject": {
+        "kind": "knowledge.authority",
+        "id": "svc"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.authority",
+            "id": "svc"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "authority": "owner"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "core.grant.issue",
+      "command_id": "grant-issue-g-verifier",
+      "subject": {
+        "kind": "core.grant",
+        "id": "g-verifier"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core.grant",
+            "id": "g-verifier"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "holder": "verifier",
+        "audience": "conformance-provider",
+        "rights": [
+          "verification.record",
+          "verification.read",
+          "evidence.read",
+          "knowledge.read",
+          "knowledge.decide",
+          "knowledge.propose"
+        ],
+        "resources": [
+          {
+            "kind": "verification.receipt"
+          },
+          {
+            "kind": "evidence.artifact"
+          },
+          {
+            "kind": "knowledge.claim"
+          },
+          {
+            "kind": "knowledge.decision"
+          }
+        ],
+        "delegation": {
+          "allowed": false,
+          "max_depth": 0
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.claim.propose",
+      "command_id": "claim-propose-c-upload-works",
+      "subject": {
+        "kind": "knowledge.claim",
+        "id": "c-upload-works"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.claim",
+            "id": "c-upload-works"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "plane": "observed",
+        "statement": {
+          "subject": {
+            "kind": "app.feature",
+            "id": "upload"
+          },
+          "predicate": "works",
+          "value": true,
+          "cardinality": "single"
+        },
+        "scope": {
+          "id": "svc",
+          "qualifiers": {}
+        },
+        "support": [],
+        "derivation": {
+          "kind": "deterministic",
+          "inputs": []
+        }
+      },
+      "capture": {
+        "d_c-upload-works": "/result/outcome/reference/digest"
+      }
+    },
+    {
+      "step": "stop"
+    },
+    {
+      "step": "start",
+      "config": {
+        "principal": "verifier",
+        "authority_principals": [
+          "owner"
+        ],
+        "clock": {
+          "controlled": "2030-01-01T00:03:20Z"
+        },
+        "executor": {
+          "default_script": [
+            {
+              "stall": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.grants",
+              "core.capabilities",
+              "core.effects"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "verification",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": [
+              "verification.jobs",
+              "verification.record"
+            ]
+          },
+          {
+            "name": "evidence",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          },
+          {
+            "name": "knowledge",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          },
+          {
+            "name": "execution",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "verification.receipt.record",
+      "command_id": "receipt-record-r-pass",
+      "subject": {
+        "kind": "verification.receipt",
+        "id": "r-pass"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "verification.receipt",
+            "id": "r-pass"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "subjects": [
+          {
+            "role": "tree",
+            "digest": "t12"
+          },
+          {
+            "role": "output",
+            "digest": "sha256:db6ac92fefefaf3fa8610a74cd8dcef8815d173fbd7853f2ed5ac18c8ac1ff45"
+          }
+        ],
+        "contract": {
+          "provider": "conformance-provider",
+          "artifact": {
+            "kind": "evidence.artifact",
+            "id": "c-upload"
+          },
+          "digest": "sha256:b6a846cf41d9f0cd7ba8632555dc505aca03369dbdb3d6475bb40e40a9b4822a"
+        },
+        "evaluator": {
+          "id": "journey",
+          "version": "1"
+        },
+        "environment": {
+          "anchors": {
+            "browser": "chromium-120"
+          }
+        },
+        "inputs": [],
+        "properties": [
+          {
+            "property_id": "parser.unit",
+            "result": "pass",
+            "evidence": []
+          },
+          {
+            "property_id": "upload.journey",
+            "result": "pass",
+            "evidence": []
+          },
+          {
+            "property_id": "docs.review",
+            "result": "pass",
+            "evidence": []
+          }
+        ],
+        "observed_from": "2030-01-01T00:00:00Z",
+        "observed_until": "2030-01-01T00:01:40Z",
+        "valid_until": null,
+        "scope": "upload journey on staging",
+        "provenance": []
+      },
+      "set": {
+        "grant": "g-verifier"
+      },
+      "capture": {
+        "ra_r-pass": "/result/outcome/reference/artifact/digest"
+      }
+    },
+    {
+      "step": "query",
+      "operation": "verification.receipt.assess",
+      "payload": {
+        "receipt": {
+          "provider": "conformance-provider",
+          "receipt": "r-pass",
+          "artifact": {
+            "provider": "conformance-provider",
+            "artifact": {
+              "kind": "evidence.artifact",
+              "id": "receipt.r-pass"
+            },
+            "digest": {
+              "$var": "ra_r-pass"
+            }
+          }
+        },
+        "contract": {
+          "provider": "conformance-provider",
+          "artifact": {
+            "kind": "evidence.artifact",
+            "id": "c-upload"
+          },
+          "digest": "sha256:b6a846cf41d9f0cd7ba8632555dc505aca03369dbdb3d6475bb40e40a9b4822a"
+        },
+        "subjects": [
+          {
+            "role": "tree",
+            "digest": "t12"
+          },
+          {
+            "role": "output",
+            "digest": "sha256:db6ac92fefefaf3fa8610a74cd8dcef8815d173fbd7853f2ed5ac18c8ac1ff45"
+          }
+        ]
+      },
+      "set": {
+        "grant": "g-verifier"
+      },
+      "expect": {
+        "ok": {
+          "overall": "satisfied",
+          "present_validity": "established"
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "knowledge.claim.inspect",
+      "payload": {
+        "claim": "c-upload-works"
+      },
+      "set": {
+        "grant": "g-verifier"
+      },
+      "expect": {
+        "ok": {
+          "reliance": {
+            "state": "proposed"
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.decision.record",
+      "command_id": "decision-record-dec-by-verifier",
+      "subject": {
+        "kind": "knowledge.decision",
+        "id": "dec-by-verifier"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.decision",
+            "id": "dec-by-verifier"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "claim": {
+          "provider": "conformance-provider",
+          "claim": "c-upload-works",
+          "revision": 1,
+          "digest": {
+            "$var": "d_c-upload-works"
+          }
+        },
+        "decision": "accepted_for_use",
+        "permitted_use": "evidence",
+        "validation_basis": {
+          "evidence": [],
+          "receipts": [
+            {
+              "provider": "conformance-provider",
+              "receipt": "r-pass",
+              "artifact": {
+                "provider": "conformance-provider",
+                "artifact": {
+                  "kind": "evidence.artifact",
+                  "id": "receipt.r-pass"
+                },
+                "digest": {
+                  "$var": "ra_r-pass"
+                }
+              }
+            }
+          ]
+        },
+        "rationale": "the receipt passed"
+      },
+      "set": {
+        "grant": "g-verifier",
+        "authority_epoch": 1
+      },
+      "expect": {
+        "error": "permission_denied",
+        "details": {
+          "reason": "not_authority"
+        }
+      }
+    },
+    {
+      "step": "stop"
+    },
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ],
+        "clock": {
+          "controlled": "2030-01-01T00:03:20Z"
+        },
+        "executor": {
+          "default_script": [
+            {
+              "stall": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.grants",
+              "core.capabilities",
+              "core.effects"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "verification",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": [
+              "verification.jobs",
+              "verification.record"
+            ]
+          },
+          {
+            "name": "evidence",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          },
+          {
+            "name": "knowledge",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          },
+          {
+            "name": "execution",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "query",
+      "operation": "knowledge.claim.inspect",
+      "payload": {
+        "claim": "c-upload-works"
+      },
+      "expect": {
+        "ok": {
+          "reliance": {
+            "state": "proposed"
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.decision.record",
+      "command_id": "decision-record-dec-by-owner",
+      "subject": {
+        "kind": "knowledge.decision",
+        "id": "dec-by-owner"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.decision",
+            "id": "dec-by-owner"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "claim": {
+          "provider": "conformance-provider",
+          "claim": "c-upload-works",
+          "revision": 1,
+          "digest": {
+            "$var": "d_c-upload-works"
+          }
+        },
+        "decision": "accepted_for_use",
+        "permitted_use": "evidence",
+        "validation_basis": {
+          "evidence": [],
+          "receipts": [
+            {
+              "provider": "conformance-provider",
+              "receipt": "r-pass",
+              "artifact": {
+                "provider": "conformance-provider",
+                "artifact": {
+                  "kind": "evidence.artifact",
+                  "id": "receipt.r-pass"
+                },
+                "digest": {
+                  "$var": "ra_r-pass"
+                }
+              }
+            }
+          ]
+        },
+        "rationale": "the bound authority relies on the satisfied receipt"
+      },
+      "set": {
+        "authority_epoch": 1
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "value": "accepted_for_use",
+            "author_is_decider": true
+          }
+        }
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Combraton/protocol/schemas/knowledge/1/knowledge.authority.get.result.schema.json",
+  "title": "knowledge.authority.get result",
+  "type": "object",
+  "required": [
+    "scope",
+    "authority",
+    "epoch",
+    "revision"
+  ],
+  "properties": {
+    "scope": {
+      "$ref": "../../core/1/common.schema.json#/$defs/identifier"
+    },
+    "authority": {
+      "$ref": "../../core/1/common.schema.json#/$defs/principal"
+    },
+    "epoch": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "revision": {
+      "$ref": "../../core/1/common.schema.json#/$defs/revision"
+    }
+  },
+  "unevaluatedProperties": false
+}

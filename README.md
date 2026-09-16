@@ -44,11 +44,11 @@ Measure downstream accepted outcomes, missed constraints, unsupported claims, co
 
 Rust/SQLite are core starting preferences. Native provider calls versus lightweight Pi-derived libraries need a bounded runtime comparison. Prime and upstream Pi are different source/release candidates; neither is selected. Generated-program workers are optional and require real scope enforcement, host-owned provenance and aggregate limits.
 
-For development milestones, read [BOOTSTRAP](https://github.com/Combraton/combraton/blob/main/BOOTSTRAP.md). No runtime, benchmark claim or license is provided by this bootstrap; the repository is public and its project license remains to be selected.
+For development milestones, read [BOOTSTRAP](https://github.com/Combraton/combraton/blob/main/BOOTSTRAP.md). This repository is licensed under [MIT](LICENSE), matching Protocol. No runtime or benchmark claim is established here.
 
 ## Working on this repository
 
-Read [AGENTS.md](AGENTS.md), [CLAUDE.md](CLAUDE.md), [the documentation map](docs/README.md), and [verification](docs/VERIFICATION.md). Use existing native harnesses for development. **Combraton self-development is deferred until usable v0.1 releases of all four projects.** Public visibility does not select a license; no project license has been added yet.
+Read [AGENTS.md](AGENTS.md), [CLAUDE.md](CLAUDE.md), [the documentation map](docs/README.md), and [verification](docs/VERIFICATION.md). Use existing native harnesses for development. **Combraton self-development is deferred until usable v0.1 releases of all four projects.** The project is [MIT licensed](LICENSE).
 
 ## Standalone-first validation
 

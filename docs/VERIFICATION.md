@@ -19,17 +19,75 @@ python3 scripts/check_docs.py --workspace ..
 
 This additionally resolves Combraton GitHub main-file links against the sibling checkouts, including benchmarks. It does not prove those checkouts match the remote branches. Record their commits when using the result as integration evidence.
 
-The GitHub Actions documentation job runs the first script on pushes and pull requests, with read-only contents permissions. It does not fetch sibling repositories. Remote URL reachability, Markdown fragment targets, Mermaid rendering, source-manifest consistency, semantic correctness, live harness instruction loading and product behavior need separate inspection. The script is intentionally small and is not a general Markdown parser.
+Two GitHub Actions workflows run on pushes and pull requests, both with read-only contents permissions and neither fetching sibling repositories. The **Documentation** job runs `check_docs.py` alone. The **Checks** job runs every command in [Product checks](#product-checks) below, as separate steps, on both `ubuntu-latest` and `macos-latest` — the two platforms Protocol 0.1 supports. No step pipes a command into another process, so a failing command's exit status is never replaced by a successful consumer's. Remote URL reachability, Markdown fragment targets, Mermaid rendering, source-manifest consistency, semantic correctness, live harness instruction loading and product behavior need separate inspection. The script is intentionally small and is not a general Markdown parser.
 
 ## Journey verification
 
 [Journey verification](verification/JOURNEYS.md) holds the journey-level acceptance matrix and the per-journey evidence records, aligned with the [shared verification model](https://github.com/Combraton/combraton/blob/main/docs/architecture/VERIFICATION.md). No journey has been run. A journey record names its model or provider, or records `none` or `simulated`; a simulated run is never reported as live-model evidence, and `not_evaluated` never counts as a pass.
 
-## Product checks to add with implementation
+## Product checks
 
-No runtime build, unit, adapter, memory-evaluation or end-to-end commands exist yet. Add actual reproducible setup/build/test commands here in the same change that introduces the corresponding code, including tool versions and fixtures. Do not manufacture a passing runtime status from documentation checks.
+These exist and run. `rust-toolchain.toml` pins `rustc 1.97.1`, matching the toolchain the pinned Protocol release was built and tested with, so `rustup` selects it automatically. Python 3 standard library is sufficient for the two scripts; there is no package install step.
 
-For a change, report the command, exit status, environment, tested revision, real versus simulated dependencies, evidence location and untested limitations. Preserve the producer exit code when displaying shortened logs. Review the relevant diff against an explicit base/head.
+From the repository root:
+
+```sh
+python3 scripts/check_docs.py
+python3 scripts/verify_pin.py
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo build --workspace --locked
+cargo test --workspace --locked
+git diff --check
+```
+
+Conformance additionally needs the runner, which is **not** built from this workspace. The vendored runner's manifest inherits `license.workspace` and `edition.workspace` from the Protocol workspace, and the vendored subset carries no `Cargo.lock`, so building it here would need a licence CBR has not selected and could not use `--locked`. It is built from a fresh, checksum-verified extraction of the release archive instead, with the release's own lockfile:
+
+```sh
+python3 scripts/build_runner.py
+python3 scripts/run_fixtures.py --filter stream. --out conformance/results/m1b
+python3 scripts/check_results.py conformance/results/m1b conformance/expectations/stream.json
+```
+
+`build_runner.py` downloads the archive once and reuses it afterwards; `--archive PATH` uses a copy you already have and `--offline` refuses to download. It verifies the archive against the pinned SHA-256, verifies every extracted file against the archive's own `BUNDLE-SHA256SUMS`, checks the archive's recorded commit against the pin, and records the runner identity that `run_fixtures.py` stamps into every results manifest.
+
+| Command | What it establishes | What it does not |
+|---|---|---|
+| `check_docs.py` | Documentation structure: entrypoints, the `CLAUDE.md` import, local link targets, balanced fences, no private machine paths | Nothing about the product |
+| `verify_pin.py` | The vendored Protocol material matches the published release, against three anchors CBR does not control: the release's `BUNDLE-SHA256SUMS`, the recomputed inventory `listing_sha256` that also appears in the annotated tag message, and the inventory's own per-file digests | That CBR implements any contract correctly |
+| `cargo fmt --all -- --check` | Formatting only | — |
+| `cargo clippy … -D warnings` | Lints clean; warnings fail | Correctness |
+| `cargo build --workspace --locked` | The workspace builds from the committed `Cargo.lock` with no dependency resolution | Runtime behaviour |
+| `cargo test --workspace --locked` | Every pinned encoding vector — 12 canonical, 18 rejected, 1 command intent — plus the property tests, 19 in all. A rejected vector must be refused **for the reason the vector states**, so a parser that refused everything would fail. | Any profile conformance |
+| `build_runner.py` | The runner was built from the published release archive, with its own lockfile, and its identity is recorded | Anything about CBR |
+| `run_fixtures.py --filter stream.` | Runs the suite and writes the runner's manifest, the transcripts, and a `cbr-run.json` sidecar. The manifest stays byte-for-byte the runner's own output. | Nothing on its own: it reports, it does not gate |
+| `check_results.py` | **The gate.** The outcome multiset matches a recorded expectation exactly: pass count, total, the named unsupported set, and zero `fail`, `timeout`, `harness_error` and `skipped`. | Every suite with no expectation file. Only `stream` has one today. |
+
+### Why the gate is an outcome multiset
+
+The runner's own `coverage_limits` list **stays empty even when fixtures are reported `unsupported`**. Measured against this provider, the `core` suite gives `49 pass, 13 fail, 73 unsupported` with `coverage_limits: []`. So "no coverage limits" is not a gate — a run in which every fixture was skipped for want of a claimed feature would satisfy it. Each suite therefore has a committed expectation under `conformance/expectations/`, naming the exact counts and the exact fixtures expected to be unsupported, and `check_results.py` refuses anything else.
+
+### A permanent coverage limit: five `core` fixtures CBR can never pass
+
+Five of the 135 `core` fixtures declare the `execution` profile and require the `executor.script` test control:
+
+| Fixture | Also needs |
+|---|---|
+| `core.events.older-consumer-is-closed-without-notice` | `execution.output` |
+| `core.events.slow-consumer-is-closed-with-notice-and-resumes` | `execution.output`, `core.events.backpressure` |
+| `core.events.slow-consumer-recovery-reports-retention-gap` | `execution.output`, `core.events.backpressure` |
+| `core.events.unread-ending-notice-does-not-hold-the-connection` | `execution.output`, `core.events.backpressure` |
+| `core.feature-dependencies-match-negotiation` | `execution.context`, and the `evidence`, `context`, `knowledge` and `verification` profiles |
+
+**CBR never serves `execution/1`** — the [consumer handoff](https://github.com/Combraton/protocol/blob/main/docs/work/release-0.1/CONSUMERS.md) states it plainly, and [ADR 001](decisions/001-standalone-v0.1-scope-and-stack.md) keeps it a client only. **No other participant role can satisfy them either:** these are single-participant `core/` fixtures over stdio with `role: provider`, not compositions, so there is no second role for CBR to occupy. `core.feature-dependencies-match-negotiation` would additionally need CBR to serve `verification/1`, which the agreed release scope excludes.
+
+So the maximum attainable on the `core` suite is **130 of 135**, with exactly those five `unsupported`. Any statement of the form "all 135 core fixtures pass" is unattainable and must not be written.
+
+**What is and is not established.** `stream` is the only suite run against CBR. The `core` (135), `socket` (13) and `evidence` (16) suites have not been run and no claim is made about them. The store is **in memory and not durable**; nothing here shows CBR survives a restart with state intact. No packet, model call, Knowledge or Context code exists.
+
+Committed results live under `conformance/results/`. The `manifest.json` in each is the runner's own output, unedited. Beside it, `cbr-run.json` records the runner's identity — the release archive SHA-256, the source commit and the release `Cargo.lock` SHA-256 — so a fixture outcome names the exact runner that produced it, along with a correction for the runner's `suite.protocol_commit`, which records the Git checkout enclosing `--repo` and therefore names CBR rather than Protocol.
+
+When reporting a result, give the command, its exit status, the environment and the tested revision. Preserve the producing command's exit status when shortening output: piping a failing build into a successful `tail` or `grep` reports success, and a shortened log is not evidence that the command passed.
 
 ## Standalone release evidence
 

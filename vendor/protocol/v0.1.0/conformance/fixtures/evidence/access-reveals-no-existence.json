@@ -1,0 +1,883 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "evidence.access-reveals-no-existence",
+  "version": 2,
+  "title": "An unauthorized reader gets the same permission_denied for existing and nonexistent artifacts with no digest; an authorized reader naming another digest gets artifact_digest_mismatch and no bytes; query omits unreadable artifacts without an existence test",
+  "requirements": [
+    "EVD-5",
+    "CORE-12"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/EVIDENCE.md#5-inspect-query-and-fetch",
+    "docs/spec/profiles/EVIDENCE.md#6-errors",
+    "docs/spec/profiles/EVIDENCE.md#8-authorization-and-rights"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "evidence",
+      "major": 1
+    }
+  ],
+  "features": [
+    "core.events",
+    "core.grants"
+  ],
+  "polarity": "negative",
+  "kills": [
+    "fetch-leaks-existence",
+    "mismatched-reference-serves-bytes",
+    "query-returns-unreadable",
+    "filtered-reveals-matches"
+  ],
+  "steps": [
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ]
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.grants"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "evidence",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": [
+              "evidence.manifests",
+              "evidence.retention_control"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.upload.prepare",
+      "command_id": "prepare-pub-1",
+      "subject": {
+        "kind": "evidence.artifact",
+        "id": "pub-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.artifact",
+            "id": "pub-1"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "digest": "sha256:03774429b9adceb531cca5b1a411d8032e0dee428961dd7c04bd00418413aa09",
+        "size": 18,
+        "media_type": "text/plain",
+        "producer": {
+          "producer_id": "fixture-producer"
+        },
+        "source": {
+          "kind": "test_report",
+          "id": "run-1"
+        },
+        "scope": "project-a",
+        "capture": {
+          "captured_at": "2030-01-01T00:00:00Z",
+          "uncertainty": {
+            "not_before": "2029-12-31T23:59:58Z",
+            "not_after": "2030-01-01T00:00:00Z"
+          },
+          "anchors": [
+            {
+              "kind": "code_tree",
+              "id": "tree-1"
+            }
+          ]
+        },
+        "coverage": {
+          "completeness": "complete"
+        },
+        "retention_class": "standard"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.upload.append",
+      "command_id": "append-pub-1-0",
+      "subject": {
+        "kind": "evidence.artifact",
+        "id": "pub-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.artifact",
+            "id": "pub-1"
+          },
+          "revision": 1
+        }
+      ],
+      "payload": {
+        "offset": 0,
+        "data_base64": "cHVibGljIHRlc3QgcmVwb3J0"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.seal",
+      "command_id": "seal-pub-1",
+      "subject": {
+        "kind": "evidence.artifact",
+        "id": "pub-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.artifact",
+            "id": "pub-1"
+          },
+          "revision": 2
+        }
+      ],
+      "payload": {},
+      "expect": {
+        "ok": {
+          "outcome": {
+            "state": "sealed",
+            "digest": "sha256:03774429b9adceb531cca5b1a411d8032e0dee428961dd7c04bd00418413aa09"
+          },
+          "acknowledgment": {
+            "revision": 3
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.upload.prepare",
+      "command_id": "prepare-secret-1",
+      "subject": {
+        "kind": "evidence.artifact",
+        "id": "secret-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.artifact",
+            "id": "secret-1"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "digest": "sha256:17d38578f853f323612165745ea1f2077ad7626b72a458c4354fee1672b5db64",
+        "size": 16,
+        "media_type": "text/plain",
+        "producer": {
+          "producer_id": "fixture-producer"
+        },
+        "source": {
+          "kind": "test_report",
+          "id": "run-1"
+        },
+        "scope": "project-a",
+        "capture": {
+          "captured_at": "2030-01-01T00:00:00Z",
+          "uncertainty": {
+            "not_before": "2029-12-31T23:59:58Z",
+            "not_after": "2030-01-01T00:00:00Z"
+          },
+          "anchors": [
+            {
+              "kind": "code_tree",
+              "id": "tree-1"
+            }
+          ]
+        },
+        "coverage": {
+          "completeness": "complete"
+        },
+        "retention_class": "standard"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.upload.append",
+      "command_id": "append-secret-1-0",
+      "subject": {
+        "kind": "evidence.artifact",
+        "id": "secret-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.artifact",
+            "id": "secret-1"
+          },
+          "revision": 1
+        }
+      ],
+      "payload": {
+        "offset": 0,
+        "data_base64": "c2VjcmV0IGJ1aWxkIGxvZw=="
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.seal",
+      "command_id": "seal-secret-1",
+      "subject": {
+        "kind": "evidence.artifact",
+        "id": "secret-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.artifact",
+            "id": "secret-1"
+          },
+          "revision": 2
+        }
+      ],
+      "payload": {},
+      "expect": {
+        "ok": {
+          "outcome": {
+            "state": "sealed",
+            "digest": "sha256:17d38578f853f323612165745ea1f2077ad7626b72a458c4354fee1672b5db64"
+          },
+          "acknowledgment": {
+            "revision": 3
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "core.grant.issue",
+      "command_id": "issue-g-reader",
+      "subject": {
+        "kind": "core.grant",
+        "id": "g-reader"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core.grant",
+            "id": "g-reader"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "holder": "reader-1",
+        "audience": "conformance-provider",
+        "rights": [
+          "evidence.read"
+        ],
+        "resources": [
+          {
+            "kind": "evidence.artifact",
+            "id_prefix": "pub-"
+          }
+        ],
+        "delegation": {
+          "allowed": false,
+          "max_depth": 0
+        }
+      }
+    },
+    {
+      "step": "stop"
+    },
+    {
+      "step": "start",
+      "config": {
+        "principal": "reader-1",
+        "authority_principals": [
+          "owner"
+        ]
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.grants"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "evidence",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": [
+              "evidence.manifests",
+              "evidence.retention_control"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "step": "query",
+      "operation": "evidence.inspect",
+      "payload": {
+        "artifact": {
+          "kind": "evidence.artifact",
+          "id": "pub-1"
+        }
+      },
+      "expect": {
+        "ok": {
+          "state": "sealed"
+        }
+      },
+      "set": {
+        "grant": "g-reader"
+      }
+    },
+    {
+      "step": "query",
+      "operation": "evidence.inspect",
+      "payload": {
+        "artifact": {
+          "kind": "evidence.artifact",
+          "id": "secret-1"
+        }
+      },
+      "expect": {
+        "error": "permission_denied",
+        "details": {
+          "$exact": {
+            "reason": "out_of_scope"
+          }
+        }
+      },
+      "set": {
+        "grant": "g-reader"
+      }
+    },
+    {
+      "step": "query",
+      "operation": "evidence.inspect",
+      "payload": {
+        "artifact": {
+          "kind": "evidence.artifact",
+          "id": "secret-none"
+        }
+      },
+      "expect": {
+        "error": "permission_denied",
+        "details": {
+          "$exact": {
+            "reason": "out_of_scope"
+          }
+        }
+      },
+      "set": {
+        "grant": "g-reader"
+      }
+    },
+    {
+      "step": "query",
+      "operation": "evidence.fetch",
+      "payload": {
+        "artifact": {
+          "kind": "evidence.artifact",
+          "id": "secret-1"
+        },
+        "digest": "sha256:17d38578f853f323612165745ea1f2077ad7626b72a458c4354fee1672b5db64"
+      },
+      "expect": {
+        "error": "permission_denied",
+        "details": {
+          "$exact": {
+            "reason": "out_of_scope"
+          }
+        }
+      },
+      "set": {
+        "grant": "g-reader"
+      }
+    },
+    {
+      "step": "query",
+      "operation": "evidence.fetch",
+      "payload": {
+        "artifact": {
+          "kind": "evidence.artifact",
+          "id": "secret-1"
+        },
+        "digest": "sha256:03774429b9adceb531cca5b1a411d8032e0dee428961dd7c04bd00418413aa09"
+      },
+      "expect": {
+        "error": "permission_denied",
+        "details": {
+          "$exact": {
+            "reason": "out_of_scope"
+          }
+        }
+      },
+      "set": {
+        "grant": "g-reader"
+      }
+    },
+    {
+      "step": "query",
+      "operation": "evidence.fetch",
+      "payload": {
+        "artifact": {
+          "kind": "evidence.artifact",
+          "id": "secret-none"
+        },
+        "digest": "sha256:17d38578f853f323612165745ea1f2077ad7626b72a458c4354fee1672b5db64"
+      },
+      "expect": {
+        "error": "permission_denied",
+        "details": {
+          "$exact": {
+            "reason": "out_of_scope"
+          }
+        }
+      },
+      "set": {
+        "grant": "g-reader"
+      }
+    },
+    {
+      "step": "query",
+      "operation": "evidence.inspect",
+      "payload": {
+        "artifact": {
+          "kind": "evidence.artifact",
+          "id": "pub-none"
+        }
+      },
+      "expect": {
+        "error": "not_found"
+      },
+      "set": {
+        "grant": "g-reader"
+      }
+    },
+    {
+      "step": "query",
+      "operation": "evidence.fetch",
+      "payload": {
+        "artifact": {
+          "kind": "evidence.artifact",
+          "id": "pub-1"
+        },
+        "digest": "sha256:17d38578f853f323612165745ea1f2077ad7626b72a458c4354fee1672b5db64"
+      },
+      "expect": {
+        "error": "artifact_digest_mismatch",
+        "details": {
+          "$exact": {}
+        }
+      },
+      "set": {
+        "grant": "g-reader"
+      }
+    },
+    {
+      "step": "query",
+      "operation": "evidence.fetch",
+      "payload": {
+        "artifact": {
+          "kind": "evidence.artifact",
+          "id": "pub-1"
+        },
+        "digest": "sha256:03774429b9adceb531cca5b1a411d8032e0dee428961dd7c04bd00418413aa09"
+      },
+      "expect": {
+        "ok": {
+          "data_base64": "cHVibGljIHRlc3QgcmVwb3J0"
+        }
+      },
+      "set": {
+        "grant": "g-reader"
+      }
+    },
+    {
+      "step": "query",
+      "operation": "evidence.query",
+      "payload": {},
+      "expect": {
+        "ok": {
+          "filtered": true,
+          "items": [
+            {
+              "artifact": {
+                "kind": "evidence.artifact",
+                "id": "pub-1"
+              },
+              "digest": "sha256:03774429b9adceb531cca5b1a411d8032e0dee428961dd7c04bd00418413aa09"
+            }
+          ]
+        }
+      },
+      "set": {
+        "grant": "g-reader"
+      }
+    },
+    {
+      "step": "query",
+      "operation": "evidence.query",
+      "payload": {
+        "filters": {
+          "digest": "sha256:17d38578f853f323612165745ea1f2077ad7626b72a458c4354fee1672b5db64"
+        }
+      },
+      "expect": {
+        "ok": {
+          "filtered": true,
+          "items": []
+        }
+      },
+      "set": {
+        "grant": "g-reader"
+      }
+    },
+    {
+      "step": "query",
+      "operation": "evidence.query",
+      "payload": {
+        "filters": {
+          "digest": "sha256:1785cfc3bc6ac7738e8b38cdccd1af12563c2b9070e07af336a1bf8c0f772b6a"
+        }
+      },
+      "expect": {
+        "ok": {
+          "filtered": true,
+          "items": []
+        }
+      },
+      "note": "identical to the previous answer: a digest filter is not an existence test",
+      "set": {
+        "grant": "g-reader"
+      }
+    },
+    {
+      "step": "query",
+      "operation": "evidence.query",
+      "payload": {
+        "filters": {
+          "digest": "sha256:92513ad3af8ac3b48c9dbbe1829439f788dfe3c9d73549d19cdf766b2045041f"
+        }
+      },
+      "expect": {
+        "ok": {
+          "filtered": true,
+          "items": []
+        }
+      },
+      "capture": {
+        "matching_before": "/result"
+      },
+      "note": "no artifact with this digest exists yet",
+      "set": {
+        "grant": "g-reader"
+      }
+    },
+    {
+      "step": "query",
+      "operation": "evidence.query",
+      "payload": {},
+      "expect": {
+        "ok": {
+          "filtered": true
+        }
+      },
+      "capture": {
+        "all_before": "/result"
+      },
+      "set": {
+        "grant": "g-reader"
+      }
+    },
+    {
+      "step": "stop"
+    },
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ]
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.grants"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "evidence",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": [
+              "evidence.manifests",
+              "evidence.retention_control"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.upload.prepare",
+      "command_id": "prepare-secret-2",
+      "subject": {
+        "kind": "evidence.artifact",
+        "id": "secret-2"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.artifact",
+            "id": "secret-2"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "digest": "sha256:92513ad3af8ac3b48c9dbbe1829439f788dfe3c9d73549d19cdf766b2045041f",
+        "size": 33,
+        "media_type": "text/plain",
+        "producer": {
+          "producer_id": "fixture-producer"
+        },
+        "source": {
+          "kind": "test_report",
+          "id": "run-1"
+        },
+        "scope": "project-a",
+        "capture": {
+          "captured_at": "2030-01-01T00:00:00Z",
+          "uncertainty": {
+            "not_before": "2029-12-31T23:59:58Z",
+            "not_after": "2030-01-01T00:00:00Z"
+          },
+          "anchors": [
+            {
+              "kind": "code_tree",
+              "id": "tree-1"
+            }
+          ]
+        },
+        "coverage": {
+          "completeness": "complete"
+        },
+        "retention_class": "standard"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.upload.append",
+      "command_id": "append-secret-2-0",
+      "subject": {
+        "kind": "evidence.artifact",
+        "id": "secret-2"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.artifact",
+            "id": "secret-2"
+          },
+          "revision": 1
+        }
+      ],
+      "payload": {
+        "offset": 0,
+        "data_base64": "cmVzdHJpY3RlZCByZXBvcnQgcHVibGlzaGVkIGxhdGVy"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.seal",
+      "command_id": "seal-secret-2",
+      "subject": {
+        "kind": "evidence.artifact",
+        "id": "secret-2"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.artifact",
+            "id": "secret-2"
+          },
+          "revision": 2
+        }
+      ],
+      "payload": {},
+      "expect": {
+        "ok": {
+          "outcome": {
+            "state": "sealed",
+            "digest": "sha256:92513ad3af8ac3b48c9dbbe1829439f788dfe3c9d73549d19cdf766b2045041f"
+          },
+          "acknowledgment": {
+            "revision": 3
+          }
+        }
+      }
+    },
+    {
+      "step": "stop"
+    },
+    {
+      "step": "start",
+      "config": {
+        "principal": "reader-1",
+        "authority_principals": [
+          "owner"
+        ]
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.grants"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "evidence",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": [
+              "evidence.manifests",
+              "evidence.retention_control"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "step": "query",
+      "operation": "evidence.query",
+      "payload": {
+        "filters": {
+          "digest": "sha256:92513ad3af8ac3b48c9dbbe1829439f788dfe3c9d73549d19cdf766b2045041f"
+        }
+      },
+      "expect": {
+        "ok": {
+          "$exact": {
+            "$var": "matching_before"
+          }
+        }
+      },
+      "note": "an unreadable matching artifact now exists; the reader's result, including filtered, is unchanged",
+      "set": {
+        "grant": "g-reader"
+      }
+    },
+    {
+      "step": "query",
+      "operation": "evidence.query",
+      "payload": {},
+      "expect": {
+        "ok": {
+          "$exact": {
+            "$var": "all_before"
+          }
+        }
+      },
+      "set": {
+        "grant": "g-reader"
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

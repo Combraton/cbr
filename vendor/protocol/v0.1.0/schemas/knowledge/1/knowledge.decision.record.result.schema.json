@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Combraton/protocol/schemas/knowledge/1/knowledge.decision.record.result.schema.json",
+  "title": "knowledge.decision.record result",
+  "type": "object",
+  "required": [
+    "acknowledgment",
+    "outcome",
+    "replay"
+  ],
+  "properties": {
+    "acknowledgment": {
+      "$ref": "../../core/1/common.schema.json#/$defs/acknowledgment"
+    },
+    "replay": {
+      "type": "boolean"
+    },
+    "outcome": {
+      "type": "object",
+      "required": [
+        "decision",
+        "claim",
+        "value",
+        "author_is_decider",
+        "epoch"
+      ],
+      "properties": {
+        "decision": {
+          "$ref": "common.schema.json#/$defs/decision_subject"
+        },
+        "claim": {
+          "$ref": "common.schema.json#/$defs/claim_reference"
+        },
+        "value": {
+          "enum": [
+            "accepted_for_use",
+            "rejected",
+            "superseded"
+          ]
+        },
+        "permitted_use": {
+          "$ref": "common.schema.json#/$defs/permitted_use"
+        },
+        "author_is_decider": {
+          "type": "boolean"
+        },
+        "epoch": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "unevaluatedProperties": false
+    }
+  },
+  "unevaluatedProperties": false
+}

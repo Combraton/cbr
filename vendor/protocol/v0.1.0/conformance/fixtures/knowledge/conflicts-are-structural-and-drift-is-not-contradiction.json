@@ -1,0 +1,1244 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "knowledge.conflicts-are-structural-and-drift-is-not-contradiction",
+  "version": 1,
+  "title": "Conflicts need structural incompatibility: disjoint qualifiers, basis or validity, multi-valued predicates and equal values are refused with their reasons; normative against observed is drift; any uncertain dimension leaves a record potential",
+  "requirements": [
+    "KNW-2",
+    "KNW-5"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/KNOWLEDGE.md#7-conflicts-and-drift-knw-2-knw-5-m5-q1"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "knowledge",
+      "major": 1
+    }
+  ],
+  "features": [
+    "core.events",
+    "core.grants"
+  ],
+  "polarity": "negative",
+  "kills": [
+    "drift-as-conflict",
+    "conflict-on-identity-only",
+    "potential-reported-demonstrated"
+  ],
+  "steps": [
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ]
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.grants"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "knowledge",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.claim.propose",
+      "command_id": "claim-propose-n-queue",
+      "subject": {
+        "kind": "knowledge.claim",
+        "id": "n-queue"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.claim",
+            "id": "n-queue"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "plane": "normative",
+        "statement": {
+          "subject": {
+            "kind": "app.service",
+            "id": "billing"
+          },
+          "predicate": "queue",
+          "value": "v2",
+          "cardinality": "single"
+        },
+        "scope": {
+          "id": "svc",
+          "qualifiers": {}
+        },
+        "support": [],
+        "derivation": {
+          "kind": "deterministic",
+          "inputs": []
+        }
+      },
+      "capture": {
+        "d_n-queue": "/result/outcome/reference/digest"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.claim.propose",
+      "command_id": "claim-propose-o-queue",
+      "subject": {
+        "kind": "knowledge.claim",
+        "id": "o-queue"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.claim",
+            "id": "o-queue"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "plane": "observed",
+        "statement": {
+          "subject": {
+            "kind": "app.service",
+            "id": "billing"
+          },
+          "predicate": "queue",
+          "value": "v1",
+          "cardinality": "single"
+        },
+        "scope": {
+          "id": "svc",
+          "qualifiers": {}
+        },
+        "support": [],
+        "derivation": {
+          "kind": "deterministic",
+          "inputs": []
+        },
+        "basis": {
+          "repositories": [
+            {
+              "id": "repo-a",
+              "tree": "t1"
+            }
+          ],
+          "completeness": "complete"
+        }
+      },
+      "capture": {
+        "d_o-queue": "/result/outcome/reference/digest"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.conflict.open",
+      "command_id": "conflict-open-x-drift",
+      "subject": {
+        "kind": "knowledge.conflict",
+        "id": "x-drift"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.conflict",
+            "id": "x-drift"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "revisions": [
+          {
+            "provider": "conformance-provider",
+            "claim": "n-queue",
+            "revision": 1,
+            "digest": {
+              "$var": "d_n-queue"
+            }
+          },
+          {
+            "provider": "conformance-provider",
+            "claim": "o-queue",
+            "revision": 1,
+            "digest": {
+              "$var": "d_o-queue"
+            }
+          }
+        ]
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "kind": "drift",
+            "status": "potential",
+            "uncertain": [
+              "basis",
+              "validity"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "knowledge.claim.inspect",
+      "payload": {
+        "claim": "n-queue"
+      },
+      "expect": {
+        "ok": {
+          "record": {
+            "plane": "normative",
+            "statement": {
+              "value": "v2"
+            }
+          },
+          "conflicts": [
+            {
+              "conflict": "x-drift",
+              "kind": "drift",
+              "status": "potential",
+              "state": "open"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "knowledge.claim.inspect",
+      "payload": {
+        "claim": "o-queue"
+      },
+      "expect": {
+        "ok": {
+          "record": {
+            "plane": "observed",
+            "statement": {
+              "value": "v1"
+            }
+          },
+          "conflicts": [
+            {
+              "conflict": "x-drift",
+              "kind": "drift"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.claim.propose",
+      "command_id": "claim-propose-o-a",
+      "subject": {
+        "kind": "knowledge.claim",
+        "id": "o-a"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.claim",
+            "id": "o-a"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "plane": "observed",
+        "statement": {
+          "subject": {
+            "kind": "app.service",
+            "id": "billing"
+          },
+          "predicate": "queue",
+          "value": "v1",
+          "cardinality": "single"
+        },
+        "scope": {
+          "id": "svc",
+          "qualifiers": {
+            "environment": "staging"
+          }
+        },
+        "support": [],
+        "derivation": {
+          "kind": "deterministic",
+          "inputs": []
+        },
+        "validity": {
+          "from": "2030-01-01T00:00:00Z",
+          "until": "2030-02-01T00:00:00Z"
+        },
+        "basis": {
+          "repositories": [
+            {
+              "id": "repo-a",
+              "tree": "t1"
+            }
+          ],
+          "completeness": "complete"
+        }
+      },
+      "capture": {
+        "d_o-a": "/result/outcome/reference/digest"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.claim.propose",
+      "command_id": "claim-propose-o-b",
+      "subject": {
+        "kind": "knowledge.claim",
+        "id": "o-b"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.claim",
+            "id": "o-b"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "plane": "observed",
+        "statement": {
+          "subject": {
+            "kind": "app.service",
+            "id": "billing"
+          },
+          "predicate": "queue",
+          "value": "v3",
+          "cardinality": "single"
+        },
+        "scope": {
+          "id": "svc",
+          "qualifiers": {
+            "environment": "staging"
+          }
+        },
+        "support": [],
+        "derivation": {
+          "kind": "deterministic",
+          "inputs": []
+        },
+        "validity": {
+          "from": "2030-01-15T00:00:00Z",
+          "until": "2030-03-01T00:00:00Z"
+        },
+        "basis": {
+          "repositories": [
+            {
+              "id": "repo-a",
+              "tree": "t1"
+            }
+          ],
+          "completeness": "complete"
+        }
+      },
+      "capture": {
+        "d_o-b": "/result/outcome/reference/digest"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.conflict.open",
+      "command_id": "conflict-open-x-demonstrated",
+      "subject": {
+        "kind": "knowledge.conflict",
+        "id": "x-demonstrated"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.conflict",
+            "id": "x-demonstrated"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "revisions": [
+          {
+            "provider": "conformance-provider",
+            "claim": "o-a",
+            "revision": 1,
+            "digest": {
+              "$var": "d_o-a"
+            }
+          },
+          {
+            "provider": "conformance-provider",
+            "claim": "o-b",
+            "revision": 1,
+            "digest": {
+              "$var": "d_o-b"
+            }
+          }
+        ]
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "kind": "conflict",
+            "status": "demonstrated",
+            "uncertain": []
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.claim.propose",
+      "command_id": "claim-propose-o-prod",
+      "subject": {
+        "kind": "knowledge.claim",
+        "id": "o-prod"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.claim",
+            "id": "o-prod"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "plane": "observed",
+        "statement": {
+          "subject": {
+            "kind": "app.service",
+            "id": "billing"
+          },
+          "predicate": "queue",
+          "value": "v3",
+          "cardinality": "single"
+        },
+        "scope": {
+          "id": "svc",
+          "qualifiers": {
+            "environment": "production"
+          }
+        },
+        "support": [],
+        "derivation": {
+          "kind": "deterministic",
+          "inputs": []
+        },
+        "validity": {
+          "from": "2030-01-01T00:00:00Z",
+          "until": "2030-02-01T00:00:00Z"
+        },
+        "basis": {
+          "repositories": [
+            {
+              "id": "repo-a",
+              "tree": "t1"
+            }
+          ],
+          "completeness": "complete"
+        }
+      },
+      "capture": {
+        "d_o-prod": "/result/outcome/reference/digest"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.conflict.open",
+      "command_id": "conflict-open-x-environments",
+      "subject": {
+        "kind": "knowledge.conflict",
+        "id": "x-environments"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.conflict",
+            "id": "x-environments"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "revisions": [
+          {
+            "provider": "conformance-provider",
+            "claim": "o-a",
+            "revision": 1,
+            "digest": {
+              "$var": "d_o-a"
+            }
+          },
+          {
+            "provider": "conformance-provider",
+            "claim": "o-prod",
+            "revision": 1,
+            "digest": {
+              "$var": "d_o-prod"
+            }
+          }
+        ]
+      },
+      "expect": {
+        "error": "claims_not_comparable",
+        "details": {
+          "reason": "qualifiers_disjoint"
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.claim.propose",
+      "command_id": "claim-propose-o-later",
+      "subject": {
+        "kind": "knowledge.claim",
+        "id": "o-later"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.claim",
+            "id": "o-later"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "plane": "observed",
+        "statement": {
+          "subject": {
+            "kind": "app.service",
+            "id": "billing"
+          },
+          "predicate": "queue",
+          "value": "v3",
+          "cardinality": "single"
+        },
+        "scope": {
+          "id": "svc",
+          "qualifiers": {
+            "environment": "staging"
+          }
+        },
+        "support": [],
+        "derivation": {
+          "kind": "deterministic",
+          "inputs": []
+        },
+        "validity": {
+          "from": "2030-02-01T00:00:00Z",
+          "until": "2030-03-01T00:00:00Z"
+        },
+        "basis": {
+          "repositories": [
+            {
+              "id": "repo-a",
+              "tree": "t1"
+            }
+          ],
+          "completeness": "complete"
+        }
+      },
+      "capture": {
+        "d_o-later": "/result/outcome/reference/digest"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.conflict.open",
+      "command_id": "conflict-open-x-validity",
+      "subject": {
+        "kind": "knowledge.conflict",
+        "id": "x-validity"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.conflict",
+            "id": "x-validity"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "revisions": [
+          {
+            "provider": "conformance-provider",
+            "claim": "o-a",
+            "revision": 1,
+            "digest": {
+              "$var": "d_o-a"
+            }
+          },
+          {
+            "provider": "conformance-provider",
+            "claim": "o-later",
+            "revision": 1,
+            "digest": {
+              "$var": "d_o-later"
+            }
+          }
+        ]
+      },
+      "expect": {
+        "error": "claims_not_comparable",
+        "details": {
+          "reason": "validity_disjoint"
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.claim.propose",
+      "command_id": "claim-propose-o-tree",
+      "subject": {
+        "kind": "knowledge.claim",
+        "id": "o-tree"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.claim",
+            "id": "o-tree"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "plane": "observed",
+        "statement": {
+          "subject": {
+            "kind": "app.service",
+            "id": "billing"
+          },
+          "predicate": "queue",
+          "value": "v3",
+          "cardinality": "single"
+        },
+        "scope": {
+          "id": "svc",
+          "qualifiers": {
+            "environment": "staging"
+          }
+        },
+        "support": [],
+        "derivation": {
+          "kind": "deterministic",
+          "inputs": []
+        },
+        "validity": {
+          "from": "2030-01-01T00:00:00Z",
+          "until": "2030-02-01T00:00:00Z"
+        },
+        "basis": {
+          "repositories": [
+            {
+              "id": "repo-a",
+              "tree": "t2"
+            }
+          ],
+          "completeness": "complete"
+        }
+      },
+      "capture": {
+        "d_o-tree": "/result/outcome/reference/digest"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.conflict.open",
+      "command_id": "conflict-open-x-trees",
+      "subject": {
+        "kind": "knowledge.conflict",
+        "id": "x-trees"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.conflict",
+            "id": "x-trees"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "revisions": [
+          {
+            "provider": "conformance-provider",
+            "claim": "o-a",
+            "revision": 1,
+            "digest": {
+              "$var": "d_o-a"
+            }
+          },
+          {
+            "provider": "conformance-provider",
+            "claim": "o-tree",
+            "revision": 1,
+            "digest": {
+              "$var": "d_o-tree"
+            }
+          }
+        ]
+      },
+      "expect": {
+        "error": "claims_not_comparable",
+        "details": {
+          "reason": "basis_disjoint"
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.claim.propose",
+      "command_id": "claim-propose-lang-en",
+      "subject": {
+        "kind": "knowledge.claim",
+        "id": "lang-en"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.claim",
+            "id": "lang-en"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "plane": "observed",
+        "statement": {
+          "subject": {
+            "kind": "app.service",
+            "id": "billing"
+          },
+          "predicate": "language",
+          "value": "en",
+          "cardinality": "multiple"
+        },
+        "scope": {
+          "id": "svc",
+          "qualifiers": {}
+        },
+        "support": [],
+        "derivation": {
+          "kind": "deterministic",
+          "inputs": []
+        }
+      },
+      "capture": {
+        "d_lang-en": "/result/outcome/reference/digest"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.claim.propose",
+      "command_id": "claim-propose-lang-fr",
+      "subject": {
+        "kind": "knowledge.claim",
+        "id": "lang-fr"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.claim",
+            "id": "lang-fr"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "plane": "observed",
+        "statement": {
+          "subject": {
+            "kind": "app.service",
+            "id": "billing"
+          },
+          "predicate": "language",
+          "value": "fr",
+          "cardinality": "multiple"
+        },
+        "scope": {
+          "id": "svc",
+          "qualifiers": {}
+        },
+        "support": [],
+        "derivation": {
+          "kind": "deterministic",
+          "inputs": []
+        }
+      },
+      "capture": {
+        "d_lang-fr": "/result/outcome/reference/digest"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.conflict.open",
+      "command_id": "conflict-open-x-languages",
+      "subject": {
+        "kind": "knowledge.conflict",
+        "id": "x-languages"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.conflict",
+            "id": "x-languages"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "revisions": [
+          {
+            "provider": "conformance-provider",
+            "claim": "lang-en",
+            "revision": 1,
+            "digest": {
+              "$var": "d_lang-en"
+            }
+          },
+          {
+            "provider": "conformance-provider",
+            "claim": "lang-fr",
+            "revision": 1,
+            "digest": {
+              "$var": "d_lang-fr"
+            }
+          }
+        ]
+      },
+      "expect": {
+        "error": "claims_not_comparable",
+        "details": {
+          "reason": "multiple_values_permitted"
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.claim.propose",
+      "command_id": "claim-propose-o-same",
+      "subject": {
+        "kind": "knowledge.claim",
+        "id": "o-same"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.claim",
+            "id": "o-same"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "plane": "observed",
+        "statement": {
+          "subject": {
+            "kind": "app.service",
+            "id": "billing"
+          },
+          "predicate": "queue",
+          "value": "v1",
+          "cardinality": "single"
+        },
+        "scope": {
+          "id": "svc",
+          "qualifiers": {
+            "environment": "staging"
+          }
+        },
+        "support": [],
+        "derivation": {
+          "kind": "deterministic",
+          "inputs": []
+        },
+        "validity": {
+          "from": "2030-01-01T00:00:00Z",
+          "until": "2030-02-01T00:00:00Z"
+        },
+        "basis": {
+          "repositories": [
+            {
+              "id": "repo-a",
+              "tree": "t1"
+            }
+          ],
+          "completeness": "complete"
+        }
+      },
+      "capture": {
+        "d_o-same": "/result/outcome/reference/digest"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.conflict.open",
+      "command_id": "conflict-open-x-equal",
+      "subject": {
+        "kind": "knowledge.conflict",
+        "id": "x-equal"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.conflict",
+            "id": "x-equal"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "revisions": [
+          {
+            "provider": "conformance-provider",
+            "claim": "o-a",
+            "revision": 1,
+            "digest": {
+              "$var": "d_o-a"
+            }
+          },
+          {
+            "provider": "conformance-provider",
+            "claim": "o-same",
+            "revision": 1,
+            "digest": {
+              "$var": "d_o-same"
+            }
+          }
+        ]
+      },
+      "expect": {
+        "error": "claims_not_comparable",
+        "details": {
+          "reason": "values_equal"
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.claim.propose",
+      "command_id": "claim-propose-o-other-service",
+      "subject": {
+        "kind": "knowledge.claim",
+        "id": "o-other-service"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.claim",
+            "id": "o-other-service"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "plane": "observed",
+        "statement": {
+          "subject": {
+            "kind": "app.service",
+            "id": "ledger"
+          },
+          "predicate": "queue",
+          "value": "v3",
+          "cardinality": "single"
+        },
+        "scope": {
+          "id": "svc",
+          "qualifiers": {}
+        },
+        "support": [],
+        "derivation": {
+          "kind": "deterministic",
+          "inputs": []
+        }
+      },
+      "capture": {
+        "d_o-other-service": "/result/outcome/reference/digest"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.conflict.open",
+      "command_id": "conflict-open-x-subjects",
+      "subject": {
+        "kind": "knowledge.conflict",
+        "id": "x-subjects"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.conflict",
+            "id": "x-subjects"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "revisions": [
+          {
+            "provider": "conformance-provider",
+            "claim": "o-a",
+            "revision": 1,
+            "digest": {
+              "$var": "d_o-a"
+            }
+          },
+          {
+            "provider": "conformance-provider",
+            "claim": "o-other-service",
+            "revision": 1,
+            "digest": {
+              "$var": "d_o-other-service"
+            }
+          }
+        ]
+      },
+      "expect": {
+        "error": "claims_not_comparable",
+        "details": {
+          "reason": "subject_differs"
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.claim.propose",
+      "command_id": "claim-propose-o-staging-only",
+      "subject": {
+        "kind": "knowledge.claim",
+        "id": "o-staging-only"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.claim",
+            "id": "o-staging-only"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "plane": "observed",
+        "statement": {
+          "subject": {
+            "kind": "app.service",
+            "id": "billing"
+          },
+          "predicate": "queue",
+          "value": "v3",
+          "cardinality": "single"
+        },
+        "scope": {
+          "id": "svc",
+          "qualifiers": {
+            "environment": "staging",
+            "region": "eu"
+          }
+        },
+        "support": [],
+        "derivation": {
+          "kind": "deterministic",
+          "inputs": []
+        },
+        "validity": {
+          "from": "2030-01-01T00:00:00Z",
+          "until": "2030-02-01T00:00:00Z"
+        },
+        "basis": {
+          "repositories": [
+            {
+              "id": "repo-a",
+              "tree": "t1"
+            }
+          ],
+          "completeness": "complete"
+        }
+      },
+      "capture": {
+        "d_o-staging-only": "/result/outcome/reference/digest"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.conflict.open",
+      "command_id": "conflict-open-x-extra-qualifier",
+      "subject": {
+        "kind": "knowledge.conflict",
+        "id": "x-extra-qualifier"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.conflict",
+            "id": "x-extra-qualifier"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "revisions": [
+          {
+            "provider": "conformance-provider",
+            "claim": "o-a",
+            "revision": 1,
+            "digest": {
+              "$var": "d_o-a"
+            }
+          },
+          {
+            "provider": "conformance-provider",
+            "claim": "o-staging-only",
+            "revision": 1,
+            "digest": {
+              "$var": "d_o-staging-only"
+            }
+          }
+        ]
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "kind": "conflict",
+            "status": "potential",
+            "uncertain": [
+              "qualifiers"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.conflict.open",
+      "command_id": "conflict-open-x-same-revision",
+      "subject": {
+        "kind": "knowledge.conflict",
+        "id": "x-same-revision"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.conflict",
+            "id": "x-same-revision"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "revisions": [
+          {
+            "provider": "conformance-provider",
+            "claim": "o-a",
+            "revision": 1,
+            "digest": {
+              "$var": "d_o-a"
+            }
+          },
+          {
+            "provider": "conformance-provider",
+            "claim": "o-a",
+            "revision": 1,
+            "digest": {
+              "$var": "d_o-a"
+            }
+          }
+        ]
+      },
+      "expect": {
+        "error": "invalid_envelope",
+        "details": {
+          "path": "/payload/revisions"
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.conflict.open",
+      "command_id": "conflict-open-x-bad-digest",
+      "subject": {
+        "kind": "knowledge.conflict",
+        "id": "x-bad-digest"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.conflict",
+            "id": "x-bad-digest"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "revisions": [
+          {
+            "provider": "conformance-provider",
+            "claim": "o-a",
+            "revision": 1,
+            "digest": {
+              "$var": "d_o-a"
+            }
+          },
+          {
+            "provider": "conformance-provider",
+            "claim": "o-b",
+            "revision": 1,
+            "digest": {
+              "$var": "d_o-a"
+            }
+          }
+        ]
+      },
+      "expect": {
+        "error": "invalid_envelope",
+        "details": {
+          "path": "/payload/revisions/1/digest"
+        }
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

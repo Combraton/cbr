@@ -1,0 +1,629 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "knowledge.reliance-applicability-health-and-availability-are-independent",
+  "version": 1,
+  "title": "One revision is accepted for use, invalid for a later tree, reports failing health and has purged support at once, each facet from its own record; an undecided normative claim stays proposed",
+  "requirements": [
+    "KNW-3",
+    "KNW-9"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/KNOWLEDGE.md#4-independent-facets-knw-3",
+    "docs/spec/profiles/KNOWLEDGE.md#3-claim-revisions-m5-q1"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "knowledge",
+      "major": 1
+    },
+    {
+      "name": "evidence",
+      "major": 1
+    }
+  ],
+  "features": [
+    "core.events",
+    "core.grants",
+    "evidence.retention_control"
+  ],
+  "polarity": "negative",
+  "kills": [
+    "single-status-field",
+    "normative-implies-binding"
+  ],
+  "steps": [
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ]
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.grants"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "knowledge",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          },
+          {
+            "name": "evidence",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": [
+              "evidence.retention_control"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.upload.prepare",
+      "command_id": "upload-prepare-test-log",
+      "subject": {
+        "kind": "evidence.artifact",
+        "id": "test-log"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.artifact",
+            "id": "test-log"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "digest": "sha256:d282b113951f6d3f89c0c1df8a9343f69055038746304f88eabf1fab6789e510",
+        "size": 26,
+        "media_type": "text/plain",
+        "producer": {
+          "producer_id": "fixture-producer"
+        },
+        "source": {
+          "kind": "test_report",
+          "id": "run-1"
+        },
+        "scope": "project-a",
+        "capture": {
+          "captured_at": "2030-01-01T00:00:00Z",
+          "anchors": [
+            {
+              "kind": "code_tree",
+              "id": "tree-1"
+            }
+          ]
+        },
+        "coverage": {
+          "completeness": "complete",
+          "covered": [
+            "report"
+          ],
+          "gaps": []
+        },
+        "retention_class": "standard"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.upload.append",
+      "command_id": "upload-append-test-log",
+      "subject": {
+        "kind": "evidence.artifact",
+        "id": "test-log"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.artifact",
+            "id": "test-log"
+          },
+          "revision": 1
+        }
+      ],
+      "payload": {
+        "offset": 0,
+        "data_base64": "cGFyc2VyIHRlc3QgbG9nOiA4MSBwYXNzZWQ="
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.seal",
+      "command_id": "seal-test-log",
+      "subject": {
+        "kind": "evidence.artifact",
+        "id": "test-log"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.artifact",
+            "id": "test-log"
+          },
+          "revision": 2
+        }
+      ],
+      "payload": {},
+      "expect": {
+        "ok": {
+          "outcome": {
+            "state": "sealed"
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.claim.propose",
+      "command_id": "claim-propose-parser-bom",
+      "subject": {
+        "kind": "knowledge.claim",
+        "id": "parser-bom"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.claim",
+            "id": "parser-bom"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "plane": "observed",
+        "statement": {
+          "subject": {
+            "kind": "app.component",
+            "id": "parser"
+          },
+          "predicate": "handles_bom",
+          "value": true,
+          "cardinality": "single"
+        },
+        "scope": {
+          "id": "svc",
+          "qualifiers": {}
+        },
+        "support": [
+          {
+            "support_id": "log",
+            "evidence": {
+              "provider": "conformance-provider",
+              "artifact": {
+                "kind": "evidence.artifact",
+                "id": "test-log"
+              },
+              "digest": "sha256:d282b113951f6d3f89c0c1df8a9343f69055038746304f88eabf1fab6789e510"
+            },
+            "ancestry": {
+              "completeness": "complete",
+              "roots": [
+                {
+                  "kind": "evidence",
+                  "provider": "conformance-provider",
+                  "artifact": {
+                    "kind": "evidence.artifact",
+                    "id": "test-log"
+                  },
+                  "digest": "sha256:d282b113951f6d3f89c0c1df8a9343f69055038746304f88eabf1fab6789e510"
+                }
+              ]
+            }
+          }
+        ],
+        "derivation": {
+          "kind": "deterministic",
+          "inputs": []
+        },
+        "basis": {
+          "repositories": [
+            {
+              "id": "repo-a",
+              "tree": "t10"
+            }
+          ],
+          "completeness": "complete"
+        },
+        "conditions": [
+          {
+            "condition_id": "k-tree",
+            "kind": "repository_tree",
+            "repository": "repo-a",
+            "expected": "t10"
+          }
+        ],
+        "health": "failing"
+      },
+      "capture": {
+        "d_parser-bom": "/result/outcome/reference/digest"
+      }
+    },
+    {
+      "step": "query",
+      "operation": "knowledge.claim.inspect",
+      "payload": {
+        "claim": "parser-bom"
+      },
+      "expect": {
+        "ok": {
+          "reliance": {
+            "state": "proposed"
+          },
+          "applicability": [],
+          "health": "failing",
+          "availability": {
+            "state": "complete",
+            "counts": {
+              "available": 1,
+              "unavailable": 0,
+              "purged": 0,
+              "unknown": 0
+            }
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.authority.bind",
+      "command_id": "authority-bind-svc",
+      "subject": {
+        "kind": "knowledge.authority",
+        "id": "svc"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.authority",
+            "id": "svc"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "authority": "owner"
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "scope": "svc",
+            "authority": "owner",
+            "epoch": 1
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.decision.record",
+      "command_id": "decision-record-dec-accept",
+      "subject": {
+        "kind": "knowledge.decision",
+        "id": "dec-accept"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.decision",
+            "id": "dec-accept"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "claim": {
+          "provider": "conformance-provider",
+          "claim": "parser-bom",
+          "revision": 1,
+          "digest": {
+            "$var": "d_parser-bom"
+          }
+        },
+        "decision": "accepted_for_use",
+        "permitted_use": "evidence",
+        "validation_basis": {
+          "evidence": [
+            {
+              "provider": "conformance-provider",
+              "artifact": {
+                "kind": "evidence.artifact",
+                "id": "test-log"
+              },
+              "digest": "sha256:d282b113951f6d3f89c0c1df8a9343f69055038746304f88eabf1fab6789e510"
+            }
+          ],
+          "receipts": []
+        },
+        "rationale": "the test log supports it at t10"
+      },
+      "set": {
+        "authority_epoch": 1
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "value": "accepted_for_use",
+            "author_is_decider": true
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.applicability.evaluate",
+      "command_id": "applicability-evaluate-ev-t12",
+      "subject": {
+        "kind": "knowledge.evaluation",
+        "id": "ev-t12"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.evaluation",
+            "id": "ev-t12"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "claim": {
+          "provider": "conformance-provider",
+          "claim": "parser-bom",
+          "revision": 1,
+          "digest": {
+            "$var": "d_parser-bom"
+          }
+        },
+        "target": {
+          "repositories": [
+            {
+              "id": "repo-a",
+              "tree": "t12"
+            }
+          ],
+          "completeness": "complete"
+        }
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "result": "invalid_for_target"
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.purge",
+      "command_id": "purge-test-log",
+      "subject": {
+        "kind": "evidence.artifact",
+        "id": "test-log"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.artifact",
+            "id": "test-log"
+          },
+          "revision": 3
+        }
+      ],
+      "payload": {},
+      "expect": {
+        "ok": {
+          "outcome": {
+            "availability": "purged"
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "knowledge.claim.inspect",
+      "payload": {
+        "claim": "parser-bom"
+      },
+      "expect": {
+        "ok": {
+          "reliance": {
+            "state": "accepted_for_use",
+            "permitted_use": "evidence",
+            "decision": "dec-accept"
+          },
+          "applicability": [
+            {
+              "evaluation": "ev-t12",
+              "result": "invalid_for_target",
+              "target": {
+                "repositories": [
+                  {
+                    "id": "repo-a",
+                    "tree": "t12"
+                  }
+                ],
+                "completeness": "complete"
+              }
+            }
+          ],
+          "health": "failing",
+          "availability": {
+            "state": "purged",
+            "counts": {
+              "available": 0,
+              "unavailable": 0,
+              "purged": 1,
+              "unknown": 0
+            }
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.claim.propose",
+      "command_id": "claim-propose-rule-migrations",
+      "subject": {
+        "kind": "knowledge.claim",
+        "id": "rule-migrations"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.claim",
+            "id": "rule-migrations"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "plane": "normative",
+        "statement": {
+          "subject": {
+            "kind": "app.project",
+            "id": "a"
+          },
+          "predicate": "test_order",
+          "value": "migrations before tests",
+          "cardinality": "single"
+        },
+        "scope": {
+          "id": "svc",
+          "qualifiers": {}
+        },
+        "support": [],
+        "derivation": {
+          "kind": "model_assisted",
+          "inputs": []
+        }
+      },
+      "capture": {
+        "d_rule-migrations": "/result/outcome/reference/digest"
+      }
+    },
+    {
+      "step": "query",
+      "operation": "knowledge.claim.inspect",
+      "payload": {
+        "claim": "rule-migrations"
+      },
+      "expect": {
+        "ok": {
+          "reliance": {
+            "state": "proposed"
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.claim.propose",
+      "command_id": "claim-propose-foreign-support",
+      "subject": {
+        "kind": "knowledge.claim",
+        "id": "foreign-support"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.claim",
+            "id": "foreign-support"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "plane": "observed",
+        "statement": {
+          "subject": {
+            "kind": "app.component",
+            "id": "parser"
+          },
+          "predicate": "fast",
+          "value": true,
+          "cardinality": "single"
+        },
+        "scope": {
+          "id": "svc",
+          "qualifiers": {}
+        },
+        "support": [
+          {
+            "support_id": "remote",
+            "evidence": {
+              "provider": "other-provider",
+              "artifact": {
+                "kind": "evidence.artifact",
+                "id": "remote-log"
+              },
+              "digest": "sha256:a0413d4785e6af3922f69947dda02612297b8280bd69f3bc807c7febf555685b"
+            },
+            "ancestry": {
+              "completeness": "unknown",
+              "roots": []
+            }
+          }
+        ],
+        "derivation": {
+          "kind": "deterministic",
+          "inputs": []
+        }
+      },
+      "capture": {
+        "d_foreign-support": "/result/outcome/reference/digest"
+      }
+    },
+    {
+      "step": "query",
+      "operation": "knowledge.claim.inspect",
+      "payload": {
+        "claim": "foreign-support"
+      },
+      "expect": {
+        "ok": {
+          "availability": {
+            "state": "unknown",
+            "counts": {
+              "unknown": 1
+            }
+          }
+        }
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

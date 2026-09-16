@@ -1,0 +1,427 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "evidence.upload-seal-and-fetch-exact-bytes",
+  "version": 1,
+  "title": "A staged upload, appended in chunks and sealed, is fetched as exactly the sealed bytes, whole and by range, with the session principal as producer",
+  "requirements": [
+    "EVD-1",
+    "EVD-2",
+    "EVD-4"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/EVIDENCE.md#2-identities",
+    "docs/spec/profiles/EVIDENCE.md#3-descriptor",
+    "docs/spec/profiles/EVIDENCE.md#4-upload-and-seal-owner-decision-m4-q1",
+    "docs/spec/profiles/EVIDENCE.md#5-inspect-query-and-fetch"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "evidence",
+      "major": 1
+    }
+  ],
+  "features": [
+    "core.events"
+  ],
+  "polarity": "positive",
+  "kills": [],
+  "steps": [
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ]
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "evidence",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": [
+              "evidence.manifests",
+              "evidence.retention_control"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.upload.prepare",
+      "command_id": "prepare-a-1",
+      "subject": {
+        "kind": "evidence.artifact",
+        "id": "a-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.artifact",
+            "id": "a-1"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "digest": "sha256:ded975713cad980f2355337fb0c63cd8235545b259debdb9f8686855ed90d47c",
+        "size": 33,
+        "media_type": "text/plain",
+        "producer": {
+          "producer_id": "fixture-producer"
+        },
+        "source": {
+          "kind": "test_report",
+          "id": "run-1"
+        },
+        "scope": "project-a",
+        "capture": {
+          "captured_at": "2030-01-01T00:00:00Z",
+          "uncertainty": {
+            "not_before": "2029-12-31T23:59:58Z",
+            "not_after": "2030-01-01T00:00:00Z"
+          },
+          "anchors": [
+            {
+              "kind": "code_tree",
+              "id": "tree-1"
+            }
+          ]
+        },
+        "coverage": {
+          "completeness": "complete"
+        },
+        "retention_class": "standard"
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "artifact": {
+              "kind": "evidence.artifact",
+              "id": "a-1"
+            },
+            "state": "staged",
+            "received": 0,
+            "chunk_limit": {
+              "$type": "integer"
+            },
+            "chunk_overhead_bytes": {
+              "$type": "integer"
+            }
+          },
+          "acknowledgment": {
+            "revision": 1
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.upload.append",
+      "command_id": "append-a-1-0",
+      "subject": {
+        "kind": "evidence.artifact",
+        "id": "a-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.artifact",
+            "id": "a-1"
+          },
+          "revision": 1
+        }
+      ],
+      "payload": {
+        "offset": 0,
+        "data_base64": "ZXhhY3QgYnl0ZXMgAP/+IA=="
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "received": 16
+          },
+          "acknowledgment": {
+            "revision": 2
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "evidence.inspect",
+      "payload": {
+        "artifact": {
+          "kind": "evidence.artifact",
+          "id": "a-1"
+        }
+      },
+      "expect": {
+        "ok": {
+          "state": "staged",
+          "received": 16,
+          "revision": 2,
+          "availability": {
+            "state": "available"
+          },
+          "descriptor": {
+            "producer": {
+              "principal": "owner",
+              "producer_id": "fixture-producer"
+            }
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.upload.append",
+      "command_id": "append-a-1-16",
+      "subject": {
+        "kind": "evidence.artifact",
+        "id": "a-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.artifact",
+            "id": "a-1"
+          },
+          "revision": 2
+        }
+      ],
+      "payload": {
+        "offset": 16,
+        "data_base64": "c3Vydml2ZQpjYWbDqSBlbmQ="
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "received": 33
+          },
+          "acknowledgment": {
+            "revision": 3
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.seal",
+      "command_id": "seal-a-1",
+      "subject": {
+        "kind": "evidence.artifact",
+        "id": "a-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.artifact",
+            "id": "a-1"
+          },
+          "revision": 3
+        }
+      ],
+      "payload": {},
+      "expect": {
+        "ok": {
+          "replay": false,
+          "outcome": {
+            "artifact": {
+              "kind": "evidence.artifact",
+              "id": "a-1"
+            },
+            "state": "sealed",
+            "digest": "sha256:ded975713cad980f2355337fb0c63cd8235545b259debdb9f8686855ed90d47c",
+            "size": 33,
+            "already_sealed": false
+          },
+          "acknowledgment": {
+            "revision": 4
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "evidence.inspect",
+      "payload": {
+        "artifact": {
+          "kind": "evidence.artifact",
+          "id": "a-1"
+        }
+      },
+      "expect": {
+        "ok": {
+          "state": "sealed",
+          "revision": 4,
+          "received": {
+            "$absent": true
+          },
+          "availability": {
+            "state": "available"
+          },
+          "descriptor": {
+            "digest": "sha256:ded975713cad980f2355337fb0c63cd8235545b259debdb9f8686855ed90d47c",
+            "size": 33,
+            "media_type": "text/plain",
+            "producer": {
+              "principal": "owner"
+            },
+            "source": {
+              "kind": "test_report",
+              "id": "run-1"
+            },
+            "scope": "project-a",
+            "capture": {
+              "captured_at": "2030-01-01T00:00:00Z",
+              "anchors": [
+                {
+                  "kind": "code_tree",
+                  "id": "tree-1"
+                }
+              ]
+            },
+            "coverage": {
+              "completeness": "complete"
+            },
+            "retention_class": "standard"
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "evidence.fetch",
+      "payload": {
+        "artifact": {
+          "kind": "evidence.artifact",
+          "id": "a-1"
+        },
+        "digest": "sha256:ded975713cad980f2355337fb0c63cd8235545b259debdb9f8686855ed90d47c"
+      },
+      "expect": {
+        "ok": {
+          "artifact": {
+            "kind": "evidence.artifact",
+            "id": "a-1"
+          },
+          "digest": "sha256:ded975713cad980f2355337fb0c63cd8235545b259debdb9f8686855ed90d47c",
+          "offset": 0,
+          "data_base64": "ZXhhY3QgYnl0ZXMgAP/+IHN1cnZpdmUKY2Fmw6kgZW5k",
+          "next_offset": 33,
+          "size": 33,
+          "availability": {
+            "state": "available"
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "evidence.fetch",
+      "payload": {
+        "artifact": {
+          "kind": "evidence.artifact",
+          "id": "a-1"
+        },
+        "digest": "sha256:ded975713cad980f2355337fb0c63cd8235545b259debdb9f8686855ed90d47c",
+        "offset": 10,
+        "max_bytes": 8
+      },
+      "expect": {
+        "ok": {
+          "offset": 10,
+          "data_base64": "cyAA//4gc3U=",
+          "next_offset": 18
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core.events.read",
+      "payload": {
+        "from": "start",
+        "limit": 100,
+        "kinds": [
+          "evidence.artifact"
+        ]
+      },
+      "expect": {
+        "ok": {
+          "items": [
+            {
+              "event": {
+                "type": "evidence.artifact.staged",
+                "subject": {
+                  "kind": "evidence.artifact",
+                  "id": "a-1"
+                },
+                "revision": 1,
+                "origin": "command"
+              }
+            },
+            {
+              "event": {
+                "type": "evidence.artifact.appended",
+                "revision": 2,
+                "payload": {
+                  "received": 16
+                }
+              }
+            },
+            {
+              "event": {
+                "type": "evidence.artifact.appended",
+                "revision": 3,
+                "payload": {
+                  "received": 33
+                }
+              }
+            },
+            {
+              "event": {
+                "type": "evidence.artifact.sealed",
+                "revision": 4,
+                "payload": {
+                  "digest": "sha256:ded975713cad980f2355337fb0c63cd8235545b259debdb9f8686855ed90d47c",
+                  "size": 33
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

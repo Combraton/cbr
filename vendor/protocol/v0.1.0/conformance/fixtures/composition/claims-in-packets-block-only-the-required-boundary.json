@@ -1,0 +1,1851 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "composition.claims-in-packets-block-only-the-required-boundary",
+  "version": 2,
+  "title": "Across separate knowledge, context and executor participants: rejecting the claim behind a required item blocks the required-bound execution at dispatch as stale while the advisory-bound one proceeds; a newer claim revision is reported but never substituted; an unreachable knowledge provider makes the required binding unknown, never valid",
+  "requirements": [
+    "SCN-16",
+    "KNW-10",
+    "CMP-9"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/CONTEXT.md#14-claims-in-packets",
+    "docs/spec/profiles/EXECUTION.md#133-claim-revalidation-executionclaim_revalidation"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "execution",
+      "major": 1
+    },
+    {
+      "name": "context",
+      "major": 1
+    },
+    {
+      "name": "knowledge",
+      "major": 1
+    },
+    {
+      "name": "evidence",
+      "major": 1
+    }
+  ],
+  "features": [
+    "core.events",
+    "core.grants",
+    "core.capabilities",
+    "core.effects",
+    "execution.context",
+    "execution.context_revalidation",
+    "execution.claim_revalidation",
+    "context.claims",
+    "context.required_before_start",
+    "context.advisory"
+  ],
+  "binding": "unix",
+  "requires_controls": [
+    "clock.file",
+    "context.script",
+    "executor.script"
+  ],
+  "polarity": "negative",
+  "kills": [
+    "claim-revalidation-ignored",
+    "advisory-blocked-by-claims",
+    "unavailable-knowledge-valid",
+    "claim-revalidation-without-negotiation"
+  ],
+  "steps": [
+    {
+      "step": "start_participant",
+      "name": "knw",
+      "config": {
+        "provider_id": "knowledge-1",
+        "authority_principals": [
+          "owner"
+        ],
+        "clock": {
+          "controlled": "2030-01-01T00:00:00Z"
+        }
+      },
+      "credential_principals": [
+        "ctx-service"
+      ]
+    },
+    {
+      "step": "connect",
+      "session": "knw-owner",
+      "participant": "knw",
+      "principal": "owner"
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.grants"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "knowledge",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      },
+      "session": "knw-owner"
+    },
+    {
+      "step": "command",
+      "operation": "core.grant.issue",
+      "command_id": "grant-issue-g-ctx-read",
+      "subject": {
+        "kind": "core.grant",
+        "id": "g-ctx-read"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core.grant",
+            "id": "g-ctx-read"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "holder": "ctx-service",
+        "audience": "knowledge-1",
+        "rights": [
+          "knowledge.read"
+        ],
+        "resources": [
+          {
+            "kind": "knowledge.claim"
+          }
+        ],
+        "delegation": {
+          "allowed": false,
+          "max_depth": 0
+        }
+      },
+      "session": "knw-owner"
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.authority.bind",
+      "command_id": "authority-bind-svc",
+      "subject": {
+        "kind": "knowledge.authority",
+        "id": "svc"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.authority",
+            "id": "svc"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "authority": "owner"
+      },
+      "session": "knw-owner"
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.claim.propose",
+      "command_id": "claim-propose-A",
+      "subject": {
+        "kind": "knowledge.claim",
+        "id": "A"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.claim",
+            "id": "A"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "plane": "normative",
+        "statement": {
+          "subject": {
+            "kind": "app.service",
+            "id": "billing"
+          },
+          "predicate": "rule_a",
+          "value": "queue v2",
+          "cardinality": "single"
+        },
+        "scope": {
+          "id": "svc",
+          "qualifiers": {}
+        },
+        "support": [],
+        "derivation": {
+          "kind": "deterministic",
+          "inputs": []
+        },
+        "conditions": [
+          {
+            "condition_id": "k-1",
+            "kind": "repository_tree",
+            "repository": "repo-a",
+            "expected": "tree-1"
+          }
+        ]
+      },
+      "capture": {
+        "d_A": "/result/outcome/reference/digest"
+      },
+      "session": "knw-owner"
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.claim.propose",
+      "command_id": "claim-propose-B",
+      "subject": {
+        "kind": "knowledge.claim",
+        "id": "B"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.claim",
+            "id": "B"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "plane": "normative",
+        "statement": {
+          "subject": {
+            "kind": "app.service",
+            "id": "billing"
+          },
+          "predicate": "rule_b",
+          "value": "retries capped",
+          "cardinality": "single"
+        },
+        "scope": {
+          "id": "svc",
+          "qualifiers": {}
+        },
+        "support": [],
+        "derivation": {
+          "kind": "deterministic",
+          "inputs": []
+        },
+        "conditions": [
+          {
+            "condition_id": "k-1",
+            "kind": "repository_tree",
+            "repository": "repo-a",
+            "expected": "tree-1"
+          }
+        ]
+      },
+      "capture": {
+        "d_B": "/result/outcome/reference/digest"
+      },
+      "session": "knw-owner"
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.claim.propose",
+      "command_id": "claim-propose-C",
+      "subject": {
+        "kind": "knowledge.claim",
+        "id": "C"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.claim",
+            "id": "C"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "plane": "normative",
+        "statement": {
+          "subject": {
+            "kind": "app.service",
+            "id": "billing"
+          },
+          "predicate": "rule_c",
+          "value": "timeouts 30s",
+          "cardinality": "single"
+        },
+        "scope": {
+          "id": "svc",
+          "qualifiers": {}
+        },
+        "support": [],
+        "derivation": {
+          "kind": "deterministic",
+          "inputs": []
+        },
+        "conditions": [
+          {
+            "condition_id": "k-1",
+            "kind": "repository_tree",
+            "repository": "repo-a",
+            "expected": "tree-1"
+          }
+        ]
+      },
+      "capture": {
+        "d_C": "/result/outcome/reference/digest"
+      },
+      "session": "knw-owner"
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.applicability.evaluate",
+      "command_id": "applicability-evaluate-ev-A",
+      "subject": {
+        "kind": "knowledge.evaluation",
+        "id": "ev-A"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.evaluation",
+            "id": "ev-A"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "claim": {
+          "provider": "knowledge-1",
+          "claim": "A",
+          "revision": 1,
+          "digest": {
+            "$var": "d_A"
+          }
+        },
+        "target": {
+          "repositories": [
+            {
+              "id": "repo-a",
+              "tree": "tree-1"
+            }
+          ],
+          "completeness": "complete"
+        }
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "result": "applicable"
+          }
+        }
+      },
+      "session": "knw-owner"
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.applicability.evaluate",
+      "command_id": "applicability-evaluate-ev-B",
+      "subject": {
+        "kind": "knowledge.evaluation",
+        "id": "ev-B"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.evaluation",
+            "id": "ev-B"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "claim": {
+          "provider": "knowledge-1",
+          "claim": "B",
+          "revision": 1,
+          "digest": {
+            "$var": "d_B"
+          }
+        },
+        "target": {
+          "repositories": [
+            {
+              "id": "repo-a",
+              "tree": "tree-1"
+            }
+          ],
+          "completeness": "complete"
+        }
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "result": "applicable"
+          }
+        }
+      },
+      "session": "knw-owner"
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.applicability.evaluate",
+      "command_id": "applicability-evaluate-ev-C",
+      "subject": {
+        "kind": "knowledge.evaluation",
+        "id": "ev-C"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.evaluation",
+            "id": "ev-C"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "claim": {
+          "provider": "knowledge-1",
+          "claim": "C",
+          "revision": 1,
+          "digest": {
+            "$var": "d_C"
+          }
+        },
+        "target": {
+          "repositories": [
+            {
+              "id": "repo-a",
+              "tree": "tree-1"
+            }
+          ],
+          "completeness": "complete"
+        }
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "result": "applicable"
+          }
+        }
+      },
+      "session": "knw-owner"
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.decision.record",
+      "command_id": "decision-record-dec-A",
+      "subject": {
+        "kind": "knowledge.decision",
+        "id": "dec-A"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.decision",
+            "id": "dec-A"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "claim": {
+          "provider": "knowledge-1",
+          "claim": "A",
+          "revision": 1,
+          "digest": {
+            "$var": "d_A"
+          }
+        },
+        "decision": "accepted_for_use",
+        "validation_basis": {
+          "evidence": [],
+          "receipts": []
+        },
+        "rationale": "accepted_for_use A",
+        "permitted_use": "binding"
+      },
+      "set": {
+        "authority_epoch": 1
+      },
+      "session": "knw-owner"
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.decision.record",
+      "command_id": "decision-record-dec-B",
+      "subject": {
+        "kind": "knowledge.decision",
+        "id": "dec-B"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.decision",
+            "id": "dec-B"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "claim": {
+          "provider": "knowledge-1",
+          "claim": "B",
+          "revision": 1,
+          "digest": {
+            "$var": "d_B"
+          }
+        },
+        "decision": "accepted_for_use",
+        "validation_basis": {
+          "evidence": [],
+          "receipts": []
+        },
+        "rationale": "accepted_for_use B",
+        "permitted_use": "binding"
+      },
+      "set": {
+        "authority_epoch": 1
+      },
+      "session": "knw-owner"
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.decision.record",
+      "command_id": "decision-record-dec-C",
+      "subject": {
+        "kind": "knowledge.decision",
+        "id": "dec-C"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.decision",
+            "id": "dec-C"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "claim": {
+          "provider": "knowledge-1",
+          "claim": "C",
+          "revision": 1,
+          "digest": {
+            "$var": "d_C"
+          }
+        },
+        "decision": "accepted_for_use",
+        "validation_basis": {
+          "evidence": [],
+          "receipts": []
+        },
+        "rationale": "accepted_for_use C",
+        "permitted_use": "binding"
+      },
+      "set": {
+        "authority_epoch": 1
+      },
+      "session": "knw-owner"
+    },
+    {
+      "step": "start_participant",
+      "name": "ctx",
+      "config": {
+        "provider_id": "context-1",
+        "authority_principals": [
+          "owner"
+        ],
+        "clock": {
+          "controlled": "2030-01-01T00:00:00Z"
+        },
+        "context": {
+          "scripts": {
+            "r-1": [
+              {
+                "section": {
+                  "section_id": "s-req",
+                  "item_id": "i-req",
+                  "label": "binding",
+                  "content": "content of A",
+                  "claim": {
+                    "provider": "knowledge-1",
+                    "claim": "A",
+                    "revision": 1,
+                    "digest": {
+                      "$var": "d_A"
+                    }
+                  }
+                }
+              },
+              {
+                "section": {
+                  "section_id": "s-adv",
+                  "item_id": "i-adv",
+                  "label": "binding",
+                  "content": "content of B",
+                  "claim": {
+                    "provider": "knowledge-1",
+                    "claim": "B",
+                    "revision": 1,
+                    "digest": {
+                      "$var": "d_B"
+                    }
+                  }
+                }
+              },
+              {
+                "conditions": [
+                  {
+                    "condition_id": "k-1",
+                    "kind": "repository_tree",
+                    "repository": "repo-a",
+                    "expected": "tree-1"
+                  }
+                ]
+              },
+              {
+                "publish": {}
+              }
+            ],
+            "r-2": [
+              {
+                "section": {
+                  "section_id": "s-c",
+                  "item_id": "i-c",
+                  "label": "binding",
+                  "content": "content of C",
+                  "claim": {
+                    "provider": "knowledge-1",
+                    "claim": "C",
+                    "revision": 1,
+                    "digest": {
+                      "$var": "d_C"
+                    }
+                  }
+                }
+              },
+              {
+                "conditions": [
+                  {
+                    "condition_id": "k-1",
+                    "kind": "repository_tree",
+                    "repository": "repo-a",
+                    "expected": "tree-1"
+                  }
+                ]
+              },
+              {
+                "publish": {}
+              }
+            ]
+          },
+          "knowledge_provider": {
+            "provider_id": "knowledge-1",
+            "socket": {
+              "$var": "socket.knw"
+            },
+            "credential": {
+              "$var": "credential.ctx-service"
+            },
+            "grant": "g-ctx-read"
+          }
+        }
+      },
+      "credential_principals": [
+        "exec-1"
+      ]
+    },
+    {
+      "step": "start_participant",
+      "name": "exe",
+      "config": {
+        "provider_id": "executor-1",
+        "authority_principals": [
+          "owner"
+        ],
+        "clock": {
+          "controlled": "2030-01-01T00:00:00Z"
+        },
+        "executor": {
+          "observed_basis": {
+            "repositories": {
+              "repo-a": {
+                "tree": "tree-1"
+              }
+            }
+          },
+          "peers": [
+            {
+              "provider_id": "context-1",
+              "socket": {
+                "$var": "socket.ctx"
+              },
+              "credential": {
+                "$var": "credential.exec-1"
+              }
+            }
+          ],
+          "scripts": {
+            "e-req": [
+              {
+                "wait_until": "2030-01-01T00:01:00Z"
+              },
+              {
+                "deliver": "provider_ack_id"
+              },
+              {
+                "stall": true
+              }
+            ],
+            "e-adv": [
+              {
+                "wait_until": "2030-01-01T00:01:00Z"
+              },
+              {
+                "deliver": "provider_ack_id"
+              },
+              {
+                "stall": true
+              }
+            ],
+            "e-m4": [
+              {
+                "wait_until": "2030-01-01T00:01:00Z"
+              },
+              {
+                "deliver": "provider_ack_id"
+              },
+              {
+                "stall": true
+              }
+            ],
+            "e-out": [
+              {
+                "wait_until": "2030-01-01T00:02:00Z"
+              },
+              {
+                "deliver": "provider_ack_id"
+              },
+              {
+                "stall": true
+              }
+            ]
+          },
+          "default_script": [
+            {
+              "stall": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "connect",
+      "session": "ctx-owner",
+      "participant": "ctx",
+      "principal": "owner"
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.grants"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "context",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": [
+              "context.advisory",
+              "context.required_before_start",
+              "context.claims"
+            ]
+          },
+          {
+            "name": "evidence",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      },
+      "session": "ctx-owner"
+    },
+    {
+      "step": "command",
+      "operation": "core.grant.issue",
+      "command_id": "grant-issue-g-packets",
+      "subject": {
+        "kind": "core.grant",
+        "id": "g-packets"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core.grant",
+            "id": "g-packets"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "holder": "exec-1",
+        "audience": "context-1",
+        "rights": [
+          "context.packet.read"
+        ],
+        "resources": [
+          {
+            "kind": "context.packet"
+          }
+        ],
+        "delegation": {
+          "allowed": false,
+          "max_depth": 0
+        }
+      },
+      "session": "ctx-owner"
+    },
+    {
+      "step": "command",
+      "operation": "core.grant.issue",
+      "command_id": "grant-issue-g-artifacts",
+      "subject": {
+        "kind": "core.grant",
+        "id": "g-artifacts"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core.grant",
+            "id": "g-artifacts"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "holder": "exec-1",
+        "audience": "context-1",
+        "rights": [
+          "evidence.read"
+        ],
+        "resources": [
+          {
+            "kind": "evidence.artifact",
+            "id_prefix": "packet."
+          }
+        ],
+        "delegation": {
+          "allowed": false,
+          "max_depth": 0
+        }
+      },
+      "session": "ctx-owner"
+    },
+    {
+      "step": "command",
+      "operation": "context.request.submit",
+      "command_id": "request-submit-r-1",
+      "subject": {
+        "kind": "context.request",
+        "id": "r-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "context.request",
+            "id": "r-1"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "consumer": {
+          "task": "change billing",
+          "principal": "exec-1",
+          "executor": "executor-1"
+        },
+        "basis": {
+          "repositories": [
+            {
+              "id": "repo-a",
+              "tree": "tree-1",
+              "workspace": "clean",
+              "dirty": null
+            }
+          ],
+          "completeness": "complete"
+        },
+        "items": [
+          {
+            "item_id": "i-req",
+            "selector": {
+              "kind": "claim",
+              "value": "A"
+            },
+            "obligation": "required_before_start",
+            "reliance": "binding",
+            "selected_by": "owner",
+            "check": {
+              "kind": "claim_included",
+              "claim": {
+                "provider": "knowledge-1",
+                "claim": "A",
+                "revision": 1,
+                "digest": {
+                  "$var": "d_A"
+                }
+              }
+            }
+          },
+          {
+            "item_id": "i-adv",
+            "selector": {
+              "kind": "claim",
+              "value": "B"
+            },
+            "obligation": "advisory",
+            "reliance": "binding",
+            "selected_by": "owner",
+            "check": {
+              "kind": "claim_included",
+              "claim": {
+                "provider": "knowledge-1",
+                "claim": "B",
+                "revision": 1,
+                "digest": {
+                  "$var": "d_B"
+                }
+              }
+            }
+          }
+        ],
+        "limits": {
+          "deadline": "2030-01-01T01:00:00Z",
+          "investigation": {
+            "units": "queries",
+            "amount": 10
+          },
+          "output_capacity": {
+            "units": "bytes",
+            "amount": 4096
+          }
+        }
+      },
+      "session": "ctx-owner"
+    },
+    {
+      "step": "command",
+      "operation": "context.request.submit",
+      "command_id": "request-submit-r-2",
+      "subject": {
+        "kind": "context.request",
+        "id": "r-2"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "context.request",
+            "id": "r-2"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "consumer": {
+          "task": "change billing",
+          "principal": "exec-1",
+          "executor": "executor-1"
+        },
+        "basis": {
+          "repositories": [
+            {
+              "id": "repo-a",
+              "tree": "tree-1",
+              "workspace": "clean",
+              "dirty": null
+            }
+          ],
+          "completeness": "complete"
+        },
+        "items": [
+          {
+            "item_id": "i-c",
+            "selector": {
+              "kind": "claim",
+              "value": "C"
+            },
+            "obligation": "required_before_start",
+            "reliance": "binding",
+            "selected_by": "owner",
+            "check": {
+              "kind": "claim_included",
+              "claim": {
+                "provider": "knowledge-1",
+                "claim": "C",
+                "revision": 1,
+                "digest": {
+                  "$var": "d_C"
+                }
+              }
+            }
+          }
+        ],
+        "limits": {
+          "deadline": "2030-01-01T01:00:00Z",
+          "investigation": {
+            "units": "queries",
+            "amount": 10
+          },
+          "output_capacity": {
+            "units": "bytes",
+            "amount": 4096
+          }
+        }
+      },
+      "session": "ctx-owner"
+    },
+    {
+      "step": "query",
+      "operation": "context.request.inspect",
+      "payload": {
+        "request": "r-1"
+      },
+      "expect": {
+        "ok": {
+          "state": "ready",
+          "items": [
+            {
+              "item_id": "i-req",
+              "result": "satisfied"
+            },
+            {
+              "item_id": "i-adv",
+              "result": "satisfied"
+            }
+          ]
+        }
+      },
+      "capture": {
+        "p1": "/result/packets/0/reference/artifact/digest"
+      },
+      "session": "ctx-owner"
+    },
+    {
+      "step": "query",
+      "operation": "context.request.inspect",
+      "payload": {
+        "request": "r-2"
+      },
+      "expect": {
+        "ok": {
+          "state": "ready"
+        }
+      },
+      "capture": {
+        "p2": "/result/packets/0/reference/artifact/digest"
+      },
+      "session": "ctx-owner"
+    },
+    {
+      "step": "connect",
+      "session": "caller",
+      "participant": "exe",
+      "principal": "owner"
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.capabilities",
+              "core.effects",
+              "core.grants"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "execution",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "execution.context",
+              "execution.context_revalidation",
+              "execution.claim_revalidation"
+            ],
+            "optional_features": []
+          }
+        ]
+      },
+      "session": "caller"
+    },
+    {
+      "step": "command",
+      "operation": "execution.submit",
+      "command_id": "submit-e-req",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "e-req"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "e-req"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "brief": {
+          "digest": "sha256:abababababababababababababababababababababababababababababababab",
+          "media_type": "text/plain"
+        },
+        "context_bindings": [
+          {
+            "binding_id": "b-req",
+            "request": {
+              "kind": "context.request",
+              "id": "r-1"
+            },
+            "packet": {
+              "packet": {
+                "kind": "context.packet",
+                "id": "r-1"
+              },
+              "revision": 1,
+              "artifact": {
+                "provider": "context-1",
+                "artifact": {
+                  "kind": "evidence.artifact",
+                  "id": "packet.r-1.1"
+                },
+                "digest": {
+                  "$var": "p1"
+                }
+              }
+            },
+            "obligation": "required_before_start",
+            "selected_by": "owner",
+            "conditions": [
+              {
+                "condition_id": "k-1",
+                "kind": "repository_tree",
+                "repository": "repo-a",
+                "expected": "tree-1"
+              }
+            ],
+            "fetch": {
+              "context": {
+                "provider": "context-1",
+                "grant": "g-packets"
+              },
+              "evidence": {
+                "provider": "context-1",
+                "grant": "g-artifacts"
+              }
+            }
+          }
+        ]
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "admission": "admitted"
+          }
+        }
+      },
+      "session": "caller"
+    },
+    {
+      "step": "command",
+      "operation": "execution.submit",
+      "command_id": "submit-e-adv",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "e-adv"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "e-adv"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "brief": {
+          "digest": "sha256:abababababababababababababababababababababababababababababababab",
+          "media_type": "text/plain"
+        },
+        "context_bindings": [
+          {
+            "binding_id": "b-adv",
+            "request": {
+              "kind": "context.request",
+              "id": "r-1"
+            },
+            "packet": {
+              "packet": {
+                "kind": "context.packet",
+                "id": "r-1"
+              },
+              "revision": 1,
+              "artifact": {
+                "provider": "context-1",
+                "artifact": {
+                  "kind": "evidence.artifact",
+                  "id": "packet.r-1.1"
+                },
+                "digest": {
+                  "$var": "p1"
+                }
+              }
+            },
+            "obligation": "advisory",
+            "selected_by": "owner",
+            "conditions": [
+              {
+                "condition_id": "k-1",
+                "kind": "repository_tree",
+                "repository": "repo-a",
+                "expected": "tree-1"
+              }
+            ],
+            "fetch": {
+              "context": {
+                "provider": "context-1",
+                "grant": "g-packets"
+              },
+              "evidence": {
+                "provider": "context-1",
+                "grant": "g-artifacts"
+              }
+            }
+          }
+        ]
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "admission": "admitted"
+          }
+        }
+      },
+      "session": "caller"
+    },
+    {
+      "step": "command",
+      "operation": "execution.submit",
+      "command_id": "submit-e-out",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "e-out"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "e-out"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "brief": {
+          "digest": "sha256:abababababababababababababababababababababababababababababababab",
+          "media_type": "text/plain"
+        },
+        "context_bindings": [
+          {
+            "binding_id": "b-out",
+            "request": {
+              "kind": "context.request",
+              "id": "r-2"
+            },
+            "packet": {
+              "packet": {
+                "kind": "context.packet",
+                "id": "r-2"
+              },
+              "revision": 1,
+              "artifact": {
+                "provider": "context-1",
+                "artifact": {
+                  "kind": "evidence.artifact",
+                  "id": "packet.r-2.1"
+                },
+                "digest": {
+                  "$var": "p2"
+                }
+              }
+            },
+            "obligation": "required_before_start",
+            "selected_by": "owner",
+            "conditions": [
+              {
+                "condition_id": "k-1",
+                "kind": "repository_tree",
+                "repository": "repo-a",
+                "expected": "tree-1"
+              }
+            ],
+            "fetch": {
+              "context": {
+                "provider": "context-1",
+                "grant": "g-packets"
+              },
+              "evidence": {
+                "provider": "context-1",
+                "grant": "g-artifacts"
+              }
+            }
+          }
+        ]
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "admission": "admitted"
+          }
+        }
+      },
+      "session": "caller"
+    },
+    {
+      "step": "connect",
+      "session": "caller-m4",
+      "participant": "exe",
+      "principal": "owner"
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.capabilities",
+              "core.effects",
+              "core.grants"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "execution",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "execution.context",
+              "execution.context_revalidation"
+            ],
+            "optional_features": []
+          }
+        ]
+      },
+      "session": "caller-m4"
+    },
+    {
+      "step": "command",
+      "operation": "execution.submit",
+      "command_id": "submit-e-m4",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "e-m4"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "e-m4"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "brief": {
+          "digest": "sha256:abababababababababababababababababababababababababababababababab",
+          "media_type": "text/plain"
+        },
+        "context_bindings": [
+          {
+            "binding_id": "b-m4",
+            "request": {
+              "kind": "context.request",
+              "id": "r-1"
+            },
+            "packet": {
+              "packet": {
+                "kind": "context.packet",
+                "id": "r-1"
+              },
+              "revision": 1,
+              "artifact": {
+                "provider": "context-1",
+                "artifact": {
+                  "kind": "evidence.artifact",
+                  "id": "packet.r-1.1"
+                },
+                "digest": {
+                  "$var": "p1"
+                }
+              }
+            },
+            "obligation": "required_before_start",
+            "selected_by": "owner",
+            "conditions": [
+              {
+                "condition_id": "k-1",
+                "kind": "repository_tree",
+                "repository": "repo-a",
+                "expected": "tree-1"
+              }
+            ],
+            "fetch": {
+              "context": {
+                "provider": "context-1",
+                "grant": "g-packets"
+              },
+              "evidence": {
+                "provider": "context-1",
+                "grant": "g-artifacts"
+              }
+            }
+          }
+        ]
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "admission": "admitted"
+          }
+        }
+      },
+      "session": "caller-m4"
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.decision.record",
+      "command_id": "decision-record-dec-A-reject",
+      "subject": {
+        "kind": "knowledge.decision",
+        "id": "dec-A-reject"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.decision",
+            "id": "dec-A-reject"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "claim": {
+          "provider": "knowledge-1",
+          "claim": "A",
+          "revision": 1,
+          "digest": {
+            "$var": "d_A"
+          }
+        },
+        "decision": "rejected",
+        "validation_basis": {
+          "evidence": [],
+          "receipts": []
+        },
+        "rationale": "rejected A",
+        "supersedes_decision": "dec-A"
+      },
+      "set": {
+        "authority_epoch": 1
+      },
+      "session": "knw-owner"
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.claim.revise",
+      "command_id": "claim-revise-B",
+      "subject": {
+        "kind": "knowledge.claim",
+        "id": "B"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.claim",
+            "id": "B"
+          },
+          "revision": 1
+        }
+      ],
+      "payload": {
+        "plane": "normative",
+        "statement": {
+          "subject": {
+            "kind": "app.service",
+            "id": "billing"
+          },
+          "predicate": "rule_b",
+          "value": "retries capped at 3",
+          "cardinality": "single"
+        },
+        "scope": {
+          "id": "svc",
+          "qualifiers": {}
+        },
+        "support": [],
+        "derivation": {
+          "kind": "deterministic",
+          "inputs": []
+        },
+        "conditions": [
+          {
+            "condition_id": "k-1",
+            "kind": "repository_tree",
+            "repository": "repo-a",
+            "expected": "tree-1"
+          }
+        ],
+        "supersedes": {
+          "revision": 1,
+          "digest": {
+            "$var": "d_B"
+          }
+        }
+      },
+      "session": "knw-owner"
+    },
+    {
+      "step": "query",
+      "operation": "context.packet.inspect",
+      "payload": {
+        "packet": "r-1",
+        "revision": 1
+      },
+      "expect": {
+        "ok": {
+          "claim_changes": [
+            {
+              "section_id": "s-req",
+              "claim": {
+                "provider": "knowledge-1",
+                "claim": "A",
+                "revision": 1,
+                "digest": {
+                  "$var": "d_A"
+                }
+              },
+              "change": "reliance_changed"
+            },
+            {
+              "section_id": "s-adv",
+              "claim": {
+                "provider": "knowledge-1",
+                "claim": "B",
+                "revision": 1,
+                "digest": {
+                  "$var": "d_B"
+                }
+              },
+              "change": "lineage_revised"
+            }
+          ],
+          "invalidated_items": [
+            {
+              "item_id": "i-req",
+              "claim": {
+                "provider": "knowledge-1",
+                "claim": "A",
+                "revision": 1,
+                "digest": {
+                  "$var": "d_A"
+                }
+              },
+              "reason": "permitted_use_lost"
+            }
+          ],
+          "unverified_items": []
+        }
+      },
+      "session": "ctx-owner"
+    },
+    {
+      "step": "set_clock",
+      "instant": "2030-01-01T00:01:00Z",
+      "note": "e-req and e-adv reach their dispatch boundary after the rejection"
+    },
+    {
+      "step": "query",
+      "operation": "execution.inspect",
+      "payload": {
+        "execution": "e-req"
+      },
+      "expect": {
+        "ok": {
+          "delivery": "pending",
+          "context": {
+            "blocked": {
+              "boundary": "dispatch",
+              "binding_id": "b-req",
+              "reason": "context_binding_stale"
+            },
+            "bindings": [
+              {
+                "binding_id": "b-req",
+                "packet": {
+                  "revision": 1
+                }
+              }
+            ],
+            "checks": {
+              "$contains": {
+                "boundary": "dispatch",
+                "state": "stale",
+                "results": {
+                  "$contains": {
+                    "condition_id": "packet.facts",
+                    "result": "mismatch",
+                    "observed": "claim invalidated: i-req"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "session": "caller"
+    },
+    {
+      "step": "query",
+      "operation": "execution.inspect",
+      "payload": {
+        "execution": "e-adv"
+      },
+      "expect": {
+        "ok": {
+          "delivery": "acknowledged",
+          "context": {
+            "blocked": {
+              "$absent": true
+            },
+            "bindings": [
+              {
+                "binding_id": "b-adv",
+                "packet": {
+                  "revision": 1
+                }
+              }
+            ]
+          }
+        }
+      },
+      "session": "caller"
+    },
+    {
+      "step": "query",
+      "operation": "execution.inspect",
+      "payload": {
+        "execution": "e-m4"
+      },
+      "expect": {
+        "ok": {
+          "delivery": "acknowledged",
+          "context": {
+            "blocked": {
+              "$absent": true
+            },
+            "checks": {
+              "$contains": {
+                "boundary": "dispatch",
+                "state": "current",
+                "results": {
+                  "$contains": {
+                    "condition_id": "packet.facts",
+                    "result": "match"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "session": "caller-m4"
+    },
+    {
+      "step": "stop_participant",
+      "name": "knw"
+    },
+    {
+      "step": "set_clock",
+      "instant": "2030-01-01T00:02:00Z",
+      "note": "the knowledge provider is unreachable when e-out reaches its dispatch boundary"
+    },
+    {
+      "step": "query",
+      "operation": "context.packet.inspect",
+      "payload": {
+        "packet": "r-2",
+        "revision": 1
+      },
+      "expect": {
+        "ok": {
+          "claim_changes": [
+            {
+              "section_id": "s-c",
+              "claim": {
+                "provider": "knowledge-1",
+                "claim": "C",
+                "revision": 1,
+                "digest": {
+                  "$var": "d_C"
+                }
+              },
+              "change": "unavailable"
+            }
+          ],
+          "invalidated_items": [],
+          "unverified_items": [
+            {
+              "item_id": "i-c",
+              "claim": {
+                "provider": "knowledge-1",
+                "claim": "C",
+                "revision": 1,
+                "digest": {
+                  "$var": "d_C"
+                }
+              },
+              "reason": "knowledge_unavailable"
+            }
+          ]
+        }
+      },
+      "session": "ctx-owner"
+    },
+    {
+      "step": "query",
+      "operation": "execution.inspect",
+      "payload": {
+        "execution": "e-out"
+      },
+      "expect": {
+        "ok": {
+          "delivery": "pending",
+          "context": {
+            "blocked": {
+              "boundary": "dispatch",
+              "binding_id": "b-out",
+              "reason": "context_binding_unknown"
+            },
+            "checks": {
+              "$contains": {
+                "boundary": "dispatch",
+                "state": "unknown",
+                "results": {
+                  "$contains": {
+                    "condition_id": "packet.facts",
+                    "result": "unavailable"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "session": "caller"
+    },
+    {
+      "step": "stop_participant",
+      "name": "exe"
+    },
+    {
+      "step": "stop_participant",
+      "name": "ctx"
+    }
+  ]
+}

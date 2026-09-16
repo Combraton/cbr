@@ -1,0 +1,21 @@
+[workspace]
+resolver = "3"
+members = ["crates/cbr-encoding", "crates/cbr-provider"]
+# The vendored Protocol tree contains its own Cargo packages. Left unexcluded,
+# Cargo treats them as nested packages of this workspace and tries to resolve
+# their `*.workspace = true` inheritance here, which fails because CBR has not
+# selected a licence. They are not built from this workspace at all: the
+# conformance runner is built from a fresh, checksum-verified extraction of the
+# release archive, using the release's own Cargo.lock, so a fixture result can
+# name the exact runner that produced it.
+exclude = ["vendor"]
+
+[workspace.package]
+edition = "2024"
+version = "0.1.0"
+publish = false
+rust-version = "1.97"
+license = "MIT"
+
+[workspace.dependencies]
+sha2 = "0.11.0"

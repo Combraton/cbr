@@ -1,0 +1,102 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "socket.authentication-required-before-negotiation",
+  "version": 1,
+  "title": "A socket session must authenticate before negotiating or operating",
+  "requirements": [
+    "TRN-3",
+    "CORE-15"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/CORE.md#18-principal-credentials-on-shared-connections",
+    "docs/spec/bindings/STREAM.md#6-unix-domain-socket-form"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "core-test",
+      "major": 1
+    }
+  ],
+  "features": [],
+  "binding": "unix",
+  "polarity": "negative",
+  "kills": [
+    "skip-authentication"
+  ],
+  "steps": [
+    {
+      "step": "start",
+      "auto_authenticate": false
+    },
+    {
+      "step": "describe"
+    },
+    {
+      "step": "negotiate",
+      "expect": {
+        "error": "authentication_required"
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core-test.subject.get",
+      "payload": {
+        "subject": {
+          "kind": "core-test.subject",
+          "id": "s-1"
+        }
+      },
+      "expect": {
+        "error": "authentication_required"
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core.authenticate",
+      "payload": {
+        "credential": {
+          "$var": "credential.conformance-caller"
+        }
+      },
+      "expect": {
+        "ok": {
+          "principal": "conformance-caller"
+        }
+      }
+    },
+    {
+      "step": "negotiate"
+    },
+    {
+      "step": "command",
+      "operation": "core-test.subject.put",
+      "command_id": "cmd-1",
+      "subject": {
+        "kind": "core-test.subject",
+        "id": "s-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core-test.subject",
+            "id": "s-1"
+          },
+          "revision": 0
+        }
+      ],
+      "authority_epoch": 0,
+      "payload": {
+        "value": "a"
+      },
+      "expect": {
+        "ok": {
+          "replay": false
+        }
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

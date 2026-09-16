@@ -1,0 +1,197 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "core.events.cursor-from-another-stream-refused",
+  "version": 1,
+  "title": "A well-formed cursor from another store's stream is invalid_cursor",
+  "requirements": [
+    "OBS-2",
+    "OBS-8"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/CORE.md#16-events-and-subscriptions"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "core-test",
+      "major": 1
+    }
+  ],
+  "features": [
+    "core.events"
+  ],
+  "polarity": "negative",
+  "kills": [
+    "accept-cursor-from-other-stream"
+  ],
+  "steps": [
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ]
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "core-test",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "core-test.subject.put",
+      "command_id": "cmd-1",
+      "subject": {
+        "kind": "core-test.subject",
+        "id": "s-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core-test.subject",
+            "id": "s-1"
+          },
+          "revision": 0
+        }
+      ],
+      "authority_epoch": 0,
+      "payload": {
+        "value": "a"
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core.events.read",
+      "payload": {
+        "limit": 100,
+        "from": "start"
+      },
+      "expect": {
+        "ok": {
+          "items": {
+            "$len": 1
+          }
+        }
+      },
+      "capture": {
+        "cursor": "/result/next_cursor"
+      }
+    },
+    {
+      "step": "stop"
+    },
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ]
+      },
+      "fresh_data_directory": true
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "core-test",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "core-test.subject.put",
+      "command_id": "cmd-1",
+      "subject": {
+        "kind": "core-test.subject",
+        "id": "s-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core-test.subject",
+            "id": "s-1"
+          },
+          "revision": 0
+        }
+      ],
+      "authority_epoch": 0,
+      "payload": {
+        "value": "a"
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core.events.read",
+      "payload": {
+        "limit": 100,
+        "cursor": {
+          "$var": "cursor"
+        }
+      },
+      "expect": {
+        "error": "invalid_cursor"
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

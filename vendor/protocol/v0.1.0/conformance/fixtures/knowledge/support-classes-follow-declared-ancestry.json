@@ -1,0 +1,1160 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "knowledge.support-classes-follow-declared-ancestry",
+  "version": 2,
+  "title": "Support is classified from declared, provider-qualified ancestry: shared roots are one lineage, pairwise overlap without a common root is overlapping, only complete disjoint ancestry is multiple, and partial, unknown or equal-digest ancestry stays undetermined; wrappers are never origins",
+  "requirements": [
+    "KNW-4"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/KNOWLEDGE.md#5-support-and-declared-ancestry-knw-4-m5-q2"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "knowledge",
+      "major": 1
+    }
+  ],
+  "features": [
+    "core.events",
+    "core.grants"
+  ],
+  "polarity": "negative",
+  "kills": [
+    "support-entries-as-origins",
+    "equal-digest-roots-disjoint",
+    "overlap-as-multiple"
+  ],
+  "steps": [
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ]
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.grants"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "knowledge",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.claim.propose",
+      "command_id": "claim-propose-s-none",
+      "subject": {
+        "kind": "knowledge.claim",
+        "id": "s-none"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.claim",
+            "id": "s-none"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "plane": "observed",
+        "statement": {
+          "subject": {
+            "kind": "app.service",
+            "id": "billing"
+          },
+          "predicate": "queue",
+          "value": "v1",
+          "cardinality": "single"
+        },
+        "scope": {
+          "id": "svc",
+          "qualifiers": {}
+        },
+        "support": [],
+        "derivation": {
+          "kind": "deterministic",
+          "inputs": []
+        }
+      },
+      "capture": {
+        "d_s-none": "/result/outcome/reference/digest"
+      }
+    },
+    {
+      "step": "query",
+      "operation": "knowledge.claim.inspect",
+      "payload": {
+        "claim": "s-none"
+      },
+      "expect": {
+        "ok": {
+          "support": {
+            "class": "unsupported",
+            "unknown_ancestry": []
+          },
+          "availability": {
+            "state": "unknown",
+            "counts": {
+              "available": 0,
+              "unavailable": 0,
+              "purged": 0,
+              "unknown": 0
+            }
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.claim.propose",
+      "command_id": "claim-propose-s-one",
+      "subject": {
+        "kind": "knowledge.claim",
+        "id": "s-one"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.claim",
+            "id": "s-one"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "plane": "observed",
+        "statement": {
+          "subject": {
+            "kind": "app.service",
+            "id": "billing"
+          },
+          "predicate": "queue",
+          "value": "v1",
+          "cardinality": "single"
+        },
+        "scope": {
+          "id": "svc",
+          "qualifiers": {}
+        },
+        "support": [
+          {
+            "support_id": "e1",
+            "evidence": {
+              "provider": "conformance-provider",
+              "artifact": {
+                "kind": "evidence.artifact",
+                "id": "summary-1"
+              },
+              "digest": "sha256:87feb6a997ac21b2ea41714775583b5605166b0ace5f59b1e97edb8000a40553"
+            },
+            "ancestry": {
+              "completeness": "partial",
+              "roots": [
+                {
+                  "kind": "evidence",
+                  "provider": "conformance-provider",
+                  "artifact": {
+                    "kind": "evidence.artifact",
+                    "id": "root-a"
+                  },
+                  "digest": "sha256:0a16c2d64ed82e34fef8780a5148b423071b39fbc06b63f270c03b2eab5bbdb8"
+                }
+              ]
+            }
+          }
+        ],
+        "derivation": {
+          "kind": "deterministic",
+          "inputs": []
+        }
+      },
+      "capture": {
+        "d_s-one": "/result/outcome/reference/digest"
+      }
+    },
+    {
+      "step": "query",
+      "operation": "knowledge.claim.inspect",
+      "payload": {
+        "claim": "s-one"
+      },
+      "expect": {
+        "ok": {
+          "support": {
+            "class": "single_lineage",
+            "unknown_ancestry": []
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.claim.propose",
+      "command_id": "claim-propose-s-shared",
+      "subject": {
+        "kind": "knowledge.claim",
+        "id": "s-shared"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.claim",
+            "id": "s-shared"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "plane": "observed",
+        "statement": {
+          "subject": {
+            "kind": "app.service",
+            "id": "billing"
+          },
+          "predicate": "queue",
+          "value": "v1",
+          "cardinality": "single"
+        },
+        "scope": {
+          "id": "svc",
+          "qualifiers": {}
+        },
+        "support": [
+          {
+            "support_id": "e1",
+            "evidence": {
+              "provider": "conformance-provider",
+              "artifact": {
+                "kind": "evidence.artifact",
+                "id": "summary-1"
+              },
+              "digest": "sha256:87feb6a997ac21b2ea41714775583b5605166b0ace5f59b1e97edb8000a40553"
+            },
+            "ancestry": {
+              "completeness": "complete",
+              "roots": [
+                {
+                  "kind": "evidence",
+                  "provider": "conformance-provider",
+                  "artifact": {
+                    "kind": "evidence.artifact",
+                    "id": "root-a"
+                  },
+                  "digest": "sha256:0a16c2d64ed82e34fef8780a5148b423071b39fbc06b63f270c03b2eab5bbdb8"
+                }
+              ]
+            }
+          },
+          {
+            "support_id": "e2",
+            "evidence": {
+              "provider": "conformance-provider",
+              "artifact": {
+                "kind": "evidence.artifact",
+                "id": "summary-2"
+              },
+              "digest": "sha256:c6d4d52b0c0e3f992e02cfd9ade106e2157a8de1264afcafaaefa6e9944a5685"
+            },
+            "ancestry": {
+              "completeness": "complete",
+              "roots": [
+                {
+                  "kind": "evidence",
+                  "provider": "conformance-provider",
+                  "artifact": {
+                    "kind": "evidence.artifact",
+                    "id": "root-a"
+                  },
+                  "digest": "sha256:0a16c2d64ed82e34fef8780a5148b423071b39fbc06b63f270c03b2eab5bbdb8"
+                }
+              ]
+            }
+          },
+          {
+            "support_id": "e3",
+            "evidence": {
+              "provider": "conformance-provider",
+              "artifact": {
+                "kind": "evidence.artifact",
+                "id": "summary-3"
+              },
+              "digest": "sha256:1308d3f6116a06a2713babe46d50dd8fe61e583e996b9798416feb1eeb8b8d60"
+            },
+            "ancestry": {
+              "completeness": "complete",
+              "roots": [
+                {
+                  "kind": "evidence",
+                  "provider": "conformance-provider",
+                  "artifact": {
+                    "kind": "evidence.artifact",
+                    "id": "root-a"
+                  },
+                  "digest": "sha256:0a16c2d64ed82e34fef8780a5148b423071b39fbc06b63f270c03b2eab5bbdb8"
+                }
+              ]
+            }
+          }
+        ],
+        "derivation": {
+          "kind": "deterministic",
+          "inputs": []
+        }
+      },
+      "capture": {
+        "d_s-shared": "/result/outcome/reference/digest"
+      }
+    },
+    {
+      "step": "query",
+      "operation": "knowledge.claim.inspect",
+      "payload": {
+        "claim": "s-shared"
+      },
+      "expect": {
+        "ok": {
+          "support": {
+            "class": "single_lineage",
+            "unknown_ancestry": []
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.claim.propose",
+      "command_id": "claim-propose-s-pairwise",
+      "subject": {
+        "kind": "knowledge.claim",
+        "id": "s-pairwise"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.claim",
+            "id": "s-pairwise"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "plane": "observed",
+        "statement": {
+          "subject": {
+            "kind": "app.service",
+            "id": "billing"
+          },
+          "predicate": "queue",
+          "value": "v1",
+          "cardinality": "single"
+        },
+        "scope": {
+          "id": "svc",
+          "qualifiers": {}
+        },
+        "support": [
+          {
+            "support_id": "e1",
+            "evidence": {
+              "provider": "conformance-provider",
+              "artifact": {
+                "kind": "evidence.artifact",
+                "id": "w-1"
+              },
+              "digest": "sha256:0065abd009780926778f5e00851728b300ca6605dd4c2603cc798ea0fd10388c"
+            },
+            "ancestry": {
+              "completeness": "complete",
+              "roots": [
+                {
+                  "kind": "evidence",
+                  "provider": "conformance-provider",
+                  "artifact": {
+                    "kind": "evidence.artifact",
+                    "id": "root-a"
+                  },
+                  "digest": "sha256:0a16c2d64ed82e34fef8780a5148b423071b39fbc06b63f270c03b2eab5bbdb8"
+                },
+                {
+                  "kind": "evidence",
+                  "provider": "conformance-provider",
+                  "artifact": {
+                    "kind": "evidence.artifact",
+                    "id": "root-b"
+                  },
+                  "digest": "sha256:235049db67094fd25bd75398b730aa6f8379ea6a60f5c50c4fe69ea39fa74ef0"
+                }
+              ]
+            }
+          },
+          {
+            "support_id": "e2",
+            "evidence": {
+              "provider": "conformance-provider",
+              "artifact": {
+                "kind": "evidence.artifact",
+                "id": "w-2"
+              },
+              "digest": "sha256:d4ea834145ae8a79acc2473b2f3bf1674117c414079d6df10673a677d4048089"
+            },
+            "ancestry": {
+              "completeness": "complete",
+              "roots": [
+                {
+                  "kind": "evidence",
+                  "provider": "conformance-provider",
+                  "artifact": {
+                    "kind": "evidence.artifact",
+                    "id": "root-b"
+                  },
+                  "digest": "sha256:235049db67094fd25bd75398b730aa6f8379ea6a60f5c50c4fe69ea39fa74ef0"
+                },
+                {
+                  "kind": "evidence",
+                  "provider": "conformance-provider",
+                  "artifact": {
+                    "kind": "evidence.artifact",
+                    "id": "root-c"
+                  },
+                  "digest": "sha256:fb6c08f213463675b0b21ac9239afeee36ce1176a9922838f5d623db47c9ceb0"
+                }
+              ]
+            }
+          },
+          {
+            "support_id": "e3",
+            "evidence": {
+              "provider": "conformance-provider",
+              "artifact": {
+                "kind": "evidence.artifact",
+                "id": "w-3"
+              },
+              "digest": "sha256:eb8f90e771df9356494d05d66e0b0aef947531db188edaf9ec896faab2e9ed9d"
+            },
+            "ancestry": {
+              "completeness": "complete",
+              "roots": [
+                {
+                  "kind": "evidence",
+                  "provider": "conformance-provider",
+                  "artifact": {
+                    "kind": "evidence.artifact",
+                    "id": "root-a"
+                  },
+                  "digest": "sha256:0a16c2d64ed82e34fef8780a5148b423071b39fbc06b63f270c03b2eab5bbdb8"
+                },
+                {
+                  "kind": "evidence",
+                  "provider": "conformance-provider",
+                  "artifact": {
+                    "kind": "evidence.artifact",
+                    "id": "root-c"
+                  },
+                  "digest": "sha256:fb6c08f213463675b0b21ac9239afeee36ce1176a9922838f5d623db47c9ceb0"
+                }
+              ]
+            }
+          }
+        ],
+        "derivation": {
+          "kind": "deterministic",
+          "inputs": []
+        }
+      },
+      "capture": {
+        "d_s-pairwise": "/result/outcome/reference/digest"
+      }
+    },
+    {
+      "step": "query",
+      "operation": "knowledge.claim.inspect",
+      "payload": {
+        "claim": "s-pairwise"
+      },
+      "expect": {
+        "ok": {
+          "support": {
+            "class": "overlapping_lineages",
+            "unknown_ancestry": []
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.claim.propose",
+      "command_id": "claim-propose-s-disjoint",
+      "subject": {
+        "kind": "knowledge.claim",
+        "id": "s-disjoint"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.claim",
+            "id": "s-disjoint"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "plane": "observed",
+        "statement": {
+          "subject": {
+            "kind": "app.service",
+            "id": "billing"
+          },
+          "predicate": "queue",
+          "value": "v1",
+          "cardinality": "single"
+        },
+        "scope": {
+          "id": "svc",
+          "qualifiers": {}
+        },
+        "support": [
+          {
+            "support_id": "e1",
+            "evidence": {
+              "provider": "conformance-provider",
+              "artifact": {
+                "kind": "evidence.artifact",
+                "id": "summary-1"
+              },
+              "digest": "sha256:87feb6a997ac21b2ea41714775583b5605166b0ace5f59b1e97edb8000a40553"
+            },
+            "ancestry": {
+              "completeness": "complete",
+              "roots": [
+                {
+                  "kind": "evidence",
+                  "provider": "conformance-provider",
+                  "artifact": {
+                    "kind": "evidence.artifact",
+                    "id": "root-a"
+                  },
+                  "digest": "sha256:0a16c2d64ed82e34fef8780a5148b423071b39fbc06b63f270c03b2eab5bbdb8"
+                }
+              ]
+            }
+          },
+          {
+            "support_id": "e2",
+            "evidence": {
+              "provider": "conformance-provider",
+              "artifact": {
+                "kind": "evidence.artifact",
+                "id": "ci-report"
+              },
+              "digest": "sha256:28b56507dadbcc972f16d072cca7ef17d18c277c45ca76693cd76dc440ac14c0"
+            },
+            "ancestry": {
+              "completeness": "complete",
+              "roots": [
+                {
+                  "kind": "evidence",
+                  "provider": "conformance-provider",
+                  "artifact": {
+                    "kind": "evidence.artifact",
+                    "id": "ci-run"
+                  },
+                  "digest": "sha256:32d678bf09bb91d240ea16eaae5fecd2f413c4b1e601c14cd30663213efcb8d6"
+                }
+              ]
+            }
+          }
+        ],
+        "derivation": {
+          "kind": "deterministic",
+          "inputs": []
+        }
+      },
+      "capture": {
+        "d_s-disjoint": "/result/outcome/reference/digest"
+      }
+    },
+    {
+      "step": "query",
+      "operation": "knowledge.claim.inspect",
+      "payload": {
+        "claim": "s-disjoint"
+      },
+      "expect": {
+        "ok": {
+          "support": {
+            "class": "multiple_lineages",
+            "unknown_ancestry": []
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.claim.propose",
+      "command_id": "claim-propose-s-partial",
+      "subject": {
+        "kind": "knowledge.claim",
+        "id": "s-partial"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.claim",
+            "id": "s-partial"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "plane": "observed",
+        "statement": {
+          "subject": {
+            "kind": "app.service",
+            "id": "billing"
+          },
+          "predicate": "queue",
+          "value": "v1",
+          "cardinality": "single"
+        },
+        "scope": {
+          "id": "svc",
+          "qualifiers": {}
+        },
+        "support": [
+          {
+            "support_id": "e1",
+            "evidence": {
+              "provider": "conformance-provider",
+              "artifact": {
+                "kind": "evidence.artifact",
+                "id": "summary-1"
+              },
+              "digest": "sha256:87feb6a997ac21b2ea41714775583b5605166b0ace5f59b1e97edb8000a40553"
+            },
+            "ancestry": {
+              "completeness": "complete",
+              "roots": [
+                {
+                  "kind": "evidence",
+                  "provider": "conformance-provider",
+                  "artifact": {
+                    "kind": "evidence.artifact",
+                    "id": "root-a"
+                  },
+                  "digest": "sha256:0a16c2d64ed82e34fef8780a5148b423071b39fbc06b63f270c03b2eab5bbdb8"
+                }
+              ]
+            }
+          },
+          {
+            "support_id": "e2",
+            "evidence": {
+              "provider": "conformance-provider",
+              "artifact": {
+                "kind": "evidence.artifact",
+                "id": "w-2"
+              },
+              "digest": "sha256:d4ea834145ae8a79acc2473b2f3bf1674117c414079d6df10673a677d4048089"
+            },
+            "ancestry": {
+              "completeness": "partial",
+              "roots": [
+                {
+                  "kind": "evidence",
+                  "provider": "conformance-provider",
+                  "artifact": {
+                    "kind": "evidence.artifact",
+                    "id": "root-b"
+                  },
+                  "digest": "sha256:235049db67094fd25bd75398b730aa6f8379ea6a60f5c50c4fe69ea39fa74ef0"
+                }
+              ]
+            }
+          }
+        ],
+        "derivation": {
+          "kind": "deterministic",
+          "inputs": []
+        }
+      },
+      "capture": {
+        "d_s-partial": "/result/outcome/reference/digest"
+      }
+    },
+    {
+      "step": "query",
+      "operation": "knowledge.claim.inspect",
+      "payload": {
+        "claim": "s-partial"
+      },
+      "expect": {
+        "ok": {
+          "support": {
+            "class": "undetermined",
+            "unknown_ancestry": []
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.claim.propose",
+      "command_id": "claim-propose-s-unknown",
+      "subject": {
+        "kind": "knowledge.claim",
+        "id": "s-unknown"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.claim",
+            "id": "s-unknown"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "plane": "observed",
+        "statement": {
+          "subject": {
+            "kind": "app.service",
+            "id": "billing"
+          },
+          "predicate": "queue",
+          "value": "v1",
+          "cardinality": "single"
+        },
+        "scope": {
+          "id": "svc",
+          "qualifiers": {}
+        },
+        "support": [
+          {
+            "support_id": "e1",
+            "evidence": {
+              "provider": "conformance-provider",
+              "artifact": {
+                "kind": "evidence.artifact",
+                "id": "summary-1"
+              },
+              "digest": "sha256:87feb6a997ac21b2ea41714775583b5605166b0ace5f59b1e97edb8000a40553"
+            },
+            "ancestry": {
+              "completeness": "complete",
+              "roots": [
+                {
+                  "kind": "evidence",
+                  "provider": "conformance-provider",
+                  "artifact": {
+                    "kind": "evidence.artifact",
+                    "id": "root-a"
+                  },
+                  "digest": "sha256:0a16c2d64ed82e34fef8780a5148b423071b39fbc06b63f270c03b2eab5bbdb8"
+                }
+              ]
+            }
+          },
+          {
+            "support_id": "e2",
+            "evidence": {
+              "provider": "conformance-provider",
+              "artifact": {
+                "kind": "evidence.artifact",
+                "id": "wrapper-1"
+              },
+              "digest": "sha256:360d95f624f68a9e09f524d1a1ef7400e975543af0cb215e529a4a276c659019"
+            },
+            "ancestry": {
+              "completeness": "unknown",
+              "roots": []
+            }
+          }
+        ],
+        "derivation": {
+          "kind": "deterministic",
+          "inputs": []
+        }
+      },
+      "capture": {
+        "d_s-unknown": "/result/outcome/reference/digest"
+      }
+    },
+    {
+      "step": "query",
+      "operation": "knowledge.claim.inspect",
+      "payload": {
+        "claim": "s-unknown"
+      },
+      "expect": {
+        "ok": {
+          "support": {
+            "class": "undetermined",
+            "unknown_ancestry": [
+              "e2"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.claim.propose",
+      "command_id": "claim-propose-s-wrappers",
+      "subject": {
+        "kind": "knowledge.claim",
+        "id": "s-wrappers"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.claim",
+            "id": "s-wrappers"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "plane": "observed",
+        "statement": {
+          "subject": {
+            "kind": "app.service",
+            "id": "billing"
+          },
+          "predicate": "queue",
+          "value": "v1",
+          "cardinality": "single"
+        },
+        "scope": {
+          "id": "svc",
+          "qualifiers": {}
+        },
+        "support": [
+          {
+            "support_id": "e1",
+            "evidence": {
+              "provider": "conformance-provider",
+              "artifact": {
+                "kind": "evidence.artifact",
+                "id": "wrapper-1"
+              },
+              "digest": "sha256:360d95f624f68a9e09f524d1a1ef7400e975543af0cb215e529a4a276c659019"
+            },
+            "ancestry": {
+              "completeness": "unknown",
+              "roots": []
+            }
+          },
+          {
+            "support_id": "e2",
+            "evidence": {
+              "provider": "conformance-provider",
+              "artifact": {
+                "kind": "evidence.artifact",
+                "id": "wrapper-2"
+              },
+              "digest": "sha256:254c86276cb9e18ad7f68cdb220afa040285f98323af460c6340b8738743ec43"
+            },
+            "ancestry": {
+              "completeness": "unknown",
+              "roots": []
+            }
+          }
+        ],
+        "derivation": {
+          "kind": "deterministic",
+          "inputs": []
+        }
+      },
+      "capture": {
+        "d_s-wrappers": "/result/outcome/reference/digest"
+      }
+    },
+    {
+      "step": "query",
+      "operation": "knowledge.claim.inspect",
+      "payload": {
+        "claim": "s-wrappers"
+      },
+      "expect": {
+        "ok": {
+          "support": {
+            "class": "undetermined",
+            "unknown_ancestry": [
+              "e1",
+              "e2"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.claim.propose",
+      "command_id": "claim-propose-s-copies",
+      "subject": {
+        "kind": "knowledge.claim",
+        "id": "s-copies"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.claim",
+            "id": "s-copies"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "plane": "observed",
+        "statement": {
+          "subject": {
+            "kind": "app.service",
+            "id": "billing"
+          },
+          "predicate": "queue",
+          "value": "v1",
+          "cardinality": "single"
+        },
+        "scope": {
+          "id": "svc",
+          "qualifiers": {}
+        },
+        "support": [
+          {
+            "support_id": "e1",
+            "evidence": {
+              "provider": "conformance-provider",
+              "artifact": {
+                "kind": "evidence.artifact",
+                "id": "copy-1"
+              },
+              "digest": "sha256:15a48be07764967c1a0def0d45f475109c575e5770d9dde856233cf08b3f134a"
+            },
+            "ancestry": {
+              "completeness": "complete",
+              "roots": [
+                {
+                  "kind": "evidence",
+                  "provider": "conformance-provider",
+                  "artifact": {
+                    "kind": "evidence.artifact",
+                    "id": "copy-origin-1"
+                  },
+                  "digest": "sha256:7ad5509fac1a1be4a59ae87959468840d2808bab1b3cd5676733194aa82ef338"
+                }
+              ]
+            }
+          },
+          {
+            "support_id": "e2",
+            "evidence": {
+              "provider": "conformance-provider",
+              "artifact": {
+                "kind": "evidence.artifact",
+                "id": "copy-2"
+              },
+              "digest": "sha256:0f4cd2035958e9385141535c9e0f567910d5b2d209f50ac906b1736ccf7f1d2a"
+            },
+            "ancestry": {
+              "completeness": "complete",
+              "roots": [
+                {
+                  "kind": "evidence",
+                  "provider": "conformance-provider",
+                  "artifact": {
+                    "kind": "evidence.artifact",
+                    "id": "copy-origin-2"
+                  },
+                  "digest": "sha256:7ad5509fac1a1be4a59ae87959468840d2808bab1b3cd5676733194aa82ef338"
+                }
+              ]
+            }
+          }
+        ],
+        "derivation": {
+          "kind": "deterministic",
+          "inputs": []
+        }
+      },
+      "capture": {
+        "d_s-copies": "/result/outcome/reference/digest"
+      }
+    },
+    {
+      "step": "query",
+      "operation": "knowledge.claim.inspect",
+      "payload": {
+        "claim": "s-copies"
+      },
+      "expect": {
+        "ok": {
+          "support": {
+            "class": "undetermined",
+            "unknown_ancestry": []
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.claim.propose",
+      "command_id": "claim-propose-s-disjoint-plus-unknown",
+      "subject": {
+        "kind": "knowledge.claim",
+        "id": "s-disjoint-plus-unknown"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.claim",
+            "id": "s-disjoint-plus-unknown"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "plane": "observed",
+        "statement": {
+          "subject": {
+            "kind": "app.service",
+            "id": "billing"
+          },
+          "predicate": "queue",
+          "value": "v1",
+          "cardinality": "single"
+        },
+        "scope": {
+          "id": "svc",
+          "qualifiers": {}
+        },
+        "support": [
+          {
+            "support_id": "e1",
+            "evidence": {
+              "provider": "conformance-provider",
+              "artifact": {
+                "kind": "evidence.artifact",
+                "id": "summary-1"
+              },
+              "digest": "sha256:87feb6a997ac21b2ea41714775583b5605166b0ace5f59b1e97edb8000a40553"
+            },
+            "ancestry": {
+              "completeness": "complete",
+              "roots": [
+                {
+                  "kind": "evidence",
+                  "provider": "conformance-provider",
+                  "artifact": {
+                    "kind": "evidence.artifact",
+                    "id": "root-a"
+                  },
+                  "digest": "sha256:0a16c2d64ed82e34fef8780a5148b423071b39fbc06b63f270c03b2eab5bbdb8"
+                }
+              ]
+            }
+          },
+          {
+            "support_id": "e2",
+            "evidence": {
+              "provider": "conformance-provider",
+              "artifact": {
+                "kind": "evidence.artifact",
+                "id": "ci-report"
+              },
+              "digest": "sha256:28b56507dadbcc972f16d072cca7ef17d18c277c45ca76693cd76dc440ac14c0"
+            },
+            "ancestry": {
+              "completeness": "complete",
+              "roots": [
+                {
+                  "kind": "evidence",
+                  "provider": "conformance-provider",
+                  "artifact": {
+                    "kind": "evidence.artifact",
+                    "id": "ci-run"
+                  },
+                  "digest": "sha256:32d678bf09bb91d240ea16eaae5fecd2f413c4b1e601c14cd30663213efcb8d6"
+                }
+              ]
+            }
+          },
+          {
+            "support_id": "e3",
+            "evidence": {
+              "provider": "conformance-provider",
+              "artifact": {
+                "kind": "evidence.artifact",
+                "id": "wrapper-1"
+              },
+              "digest": "sha256:360d95f624f68a9e09f524d1a1ef7400e975543af0cb215e529a4a276c659019"
+            },
+            "ancestry": {
+              "completeness": "unknown",
+              "roots": []
+            }
+          }
+        ],
+        "derivation": {
+          "kind": "deterministic",
+          "inputs": []
+        }
+      },
+      "capture": {
+        "d_s-disjoint-plus-unknown": "/result/outcome/reference/digest"
+      }
+    },
+    {
+      "step": "query",
+      "operation": "knowledge.claim.inspect",
+      "payload": {
+        "claim": "s-disjoint-plus-unknown"
+      },
+      "expect": {
+        "ok": {
+          "support": {
+            "class": "multiple_lineages",
+            "unknown_ancestry": [
+              "e3"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

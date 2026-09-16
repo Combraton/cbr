@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Combraton/protocol/schemas/verification/1/verification.evaluate_contract.params.schema.json",
+  "title": "verification.evaluate_contract params",
+  "allOf": [
+    {
+      "$ref": "../../core/1/command.schema.json"
+    }
+  ],
+  "properties": {
+    "operation": {
+      "const": "verification.evaluate_contract"
+    },
+    "payload": {
+      "type": "object",
+      "required": [
+        "contract",
+        "subjects",
+        "evaluator"
+      ],
+      "properties": {
+        "contract": {
+          "$ref": "common.schema.json#/$defs/evidence_reference"
+        },
+        "subjects": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "items": {
+            "$ref": "common.schema.json#/$defs/subject_entry"
+          }
+        },
+        "environment": {
+          "$ref": "common.schema.json#/$defs/environment"
+        },
+        "evaluator": {
+          "$ref": "common.schema.json#/$defs/evaluator"
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "subject": {
+      "$ref": "common.schema.json#/$defs/job_subject"
+    },
+    "preconditions": {
+      "minItems": 1,
+      "maxItems": 1
+    }
+  },
+  "unevaluatedProperties": false
+}

@@ -1,0 +1,125 @@
+{
+  "type": "object",
+  "required": [
+    "request",
+    "revision",
+    "state",
+    "consumer",
+    "limits",
+    "items",
+    "packets"
+  ],
+  "properties": {
+    "request": {
+      "$ref": "common.schema.json#/$defs/request_subject"
+    },
+    "revision": {
+      "$ref": "../../core/1/common.schema.json#/$defs/revision"
+    },
+    "state": {
+      "enum": [
+        "preparing",
+        "ready",
+        "partial",
+        "unmet",
+        "refused",
+        "cancelled"
+      ]
+    },
+    "reason": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "needed": {
+      "type": "object",
+      "required": [
+        "units",
+        "amount"
+      ],
+      "properties": {
+        "units": {
+          "const": "bytes"
+        },
+        "amount": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "job": {
+      "$ref": "common.schema.json#/$defs/job_subject"
+    },
+    "consumer": {
+      "type": "object",
+      "required": [
+        "task",
+        "principal"
+      ],
+      "properties": {
+        "task": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "principal": {
+          "$ref": "../../core/1/common.schema.json#/$defs/principal"
+        },
+        "executor": {
+          "$ref": "../../core/1/common.schema.json#/$defs/identifier"
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "limits": {
+      "$ref": "common.schema.json#/$defs/limits"
+    },
+    "items": {
+      "type": "array",
+      "maxItems": 256,
+      "items": {
+        "$ref": "common.schema.json#/$defs/item_result"
+      }
+    },
+    "packets": {
+      "type": "array",
+      "maxItems": 256,
+      "items": {
+        "type": "object",
+        "required": [
+          "reference",
+          "current"
+        ],
+        "properties": {
+          "reference": {
+            "$ref": "common.schema.json#/$defs/packet_reference"
+          },
+          "current": {
+            "type": "boolean"
+          },
+          "supersedes": {
+            "type": "object",
+            "required": [
+              "revision"
+            ],
+            "properties": {
+              "revision": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "unevaluatedProperties": false
+          }
+        },
+        "unevaluatedProperties": false
+      }
+    }
+  },
+  "unevaluatedProperties": false,
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Combraton/protocol/schemas/context/1/context.request.inspect.result.schema.json",
+  "title": "context.request.inspect result"
+}

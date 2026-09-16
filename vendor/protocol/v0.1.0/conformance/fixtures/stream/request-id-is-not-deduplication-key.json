@@ -1,0 +1,121 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "stream.request-id-is-not-deduplication-key",
+  "version": 1,
+  "title": "Two different commands may reuse one JSON-RPC request id",
+  "requirements": [
+    "CORE-1",
+    "TRN-1"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/CORE.md#2-identities-are-distinct"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "core-test",
+      "major": 1
+    }
+  ],
+  "polarity": "negative",
+  "kills": [
+    "dedupe-by-transport-id"
+  ],
+  "steps": [
+    {
+      "step": "start"
+    },
+    {
+      "step": "negotiate"
+    },
+    {
+      "step": "command",
+      "operation": "core-test.subject.put",
+      "command_id": "cmd-a",
+      "subject": {
+        "kind": "core-test.subject",
+        "id": "s-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core-test.subject",
+            "id": "s-1"
+          },
+          "revision": 0
+        }
+      ],
+      "authority_epoch": 0,
+      "payload": {
+        "value": "a"
+      },
+      "id": 7,
+      "expect": {
+        "ok": {
+          "replay": false
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "core-test.subject.put",
+      "command_id": "cmd-b",
+      "subject": {
+        "kind": "core-test.subject",
+        "id": "s-2"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core-test.subject",
+            "id": "s-2"
+          },
+          "revision": 0
+        }
+      ],
+      "authority_epoch": 0,
+      "payload": {
+        "value": "b"
+      },
+      "id": 7,
+      "expect": {
+        "ok": {
+          "replay": false
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core-test.subject.applied_count",
+      "payload": {
+        "subject": {
+          "kind": "core-test.subject",
+          "id": "s-1"
+        }
+      },
+      "expect": {
+        "ok": {
+          "applied_count": 1
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core-test.subject.applied_count",
+      "payload": {
+        "subject": {
+          "kind": "core-test.subject",
+          "id": "s-2"
+        }
+      },
+      "expect": {
+        "ok": {
+          "applied_count": 1
+        }
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

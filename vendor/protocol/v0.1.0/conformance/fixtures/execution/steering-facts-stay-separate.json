@@ -1,0 +1,517 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "execution.steering-facts-stay-separate",
+  "version": 1,
+  "title": "A steering request, its native acknowledgment and the behavior later observed are separate facts; without live steering the refusal is explicit with an alternative",
+  "requirements": [
+    "EXE-9",
+    "EFF-1"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/EXECUTION.md#11-optional-features"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "execution",
+      "major": 1
+    }
+  ],
+  "features": [
+    "core.events",
+    "core.capabilities",
+    "core.effects",
+    "execution.steering"
+  ],
+  "requires_controls": [
+    "executor.script",
+    "clock.file"
+  ],
+  "polarity": "negative",
+  "kills": [
+    "steer-claims-delivery",
+    "steer-ack-implies-behavior",
+    "steer-unsupported-accepted"
+  ],
+  "kill_expectations": {
+    "steer-claims-delivery": {
+      "step": 5,
+      "reason_contains": "steering/0/delivery"
+    },
+    "steer-ack-implies-behavior": {
+      "step": 7,
+      "reason_contains": "steering/0/behavior"
+    },
+    "steer-unsupported-accepted": {
+      "step": 16,
+      "reason_contains": "acknowledgment/effect_refs"
+    }
+  },
+  "steps": [
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ],
+        "executor": {
+          "adapter": {
+            "steering": "live"
+          },
+          "scripts": {
+            "e-1": [
+              {
+                "deliver": "provider_ack_id"
+              },
+              {
+                "wait_for": "steer"
+              },
+              {
+                "wait_until": "2030-01-01T00:01:00Z"
+              },
+              {
+                "steer_deliver": "provider_ack_id"
+              },
+              {
+                "wait_until": "2030-01-01T00:02:00Z"
+              },
+              {
+                "steer_behavior": "observed"
+              },
+              {
+                "stall": true
+              }
+            ]
+          }
+        },
+        "clock": {
+          "controlled": "2030-01-01T00:00:00Z"
+        }
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.capabilities",
+              "core.effects"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "execution",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "execution.steering"
+            ],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "execution.submit",
+      "command_id": "submit-e-1",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "e-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "e-1"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "brief": {
+          "digest": "sha256:abababababababababababababababababababababababababababababababab",
+          "media_type": "text/plain"
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "execution.inspect",
+      "payload": {
+        "execution": "e-1"
+      },
+      "expect": {
+        "ok": {
+          "delivery": "acknowledged"
+        }
+      },
+      "capture": {
+        "r1": "/result/revision"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "execution.steer",
+      "command_id": "steer-e-1",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "e-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "e-1"
+          },
+          "revision": {
+            "$var": "r1"
+          }
+        }
+      ],
+      "payload": {
+        "message": {
+          "digest": "sha256:cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+          "media_type": "text/plain"
+        }
+      },
+      "expect": {
+        "ok": {
+          "acknowledgment": {
+            "effect_refs": [
+              "e-1.steer-1.delivery"
+            ]
+          },
+          "outcome": {
+            "steer_id": "e-1.steer-1",
+            "request": "recorded",
+            "delivery_id": "e-1.steer-1.delivery"
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "execution.inspect",
+      "payload": {
+        "execution": "e-1"
+      },
+      "expect": {
+        "ok": {
+          "steering": [
+            {
+              "steer_id": "e-1.steer-1",
+              "request": "recorded",
+              "delivery": "pending",
+              "behavior": "not_observed",
+              "evidence": {
+                "$absent": true
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "set_clock",
+      "instant": "2030-01-01T00:01:00Z"
+    },
+    {
+      "step": "query",
+      "operation": "execution.inspect",
+      "payload": {
+        "execution": "e-1"
+      },
+      "expect": {
+        "ok": {
+          "steering": [
+            {
+              "delivery": "acknowledged",
+              "proof_class": "provider_ack_id",
+              "evidence": {
+                "class": "provider_ack_id"
+              },
+              "behavior": "not_observed"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "set_clock",
+      "instant": "2030-01-01T00:02:00Z"
+    },
+    {
+      "step": "query",
+      "operation": "execution.inspect",
+      "payload": {
+        "execution": "e-1"
+      },
+      "expect": {
+        "ok": {
+          "steering": [
+            {
+              "delivery": "acknowledged",
+              "behavior": "observed",
+              "behavior_evidence": {
+                "class": "harness_observation"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core.effects.get",
+      "payload": {
+        "effect": "e-1.steer-1.delivery"
+      },
+      "expect": {
+        "ok": {
+          "effect": {
+            "kind": "execution.steering_delivery",
+            "retry_class": "non_repeatable",
+            "payload_digest": "sha256:cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"
+          },
+          "status": "succeeded"
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core.events.read",
+      "payload": {
+        "from": "start",
+        "limit": 100,
+        "kinds": [
+          "execution.execution"
+        ]
+      },
+      "expect": {
+        "ok": {
+          "items": [
+            {
+              "event": {
+                "type": "execution.admission.changed"
+              }
+            },
+            {
+              "event": {
+                "type": "execution.delivery.observed"
+              }
+            },
+            {
+              "event": {
+                "type": "execution.steer.requested",
+                "origin": "command",
+                "payload": {
+                  "steer_id": "e-1.steer-1",
+                  "request": "recorded"
+                }
+              }
+            },
+            {
+              "event": {
+                "type": "execution.steer.delivery.observed",
+                "origin": "provider",
+                "payload": {
+                  "delivery": "acknowledged"
+                }
+              }
+            },
+            {
+              "event": {
+                "type": "execution.steer.behavior.observed",
+                "origin": "provider"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "stop"
+    },
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ],
+        "executor": {
+          "adapter": {
+            "steering": "unsupported"
+          },
+          "scripts": {
+            "e-1": [
+              {
+                "deliver": "provider_ack_id"
+              },
+              {
+                "wait_for": "steer"
+              },
+              {
+                "wait_until": "2030-01-01T00:01:00Z"
+              },
+              {
+                "steer_deliver": "provider_ack_id"
+              },
+              {
+                "wait_until": "2030-01-01T00:02:00Z"
+              },
+              {
+                "steer_behavior": "observed"
+              },
+              {
+                "stall": true
+              }
+            ]
+          }
+        },
+        "clock": {
+          "controlled": "2030-01-01T00:02:00Z"
+        }
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.capabilities",
+              "core.effects"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "execution",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "execution.steering"
+            ],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "query",
+      "operation": "execution.inspect",
+      "payload": {
+        "execution": "e-1"
+      },
+      "expect": {
+        "ok": {}
+      },
+      "capture": {
+        "r2": "/result/revision"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "execution.steer",
+      "command_id": "steer-e-1-without-live-steering",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "e-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "e-1"
+          },
+          "revision": {
+            "$var": "r2"
+          }
+        }
+      ],
+      "payload": {
+        "message": {
+          "digest": "sha256:cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+          "media_type": "text/plain"
+        }
+      },
+      "expect": {
+        "ok": {
+          "acknowledgment": {
+            "effect_refs": {
+              "$exact": []
+            }
+          },
+          "outcome": {
+            "request": "not_supported",
+            "alternative": {
+              "$type": "string"
+            },
+            "delivery_id": {
+              "$absent": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "execution.inspect",
+      "payload": {
+        "execution": "e-1"
+      },
+      "expect": {
+        "ok": {
+          "steering": [
+            {
+              "request": "recorded"
+            },
+            {
+              "steer_id": "e-1.steer-2",
+              "request": "not_supported",
+              "delivery_id": {
+                "$absent": true
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

@@ -1,6 +1,6 @@
 # ADR 001: standalone CBR v0.1 scope, stack and evaluation posture
 
-- **Status:** accepted, with two named items unresolved (see [Unresolved](#unresolved)).
+- **Status:** accepted. The project licence was resolved on 2026-09-16; two items remain unresolved (see [Unresolved](#unresolved)).
 - **Date:** 2026-09-16.
 - **Authority:** the owner, answering the nine questions in [TALK §5](../work/readiness/TALK.md), after independent review of [PR #2](https://github.com/Combraton/cbr/pull/2) at head `b8ba7f3` against base `3278393`. The reviewer independently reproduced the protocol pin facts, the condition-vocabulary gap, the reference provider's synchronous design, the fixture counts and the crate licences.
 - **Scope:** CBR-local implementation choices. Wire and compatibility decisions belong to Protocol; cross-system authority belongs to Combraton. This record selects nothing outside this repository.
@@ -25,6 +25,7 @@ Nothing on the wire. CBR remains pinned to Protocol `v0.1.0` (`cbf8e4df9df2ca8a9
 | 6 | The early journey-6 pilot at M3 | **Yes**, on a repository still to be named (see [Unresolved](#unresolved)). Labelled **pilot**: it is a steer, not evidence, and may not be cited as downstream-task evidence for the gate. |
 | 7 | CBR's own mutant set | **Yes.** One mutant per named negative control in [JOURNEYS](../verification/JOURNEYS.md), built in **M6**, with `WRONG-REASON` reported when a mutant fails at the wrong step or for the wrong reason — the pattern the Protocol repository already runs at scale. |
 | 8 | Source identity | **As proposed** in [PROTOCOL-PIN §5](../work/readiness/PROTOCOL-PIN.md): `tree` is the git root tree object id, not the commit. **Additionally, record the commit id in the evidence descriptor**, which removes the cost noted in that section — content identity governs applicability while the commit remains recoverable from evidence. |
+| 10 | Project licence | **MIT**, the same text and holder line as Protocol. `LICENSE` at the repository root, `license = "MIT"` in `[workspace.package]`, inherited by every crate. This removes the Cargo inheritance error that `exclude = ["vendor"]` worked around, but **not** the reason for building the conformance runner from the release archive: that is about naming the exact runner that produced a result, and it stands regardless. |
 | 9 | Relevance measurement | **Diagnostic only, in the M7 pilot.** Prefer **counting downstream re-investigation of content the packet already contained** over self-reported prediction, which is weaker and gameable. Never a gate criterion. |
 
 Two design statements accepted alongside them, both now recorded in [PROTOCOL-PIN §3](../work/readiness/PROTOCOL-PIN.md):
@@ -34,10 +35,11 @@ Two design statements accepted alongside them, both now recorded in [PROTOCOL-PI
 
 ## Unresolved
 
-Two lines of the owner's answer were left to be filled in and are **not** decided. Neither is guessed, and neither blocks the work that does not depend on it.
+Two lines of the owner's answer were left to be filled in and are **not** decided. Neither is guessed, and neither blocks the work that does not depend on it. The project licence, previously listed here, was decided on 2026-09-16 and is struck through below.
 
 | Item | What is missing | What happens until it arrives |
 |---|---|---|
+| ~~**Project licence**~~ | ~~Not selected~~ | **Resolved 2026-09-16: MIT**, matching Protocol, with the holder line `Copyright (c) 2026 Combraton contributors`. See question 10 below. |
 | **Provider and spend budget** (question 3) | The provider, the model ids, the monthly ceiling and the paying account | No provider credential is used. M4 is built and fault-tested against a **labelled fake model** only, and its acceptance is explicitly withheld. M7 does not start. Journey 6 and the full form of journeys 2–5 stay blocked. The budget-envelope mechanism — debit before the call, never reconcile after — is already decided and is implemented regardless. |
 | **Journey-6 pilot repository** (question 6) | Which repository the M3 pilot runs against | The pilot is designed and scheduled into M3 but not run. M3's other acceptance, including journey 1 with no model, is unaffected. |
 

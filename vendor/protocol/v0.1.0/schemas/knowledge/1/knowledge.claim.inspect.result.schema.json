@@ -1,0 +1,189 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Combraton/protocol/schemas/knowledge/1/knowledge.claim.inspect.result.schema.json",
+  "title": "knowledge.claim.inspect result",
+  "type": "object",
+  "required": [
+    "reference",
+    "record",
+    "current_revision",
+    "reliance",
+    "applicability",
+    "health",
+    "availability",
+    "support",
+    "conflicts"
+  ],
+  "properties": {
+    "reference": {
+      "$ref": "common.schema.json#/$defs/claim_reference"
+    },
+    "record": {
+      "$ref": "common.schema.json#/$defs/record"
+    },
+    "current_revision": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "reliance": {
+      "type": "object",
+      "required": [
+        "state"
+      ],
+      "properties": {
+        "state": {
+          "$ref": "common.schema.json#/$defs/reliance_state"
+        },
+        "decision": {
+          "$ref": "../../core/1/common.schema.json#/$defs/identifier"
+        },
+        "permitted_use": {
+          "$ref": "common.schema.json#/$defs/permitted_use"
+        },
+        "author_is_decider": {
+          "type": "boolean"
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "applicability": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "evaluation",
+          "target",
+          "result",
+          "evaluator"
+        ],
+        "properties": {
+          "evaluation": {
+            "$ref": "../../core/1/common.schema.json#/$defs/identifier"
+          },
+          "target": {
+            "$ref": "common.schema.json#/$defs/basis"
+          },
+          "result": {
+            "$ref": "common.schema.json#/$defs/applicability_result"
+          },
+          "evaluator": {
+            "$ref": "common.schema.json#/$defs/evaluator"
+          }
+        },
+        "unevaluatedProperties": false
+      }
+    },
+    "health": {
+      "enum": [
+        "healthy",
+        "degraded",
+        "failing",
+        "unknown",
+        "not_applicable"
+      ]
+    },
+    "availability": {
+      "type": "object",
+      "required": [
+        "state",
+        "counts"
+      ],
+      "properties": {
+        "state": {
+          "enum": [
+            "complete",
+            "partial",
+            "unavailable",
+            "purged",
+            "unknown"
+          ]
+        },
+        "counts": {
+          "type": "object",
+          "required": [
+            "available",
+            "unavailable",
+            "purged",
+            "unknown"
+          ],
+          "properties": {
+            "available": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "unavailable": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "purged": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "unknown": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "unevaluatedProperties": false
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "support": {
+      "type": "object",
+      "required": [
+        "class",
+        "unknown_ancestry"
+      ],
+      "properties": {
+        "class": {
+          "enum": [
+            "unsupported",
+            "single_lineage",
+            "multiple_lineages",
+            "overlapping_lineages",
+            "undetermined"
+          ]
+        },
+        "unknown_ancestry": {
+          "type": "array",
+          "items": {
+            "$ref": "../../core/1/common.schema.json#/$defs/identifier"
+          }
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "conflicts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "conflict",
+          "kind",
+          "status",
+          "state"
+        ],
+        "properties": {
+          "conflict": {
+            "$ref": "../../core/1/common.schema.json#/$defs/identifier"
+          },
+          "kind": {
+            "$ref": "common.schema.json#/$defs/conflict_kind"
+          },
+          "status": {
+            "$ref": "common.schema.json#/$defs/conflict_status"
+          },
+          "state": {
+            "enum": [
+              "open",
+              "resolved"
+            ]
+          }
+        },
+        "unevaluatedProperties": false
+      }
+    }
+  },
+  "unevaluatedProperties": false
+}

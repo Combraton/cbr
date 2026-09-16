@@ -1,0 +1,247 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "execution.cancel-returns-a-request-receipt",
+  "version": 1,
+  "title": "Cancel returns a request receipt; the observed outcome comes later and can be a refusal; a retransmission returns the same receipt",
+  "requirements": [
+    "EXE-8",
+    "SCN-15"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/EXECUTION.md#7-cancellation-and-fencing"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "execution",
+      "major": 1
+    }
+  ],
+  "features": [
+    "core.events",
+    "core.capabilities",
+    "core.effects"
+  ],
+  "requires_controls": [
+    "executor.script"
+  ],
+  "polarity": "negative",
+  "kills": [
+    "cancel-reports-cancelled"
+  ],
+  "kill_expectations": {
+    "cancel-reports-cancelled": {
+      "step": 5,
+      "reason_contains": "cancellation/outcome"
+    }
+  },
+  "steps": [
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ],
+        "executor": {
+          "scripts": {
+            "e-1": [
+              {
+                "deliver": "provider_ack_id"
+              },
+              {
+                "on_cancel": "refused"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.capabilities",
+              "core.effects"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "execution",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "execution.submit",
+      "command_id": "submit-e-1",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "e-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "e-1"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "brief": {
+          "digest": "sha256:abababababababababababababababababababababababababababababababab",
+          "media_type": "text/plain"
+        }
+      }
+    },
+    {
+      "step": "describe"
+    },
+    {
+      "step": "command",
+      "operation": "execution.cancel",
+      "command_id": "cancel-e-1",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "e-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "e-1"
+          },
+          "revision": 2
+        }
+      ],
+      "payload": {},
+      "expect": {
+        "ok": {
+          "replay": false,
+          "outcome": {
+            "receipt": {
+              "state": "cancel_requested"
+            }
+          }
+        }
+      },
+      "capture": {
+        "receipt": "/result/outcome/receipt"
+      }
+    },
+    {
+      "step": "query",
+      "operation": "execution.inspect",
+      "payload": {
+        "execution": "e-1"
+      },
+      "expect": {
+        "ok": {
+          "cancellation": {
+            "receipt": {
+              "$var": "receipt"
+            },
+            "outcome": "refused"
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "execution.cancel",
+      "command_id": "cancel-e-1",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "e-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "e-1"
+          },
+          "revision": 2
+        }
+      ],
+      "payload": {},
+      "expect": {
+        "ok": {
+          "replay": true,
+          "outcome": {
+            "receipt": {
+              "$var": "receipt"
+            }
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core.events.read",
+      "payload": {
+        "from": "start",
+        "limit": 100,
+        "kinds": [
+          "execution.execution"
+        ]
+      },
+      "expect": {
+        "ok": {
+          "items": [
+            {
+              "event": {
+                "type": "execution.admission.changed"
+              }
+            },
+            {
+              "event": {
+                "type": "execution.delivery.observed"
+              }
+            },
+            {
+              "event": {
+                "type": "execution.cancel.requested",
+                "origin": "command"
+              }
+            },
+            {
+              "event": {
+                "type": "execution.cancel.observed",
+                "origin": "provider",
+                "payload": {
+                  "outcome": "refused"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

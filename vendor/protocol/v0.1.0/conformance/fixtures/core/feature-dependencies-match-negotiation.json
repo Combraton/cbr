@@ -1,0 +1,595 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "core.feature-dependencies-match-negotiation",
+  "version": 2,
+  "title": "core.feature_dependencies lists each supported profile major's Core features, before and after negotiation, without negotiating or appending anything; every listed profile dependency is exactly what negotiation enforces",
+  "requirements": [
+    "CMP-5",
+    "CORE-3"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/CORE.md#43-corefeature_dependencies-query-m6-q1",
+    "docs/spec/profiles/CORE.md#42-corenegotiate-query",
+    "docs/spec/profiles/EXECUTION.md#1-dependencies-and-negotiation"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "execution",
+      "major": 1
+    },
+    {
+      "name": "evidence",
+      "major": 1
+    },
+    {
+      "name": "context",
+      "major": 1
+    },
+    {
+      "name": "knowledge",
+      "major": 1
+    },
+    {
+      "name": "verification",
+      "major": 1
+    }
+  ],
+  "features": [
+    "core.events",
+    "core.capabilities",
+    "core.effects",
+    "execution.context"
+  ],
+  "requires_controls": [
+    "executor.script"
+  ],
+  "polarity": "positive",
+  "kills": [],
+  "steps": [
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ],
+        "executor": {}
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core.feature_dependencies",
+      "payload": {},
+      "expect": {
+        "ok": {
+          "dependencies": {
+            "$contains": {
+              "profile": "execution",
+              "major": 1,
+              "trigger": {
+                "$exact": {
+                  "kind": "profile"
+                }
+              },
+              "requires": [
+                {
+                  "$exact": {
+                    "profile": "core",
+                    "major": 1,
+                    "features": [
+                      "core.events",
+                      "core.capabilities",
+                      "core.effects"
+                    ]
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core.feature_dependencies",
+      "payload": {},
+      "expect": {
+        "ok": {
+          "dependencies": {
+            "$contains": {
+              "profile": "evidence",
+              "major": 1,
+              "trigger": {
+                "$exact": {
+                  "kind": "profile"
+                }
+              },
+              "requires": [
+                {
+                  "$exact": {
+                    "profile": "core",
+                    "major": 1,
+                    "features": [
+                      "core.events"
+                    ]
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core.feature_dependencies",
+      "payload": {},
+      "expect": {
+        "ok": {
+          "dependencies": {
+            "$contains": {
+              "profile": "context",
+              "major": 1,
+              "trigger": {
+                "$exact": {
+                  "kind": "profile"
+                }
+              },
+              "requires": [
+                {
+                  "$exact": {
+                    "profile": "core",
+                    "major": 1,
+                    "features": [
+                      "core.events"
+                    ]
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core.feature_dependencies",
+      "payload": {},
+      "expect": {
+        "ok": {
+          "dependencies": {
+            "$contains": {
+              "profile": "knowledge",
+              "major": 1,
+              "trigger": {
+                "$exact": {
+                  "kind": "profile"
+                }
+              },
+              "requires": [
+                {
+                  "$exact": {
+                    "profile": "core",
+                    "major": 1,
+                    "features": [
+                      "core.events"
+                    ]
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core.feature_dependencies",
+      "payload": {},
+      "expect": {
+        "ok": {
+          "dependencies": {
+            "$contains": {
+              "profile": "verification",
+              "major": 1,
+              "trigger": {
+                "$exact": {
+                  "kind": "profile"
+                }
+              },
+              "requires": [
+                {
+                  "$exact": {
+                    "profile": "core",
+                    "major": 1,
+                    "features": [
+                      "core.events",
+                      "core.capabilities"
+                    ]
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core.capabilities",
+      "payload": {},
+      "expect": {
+        "error": "negotiation_required"
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          },
+          {
+            "name": "execution",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      },
+      "expect": {
+        "error": "unsupported_profile",
+        "details": {
+          "unsatisfied": [
+            {
+              "profile": "execution",
+              "feature": "core.events",
+              "reason": "dependency_not_selected"
+            },
+            {
+              "profile": "execution",
+              "feature": "core.capabilities",
+              "reason": "dependency_not_selected"
+            },
+            {
+              "profile": "execution",
+              "feature": "core.effects",
+              "reason": "dependency_not_selected"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          },
+          {
+            "name": "evidence",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      },
+      "expect": {
+        "error": "unsupported_profile",
+        "details": {
+          "unsatisfied": [
+            {
+              "profile": "evidence",
+              "feature": "core.events",
+              "reason": "dependency_not_selected"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          },
+          {
+            "name": "context",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      },
+      "expect": {
+        "error": "unsupported_profile",
+        "details": {
+          "unsatisfied": [
+            {
+              "profile": "context",
+              "feature": "core.events",
+              "reason": "dependency_not_selected"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          },
+          {
+            "name": "knowledge",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      },
+      "expect": {
+        "error": "unsupported_profile",
+        "details": {
+          "unsatisfied": [
+            {
+              "profile": "knowledge",
+              "feature": "core.events",
+              "reason": "dependency_not_selected"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          },
+          {
+            "name": "verification",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      },
+      "expect": {
+        "error": "unsupported_profile",
+        "details": {
+          "unsatisfied": [
+            {
+              "profile": "verification",
+              "feature": "core.events",
+              "reason": "dependency_not_selected"
+            },
+            {
+              "profile": "verification",
+              "feature": "core.capabilities",
+              "reason": "dependency_not_selected"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.capabilities",
+              "core.effects"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "execution",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "execution.context"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "evidence",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          },
+          {
+            "name": "context",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          },
+          {
+            "name": "knowledge",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          },
+          {
+            "name": "verification",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      },
+      "expect": {
+        "ok": {
+          "selected": {
+            "$contains": {
+              "name": "verification",
+              "major": 1
+            }
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core.feature_dependencies",
+      "payload": {},
+      "expect": {
+        "ok": {
+          "dependencies": {
+            "$contains": {
+              "profile": "execution",
+              "major": 1,
+              "trigger": {
+                "$exact": {
+                  "kind": "profile"
+                }
+              },
+              "requires": [
+                {
+                  "$exact": {
+                    "profile": "core",
+                    "major": 1,
+                    "features": [
+                      "core.events",
+                      "core.capabilities",
+                      "core.effects"
+                    ]
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core.events.read",
+      "payload": {
+        "from": "start",
+        "limit": 10
+      },
+      "expect": {
+        "ok": {
+          "items": []
+        }
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

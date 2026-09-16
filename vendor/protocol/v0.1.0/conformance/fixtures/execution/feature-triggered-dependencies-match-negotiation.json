@@ -1,0 +1,378 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "execution.feature-triggered-dependencies-match-negotiation",
+  "version": 1,
+  "title": "A provider supporting execution.claim_revalidation reports its dependency on execution.context_revalidation as a feature entry, and negotiation enforces exactly that in the required, optional and optional-profile forms, after profile-triggered dependencies",
+  "requirements": [
+    "CMP-5",
+    "EXE-17"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/CORE.md#43-corefeature_dependencies-query-m6-q1",
+    "docs/spec/profiles/CORE.md#42-corenegotiate-query",
+    "docs/spec/profiles/EXECUTION.md#133-claim-revalidation-executionclaim_revalidation"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "execution",
+      "major": 1
+    }
+  ],
+  "features": [
+    "core.events",
+    "core.capabilities",
+    "core.effects",
+    "execution.context",
+    "execution.context_revalidation",
+    "execution.claim_revalidation"
+  ],
+  "requires_controls": [
+    "executor.script"
+  ],
+  "polarity": "negative",
+  "kills": [
+    "feature-dependencies-omit-feature-trigger",
+    "feature-dependency-unenforced"
+  ],
+  "steps": [
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ],
+        "executor": {}
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core.feature_dependencies",
+      "payload": {},
+      "expect": {
+        "ok": {
+          "dependencies": {
+            "$contains": {
+              "profile": "execution",
+              "major": 1,
+              "trigger": {
+                "$exact": {
+                  "kind": "feature",
+                  "feature": "execution.claim_revalidation"
+                }
+              },
+              "requires": [
+                {
+                  "$exact": {
+                    "profile": "execution",
+                    "major": 1,
+                    "features": [
+                      "execution.context_revalidation"
+                    ]
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.capabilities",
+              "core.effects"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "execution",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "execution.context",
+              "execution.claim_revalidation"
+            ],
+            "optional_features": []
+          }
+        ]
+      },
+      "expect": {
+        "error": "unsupported_required_feature",
+        "details": {
+          "unsatisfied": [
+            {
+              "profile": "execution",
+              "feature": "execution.claim_revalidation",
+              "reason": "dependency_not_selected"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.capabilities"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "execution",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "execution.context",
+              "execution.claim_revalidation"
+            ],
+            "optional_features": []
+          }
+        ]
+      },
+      "expect": {
+        "error": "unsupported_profile",
+        "details": {
+          "unsatisfied": [
+            {
+              "profile": "execution",
+              "feature": "core.effects",
+              "reason": "dependency_not_selected"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.capabilities",
+              "core.effects"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "execution",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "execution.context",
+              "execution.context_revalidation",
+              "execution.claim_revalidation"
+            ],
+            "optional_features": []
+          }
+        ]
+      },
+      "expect": {
+        "ok": {
+          "selected": {
+            "$contains": {
+              "name": "execution",
+              "features": {
+                "$contains": "execution.claim_revalidation"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "step": "stop"
+    },
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ],
+        "executor": {}
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.capabilities",
+              "core.effects"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "execution",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "execution.context"
+            ],
+            "optional_features": [
+              "execution.claim_revalidation"
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "ok": {
+          "selected": {
+            "$contains": {
+              "name": "execution",
+              "features": [
+                "execution.context"
+              ]
+            }
+          },
+          "unselected": [
+            {
+              "profile": "execution",
+              "feature": "execution.claim_revalidation",
+              "reason": "dependency_not_selected"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "stop"
+    },
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ],
+        "executor": {}
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.capabilities",
+              "core.effects"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "execution",
+            "majors": [
+              1
+            ],
+            "required": false,
+            "required_features": [
+              "execution.context",
+              "execution.claim_revalidation"
+            ],
+            "optional_features": []
+          }
+        ]
+      },
+      "expect": {
+        "ok": {
+          "selected": [
+            {
+              "name": "core"
+            }
+          ],
+          "unselected": [
+            {
+              "profile": "execution",
+              "feature": "execution.claim_revalidation",
+              "reason": "dependency_not_selected"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

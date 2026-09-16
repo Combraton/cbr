@@ -1,0 +1,23 @@
+{
+  "type": "object",
+  "required": [
+    "citation",
+    "evidence",
+    "excerpt"
+  ],
+  "properties": {
+    "citation": {
+      "$ref": "../../core/1/common.schema.json#/$defs/identifier"
+    },
+    "evidence": {
+      "$ref": "../../evidence/1/common.schema.json#/$defs/reference"
+    },
+    "excerpt": {
+      "$ref": "common.schema.json#/$defs/excerpt"
+    }
+  },
+  "unevaluatedProperties": false,
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Combraton/protocol/schemas/context/1/context.expand.result.schema.json",
+  "title": "context.expand result"
+}

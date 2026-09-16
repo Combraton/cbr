@@ -1,0 +1,195 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "execution.completion-receipts-resist-conflicts-and-old-attempts",
+  "version": 1,
+  "title": "A duplicate completion returns the receipt, conflicting content is rejected, and a superseded attempt cannot finalize",
+  "requirements": [
+    "EXE-6",
+    "SCN-3"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/EXECUTION.md#6-completion-receipts"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "execution",
+      "major": 1
+    }
+  ],
+  "features": [
+    "core.events",
+    "core.capabilities",
+    "core.effects"
+  ],
+  "requires_controls": [
+    "executor.script"
+  ],
+  "polarity": "negative",
+  "kills": [
+    "last-completion-wins",
+    "old-attempt-finalizes"
+  ],
+  "kill_expectations": {
+    "last-completion-wins": {
+      "step": 4,
+      "reason_contains": "status"
+    },
+    "old-attempt-finalizes": {
+      "step": 4,
+      "reason_contains": "result/"
+    }
+  },
+  "steps": [
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ],
+        "executor": {
+          "scripts": {
+            "e-1": [
+              {
+                "deliver": "provider_ack_id"
+              },
+              {
+                "host_restart": true
+              },
+              {
+                "complete": {
+                  "completion_id": "c-old",
+                  "content": "late result",
+                  "generation": 1
+                }
+              },
+              {
+                "complete": {
+                  "completion_id": "c-2",
+                  "content": "final result"
+                }
+              },
+              {
+                "complete": {
+                  "completion_id": "c-2",
+                  "content": "final result"
+                }
+              },
+              {
+                "complete": {
+                  "completion_id": "c-2",
+                  "content": "other result"
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.capabilities",
+              "core.effects"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "execution",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "execution.submit",
+      "command_id": "submit-e-1",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "e-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "e-1"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "brief": {
+          "digest": "sha256:abababababababababababababababababababababababababababababababab",
+          "media_type": "text/plain"
+        }
+      }
+    },
+    {
+      "step": "describe"
+    },
+    {
+      "step": "query",
+      "operation": "execution.inspect",
+      "payload": {
+        "execution": "e-1"
+      },
+      "expect": {
+        "ok": {
+          "result": "returned",
+          "finalized_by": "c-2",
+          "host": {
+            "generation": 2
+          },
+          "completions": [
+            {
+              "completion_id": "c-old",
+              "generation": 1,
+              "status": "superseded_attempt"
+            },
+            {
+              "completion_id": "c-2",
+              "generation": 2,
+              "status": "recorded"
+            },
+            {
+              "completion_id": "c-2",
+              "generation": 2,
+              "status": "duplicate"
+            },
+            {
+              "completion_id": "c-2",
+              "generation": 2,
+              "status": "conflict"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

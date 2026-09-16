@@ -1,0 +1,1272 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "verification.evaluate-contract-returns-a-job-and-pins-its-evaluator",
+  "version": 3,
+  "title": "evaluate_contract returns only a job reference; the job pins the exact evaluator version, records property results durably and issues a separate receipt; an unsupported evaluator version is capability_unavailable and never substituted",
+  "requirements": [
+    "VER-3",
+    "VER-1"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/VERIFICATION.md#4-evaluating-a-contract-verificationjobs-ver-3-m5-q9"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "verification",
+      "major": 1
+    },
+    {
+      "name": "evidence",
+      "major": 1
+    }
+  ],
+  "features": [
+    "core.events",
+    "core.grants",
+    "core.capabilities",
+    "verification.jobs",
+    "verification.record"
+  ],
+  "requires_controls": [
+    "clock.file",
+    "verifier.script"
+  ],
+  "polarity": "negative",
+  "kills": [
+    "results-in-outcome",
+    "evaluator-version-substituted",
+    "absent-evaluator-unsupported",
+    "issued-environment-requested",
+    "receipt-id-collision-accepted",
+    "evaluator-after-preconditions",
+    "issued-events-job-first",
+    "issued-scope-from-job"
+  ],
+  "steps": [
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ],
+        "clock": {
+          "controlled": "2030-01-01T00:00:00Z"
+        },
+        "verifier": {
+          "evaluators": [
+            {
+              "id": "journey",
+              "version": "1",
+              "status": "supported"
+            },
+            {
+              "id": "journey",
+              "version": "2",
+              "status": "unsupported"
+            }
+          ],
+          "scripts": {
+            "j1": [
+              {
+                "property": {
+                  "property_id": "parser.unit",
+                  "result": "pass"
+                }
+              },
+              {
+                "wait_until": "2030-01-01T00:00:10Z"
+              },
+              {
+                "property": {
+                  "property_id": "upload.journey",
+                  "result": "indeterminate",
+                  "reason": "browser_unavailable"
+                }
+              },
+              {
+                "complete": true
+              }
+            ],
+            "j-observe": [
+              {
+                "observe": {
+                  "anchors": {
+                    "browser": "chromium-121"
+                  }
+                }
+              },
+              {
+                "property": {
+                  "property_id": "upload.journey",
+                  "result": "pass"
+                }
+              },
+              {
+                "complete": true
+              }
+            ],
+            "j-stall": [
+              {
+                "property": {
+                  "property_id": "parser.unit",
+                  "result": "pass"
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.grants",
+              "core.capabilities"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "verification",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": [
+              "verification.jobs",
+              "verification.record"
+            ]
+          },
+          {
+            "name": "evidence",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.upload.prepare",
+      "command_id": "upload-prepare-c-upload",
+      "subject": {
+        "kind": "evidence.artifact",
+        "id": "c-upload"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.artifact",
+            "id": "c-upload"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "digest": "sha256:b6a846cf41d9f0cd7ba8632555dc505aca03369dbdb3d6475bb40e40a9b4822a",
+        "size": 609,
+        "media_type": "text/plain",
+        "producer": {
+          "producer_id": "fixture-producer"
+        },
+        "source": {
+          "kind": "test_report",
+          "id": "run-1"
+        },
+        "scope": "project-a",
+        "capture": {
+          "captured_at": "2030-01-01T00:00:00Z",
+          "anchors": [
+            {
+              "kind": "code_tree",
+              "id": "tree-1"
+            }
+          ]
+        },
+        "coverage": {
+          "completeness": "complete",
+          "covered": [
+            "report"
+          ],
+          "gaps": []
+        },
+        "retention_class": "standard"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.upload.append",
+      "command_id": "upload-append-c-upload",
+      "subject": {
+        "kind": "evidence.artifact",
+        "id": "c-upload"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.artifact",
+            "id": "c-upload"
+          },
+          "revision": 1
+        }
+      ],
+      "payload": {
+        "offset": 0,
+        "data_base64": "eyJlbnZpcm9ubWVudCI6eyJyZXF1aXJlZF9hbmNob3JzIjpbXX0sImV2YWx1YXRvcnMiOm51bGwsImZvcm1hdCI6ImNvbWJyYXRvbi12ZXJpZmljYXRpb24tY29udHJhY3QvMSIsImZyZXNobmVzcyI6bnVsbCwib3V0Y29tZSI6InVwbG9hZCBwcm9kdWNlcyB0aGUgZXhwZWN0ZWQgYXJ0aWZhY3QiLCJwcm9wZXJ0aWVzIjpbeyJsYXllciI6ImNvbXBvbmVudCIsInByb3BlcnR5X2lkIjoicGFyc2VyLnVuaXQiLCJyZXF1aXJlZCI6dHJ1ZSwic3RhdGVtZW50IjoidGhlIHBhcnNlciBoYW5kbGVzIGEgQk9NIn0seyJsYXllciI6ImpvdXJuZXkiLCJwcm9wZXJ0eV9pZCI6InVwbG9hZC5qb3VybmV5IiwicmVxdWlyZWQiOnRydWUsInN0YXRlbWVudCI6ImFuIHVwbG9hZCBwcm9kdWNlcyB0aGUgYXJ0aWZhY3QifSx7ImxheWVyIjoicXVhbGl0YXRpdmUiLCJwcm9wZXJ0eV9pZCI6ImRvY3MucmV2aWV3IiwicmVxdWlyZWQiOmZhbHNlLCJzdGF0ZW1lbnQiOiJ0aGUgaGVscCB0ZXh0IHJlYWRzIHdlbGwifV0sInN1YmplY3RzIjpbeyJraW5kIjoicmVwb3NpdG9yeV90cmVlIiwicm9sZSI6InRyZWUifSx7ImtpbmQiOiJldmlkZW5jZS5hcnRpZmFjdCIsInJvbGUiOiJvdXRwdXQifV19"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.seal",
+      "command_id": "seal-c-upload",
+      "subject": {
+        "kind": "evidence.artifact",
+        "id": "c-upload"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.artifact",
+            "id": "c-upload"
+          },
+          "revision": 2
+        }
+      ],
+      "payload": {},
+      "expect": {
+        "ok": {
+          "outcome": {
+            "state": "sealed"
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core.capabilities",
+      "payload": {},
+      "expect": {
+        "ok": {
+          "predicates": {
+            "$contains": {
+              "name": "verification.evaluator.journey.v1",
+              "status": "supported"
+            }
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "verification.evaluate_contract",
+      "command_id": "evaluate_contract-j1",
+      "subject": {
+        "kind": "verification.job",
+        "id": "j1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "verification.job",
+            "id": "j1"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "contract": {
+          "provider": "conformance-provider",
+          "artifact": {
+            "kind": "evidence.artifact",
+            "id": "c-upload"
+          },
+          "digest": "sha256:b6a846cf41d9f0cd7ba8632555dc505aca03369dbdb3d6475bb40e40a9b4822a"
+        },
+        "subjects": [
+          {
+            "role": "tree",
+            "digest": "t12"
+          },
+          {
+            "role": "output",
+            "digest": "sha256:db6ac92fefefaf3fa8610a74cd8dcef8815d173fbd7853f2ed5ac18c8ac1ff45"
+          }
+        ],
+        "environment": {
+          "anchors": {
+            "browser": "chromium-120"
+          }
+        },
+        "evaluator": {
+          "id": "journey",
+          "version": "1"
+        }
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "$exact": {
+              "job": {
+                "kind": "verification.job",
+                "id": "j1"
+              },
+              "state": "queued"
+            }
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "verification.job.inspect",
+      "payload": {
+        "job": "j1"
+      },
+      "expect": {
+        "ok": {
+          "state": "running",
+          "evaluator": {
+            "id": "journey",
+            "version": "1"
+          },
+          "recorded": [
+            {
+              "property_id": "parser.unit",
+              "result": "pass"
+            }
+          ],
+          "receipt": {
+            "$absent": true
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "verification.evaluate_contract",
+      "command_id": "evaluate-j1-unlisted-version",
+      "subject": {
+        "kind": "verification.job",
+        "id": "j1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "verification.job",
+            "id": "j1"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "contract": {
+          "provider": "conformance-provider",
+          "artifact": {
+            "kind": "evidence.artifact",
+            "id": "c-upload"
+          },
+          "digest": "sha256:b6a846cf41d9f0cd7ba8632555dc505aca03369dbdb3d6475bb40e40a9b4822a"
+        },
+        "subjects": [
+          {
+            "role": "tree",
+            "digest": "t12"
+          },
+          {
+            "role": "output",
+            "digest": "sha256:db6ac92fefefaf3fa8610a74cd8dcef8815d173fbd7853f2ed5ac18c8ac1ff45"
+          }
+        ],
+        "environment": {
+          "anchors": {
+            "browser": "chromium-120"
+          }
+        },
+        "evaluator": {
+          "id": "journey",
+          "version": "7"
+        }
+      },
+      "expect": {
+        "error": "capability_unavailable",
+        "details": {
+          "capability": "verification.evaluator.journey.v7",
+          "status": "unknown"
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core.events.read",
+      "payload": {
+        "from": "now",
+        "limit": 10,
+        "kinds": [
+          "verification.receipt",
+          "verification.job"
+        ]
+      },
+      "capture": {
+        "before_issue": "/result/next_cursor"
+      }
+    },
+    {
+      "step": "set_clock",
+      "instant": "2030-01-01T00:00:10Z"
+    },
+    {
+      "step": "query",
+      "operation": "verification.job.inspect",
+      "payload": {
+        "job": "j1"
+      },
+      "expect": {
+        "ok": {
+          "state": "completed"
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core.events.read",
+      "payload": {
+        "cursor": {
+          "$var": "before_issue"
+        },
+        "limit": 10,
+        "kinds": [
+          "verification.receipt",
+          "verification.job"
+        ]
+      },
+      "expect": {
+        "ok": {
+          "items": [
+            {
+              "event": {
+                "type": "verification.property.recorded",
+                "subject": {
+                  "id": "j1"
+                }
+              }
+            },
+            {
+              "event": {
+                "type": "verification.receipt.issued",
+                "subject": {
+                  "id": "j1"
+                }
+              }
+            },
+            {
+              "event": {
+                "type": "verification.job.changed",
+                "subject": {
+                  "id": "j1"
+                },
+                "payload": {
+                  "state": "completed"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "verification.job.inspect",
+      "payload": {
+        "job": "j1"
+      },
+      "expect": {
+        "ok": {
+          "state": "completed",
+          "recorded": [
+            {
+              "property_id": "parser.unit",
+              "result": "pass"
+            },
+            {
+              "property_id": "upload.journey",
+              "result": "indeterminate",
+              "reason": "browser_unavailable"
+            }
+          ],
+          "receipt": {
+            "provider": "conformance-provider",
+            "receipt": "j1",
+            "artifact": {
+              "artifact": {
+                "id": "receipt.j1"
+              }
+            }
+          }
+        }
+      },
+      "capture": {
+        "ra_j1": "/result/receipt/artifact/digest"
+      }
+    },
+    {
+      "step": "query",
+      "operation": "verification.receipt.inspect",
+      "payload": {
+        "receipt": "j1"
+      },
+      "expect": {
+        "ok": {
+          "content": {
+            "$canonical_sha256": {
+              "$var": "ra_j1"
+            }
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "verification.receipt.inspect",
+      "payload": {
+        "receipt": "j1"
+      },
+      "expect": {
+        "ok": {
+          "content": {
+            "job": "j1",
+            "scope": "upload produces the expected artifact",
+            "evaluator": {
+              "id": "journey",
+              "version": "1",
+              "principal": "conformance-provider"
+            },
+            "environment": {
+              "$exact": {
+                "anchors": {}
+              }
+            },
+            "properties": [
+              {
+                "property_id": "parser.unit",
+                "result": "pass"
+              },
+              {
+                "property_id": "upload.journey",
+                "result": "indeterminate",
+                "reason": "browser_unavailable"
+              },
+              {
+                "property_id": "docs.review",
+                "result": "not_evaluated",
+                "reason": "not_reported"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "verification.evaluate_contract",
+      "command_id": "evaluate_contract-j-v2",
+      "subject": {
+        "kind": "verification.job",
+        "id": "j-v2"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "verification.job",
+            "id": "j-v2"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "contract": {
+          "provider": "conformance-provider",
+          "artifact": {
+            "kind": "evidence.artifact",
+            "id": "c-upload"
+          },
+          "digest": "sha256:b6a846cf41d9f0cd7ba8632555dc505aca03369dbdb3d6475bb40e40a9b4822a"
+        },
+        "subjects": [
+          {
+            "role": "tree",
+            "digest": "t12"
+          },
+          {
+            "role": "output",
+            "digest": "sha256:db6ac92fefefaf3fa8610a74cd8dcef8815d173fbd7853f2ed5ac18c8ac1ff45"
+          }
+        ],
+        "environment": {
+          "anchors": {
+            "browser": "chromium-120"
+          }
+        },
+        "evaluator": {
+          "id": "journey",
+          "version": "2"
+        }
+      },
+      "expect": {
+        "error": "capability_unavailable",
+        "details": {
+          "capability": "verification.evaluator.journey.v2",
+          "status": "unsupported"
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "verification.evaluate_contract",
+      "command_id": "evaluate_contract-j-absent",
+      "subject": {
+        "kind": "verification.job",
+        "id": "j-absent"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "verification.job",
+            "id": "j-absent"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "contract": {
+          "provider": "conformance-provider",
+          "artifact": {
+            "kind": "evidence.artifact",
+            "id": "c-upload"
+          },
+          "digest": "sha256:b6a846cf41d9f0cd7ba8632555dc505aca03369dbdb3d6475bb40e40a9b4822a"
+        },
+        "subjects": [
+          {
+            "role": "tree",
+            "digest": "t12"
+          },
+          {
+            "role": "output",
+            "digest": "sha256:db6ac92fefefaf3fa8610a74cd8dcef8815d173fbd7853f2ed5ac18c8ac1ff45"
+          }
+        ],
+        "environment": {
+          "anchors": {
+            "browser": "chromium-120"
+          }
+        },
+        "evaluator": {
+          "id": "browser",
+          "version": "7"
+        }
+      },
+      "expect": {
+        "error": "capability_unavailable",
+        "details": {
+          "capability": "verification.evaluator.browser.v7",
+          "status": "unknown"
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "verification.evaluate_contract",
+      "command_id": "evaluate_contract-j-observe",
+      "subject": {
+        "kind": "verification.job",
+        "id": "j-observe"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "verification.job",
+            "id": "j-observe"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "contract": {
+          "provider": "conformance-provider",
+          "artifact": {
+            "kind": "evidence.artifact",
+            "id": "c-upload"
+          },
+          "digest": "sha256:b6a846cf41d9f0cd7ba8632555dc505aca03369dbdb3d6475bb40e40a9b4822a"
+        },
+        "subjects": [
+          {
+            "role": "tree",
+            "digest": "t12"
+          },
+          {
+            "role": "output",
+            "digest": "sha256:db6ac92fefefaf3fa8610a74cd8dcef8815d173fbd7853f2ed5ac18c8ac1ff45"
+          }
+        ],
+        "environment": {
+          "anchors": {
+            "browser": "chromium-120"
+          }
+        },
+        "evaluator": {
+          "id": "journey",
+          "version": "1"
+        }
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "state": "queued"
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "verification.receipt.inspect",
+      "payload": {
+        "receipt": "j-observe"
+      },
+      "expect": {
+        "ok": {
+          "content": {
+            "environment": {
+              "anchors": {
+                "browser": "chromium-121"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "verification.evaluate_contract",
+      "command_id": "evaluate_contract-j-stall",
+      "subject": {
+        "kind": "verification.job",
+        "id": "j-stall"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "verification.job",
+            "id": "j-stall"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "contract": {
+          "provider": "conformance-provider",
+          "artifact": {
+            "kind": "evidence.artifact",
+            "id": "c-upload"
+          },
+          "digest": "sha256:b6a846cf41d9f0cd7ba8632555dc505aca03369dbdb3d6475bb40e40a9b4822a"
+        },
+        "subjects": [
+          {
+            "role": "tree",
+            "digest": "t12"
+          },
+          {
+            "role": "output",
+            "digest": "sha256:db6ac92fefefaf3fa8610a74cd8dcef8815d173fbd7853f2ed5ac18c8ac1ff45"
+          }
+        ],
+        "environment": {
+          "anchors": {
+            "browser": "chromium-120"
+          }
+        },
+        "evaluator": {
+          "id": "journey",
+          "version": "1"
+        }
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "state": "queued"
+          }
+        }
+      }
+    },
+    {
+      "step": "set_clock",
+      "instant": "2030-01-01T00:00:20Z"
+    },
+    {
+      "step": "query",
+      "operation": "verification.job.inspect",
+      "payload": {
+        "job": "j-stall"
+      },
+      "expect": {
+        "ok": {
+          "state": "running",
+          "recorded": [
+            {
+              "property_id": "parser.unit",
+              "result": "pass"
+            }
+          ],
+          "receipt": {
+            "$absent": true
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "verification.receipt.record",
+      "command_id": "receipt-record-j-stall",
+      "subject": {
+        "kind": "verification.receipt",
+        "id": "j-stall"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "verification.receipt",
+            "id": "j-stall"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "subjects": [
+          {
+            "role": "tree",
+            "digest": "t12"
+          },
+          {
+            "role": "output",
+            "digest": "sha256:db6ac92fefefaf3fa8610a74cd8dcef8815d173fbd7853f2ed5ac18c8ac1ff45"
+          }
+        ],
+        "contract": {
+          "provider": "conformance-provider",
+          "artifact": {
+            "kind": "evidence.artifact",
+            "id": "c-upload"
+          },
+          "digest": "sha256:b6a846cf41d9f0cd7ba8632555dc505aca03369dbdb3d6475bb40e40a9b4822a"
+        },
+        "evaluator": {
+          "id": "journey",
+          "version": "1"
+        },
+        "environment": {
+          "anchors": {}
+        },
+        "inputs": [],
+        "properties": [
+          {
+            "property_id": "parser.unit",
+            "result": "pass",
+            "evidence": []
+          },
+          {
+            "property_id": "upload.journey",
+            "result": "pass",
+            "evidence": []
+          },
+          {
+            "property_id": "docs.review",
+            "result": "pass",
+            "evidence": []
+          }
+        ],
+        "observed_from": "2030-01-01T00:00:00Z",
+        "observed_until": "2030-01-01T00:01:40Z",
+        "valid_until": null,
+        "scope": "upload journey on staging",
+        "provenance": []
+      },
+      "expect": {
+        "error": "precondition_failed",
+        "details": {
+          "failed": [
+            {
+              "subject": {
+                "kind": "verification.job",
+                "id": "j-stall"
+              },
+              "expected": 0,
+              "current": {
+                "$type": "integer"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "verification.receipt.record",
+      "command_id": "receipt-record-r-shared",
+      "subject": {
+        "kind": "verification.receipt",
+        "id": "r-shared"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "verification.receipt",
+            "id": "r-shared"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "subjects": [
+          {
+            "role": "tree",
+            "digest": "t12"
+          },
+          {
+            "role": "output",
+            "digest": "sha256:db6ac92fefefaf3fa8610a74cd8dcef8815d173fbd7853f2ed5ac18c8ac1ff45"
+          }
+        ],
+        "contract": {
+          "provider": "conformance-provider",
+          "artifact": {
+            "kind": "evidence.artifact",
+            "id": "c-upload"
+          },
+          "digest": "sha256:b6a846cf41d9f0cd7ba8632555dc505aca03369dbdb3d6475bb40e40a9b4822a"
+        },
+        "evaluator": {
+          "id": "journey",
+          "version": "1"
+        },
+        "environment": {
+          "anchors": {}
+        },
+        "inputs": [],
+        "properties": [
+          {
+            "property_id": "parser.unit",
+            "result": "pass",
+            "evidence": []
+          },
+          {
+            "property_id": "upload.journey",
+            "result": "pass",
+            "evidence": []
+          },
+          {
+            "property_id": "docs.review",
+            "result": "pass",
+            "evidence": []
+          }
+        ],
+        "observed_from": "2030-01-01T00:00:00Z",
+        "observed_until": "2030-01-01T00:01:40Z",
+        "valid_until": null,
+        "scope": "upload journey on staging",
+        "provenance": []
+      },
+      "capture": {
+        "ra_r-shared": "/result/outcome/reference/artifact/digest"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "verification.evaluate_contract",
+      "command_id": "evaluate_contract-r-shared",
+      "subject": {
+        "kind": "verification.job",
+        "id": "r-shared"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "verification.job",
+            "id": "r-shared"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "contract": {
+          "provider": "conformance-provider",
+          "artifact": {
+            "kind": "evidence.artifact",
+            "id": "c-upload"
+          },
+          "digest": "sha256:b6a846cf41d9f0cd7ba8632555dc505aca03369dbdb3d6475bb40e40a9b4822a"
+        },
+        "subjects": [
+          {
+            "role": "tree",
+            "digest": "t12"
+          },
+          {
+            "role": "output",
+            "digest": "sha256:db6ac92fefefaf3fa8610a74cd8dcef8815d173fbd7853f2ed5ac18c8ac1ff45"
+          }
+        ],
+        "environment": {
+          "anchors": {
+            "browser": "chromium-120"
+          }
+        },
+        "evaluator": {
+          "id": "journey",
+          "version": "1"
+        }
+      },
+      "expect": {
+        "error": "precondition_failed",
+        "details": {
+          "failed": [
+            {
+              "subject": {
+                "kind": "verification.receipt",
+                "id": "r-shared"
+              },
+              "expected": 0,
+              "current": 1
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "verification.evaluate_contract",
+      "command_id": "evaluate_contract-j-roles",
+      "subject": {
+        "kind": "verification.job",
+        "id": "j-roles"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "verification.job",
+            "id": "j-roles"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "contract": {
+          "provider": "conformance-provider",
+          "artifact": {
+            "kind": "evidence.artifact",
+            "id": "c-upload"
+          },
+          "digest": "sha256:b6a846cf41d9f0cd7ba8632555dc505aca03369dbdb3d6475bb40e40a9b4822a"
+        },
+        "subjects": [
+          {
+            "role": "output",
+            "digest": "sha256:db6ac92fefefaf3fa8610a74cd8dcef8815d173fbd7853f2ed5ac18c8ac1ff45"
+          }
+        ],
+        "environment": {
+          "anchors": {
+            "browser": "chromium-120"
+          }
+        },
+        "evaluator": {
+          "id": "journey",
+          "version": "1"
+        }
+      },
+      "expect": {
+        "error": "invalid_envelope",
+        "details": {
+          "path": "/payload/subjects",
+          "missing": [
+            "tree"
+          ]
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "verification.evaluate_contract",
+      "command_id": "evaluate_contract-j-default",
+      "subject": {
+        "kind": "verification.job",
+        "id": "j-default"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "verification.job",
+            "id": "j-default"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "contract": {
+          "provider": "conformance-provider",
+          "artifact": {
+            "kind": "evidence.artifact",
+            "id": "c-upload"
+          },
+          "digest": "sha256:b6a846cf41d9f0cd7ba8632555dc505aca03369dbdb3d6475bb40e40a9b4822a"
+        },
+        "subjects": [
+          {
+            "role": "tree",
+            "digest": "t12"
+          },
+          {
+            "role": "output",
+            "digest": "sha256:db6ac92fefefaf3fa8610a74cd8dcef8815d173fbd7853f2ed5ac18c8ac1ff45"
+          }
+        ],
+        "environment": {
+          "anchors": {
+            "browser": "chromium-120"
+          }
+        },
+        "evaluator": {
+          "id": "journey",
+          "version": "1"
+        }
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "state": "queued"
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "verification.job.inspect",
+      "payload": {
+        "job": "j-default"
+      },
+      "expect": {
+        "ok": {
+          "state": "completed",
+          "recorded": []
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "verification.receipt.inspect",
+      "payload": {
+        "receipt": "j-default"
+      },
+      "expect": {
+        "ok": {
+          "content": {
+            "properties": [
+              {
+                "result": "not_evaluated",
+                "reason": "not_reported"
+              },
+              {
+                "result": "not_evaluated"
+              },
+              {
+                "result": "not_evaluated"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core.events.read",
+      "payload": {
+        "from": "start",
+        "limit": 100,
+        "kinds": [
+          "verification.job"
+        ]
+      },
+      "expect": {
+        "ok": {
+          "items": {
+            "$contains": {
+              "event": {
+                "type": "verification.property.recorded",
+                "subject": {
+                  "id": "j1"
+                },
+                "payload": {
+                  "property_id": "parser.unit",
+                  "result": "pass"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core.events.read",
+      "payload": {
+        "from": "start",
+        "limit": 100,
+        "kinds": [
+          "verification.receipt"
+        ]
+      },
+      "expect": {
+        "ok": {
+          "items": {
+            "$contains": {
+              "event": {
+                "type": "verification.receipt.issued",
+                "subject": {
+                  "id": "j1"
+                },
+                "payload": {
+                  "job": "j1"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

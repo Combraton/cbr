@@ -1,0 +1,135 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "core.idempotency.rejected-command-not-bound",
+  "version": 1,
+  "title": "A command rejected at its precondition does not bind its identity",
+  "requirements": [
+    "CORE-7",
+    "CORE-9"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/CORE.md#62-deduplication-scope-and-binding"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "core-test",
+      "major": 1
+    }
+  ],
+  "polarity": "negative",
+  "kills": [
+    "bind-on-rejection"
+  ],
+  "steps": [
+    {
+      "step": "start"
+    },
+    {
+      "step": "negotiate"
+    },
+    {
+      "step": "command",
+      "operation": "core-test.subject.put",
+      "command_id": "cmd-x",
+      "subject": {
+        "kind": "core-test.subject",
+        "id": "s-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core-test.subject",
+            "id": "s-1"
+          },
+          "revision": 1
+        }
+      ],
+      "authority_epoch": 0,
+      "payload": {
+        "value": "x"
+      },
+      "expect": {
+        "error": "precondition_failed"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "core-test.subject.put",
+      "command_id": "cmd-y",
+      "subject": {
+        "kind": "core-test.subject",
+        "id": "s-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core-test.subject",
+            "id": "s-1"
+          },
+          "revision": 0
+        }
+      ],
+      "authority_epoch": 0,
+      "payload": {
+        "value": "y"
+      },
+      "expect": {
+        "ok": {
+          "acknowledgment": {
+            "revision": 1
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "core-test.subject.put",
+      "command_id": "cmd-x",
+      "subject": {
+        "kind": "core-test.subject",
+        "id": "s-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core-test.subject",
+            "id": "s-1"
+          },
+          "revision": 1
+        }
+      ],
+      "authority_epoch": 0,
+      "payload": {
+        "value": "x"
+      },
+      "expect": {
+        "ok": {
+          "replay": false,
+          "acknowledgment": {
+            "revision": 2
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core-test.subject.get",
+      "payload": {
+        "subject": {
+          "kind": "core-test.subject",
+          "id": "s-1"
+        }
+      },
+      "expect": {
+        "ok": {
+          "revision": 2,
+          "value": "x"
+        }
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

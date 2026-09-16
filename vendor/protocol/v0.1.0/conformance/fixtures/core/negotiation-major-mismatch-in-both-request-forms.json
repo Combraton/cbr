@@ -1,0 +1,255 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "core.negotiation-major-mismatch-in-both-request-forms",
+  "version": 1,
+  "title": "A caller offering only majors the provider lacks is refused with unsupported_version when the profile is required and left unselected with no_common_major when optional; a caller offering both an older and a newer major gets the highest common one",
+  "requirements": [
+    "CMP-3",
+    "CORE-3"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/CORE.md#42-corenegotiate-query"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "core-test",
+      "major": 1
+    }
+  ],
+  "features": [],
+  "polarity": "negative",
+  "kills": [
+    "ignore-major-version"
+  ],
+  "steps": [
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ]
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          },
+          {
+            "name": "core-test",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      },
+      "expect": {
+        "ok": {
+          "selected": {
+            "$contains": {
+              "name": "core-test",
+              "major": 1
+            }
+          }
+        }
+      }
+    },
+    {
+      "step": "stop"
+    },
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ]
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "2"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          },
+          {
+            "name": "core-test",
+            "majors": [
+              2,
+              3
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      },
+      "expect": {
+        "error": "unsupported_version",
+        "details": {
+          "unsatisfied": [
+            {
+              "profile": "core-test",
+              "reason": "no_common_major"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "2"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          },
+          {
+            "name": "core-test",
+            "majors": [
+              2,
+              3
+            ],
+            "required": false,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      },
+      "expect": {
+        "ok": {
+          "selected": [
+            {
+              "name": "core",
+              "major": 1
+            }
+          ],
+          "unselected": [
+            {
+              "profile": "core-test",
+              "reason": "no_common_major"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core-test.subject.get",
+      "payload": {
+        "subject": {
+          "kind": "core-test.subject",
+          "id": "s-1"
+        }
+      },
+      "expect": {
+        "error": "profile_not_negotiated"
+      }
+    },
+    {
+      "step": "stop"
+    },
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ]
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "2"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1,
+              2
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          },
+          {
+            "name": "core-test",
+            "majors": [
+              1,
+              2
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      },
+      "expect": {
+        "ok": {
+          "selected": {
+            "$contains": {
+              "name": "core-test",
+              "major": 1
+            }
+          }
+        }
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

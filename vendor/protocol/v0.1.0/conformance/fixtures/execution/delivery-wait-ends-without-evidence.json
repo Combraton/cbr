@@ -1,0 +1,240 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "execution.delivery-wait-ends-without-evidence",
+  "version": 1,
+  "title": "When the delivery wait ends without evidence, a dispatched delivery becomes ambiguous and an undispatched one fails before delivery; neither stays pending",
+  "requirements": [
+    "EXE-3",
+    "EXE-19",
+    "EFF-4"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/EXECUTION.md#3-status-axes",
+    "docs/spec/profiles/EXECUTION.md#8-timeouts"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "execution",
+      "major": 1
+    }
+  ],
+  "features": [
+    "core.events",
+    "core.capabilities",
+    "core.effects"
+  ],
+  "requires_controls": [
+    "executor.script",
+    "clock.file"
+  ],
+  "polarity": "negative",
+  "kills": [
+    "pending-forever"
+  ],
+  "kill_expectations": {
+    "pending-forever": {
+      "step": 6,
+      "reason_contains": "expected \"ambiguous\", found \"pending\""
+    }
+  },
+  "steps": [
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ],
+        "executor": {
+          "scripts": {
+            "e-bytes": [
+              {
+                "deliver": "bytes_written"
+              }
+            ],
+            "e-never": [
+              {
+                "stall": true
+              }
+            ]
+          }
+        },
+        "clock": {
+          "controlled": "2030-01-01T00:00:00Z"
+        }
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.capabilities",
+              "core.effects"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "execution",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "execution.submit",
+      "command_id": "submit-e-bytes",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "e-bytes"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "e-bytes"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "brief": {
+          "digest": "sha256:abababababababababababababababababababababababababababababababab",
+          "media_type": "text/plain"
+        },
+        "timeouts": {
+          "delivery": 60
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "execution.submit",
+      "command_id": "submit-e-never",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "e-never"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "e-never"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "brief": {
+          "digest": "sha256:abababababababababababababababababababababababababababababababab",
+          "media_type": "text/plain"
+        },
+        "timeouts": {
+          "delivery": 60
+        }
+      }
+    },
+    {
+      "step": "describe"
+    },
+    {
+      "step": "set_clock",
+      "instant": "2030-01-01T00:01:00Z"
+    },
+    {
+      "step": "query",
+      "operation": "execution.inspect",
+      "payload": {
+        "execution": "e-bytes"
+      },
+      "expect": {
+        "ok": {
+          "delivery": "ambiguous",
+          "deliveries": [
+            {
+              "delivery": "ambiguous",
+              "evidence": {
+                "class": "delivery_timeout"
+              },
+              "history": [
+                {
+                  "delivery": "pending",
+                  "evidence": {
+                    "class": "bytes_written"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "execution.inspect",
+      "payload": {
+        "execution": "e-never"
+      },
+      "expect": {
+        "ok": {
+          "delivery": "failed_before_delivery",
+          "deliveries": [
+            {
+              "evidence": {
+                "class": "delivery_timeout_before_dispatch"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core.effects.get",
+      "payload": {
+        "effect": "e-bytes.delivery-1"
+      },
+      "expect": {
+        "ok": {
+          "status": "unknown"
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core.effects.get",
+      "payload": {
+        "effect": "e-never.delivery-1"
+      },
+      "expect": {
+        "ok": {
+          "status": "failed"
+        }
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

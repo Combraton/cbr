@@ -1,0 +1,352 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "execution.admission-refuses-unenforceable-or-unknown-requirements",
+  "version": 3,
+  "title": "A required restriction above the adapter's enforcement, or an unknown required predicate, is refused with a reason and an alternative",
+  "requirements": [
+    "EXE-2",
+    "EXE-11"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/EXECUTION.md#5-admission"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "execution",
+      "major": 1
+    }
+  ],
+  "features": [
+    "core.events",
+    "core.capabilities",
+    "core.effects"
+  ],
+  "requires_controls": [
+    "executor.script"
+  ],
+  "polarity": "negative",
+  "kills": [
+    "admits-weaker-enforcement",
+    "unknown-predicate-supported",
+    "unstarted-work-reported-preparing",
+    "refusal-records-delivery-effect"
+  ],
+  "kill_expectations": {
+    "admits-weaker-enforcement": {
+      "step": 2,
+      "reason_contains": "result/"
+    },
+    "unknown-predicate-supported": {
+      "step": 3,
+      "reason_contains": "result/"
+    },
+    "unstarted-work-reported-preparing": {
+      "step": 5,
+      "reason_contains": "result/runtime"
+    },
+    "refusal-records-delivery-effect": {
+      "step": 2,
+      "reason_contains": "acknowledgment/effect_refs"
+    }
+  },
+  "steps": [
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ],
+        "executor": {
+          "adapter": {
+            "enforcement": "cooperative",
+            "predicates": [
+              {
+                "name": "adapter.resume",
+                "status": "unknown"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.capabilities",
+              "core.effects"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "execution",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "execution.submit",
+      "command_id": "submit-e-1",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "e-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "e-1"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "brief": {
+          "digest": "sha256:abababababababababababababababababababababababababababababababab",
+          "media_type": "text/plain"
+        },
+        "restrictions": [
+          {
+            "scope": "network",
+            "enforcement": "enforced"
+          }
+        ]
+      },
+      "expect": {
+        "ok": {
+          "acknowledgment": {
+            "effect_refs": []
+          },
+          "outcome": {
+            "admission": "refused",
+            "reason": "enforcement_unavailable",
+            "alternative": {
+              "$type": "string"
+            },
+            "delivery_id": {
+              "$absent": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "execution.submit",
+      "command_id": "submit-e-2",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "e-2"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "e-2"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "brief": {
+          "digest": "sha256:abababababababababababababababababababababababababababababababab",
+          "media_type": "text/plain"
+        },
+        "adapter": {
+          "requires": [
+            "adapter.resume"
+          ]
+        }
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "admission": "refused",
+            "reason": "capability_unavailable"
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "execution.submit",
+      "command_id": "submit-e-3",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "e-3"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "e-3"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "brief": {
+          "digest": "sha256:abababababababababababababababababababababababababababababababab",
+          "media_type": "text/plain"
+        },
+        "restrictions": [
+          {
+            "scope": "network",
+            "enforcement": "cooperative"
+          }
+        ]
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "admission": "admitted"
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "execution.inspect",
+      "payload": {
+        "execution": "e-1"
+      },
+      "expect": {
+        "ok": {
+          "admission": "refused",
+          "runtime": "not_started",
+          "delivery": "failed_before_delivery",
+          "result": "absent",
+          "exit": "unavailable",
+          "evaluation": "not_requested",
+          "deliveries": [],
+          "effects": [],
+          "obligations": []
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core.effects.get",
+      "payload": {
+        "effect": "e-1.delivery-1"
+      },
+      "expect": {
+        "error": "not_found"
+      }
+    },
+    {
+      "step": "describe",
+      "note": "a tick after refusal must not start or dispatch refused work"
+    },
+    {
+      "step": "query",
+      "operation": "core.events.read",
+      "payload": {
+        "from": "start",
+        "limit": 100,
+        "kinds": [
+          "execution.execution"
+        ]
+      },
+      "expect": {
+        "ok": {
+          "items": [
+            {
+              "event": {
+                "type": "execution.admission.changed",
+                "subject": {
+                  "kind": "execution.execution",
+                  "id": "e-1"
+                },
+                "payload": {
+                  "admission": "refused",
+                  "runtime": "not_started",
+                  "reason": "enforcement_unavailable"
+                }
+              }
+            },
+            {
+              "event": {
+                "type": "execution.admission.changed",
+                "subject": {
+                  "kind": "execution.execution",
+                  "id": "e-2"
+                },
+                "payload": {
+                  "admission": "refused",
+                  "runtime": "not_started"
+                }
+              }
+            },
+            {
+              "event": {
+                "type": "execution.admission.changed",
+                "subject": {
+                  "kind": "execution.execution",
+                  "id": "e-3"
+                },
+                "payload": {
+                  "admission": "admitted",
+                  "runtime": "preparing"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "execution.inspect",
+      "payload": {
+        "execution": "e-2"
+      },
+      "expect": {
+        "ok": {
+          "runtime": "not_started",
+          "deliveries": [],
+          "effects": []
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "execution.inspect",
+      "payload": {
+        "execution": "e-3"
+      },
+      "expect": {
+        "ok": {
+          "runtime": "preparing"
+        }
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

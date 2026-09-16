@@ -1,0 +1,278 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "core.grants.current-epoch-needs-read",
+  "version": 1,
+  "title": "stale_authority_epoch shows the current epoch only to principals that may read the authority subject",
+  "requirements": [
+    "CORE-10",
+    "CORE-12"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/CORE.md#15-principals-and-grants"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "core-test",
+      "major": 1
+    }
+  ],
+  "features": [
+    "core.grants"
+  ],
+  "polarity": "negative",
+  "kills": [
+    "current-epoch-always-disclosed"
+  ],
+  "steps": [
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ]
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.grants"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "core-test",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "core-test.authority.claim",
+      "command_id": "claim-1",
+      "subject": {
+        "kind": "core-test.authority",
+        "id": "core-test"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core-test.authority",
+            "id": "core-test"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {}
+    },
+    {
+      "step": "command",
+      "operation": "core.grant.issue",
+      "command_id": "issue-g-w",
+      "subject": {
+        "kind": "core.grant",
+        "id": "g-w"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core.grant",
+            "id": "g-w"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "holder": "agent-1",
+        "audience": "conformance-provider",
+        "rights": [
+          "core-test.write"
+        ],
+        "resources": [
+          {
+            "kind": "core-test.subject",
+            "id_prefix": "s-"
+          }
+        ],
+        "delegation": {
+          "allowed": false,
+          "max_depth": 0
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "core.grant.issue",
+      "command_id": "issue-g-rw",
+      "subject": {
+        "kind": "core.grant",
+        "id": "g-rw"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core.grant",
+            "id": "g-rw"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "holder": "agent-1",
+        "audience": "conformance-provider",
+        "rights": [
+          "core-test.read",
+          "core-test.write"
+        ],
+        "resources": [
+          {
+            "kind": "core-test.subject",
+            "id_prefix": "s-"
+          },
+          {
+            "kind": "core-test.authority"
+          }
+        ],
+        "delegation": {
+          "allowed": false,
+          "max_depth": 0
+        }
+      }
+    },
+    {
+      "step": "stop"
+    },
+    {
+      "step": "start",
+      "config": {
+        "principal": "agent-1",
+        "authority_principals": [
+          "owner"
+        ]
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.grants"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "core-test",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "core-test.subject.put",
+      "command_id": "cmd-1",
+      "subject": {
+        "kind": "core-test.subject",
+        "id": "s-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core-test.subject",
+            "id": "s-1"
+          },
+          "revision": 0
+        }
+      ],
+      "authority_epoch": 0,
+      "payload": {
+        "value": "a"
+      },
+      "expect": {
+        "error": "stale_authority_epoch",
+        "details": {
+          "current_epoch": {
+            "$absent": true
+          }
+        }
+      },
+      "set": {
+        "grant": "g-w"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "core-test.subject.put",
+      "command_id": "cmd-2",
+      "subject": {
+        "kind": "core-test.subject",
+        "id": "s-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core-test.subject",
+            "id": "s-1"
+          },
+          "revision": 0
+        }
+      ],
+      "authority_epoch": 0,
+      "payload": {
+        "value": "a"
+      },
+      "expect": {
+        "error": "stale_authority_epoch",
+        "details": {
+          "current_epoch": 1
+        }
+      },
+      "set": {
+        "grant": "g-rw"
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

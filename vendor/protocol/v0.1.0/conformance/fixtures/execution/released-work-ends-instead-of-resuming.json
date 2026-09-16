@@ -1,0 +1,834 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "execution.released-work-ends-instead-of-resuming",
+  "version": 1,
+  "title": "A released execution that was never dispatched is not resumed when its cancellation was requested, its submitter's grant was revoked, or its deadline passed: its delivery fails before delivery with that reason",
+  "requirements": [
+    "CTX-18",
+    "EXE-8"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/EXECUTION.md#131-context-revalidation-executioncontext_revalidation",
+    "docs/spec/profiles/EXECUTION.md#71-restart-recovery"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "execution",
+      "major": 1
+    }
+  ],
+  "features": [
+    "core.events",
+    "core.capabilities",
+    "core.effects",
+    "execution.context",
+    "execution.context_revalidation",
+    "core.grants"
+  ],
+  "requires_controls": [
+    "executor.script",
+    "clock.file"
+  ],
+  "polarity": "negative",
+  "kills": [
+    "resume-ignores-cancellation",
+    "recovery-ignores-revocation"
+  ],
+  "steps": [
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ],
+        "clock": {
+          "controlled": "2030-01-01T00:00:00Z"
+        },
+        "executor": {
+          "context_packets": [
+            {
+              "reference": {
+                "packet": {
+                  "kind": "context.packet",
+                  "id": "r-1"
+                },
+                "revision": 1,
+                "artifact": {
+                  "provider": "context-1",
+                  "artifact": {
+                    "kind": "evidence.artifact",
+                    "id": "packet.r-1.1"
+                  },
+                  "digest": "sha256:2563192958eb20cd51510fc184bc436e218dade28f6e6d38a425348624622a82"
+                }
+              }
+            }
+          ],
+          "observed_basis": {
+            "repositories": {
+              "repo-a": {
+                "tree": "tree-1"
+              }
+            }
+          },
+          "scripts": {
+            "e-revoked": [
+              {
+                "wait_until": "2030-01-01T00:00:20Z"
+              },
+              {
+                "deliver": "provider_ack_id"
+              },
+              {
+                "stall": true
+              }
+            ]
+          },
+          "default_script": [
+            {
+              "stall": true
+            }
+          ],
+          "capacity": 5,
+          "basis_changes": [
+            {
+              "at": "2030-01-01T00:00:10Z",
+              "observed_basis": {
+                "repositories": {
+                  "repo-a": {
+                    "tree": "tree-2"
+                  }
+                }
+              }
+            },
+            {
+              "at": "2030-01-01T00:00:40Z",
+              "observed_basis": {
+                "repositories": {
+                  "repo-a": {
+                    "tree": "tree-1"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.capabilities",
+              "core.effects",
+              "core.grants"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "execution",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "execution.context",
+              "execution.context_revalidation"
+            ],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "core.grant.issue",
+      "command_id": "issue-g-agent",
+      "subject": {
+        "kind": "core.grant",
+        "id": "g-agent"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core.grant",
+            "id": "g-agent"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "holder": "agent-1",
+        "audience": "conformance-provider",
+        "rights": [
+          "execution.submit",
+          "execution.read"
+        ],
+        "resources": [
+          {
+            "kind": "execution.execution",
+            "id": "e-revoked"
+          }
+        ],
+        "delegation": {
+          "allowed": false,
+          "max_depth": 0
+        }
+      }
+    },
+    {
+      "step": "stop"
+    },
+    {
+      "step": "start",
+      "config": {
+        "principal": "agent-1",
+        "authority_principals": [
+          "owner"
+        ],
+        "clock": {
+          "controlled": "2030-01-01T00:00:00Z"
+        },
+        "executor": {
+          "context_packets": [
+            {
+              "reference": {
+                "packet": {
+                  "kind": "context.packet",
+                  "id": "r-1"
+                },
+                "revision": 1,
+                "artifact": {
+                  "provider": "context-1",
+                  "artifact": {
+                    "kind": "evidence.artifact",
+                    "id": "packet.r-1.1"
+                  },
+                  "digest": "sha256:2563192958eb20cd51510fc184bc436e218dade28f6e6d38a425348624622a82"
+                }
+              }
+            }
+          ],
+          "observed_basis": {
+            "repositories": {
+              "repo-a": {
+                "tree": "tree-1"
+              }
+            }
+          },
+          "scripts": {
+            "e-revoked": [
+              {
+                "wait_until": "2030-01-01T00:00:20Z"
+              },
+              {
+                "deliver": "provider_ack_id"
+              },
+              {
+                "stall": true
+              }
+            ]
+          },
+          "default_script": [
+            {
+              "stall": true
+            }
+          ],
+          "capacity": 5,
+          "basis_changes": [
+            {
+              "at": "2030-01-01T00:00:10Z",
+              "observed_basis": {
+                "repositories": {
+                  "repo-a": {
+                    "tree": "tree-2"
+                  }
+                }
+              }
+            },
+            {
+              "at": "2030-01-01T00:00:40Z",
+              "observed_basis": {
+                "repositories": {
+                  "repo-a": {
+                    "tree": "tree-1"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.capabilities",
+              "core.effects",
+              "core.grants"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "execution",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "execution.context",
+              "execution.context_revalidation"
+            ],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "execution.submit",
+      "command_id": "submit-e-revoked",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "e-revoked"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "e-revoked"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "brief": {
+          "digest": "sha256:abababababababababababababababababababababababababababababababab",
+          "media_type": "text/plain"
+        },
+        "context_bindings": [
+          {
+            "binding_id": "b-r",
+            "packet": {
+              "packet": {
+                "kind": "context.packet",
+                "id": "r-1"
+              },
+              "revision": 1,
+              "artifact": {
+                "provider": "context-1",
+                "artifact": {
+                  "kind": "evidence.artifact",
+                  "id": "packet.r-1.1"
+                },
+                "digest": "sha256:2563192958eb20cd51510fc184bc436e218dade28f6e6d38a425348624622a82"
+              }
+            },
+            "obligation": "required_before_start",
+            "selected_by": "owner",
+            "conditions": [
+              {
+                "condition_id": "k-tree",
+                "kind": "repository_tree",
+                "repository": "repo-a",
+                "expected": "tree-1"
+              }
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "admission": "admitted"
+          }
+        }
+      },
+      "set": {
+        "grant": "g-agent"
+      }
+    },
+    {
+      "step": "stop"
+    },
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ],
+        "clock": {
+          "controlled": "2030-01-01T00:00:00Z"
+        },
+        "executor": {
+          "context_packets": [
+            {
+              "reference": {
+                "packet": {
+                  "kind": "context.packet",
+                  "id": "r-1"
+                },
+                "revision": 1,
+                "artifact": {
+                  "provider": "context-1",
+                  "artifact": {
+                    "kind": "evidence.artifact",
+                    "id": "packet.r-1.1"
+                  },
+                  "digest": "sha256:2563192958eb20cd51510fc184bc436e218dade28f6e6d38a425348624622a82"
+                }
+              }
+            }
+          ],
+          "observed_basis": {
+            "repositories": {
+              "repo-a": {
+                "tree": "tree-1"
+              }
+            }
+          },
+          "scripts": {
+            "e-revoked": [
+              {
+                "wait_until": "2030-01-01T00:00:20Z"
+              },
+              {
+                "deliver": "provider_ack_id"
+              },
+              {
+                "stall": true
+              }
+            ],
+            "e-cancel": [
+              {
+                "wait_until": "2030-01-01T00:00:20Z"
+              },
+              {
+                "deliver": "provider_ack_id"
+              },
+              {
+                "stall": true
+              }
+            ],
+            "e-deadline": [
+              {
+                "wait_until": "2030-01-01T00:00:20Z"
+              },
+              {
+                "deliver": "provider_ack_id"
+              },
+              {
+                "stall": true
+              }
+            ]
+          },
+          "default_script": [
+            {
+              "stall": true
+            }
+          ],
+          "capacity": 5,
+          "basis_changes": [
+            {
+              "at": "2030-01-01T00:00:10Z",
+              "observed_basis": {
+                "repositories": {
+                  "repo-a": {
+                    "tree": "tree-2"
+                  }
+                }
+              }
+            },
+            {
+              "at": "2030-01-01T00:00:40Z",
+              "observed_basis": {
+                "repositories": {
+                  "repo-a": {
+                    "tree": "tree-1"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.capabilities",
+              "core.effects",
+              "core.grants"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "execution",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "execution.context",
+              "execution.context_revalidation"
+            ],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "execution.submit",
+      "command_id": "submit-e-cancel",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "e-cancel"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "e-cancel"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "brief": {
+          "digest": "sha256:abababababababababababababababababababababababababababababababab",
+          "media_type": "text/plain"
+        },
+        "context_bindings": [
+          {
+            "binding_id": "b-x",
+            "packet": {
+              "packet": {
+                "kind": "context.packet",
+                "id": "r-1"
+              },
+              "revision": 1,
+              "artifact": {
+                "provider": "context-1",
+                "artifact": {
+                  "kind": "evidence.artifact",
+                  "id": "packet.r-1.1"
+                },
+                "digest": "sha256:2563192958eb20cd51510fc184bc436e218dade28f6e6d38a425348624622a82"
+              }
+            },
+            "obligation": "required_before_start",
+            "selected_by": "owner",
+            "conditions": [
+              {
+                "condition_id": "k-tree",
+                "kind": "repository_tree",
+                "repository": "repo-a",
+                "expected": "tree-1"
+              }
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "admission": "admitted"
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "execution.submit",
+      "command_id": "submit-e-deadline",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "e-deadline"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "e-deadline"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "brief": {
+          "digest": "sha256:abababababababababababababababababababababababababababababababab",
+          "media_type": "text/plain"
+        },
+        "timeouts": {
+          "execution_deadline": 25
+        },
+        "context_bindings": [
+          {
+            "binding_id": "b-d",
+            "packet": {
+              "packet": {
+                "kind": "context.packet",
+                "id": "r-1"
+              },
+              "revision": 1,
+              "artifact": {
+                "provider": "context-1",
+                "artifact": {
+                  "kind": "evidence.artifact",
+                  "id": "packet.r-1.1"
+                },
+                "digest": "sha256:2563192958eb20cd51510fc184bc436e218dade28f6e6d38a425348624622a82"
+              }
+            },
+            "obligation": "required_before_start",
+            "selected_by": "owner",
+            "conditions": [
+              {
+                "condition_id": "k-tree",
+                "kind": "repository_tree",
+                "repository": "repo-a",
+                "expected": "tree-1"
+              }
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "admission": "admitted"
+          }
+        }
+      }
+    },
+    {
+      "step": "set_clock",
+      "instant": "2030-01-01T00:00:20Z"
+    },
+    {
+      "step": "query",
+      "operation": "execution.inspect",
+      "payload": {
+        "execution": "e-cancel"
+      },
+      "expect": {
+        "ok": {
+          "delivery": "pending",
+          "scheduling": {
+            "capacity": "released"
+          }
+        }
+      },
+      "capture": {
+        "rev": "/result/revision"
+      }
+    },
+    {
+      "step": "query",
+      "operation": "execution.inspect",
+      "payload": {
+        "execution": "e-revoked"
+      },
+      "expect": {
+        "ok": {
+          "delivery": "pending",
+          "scheduling": {
+            "capacity": "released"
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "execution.inspect",
+      "payload": {
+        "execution": "e-deadline"
+      },
+      "expect": {
+        "ok": {
+          "delivery": "pending",
+          "scheduling": {
+            "capacity": "released"
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "execution.cancel",
+      "command_id": "cancel-e-cancel",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "e-cancel"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "e-cancel"
+          },
+          "revision": {
+            "$var": "rev"
+          }
+        }
+      ],
+      "payload": {},
+      "expect": {
+        "ok": {
+          "outcome": {
+            "receipt": {
+              "state": "cancel_requested"
+            }
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "core.grant.revoke",
+      "command_id": "revoke-g-agent",
+      "subject": {
+        "kind": "core.grant",
+        "id": "g-agent"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core.grant",
+            "id": "g-agent"
+          },
+          "revision": 1
+        }
+      ],
+      "payload": {}
+    },
+    {
+      "step": "set_clock",
+      "instant": "2030-01-01T00:00:30Z",
+      "note": "the deadline passed at T25"
+    },
+    {
+      "step": "set_clock",
+      "instant": "2030-01-01T00:00:40Z",
+      "note": "every binding is current again"
+    },
+    {
+      "step": "query",
+      "operation": "execution.inspect",
+      "payload": {
+        "execution": "e-cancel"
+      },
+      "expect": {
+        "ok": {
+          "delivery": "failed_before_delivery",
+          "scheduling": {
+            "capacity": "released",
+            "reason": "cancelled"
+          },
+          "deliveries": {
+            "$len": 1
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "execution.inspect",
+      "payload": {
+        "execution": "e-revoked"
+      },
+      "expect": {
+        "ok": {
+          "delivery": "failed_before_delivery",
+          "scheduling": {
+            "capacity": "released",
+            "reason": "authorization_lost"
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "execution.inspect",
+      "payload": {
+        "execution": "e-deadline"
+      },
+      "expect": {
+        "ok": {
+          "delivery": "failed_before_delivery",
+          "scheduling": {
+            "capacity": "released",
+            "reason": "deadline_passed"
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core.effects.get",
+      "payload": {
+        "effect": "e-cancel.delivery-1"
+      },
+      "expect": {
+        "ok": {
+          "status": "failed",
+          "attempts": []
+        }
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

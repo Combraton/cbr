@@ -1,0 +1,456 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "evidence.chunk-retransmission-and-conflicts",
+  "version": 1,
+  "title": "A retransmitted append replays; a new command resending a received offset fails its precondition with identical or conflicting bytes; wrong offsets and oversize appends are refused; a lost response is recovered by inspecting received",
+  "requirements": [
+    "EVD-2"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/EVIDENCE.md#4-upload-and-seal-owner-decision-m4-q1",
+    "docs/spec/profiles/EVIDENCE.md#6-errors"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "evidence",
+      "major": 1
+    }
+  ],
+  "features": [
+    "core.events"
+  ],
+  "polarity": "negative",
+  "kills": [
+    "duplicate-chunk-accepted",
+    "append-overwrites-received"
+  ],
+  "steps": [
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ]
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "evidence",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": [
+              "evidence.manifests",
+              "evidence.retention_control"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.upload.prepare",
+      "command_id": "prepare-r-1",
+      "subject": {
+        "kind": "evidence.artifact",
+        "id": "r-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.artifact",
+            "id": "r-1"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "digest": "sha256:d5ea2aa9223ac1fa43ccec70b30962690fcfc6686857f99a0c4b2963cf8bee4b",
+        "size": 24,
+        "media_type": "text/plain",
+        "producer": {
+          "producer_id": "fixture-producer"
+        },
+        "source": {
+          "kind": "test_report",
+          "id": "run-1"
+        },
+        "scope": "project-a",
+        "capture": {
+          "captured_at": "2030-01-01T00:00:00Z",
+          "uncertainty": {
+            "not_before": "2029-12-31T23:59:58Z",
+            "not_after": "2030-01-01T00:00:00Z"
+          },
+          "anchors": [
+            {
+              "kind": "code_tree",
+              "id": "tree-1"
+            }
+          ]
+        },
+        "coverage": {
+          "completeness": "complete"
+        },
+        "retention_class": "standard"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.upload.append",
+      "command_id": "append-r-1-0",
+      "subject": {
+        "kind": "evidence.artifact",
+        "id": "r-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.artifact",
+            "id": "r-1"
+          },
+          "revision": 1
+        }
+      ],
+      "payload": {
+        "offset": 0,
+        "data_base64": "MDEyMzQ1Njc="
+      },
+      "expect": {
+        "ok": {
+          "replay": false,
+          "outcome": {
+            "received": 8
+          },
+          "acknowledgment": {
+            "revision": 2
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.upload.append",
+      "command_id": "append-r-1-0",
+      "subject": {
+        "kind": "evidence.artifact",
+        "id": "r-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.artifact",
+            "id": "r-1"
+          },
+          "revision": 1
+        }
+      ],
+      "payload": {
+        "offset": 0,
+        "data_base64": "MDEyMzQ1Njc="
+      },
+      "expect": {
+        "ok": {
+          "replay": true,
+          "outcome": {
+            "received": 8
+          },
+          "acknowledgment": {
+            "revision": 2
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "evidence.inspect",
+      "payload": {
+        "artifact": {
+          "kind": "evidence.artifact",
+          "id": "r-1"
+        }
+      },
+      "expect": {
+        "ok": {
+          "received": 8,
+          "revision": 2
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.upload.append",
+      "command_id": "append-r-1-0-resent",
+      "subject": {
+        "kind": "evidence.artifact",
+        "id": "r-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.artifact",
+            "id": "r-1"
+          },
+          "revision": 1
+        }
+      ],
+      "payload": {
+        "offset": 0,
+        "data_base64": "MDEyMzQ1Njc="
+      },
+      "note": "identical bytes under a new command",
+      "expect": {
+        "error": "precondition_failed",
+        "details": {
+          "failed": [
+            {
+              "subject": {
+                "kind": "evidence.artifact",
+                "id": "r-1"
+              },
+              "expected": 1,
+              "current": 2
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.upload.append",
+      "command_id": "append-r-1-0-conflict",
+      "subject": {
+        "kind": "evidence.artifact",
+        "id": "r-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.artifact",
+            "id": "r-1"
+          },
+          "revision": 1
+        }
+      ],
+      "payload": {
+        "offset": 0,
+        "data_base64": "WFhYWFhYWFg="
+      },
+      "expect": {
+        "error": "precondition_failed"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.upload.append",
+      "command_id": "append-r-1-overwrite",
+      "subject": {
+        "kind": "evidence.artifact",
+        "id": "r-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.artifact",
+            "id": "r-1"
+          },
+          "revision": 2
+        }
+      ],
+      "payload": {
+        "offset": 0,
+        "data_base64": "WFhYWFhYWFg="
+      },
+      "note": "a current precondition cannot overwrite received bytes",
+      "expect": {
+        "error": "upload_offset_mismatch",
+        "details": {
+          "received": 8
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.upload.append",
+      "command_id": "append-r-1-gap",
+      "subject": {
+        "kind": "evidence.artifact",
+        "id": "r-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.artifact",
+            "id": "r-1"
+          },
+          "revision": 2
+        }
+      ],
+      "payload": {
+        "offset": 12,
+        "data_base64": "Y2RlZg=="
+      },
+      "expect": {
+        "error": "upload_offset_mismatch",
+        "details": {
+          "received": 8
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.upload.append",
+      "command_id": "append-r-1-oversize",
+      "subject": {
+        "kind": "evidence.artifact",
+        "id": "r-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.artifact",
+            "id": "r-1"
+          },
+          "revision": 2
+        }
+      ],
+      "payload": {
+        "offset": 8,
+        "data_base64": "ODlhYmNkZWZnaGlqa2xtbmV4dHJh"
+      },
+      "expect": {
+        "error": "upload_size_exceeded",
+        "details": {
+          "received": 8,
+          "size": 24
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "evidence.inspect",
+      "payload": {
+        "artifact": {
+          "kind": "evidence.artifact",
+          "id": "r-1"
+        }
+      },
+      "expect": {
+        "ok": {
+          "received": 8,
+          "revision": 2
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.upload.append",
+      "command_id": "append-r-1-8",
+      "subject": {
+        "kind": "evidence.artifact",
+        "id": "r-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.artifact",
+            "id": "r-1"
+          },
+          "revision": 2
+        }
+      ],
+      "payload": {
+        "offset": 8,
+        "data_base64": "ODlhYmNkZWZnaGlqa2xtbg=="
+      },
+      "note": "the producer loses this response"
+    },
+    {
+      "step": "query",
+      "operation": "evidence.inspect",
+      "payload": {
+        "artifact": {
+          "kind": "evidence.artifact",
+          "id": "r-1"
+        }
+      },
+      "expect": {
+        "ok": {
+          "received": 24,
+          "revision": 3
+        }
+      },
+      "note": "received includes the chunk, so the append committed and is not resent"
+    },
+    {
+      "step": "command",
+      "operation": "evidence.seal",
+      "command_id": "seal-r-1",
+      "subject": {
+        "kind": "evidence.artifact",
+        "id": "r-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.artifact",
+            "id": "r-1"
+          },
+          "revision": 3
+        }
+      ],
+      "payload": {},
+      "expect": {
+        "ok": {
+          "outcome": {
+            "state": "sealed"
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "evidence.fetch",
+      "payload": {
+        "artifact": {
+          "kind": "evidence.artifact",
+          "id": "r-1"
+        },
+        "digest": "sha256:d5ea2aa9223ac1fa43ccec70b30962690fcfc6686857f99a0c4b2963cf8bee4b"
+      },
+      "expect": {
+        "ok": {
+          "data_base64": "MDEyMzQ1Njc4OWFiY2RlZmdoaWprbG1u"
+        }
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

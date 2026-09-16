@@ -1,0 +1,2285 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "composition.thirdparty-kernel-enforces-required-claim-boundary",
+  "version": 3,
+  "title": "An independently written execution kernel (client only, not an execution/1 provider) negotiates Context with the Context provider and Evidence with each Evidence provider, and enforces its own dispatch boundary from read-time claim facts over the public protocol: a valid required context dispatches, an advisory-only change does not stop required work, an invalidated required claim withholds the required dispatch while advisory work proceeds with its gap, mismatched bytes are never held, and unavailable knowledge is never valid; a kernel that ignores the boundary fails",
+  "requirements": [
+    "SCN-16",
+    "KNW-10",
+    "CMP-9"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/CONTEXT.md#14-claims-in-packets-proposed-m5",
+    "conformance/thirdparty/README.md",
+    "docs/work/release-0.1/M6.md#s-a-an-independent-execution-kernel-enforcing-a-required-claim-boundary"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "context",
+      "major": 1
+    },
+    {
+      "name": "knowledge",
+      "major": 1
+    },
+    {
+      "name": "evidence",
+      "major": 1
+    }
+  ],
+  "features": [
+    "core.events",
+    "core.grants",
+    "context.claims",
+    "context.required_before_start",
+    "context.advisory"
+  ],
+  "binding": "unix",
+  "requires_controls": [
+    "clock.file",
+    "context.script",
+    "knowledge.store",
+    "evidence.store"
+  ],
+  "kills": [],
+  "polarity": "negative",
+  "client_kills": [
+    {
+      "implementation": "minimal-executor",
+      "mutant": "ignores-required-boundary",
+      "step": 49,
+      "reason_contains": "expected error not_found, received success"
+    },
+    {
+      "implementation": "minimal-executor",
+      "mutant": "trusts-advertised-digest",
+      "step": 51,
+      "reason_contains": "decision"
+    },
+    {
+      "implementation": "minimal-executor",
+      "mutant": "ignores-claim-invalidation",
+      "step": 53,
+      "reason_contains": "expected error not_found, received success"
+    }
+  ],
+  "steps": [
+    {
+      "step": "start_participant",
+      "name": "knw",
+      "config": {
+        "provider_id": "knowledge-1",
+        "authority_principals": [
+          "owner"
+        ],
+        "clock": {
+          "controlled": "2030-01-01T00:00:00Z"
+        }
+      },
+      "credential_principals": [
+        "ctx-service"
+      ]
+    },
+    {
+      "step": "connect",
+      "session": "knw-owner",
+      "participant": "knw",
+      "principal": "owner"
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.grants"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "knowledge",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      },
+      "session": "knw-owner"
+    },
+    {
+      "step": "command",
+      "operation": "core.grant.issue",
+      "command_id": "grant-issue-g-ctx-read",
+      "subject": {
+        "kind": "core.grant",
+        "id": "g-ctx-read"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core.grant",
+            "id": "g-ctx-read"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "holder": "ctx-service",
+        "audience": "knowledge-1",
+        "rights": [
+          "knowledge.read"
+        ],
+        "resources": [
+          {
+            "kind": "knowledge.claim"
+          }
+        ],
+        "delegation": {
+          "allowed": false,
+          "max_depth": 0
+        }
+      },
+      "session": "knw-owner"
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.authority.bind",
+      "command_id": "authority-bind-svc",
+      "subject": {
+        "kind": "knowledge.authority",
+        "id": "svc"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.authority",
+            "id": "svc"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "authority": "owner"
+      },
+      "session": "knw-owner"
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.claim.propose",
+      "command_id": "claim-propose-A",
+      "subject": {
+        "kind": "knowledge.claim",
+        "id": "A"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.claim",
+            "id": "A"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "plane": "normative",
+        "statement": {
+          "subject": {
+            "kind": "app.service",
+            "id": "billing"
+          },
+          "predicate": "rule_a",
+          "value": "queue v2",
+          "cardinality": "single"
+        },
+        "scope": {
+          "id": "svc",
+          "qualifiers": {}
+        },
+        "support": [],
+        "derivation": {
+          "kind": "deterministic",
+          "inputs": []
+        },
+        "conditions": [
+          {
+            "condition_id": "k-1",
+            "kind": "repository_tree",
+            "repository": "repo-a",
+            "expected": "tree-1"
+          }
+        ]
+      },
+      "capture": {
+        "d_A": "/result/outcome/reference/digest"
+      },
+      "session": "knw-owner"
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.claim.propose",
+      "command_id": "claim-propose-B",
+      "subject": {
+        "kind": "knowledge.claim",
+        "id": "B"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.claim",
+            "id": "B"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "plane": "normative",
+        "statement": {
+          "subject": {
+            "kind": "app.service",
+            "id": "billing"
+          },
+          "predicate": "rule_b",
+          "value": "retries capped",
+          "cardinality": "single"
+        },
+        "scope": {
+          "id": "svc",
+          "qualifiers": {}
+        },
+        "support": [],
+        "derivation": {
+          "kind": "deterministic",
+          "inputs": []
+        },
+        "conditions": [
+          {
+            "condition_id": "k-1",
+            "kind": "repository_tree",
+            "repository": "repo-a",
+            "expected": "tree-1"
+          }
+        ]
+      },
+      "capture": {
+        "d_B": "/result/outcome/reference/digest"
+      },
+      "session": "knw-owner"
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.claim.propose",
+      "command_id": "claim-propose-C",
+      "subject": {
+        "kind": "knowledge.claim",
+        "id": "C"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.claim",
+            "id": "C"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "plane": "normative",
+        "statement": {
+          "subject": {
+            "kind": "app.service",
+            "id": "billing"
+          },
+          "predicate": "rule_c",
+          "value": "timeouts 30s",
+          "cardinality": "single"
+        },
+        "scope": {
+          "id": "svc",
+          "qualifiers": {}
+        },
+        "support": [],
+        "derivation": {
+          "kind": "deterministic",
+          "inputs": []
+        },
+        "conditions": [
+          {
+            "condition_id": "k-1",
+            "kind": "repository_tree",
+            "repository": "repo-a",
+            "expected": "tree-1"
+          }
+        ]
+      },
+      "capture": {
+        "d_C": "/result/outcome/reference/digest"
+      },
+      "session": "knw-owner"
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.applicability.evaluate",
+      "command_id": "applicability-evaluate-ev-A",
+      "subject": {
+        "kind": "knowledge.evaluation",
+        "id": "ev-A"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.evaluation",
+            "id": "ev-A"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "claim": {
+          "provider": "knowledge-1",
+          "claim": "A",
+          "revision": 1,
+          "digest": {
+            "$var": "d_A"
+          }
+        },
+        "target": {
+          "repositories": [
+            {
+              "id": "repo-a",
+              "tree": "tree-1"
+            }
+          ],
+          "completeness": "complete"
+        }
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "result": "applicable"
+          }
+        }
+      },
+      "session": "knw-owner"
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.applicability.evaluate",
+      "command_id": "applicability-evaluate-ev-B",
+      "subject": {
+        "kind": "knowledge.evaluation",
+        "id": "ev-B"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.evaluation",
+            "id": "ev-B"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "claim": {
+          "provider": "knowledge-1",
+          "claim": "B",
+          "revision": 1,
+          "digest": {
+            "$var": "d_B"
+          }
+        },
+        "target": {
+          "repositories": [
+            {
+              "id": "repo-a",
+              "tree": "tree-1"
+            }
+          ],
+          "completeness": "complete"
+        }
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "result": "applicable"
+          }
+        }
+      },
+      "session": "knw-owner"
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.applicability.evaluate",
+      "command_id": "applicability-evaluate-ev-C",
+      "subject": {
+        "kind": "knowledge.evaluation",
+        "id": "ev-C"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.evaluation",
+            "id": "ev-C"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "claim": {
+          "provider": "knowledge-1",
+          "claim": "C",
+          "revision": 1,
+          "digest": {
+            "$var": "d_C"
+          }
+        },
+        "target": {
+          "repositories": [
+            {
+              "id": "repo-a",
+              "tree": "tree-1"
+            }
+          ],
+          "completeness": "complete"
+        }
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "result": "applicable"
+          }
+        }
+      },
+      "session": "knw-owner"
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.decision.record",
+      "command_id": "decision-record-dec-A",
+      "subject": {
+        "kind": "knowledge.decision",
+        "id": "dec-A"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.decision",
+            "id": "dec-A"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "claim": {
+          "provider": "knowledge-1",
+          "claim": "A",
+          "revision": 1,
+          "digest": {
+            "$var": "d_A"
+          }
+        },
+        "decision": "accepted_for_use",
+        "validation_basis": {
+          "evidence": [],
+          "receipts": []
+        },
+        "rationale": "accepted_for_use A",
+        "permitted_use": "binding"
+      },
+      "set": {
+        "authority_epoch": 1
+      },
+      "session": "knw-owner"
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.decision.record",
+      "command_id": "decision-record-dec-B",
+      "subject": {
+        "kind": "knowledge.decision",
+        "id": "dec-B"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.decision",
+            "id": "dec-B"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "claim": {
+          "provider": "knowledge-1",
+          "claim": "B",
+          "revision": 1,
+          "digest": {
+            "$var": "d_B"
+          }
+        },
+        "decision": "accepted_for_use",
+        "validation_basis": {
+          "evidence": [],
+          "receipts": []
+        },
+        "rationale": "accepted_for_use B",
+        "permitted_use": "binding"
+      },
+      "set": {
+        "authority_epoch": 1
+      },
+      "session": "knw-owner"
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.decision.record",
+      "command_id": "decision-record-dec-C",
+      "subject": {
+        "kind": "knowledge.decision",
+        "id": "dec-C"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.decision",
+            "id": "dec-C"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "claim": {
+          "provider": "knowledge-1",
+          "claim": "C",
+          "revision": 1,
+          "digest": {
+            "$var": "d_C"
+          }
+        },
+        "decision": "accepted_for_use",
+        "validation_basis": {
+          "evidence": [],
+          "receipts": []
+        },
+        "rationale": "accepted_for_use C",
+        "permitted_use": "binding"
+      },
+      "set": {
+        "authority_epoch": 1
+      },
+      "session": "knw-owner"
+    },
+    {
+      "step": "start_participant",
+      "name": "ctx",
+      "config": {
+        "provider_id": "context-1",
+        "authority_principals": [
+          "owner"
+        ],
+        "clock": {
+          "controlled": "2030-01-01T00:00:00Z"
+        },
+        "context": {
+          "scripts": {
+            "r-1": [
+              {
+                "section": {
+                  "section_id": "s-req",
+                  "item_id": "i-req",
+                  "label": "binding",
+                  "content": "content of A",
+                  "claim": {
+                    "provider": "knowledge-1",
+                    "claim": "A",
+                    "revision": 1,
+                    "digest": {
+                      "$var": "d_A"
+                    }
+                  }
+                }
+              },
+              {
+                "section": {
+                  "section_id": "s-adv",
+                  "item_id": "i-adv",
+                  "label": "binding",
+                  "content": "content of B",
+                  "claim": {
+                    "provider": "knowledge-1",
+                    "claim": "B",
+                    "revision": 1,
+                    "digest": {
+                      "$var": "d_B"
+                    }
+                  }
+                }
+              },
+              {
+                "conditions": [
+                  {
+                    "condition_id": "k-1",
+                    "kind": "repository_tree",
+                    "repository": "repo-a",
+                    "expected": "tree-1"
+                  }
+                ]
+              },
+              {
+                "publish": {}
+              }
+            ],
+            "r-2": [
+              {
+                "section": {
+                  "section_id": "s-c",
+                  "item_id": "i-c",
+                  "label": "binding",
+                  "content": "content of C",
+                  "claim": {
+                    "provider": "knowledge-1",
+                    "claim": "C",
+                    "revision": 1,
+                    "digest": {
+                      "$var": "d_C"
+                    }
+                  }
+                }
+              },
+              {
+                "conditions": [
+                  {
+                    "condition_id": "k-1",
+                    "kind": "repository_tree",
+                    "repository": "repo-a",
+                    "expected": "tree-1"
+                  }
+                ]
+              },
+              {
+                "publish": {}
+              }
+            ],
+            "r-3": [
+              {
+                "section": {
+                  "section_id": "s-d",
+                  "item_id": "i-d",
+                  "label": "binding",
+                  "content": "content of C",
+                  "claim": {
+                    "provider": "knowledge-1",
+                    "claim": "C",
+                    "revision": 1,
+                    "digest": {
+                      "$var": "d_C"
+                    }
+                  }
+                }
+              },
+              {
+                "conditions": [
+                  {
+                    "condition_id": "k-1",
+                    "kind": "repository_tree",
+                    "repository": "repo-a",
+                    "expected": "tree-1"
+                  }
+                ]
+              },
+              {
+                "publish": {}
+              }
+            ]
+          },
+          "knowledge_provider": {
+            "provider_id": "knowledge-1",
+            "socket": {
+              "$var": "socket.knw"
+            },
+            "credential": {
+              "$var": "credential.ctx-service"
+            },
+            "grant": "g-ctx-read"
+          }
+        },
+        "evidence_store": {
+          "serve_altered_bytes": [
+            "packet.r-3.1"
+          ]
+        }
+      },
+      "credential_principals": [
+        "kernel"
+      ]
+    },
+    {
+      "step": "start_participant",
+      "name": "rec",
+      "config": {
+        "provider_id": "records-1",
+        "authority_principals": [
+          "owner"
+        ],
+        "clock": {
+          "controlled": "2030-01-01T00:00:00Z"
+        }
+      },
+      "credential_principals": [
+        "kernel"
+      ]
+    },
+    {
+      "step": "connect",
+      "session": "ctx-owner",
+      "participant": "ctx",
+      "principal": "owner"
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.grants"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "context",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": [
+              "context.advisory",
+              "context.required_before_start",
+              "context.claims"
+            ]
+          },
+          {
+            "name": "evidence",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      },
+      "session": "ctx-owner"
+    },
+    {
+      "step": "command",
+      "operation": "core.grant.issue",
+      "command_id": "grant-issue-g-packets",
+      "subject": {
+        "kind": "core.grant",
+        "id": "g-packets"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core.grant",
+            "id": "g-packets"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "holder": "kernel",
+        "audience": "context-1",
+        "rights": [
+          "context.packet.read"
+        ],
+        "resources": [
+          {
+            "kind": "context.packet"
+          }
+        ],
+        "delegation": {
+          "allowed": false,
+          "max_depth": 0
+        }
+      },
+      "session": "ctx-owner"
+    },
+    {
+      "step": "command",
+      "operation": "core.grant.issue",
+      "command_id": "grant-issue-g-artifacts",
+      "subject": {
+        "kind": "core.grant",
+        "id": "g-artifacts"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core.grant",
+            "id": "g-artifacts"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "holder": "kernel",
+        "audience": "context-1",
+        "rights": [
+          "evidence.read"
+        ],
+        "resources": [
+          {
+            "kind": "evidence.artifact",
+            "id_prefix": "packet."
+          }
+        ],
+        "delegation": {
+          "allowed": false,
+          "max_depth": 0
+        }
+      },
+      "session": "ctx-owner"
+    },
+    {
+      "step": "command",
+      "operation": "context.request.submit",
+      "command_id": "request-submit-r-1",
+      "subject": {
+        "kind": "context.request",
+        "id": "r-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "context.request",
+            "id": "r-1"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "consumer": {
+          "task": "change billing",
+          "principal": "kernel"
+        },
+        "basis": {
+          "repositories": [
+            {
+              "id": "repo-a",
+              "tree": "tree-1",
+              "workspace": "clean",
+              "dirty": null
+            }
+          ],
+          "completeness": "complete"
+        },
+        "items": [
+          {
+            "item_id": "i-req",
+            "selector": {
+              "kind": "claim",
+              "value": "A"
+            },
+            "obligation": "required_before_start",
+            "reliance": "binding",
+            "selected_by": "owner",
+            "check": {
+              "kind": "claim_included",
+              "claim": {
+                "provider": "knowledge-1",
+                "claim": "A",
+                "revision": 1,
+                "digest": {
+                  "$var": "d_A"
+                }
+              }
+            }
+          },
+          {
+            "item_id": "i-adv",
+            "selector": {
+              "kind": "claim",
+              "value": "B"
+            },
+            "obligation": "advisory",
+            "reliance": "binding",
+            "selected_by": "owner",
+            "check": {
+              "kind": "claim_included",
+              "claim": {
+                "provider": "knowledge-1",
+                "claim": "B",
+                "revision": 1,
+                "digest": {
+                  "$var": "d_B"
+                }
+              }
+            }
+          }
+        ],
+        "limits": {
+          "deadline": "2030-01-01T01:00:00Z",
+          "investigation": {
+            "units": "queries",
+            "amount": 10
+          },
+          "output_capacity": {
+            "units": "bytes",
+            "amount": 4096
+          }
+        }
+      },
+      "session": "ctx-owner"
+    },
+    {
+      "step": "command",
+      "operation": "context.request.submit",
+      "command_id": "request-submit-r-2",
+      "subject": {
+        "kind": "context.request",
+        "id": "r-2"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "context.request",
+            "id": "r-2"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "consumer": {
+          "task": "change billing",
+          "principal": "kernel"
+        },
+        "basis": {
+          "repositories": [
+            {
+              "id": "repo-a",
+              "tree": "tree-1",
+              "workspace": "clean",
+              "dirty": null
+            }
+          ],
+          "completeness": "complete"
+        },
+        "items": [
+          {
+            "item_id": "i-c",
+            "selector": {
+              "kind": "claim",
+              "value": "C"
+            },
+            "obligation": "required_before_start",
+            "reliance": "binding",
+            "selected_by": "owner",
+            "check": {
+              "kind": "claim_included",
+              "claim": {
+                "provider": "knowledge-1",
+                "claim": "C",
+                "revision": 1,
+                "digest": {
+                  "$var": "d_C"
+                }
+              }
+            }
+          }
+        ],
+        "limits": {
+          "deadline": "2030-01-01T01:00:00Z",
+          "investigation": {
+            "units": "queries",
+            "amount": 10
+          },
+          "output_capacity": {
+            "units": "bytes",
+            "amount": 4096
+          }
+        }
+      },
+      "session": "ctx-owner"
+    },
+    {
+      "step": "command",
+      "operation": "context.request.submit",
+      "command_id": "request-submit-r-3",
+      "subject": {
+        "kind": "context.request",
+        "id": "r-3"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "context.request",
+            "id": "r-3"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "consumer": {
+          "task": "change billing",
+          "principal": "kernel"
+        },
+        "basis": {
+          "repositories": [
+            {
+              "id": "repo-a",
+              "tree": "tree-1",
+              "workspace": "clean",
+              "dirty": null
+            }
+          ],
+          "completeness": "complete"
+        },
+        "items": [
+          {
+            "item_id": "i-d",
+            "selector": {
+              "kind": "claim",
+              "value": "C"
+            },
+            "obligation": "required_before_start",
+            "reliance": "binding",
+            "selected_by": "owner",
+            "check": {
+              "kind": "claim_included",
+              "claim": {
+                "provider": "knowledge-1",
+                "claim": "C",
+                "revision": 1,
+                "digest": {
+                  "$var": "d_C"
+                }
+              }
+            }
+          }
+        ],
+        "limits": {
+          "deadline": "2030-01-01T01:00:00Z",
+          "investigation": {
+            "units": "queries",
+            "amount": 10
+          },
+          "output_capacity": {
+            "units": "bytes",
+            "amount": 4096
+          }
+        }
+      },
+      "session": "ctx-owner"
+    },
+    {
+      "step": "query",
+      "operation": "context.request.inspect",
+      "payload": {
+        "request": "r-1"
+      },
+      "expect": {
+        "ok": {
+          "state": "ready"
+        }
+      },
+      "capture": {
+        "p1": "/result/packets/0/reference/artifact/digest"
+      },
+      "session": "ctx-owner"
+    },
+    {
+      "step": "query",
+      "operation": "context.request.inspect",
+      "payload": {
+        "request": "r-2"
+      },
+      "expect": {
+        "ok": {
+          "state": "ready"
+        }
+      },
+      "capture": {
+        "p2": "/result/packets/0/reference/artifact/digest"
+      },
+      "session": "ctx-owner"
+    },
+    {
+      "step": "query",
+      "operation": "context.request.inspect",
+      "payload": {
+        "request": "r-3"
+      },
+      "expect": {
+        "ok": {
+          "state": "ready"
+        }
+      },
+      "capture": {
+        "p3": "/result/packets/0/reference/artifact/digest"
+      },
+      "session": "ctx-owner"
+    },
+    {
+      "step": "connect",
+      "session": "rec-owner",
+      "participant": "rec",
+      "principal": "owner"
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.grants"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "evidence",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      },
+      "session": "rec-owner"
+    },
+    {
+      "step": "command",
+      "operation": "core.grant.issue",
+      "command_id": "grant-issue-g-records",
+      "subject": {
+        "kind": "core.grant",
+        "id": "g-records"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core.grant",
+            "id": "g-records"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "holder": "kernel",
+        "audience": "records-1",
+        "rights": [
+          "evidence.publish",
+          "evidence.read"
+        ],
+        "resources": [
+          {
+            "kind": "evidence.artifact",
+            "id_prefix": "check."
+          },
+          {
+            "kind": "evidence.artifact",
+            "id_prefix": "dispatch."
+          }
+        ],
+        "delegation": {
+          "allowed": false,
+          "max_depth": 0
+        }
+      },
+      "session": "rec-owner"
+    },
+    {
+      "step": "start_client",
+      "name": "kernel",
+      "implementation": "minimal-executor",
+      "config": {
+        "format": "combraton-thirdparty-kernel-config/1",
+        "principal": "kernel",
+        "clock_file": {
+          "$var": "clock_file"
+        },
+        "poll_ms": 25,
+        "providers": {
+          "context-1": {
+            "socket": {
+              "$var": "socket.ctx"
+            },
+            "credential": {
+              "$var": "credential.kernel"
+            }
+          },
+          "records-1": {
+            "socket": {
+              "$var": "socket.rec"
+            },
+            "credential": {
+              "$var": "credential.kernel"
+            }
+          }
+        },
+        "context": {
+          "provider": "context-1",
+          "grant": "g-packets"
+        },
+        "packet_evidence": {
+          "context-1": "g-artifacts"
+        },
+        "records": {
+          "provider": "records-1",
+          "grant": "g-records"
+        },
+        "work": [
+          {
+            "work_id": "w-valid",
+            "dispatch_at": "2030-01-01T00:01:00Z",
+            "binding": {
+              "packet": {
+                "packet": {
+                  "kind": "context.packet",
+                  "id": "r-2"
+                },
+                "revision": 1,
+                "artifact": {
+                  "provider": "context-1",
+                  "artifact": {
+                    "kind": "evidence.artifact",
+                    "id": "packet.r-2.1"
+                  },
+                  "digest": {
+                    "$var": "p2"
+                  }
+                }
+              },
+              "obligation": "required_before_start"
+            }
+          },
+          {
+            "work_id": "w-unrelated",
+            "dispatch_at": "2030-01-01T00:02:00Z",
+            "binding": {
+              "packet": {
+                "packet": {
+                  "kind": "context.packet",
+                  "id": "r-1"
+                },
+                "revision": 1,
+                "artifact": {
+                  "provider": "context-1",
+                  "artifact": {
+                    "kind": "evidence.artifact",
+                    "id": "packet.r-1.1"
+                  },
+                  "digest": {
+                    "$var": "p1"
+                  }
+                }
+              },
+              "obligation": "required_before_start"
+            }
+          },
+          {
+            "work_id": "w-req",
+            "dispatch_at": "2030-01-01T00:03:00Z",
+            "binding": {
+              "packet": {
+                "packet": {
+                  "kind": "context.packet",
+                  "id": "r-1"
+                },
+                "revision": 1,
+                "artifact": {
+                  "provider": "context-1",
+                  "artifact": {
+                    "kind": "evidence.artifact",
+                    "id": "packet.r-1.1"
+                  },
+                  "digest": {
+                    "$var": "p1"
+                  }
+                }
+              },
+              "obligation": "required_before_start"
+            }
+          },
+          {
+            "work_id": "w-adv",
+            "dispatch_at": "2030-01-01T00:03:00Z",
+            "binding": {
+              "packet": {
+                "packet": {
+                  "kind": "context.packet",
+                  "id": "r-1"
+                },
+                "revision": 1,
+                "artifact": {
+                  "provider": "context-1",
+                  "artifact": {
+                    "kind": "evidence.artifact",
+                    "id": "packet.r-1.1"
+                  },
+                  "digest": {
+                    "$var": "p1"
+                  }
+                }
+              },
+              "obligation": "advisory",
+              "fallback": "proceed_with_gap"
+            }
+          },
+          {
+            "work_id": "w-tampered",
+            "dispatch_at": "2030-01-01T00:03:00Z",
+            "binding": {
+              "packet": {
+                "packet": {
+                  "kind": "context.packet",
+                  "id": "r-2"
+                },
+                "revision": 1,
+                "artifact": {
+                  "provider": "context-1",
+                  "artifact": {
+                    "kind": "evidence.artifact",
+                    "id": "packet.r-2.1"
+                  },
+                  "digest": {
+                    "$var": "p1"
+                  }
+                }
+              },
+              "obligation": "required_before_start"
+            }
+          },
+          {
+            "work_id": "w-altered",
+            "dispatch_at": "2030-01-01T00:03:00Z",
+            "binding": {
+              "packet": {
+                "packet": {
+                  "kind": "context.packet",
+                  "id": "r-3"
+                },
+                "revision": 1,
+                "artifact": {
+                  "provider": "context-1",
+                  "artifact": {
+                    "kind": "evidence.artifact",
+                    "id": "packet.r-3.1"
+                  },
+                  "digest": {
+                    "$var": "p3"
+                  }
+                }
+              },
+              "obligation": "required_before_start"
+            }
+          },
+          {
+            "work_id": "w-marker",
+            "dispatch_at": "2030-01-01T00:03:00Z",
+            "binding": {
+              "packet": {
+                "packet": {
+                  "kind": "context.packet",
+                  "id": "r-2"
+                },
+                "revision": 1,
+                "artifact": {
+                  "provider": "context-1",
+                  "artifact": {
+                    "kind": "evidence.artifact",
+                    "id": "packet.r-2.1"
+                  },
+                  "digest": {
+                    "$var": "p2"
+                  }
+                }
+              },
+              "obligation": "advisory",
+              "fallback": "proceed_with_gap"
+            }
+          },
+          {
+            "work_id": "w-unknown",
+            "dispatch_at": "2030-01-01T00:04:00Z",
+            "binding": {
+              "packet": {
+                "packet": {
+                  "kind": "context.packet",
+                  "id": "r-2"
+                },
+                "revision": 1,
+                "artifact": {
+                  "provider": "context-1",
+                  "artifact": {
+                    "kind": "evidence.artifact",
+                    "id": "packet.r-2.1"
+                  },
+                  "digest": {
+                    "$var": "p2"
+                  }
+                }
+              },
+              "obligation": "required_before_start"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "step": "set_clock",
+      "instant": "2030-01-01T00:01:00Z"
+    },
+    {
+      "step": "query",
+      "operation": "evidence.inspect",
+      "payload": {
+        "artifact": {
+          "kind": "evidence.artifact",
+          "id": "check.w-valid.1"
+        }
+      },
+      "expect": {
+        "ok": {
+          "state": "sealed",
+          "descriptor": {
+            "producer": {
+              "principal": "kernel"
+            }
+          }
+        }
+      },
+      "capture": {
+        "c_valid": "/result/descriptor/digest"
+      },
+      "eventually_ms": 20000,
+      "session": "rec-owner"
+    },
+    {
+      "step": "query",
+      "operation": "evidence.fetch",
+      "payload": {
+        "artifact": {
+          "kind": "evidence.artifact",
+          "id": "check.w-valid.1"
+        },
+        "digest": {
+          "$var": "c_valid"
+        }
+      },
+      "expect": {
+        "ok": {
+          "data_base64": {
+            "$base64_json": {
+              "format": "combraton-thirdparty-kernel-check/1",
+              "work_id": "w-valid",
+              "boundary": "dispatch",
+              "state": "current",
+              "decision": "dispatch"
+            }
+          }
+        }
+      },
+      "session": "rec-owner"
+    },
+    {
+      "step": "query",
+      "operation": "evidence.inspect",
+      "payload": {
+        "artifact": {
+          "kind": "evidence.artifact",
+          "id": "dispatch.w-valid"
+        }
+      },
+      "expect": {
+        "ok": {
+          "state": "sealed",
+          "descriptor": {
+            "producer": {
+              "principal": "kernel"
+            }
+          }
+        }
+      },
+      "capture": {
+        "d_valid": "/result/descriptor/digest"
+      },
+      "eventually_ms": 20000,
+      "session": "rec-owner"
+    },
+    {
+      "step": "query",
+      "operation": "evidence.fetch",
+      "payload": {
+        "artifact": {
+          "kind": "evidence.artifact",
+          "id": "dispatch.w-valid"
+        },
+        "digest": {
+          "$var": "d_valid"
+        }
+      },
+      "expect": {
+        "ok": {
+          "data_base64": {
+            "$base64_json": {
+              "format": "combraton-thirdparty-kernel-dispatch/1",
+              "work_id": "w-valid",
+              "obligation": "required_before_start",
+              "gap": false,
+              "check": 1
+            }
+          }
+        }
+      },
+      "session": "rec-owner"
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.decision.record",
+      "command_id": "decision-record-dec-B-reject",
+      "subject": {
+        "kind": "knowledge.decision",
+        "id": "dec-B-reject"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.decision",
+            "id": "dec-B-reject"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "claim": {
+          "provider": "knowledge-1",
+          "claim": "B",
+          "revision": 1,
+          "digest": {
+            "$var": "d_B"
+          }
+        },
+        "decision": "rejected",
+        "validation_basis": {
+          "evidence": [],
+          "receipts": []
+        },
+        "rationale": "rejected B",
+        "supersedes_decision": "dec-B"
+      },
+      "set": {
+        "authority_epoch": 1
+      },
+      "session": "knw-owner"
+    },
+    {
+      "step": "query",
+      "operation": "context.packet.inspect",
+      "payload": {
+        "packet": "r-1",
+        "revision": 1
+      },
+      "expect": {
+        "ok": {
+          "claim_changes": [
+            {
+              "section_id": "s-adv",
+              "change": "reliance_changed"
+            }
+          ],
+          "invalidated_items": []
+        }
+      },
+      "session": "ctx-owner"
+    },
+    {
+      "step": "set_clock",
+      "instant": "2030-01-01T00:02:00Z"
+    },
+    {
+      "step": "query",
+      "operation": "evidence.inspect",
+      "payload": {
+        "artifact": {
+          "kind": "evidence.artifact",
+          "id": "check.w-unrelated.1"
+        }
+      },
+      "expect": {
+        "ok": {
+          "state": "sealed",
+          "descriptor": {
+            "producer": {
+              "principal": "kernel"
+            }
+          }
+        }
+      },
+      "capture": {
+        "c_unrelated": "/result/descriptor/digest"
+      },
+      "eventually_ms": 20000,
+      "session": "rec-owner"
+    },
+    {
+      "step": "query",
+      "operation": "evidence.fetch",
+      "payload": {
+        "artifact": {
+          "kind": "evidence.artifact",
+          "id": "check.w-unrelated.1"
+        },
+        "digest": {
+          "$var": "c_unrelated"
+        }
+      },
+      "expect": {
+        "ok": {
+          "data_base64": {
+            "$base64_json": {
+              "format": "combraton-thirdparty-kernel-check/1",
+              "work_id": "w-unrelated",
+              "boundary": "dispatch",
+              "state": "current",
+              "decision": "dispatch"
+            }
+          }
+        }
+      },
+      "session": "rec-owner"
+    },
+    {
+      "step": "query",
+      "operation": "evidence.inspect",
+      "payload": {
+        "artifact": {
+          "kind": "evidence.artifact",
+          "id": "dispatch.w-unrelated"
+        }
+      },
+      "expect": {
+        "ok": {
+          "state": "sealed",
+          "descriptor": {
+            "producer": {
+              "principal": "kernel"
+            }
+          }
+        }
+      },
+      "capture": {
+        "d_unrelated": "/result/descriptor/digest"
+      },
+      "eventually_ms": 20000,
+      "session": "rec-owner"
+    },
+    {
+      "step": "query",
+      "operation": "evidence.fetch",
+      "payload": {
+        "artifact": {
+          "kind": "evidence.artifact",
+          "id": "dispatch.w-unrelated"
+        },
+        "digest": {
+          "$var": "d_unrelated"
+        }
+      },
+      "expect": {
+        "ok": {
+          "data_base64": {
+            "$base64_json": {
+              "format": "combraton-thirdparty-kernel-dispatch/1",
+              "work_id": "w-unrelated",
+              "obligation": "required_before_start",
+              "gap": false,
+              "check": 1
+            }
+          }
+        }
+      },
+      "session": "rec-owner"
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.decision.record",
+      "command_id": "decision-record-dec-A-reject",
+      "subject": {
+        "kind": "knowledge.decision",
+        "id": "dec-A-reject"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.decision",
+            "id": "dec-A-reject"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "claim": {
+          "provider": "knowledge-1",
+          "claim": "A",
+          "revision": 1,
+          "digest": {
+            "$var": "d_A"
+          }
+        },
+        "decision": "rejected",
+        "validation_basis": {
+          "evidence": [],
+          "receipts": []
+        },
+        "rationale": "rejected A",
+        "supersedes_decision": "dec-A"
+      },
+      "set": {
+        "authority_epoch": 1
+      },
+      "session": "knw-owner"
+    },
+    {
+      "step": "query",
+      "operation": "context.packet.inspect",
+      "payload": {
+        "packet": "r-1",
+        "revision": 1
+      },
+      "expect": {
+        "ok": {
+          "invalidated_items": [
+            {
+              "item_id": "i-req",
+              "reason": "permitted_use_lost"
+            }
+          ]
+        }
+      },
+      "session": "ctx-owner"
+    },
+    {
+      "step": "set_clock",
+      "instant": "2030-01-01T00:03:00Z"
+    },
+    {
+      "step": "query",
+      "operation": "evidence.inspect",
+      "payload": {
+        "artifact": {
+          "kind": "evidence.artifact",
+          "id": "dispatch.w-marker"
+        }
+      },
+      "expect": {
+        "ok": {
+          "state": "sealed",
+          "descriptor": {
+            "producer": {
+              "principal": "kernel"
+            }
+          }
+        }
+      },
+      "capture": {
+        "d_marker": "/result/descriptor/digest"
+      },
+      "eventually_ms": 20000,
+      "session": "rec-owner"
+    },
+    {
+      "step": "query",
+      "operation": "evidence.fetch",
+      "payload": {
+        "artifact": {
+          "kind": "evidence.artifact",
+          "id": "dispatch.w-marker"
+        },
+        "digest": {
+          "$var": "d_marker"
+        }
+      },
+      "expect": {
+        "ok": {
+          "data_base64": {
+            "$base64_json": {
+              "format": "combraton-thirdparty-kernel-dispatch/1",
+              "work_id": "w-marker",
+              "obligation": "advisory",
+              "gap": false,
+              "check": 1
+            }
+          }
+        }
+      },
+      "session": "rec-owner"
+    },
+    {
+      "step": "query",
+      "operation": "evidence.inspect",
+      "payload": {
+        "artifact": {
+          "kind": "evidence.artifact",
+          "id": "check.w-tampered.1"
+        }
+      },
+      "expect": {
+        "ok": {
+          "state": "sealed",
+          "descriptor": {
+            "producer": {
+              "principal": "kernel"
+            }
+          }
+        }
+      },
+      "capture": {
+        "c_tampered": "/result/descriptor/digest"
+      },
+      "eventually_ms": 20000,
+      "session": "rec-owner"
+    },
+    {
+      "step": "query",
+      "operation": "evidence.fetch",
+      "payload": {
+        "artifact": {
+          "kind": "evidence.artifact",
+          "id": "check.w-tampered.1"
+        },
+        "digest": {
+          "$var": "c_tampered"
+        }
+      },
+      "expect": {
+        "ok": {
+          "data_base64": {
+            "$base64_json": {
+              "format": "combraton-thirdparty-kernel-check/1",
+              "work_id": "w-tampered",
+              "boundary": "dispatch",
+              "state": "unsatisfied",
+              "decision": "withhold"
+            }
+          }
+        }
+      },
+      "session": "rec-owner"
+    },
+    {
+      "step": "query",
+      "operation": "evidence.inspect",
+      "payload": {
+        "artifact": {
+          "kind": "evidence.artifact",
+          "id": "dispatch.w-tampered"
+        }
+      },
+      "expect": {
+        "error": "not_found"
+      },
+      "session": "rec-owner"
+    },
+    {
+      "step": "query",
+      "operation": "evidence.inspect",
+      "payload": {
+        "artifact": {
+          "kind": "evidence.artifact",
+          "id": "check.w-altered.1"
+        }
+      },
+      "expect": {
+        "ok": {
+          "state": "sealed",
+          "descriptor": {
+            "producer": {
+              "principal": "kernel"
+            }
+          }
+        }
+      },
+      "capture": {
+        "c_altered": "/result/descriptor/digest"
+      },
+      "eventually_ms": 20000,
+      "session": "rec-owner"
+    },
+    {
+      "step": "query",
+      "operation": "evidence.fetch",
+      "payload": {
+        "artifact": {
+          "kind": "evidence.artifact",
+          "id": "check.w-altered.1"
+        },
+        "digest": {
+          "$var": "c_altered"
+        }
+      },
+      "expect": {
+        "ok": {
+          "data_base64": {
+            "$base64_json": {
+              "format": "combraton-thirdparty-kernel-check/1",
+              "work_id": "w-altered",
+              "boundary": "dispatch",
+              "state": "unsatisfied",
+              "decision": "withhold"
+            }
+          }
+        }
+      },
+      "session": "rec-owner"
+    },
+    {
+      "step": "query",
+      "operation": "evidence.inspect",
+      "payload": {
+        "artifact": {
+          "kind": "evidence.artifact",
+          "id": "dispatch.w-altered"
+        }
+      },
+      "expect": {
+        "error": "not_found"
+      },
+      "session": "rec-owner"
+    },
+    {
+      "step": "query",
+      "operation": "evidence.inspect",
+      "payload": {
+        "artifact": {
+          "kind": "evidence.artifact",
+          "id": "dispatch.w-req"
+        }
+      },
+      "expect": {
+        "error": "not_found"
+      },
+      "session": "rec-owner"
+    },
+    {
+      "step": "query",
+      "operation": "evidence.inspect",
+      "payload": {
+        "artifact": {
+          "kind": "evidence.artifact",
+          "id": "check.w-req.1"
+        }
+      },
+      "expect": {
+        "ok": {
+          "state": "sealed",
+          "descriptor": {
+            "producer": {
+              "principal": "kernel"
+            }
+          }
+        }
+      },
+      "capture": {
+        "c_req": "/result/descriptor/digest"
+      },
+      "eventually_ms": 20000,
+      "session": "rec-owner"
+    },
+    {
+      "step": "query",
+      "operation": "evidence.fetch",
+      "payload": {
+        "artifact": {
+          "kind": "evidence.artifact",
+          "id": "check.w-req.1"
+        },
+        "digest": {
+          "$var": "c_req"
+        }
+      },
+      "expect": {
+        "ok": {
+          "data_base64": {
+            "$base64_json": {
+              "format": "combraton-thirdparty-kernel-check/1",
+              "work_id": "w-req",
+              "boundary": "dispatch",
+              "state": "stale",
+              "decision": "withhold"
+            }
+          }
+        }
+      },
+      "session": "rec-owner"
+    },
+    {
+      "step": "query",
+      "operation": "evidence.inspect",
+      "payload": {
+        "artifact": {
+          "kind": "evidence.artifact",
+          "id": "check.w-adv.1"
+        }
+      },
+      "expect": {
+        "ok": {
+          "state": "sealed",
+          "descriptor": {
+            "producer": {
+              "principal": "kernel"
+            }
+          }
+        }
+      },
+      "capture": {
+        "c_adv": "/result/descriptor/digest"
+      },
+      "eventually_ms": 20000,
+      "session": "rec-owner"
+    },
+    {
+      "step": "query",
+      "operation": "evidence.fetch",
+      "payload": {
+        "artifact": {
+          "kind": "evidence.artifact",
+          "id": "check.w-adv.1"
+        },
+        "digest": {
+          "$var": "c_adv"
+        }
+      },
+      "expect": {
+        "ok": {
+          "data_base64": {
+            "$base64_json": {
+              "format": "combraton-thirdparty-kernel-check/1",
+              "work_id": "w-adv",
+              "boundary": "dispatch",
+              "state": "stale",
+              "decision": "dispatch"
+            }
+          }
+        }
+      },
+      "session": "rec-owner"
+    },
+    {
+      "step": "query",
+      "operation": "evidence.inspect",
+      "payload": {
+        "artifact": {
+          "kind": "evidence.artifact",
+          "id": "dispatch.w-adv"
+        }
+      },
+      "expect": {
+        "ok": {
+          "state": "sealed",
+          "descriptor": {
+            "producer": {
+              "principal": "kernel"
+            }
+          }
+        }
+      },
+      "capture": {
+        "d_adv": "/result/descriptor/digest"
+      },
+      "eventually_ms": 20000,
+      "session": "rec-owner"
+    },
+    {
+      "step": "query",
+      "operation": "evidence.fetch",
+      "payload": {
+        "artifact": {
+          "kind": "evidence.artifact",
+          "id": "dispatch.w-adv"
+        },
+        "digest": {
+          "$var": "d_adv"
+        }
+      },
+      "expect": {
+        "ok": {
+          "data_base64": {
+            "$base64_json": {
+              "format": "combraton-thirdparty-kernel-dispatch/1",
+              "work_id": "w-adv",
+              "obligation": "advisory",
+              "gap": true,
+              "check": 1
+            }
+          }
+        }
+      },
+      "session": "rec-owner"
+    },
+    {
+      "step": "stop_participant",
+      "name": "knw"
+    },
+    {
+      "step": "query",
+      "operation": "context.packet.inspect",
+      "payload": {
+        "packet": "r-2",
+        "revision": 1
+      },
+      "expect": {
+        "ok": {
+          "unverified_items": [
+            {
+              "item_id": "i-c",
+              "reason": "knowledge_unavailable"
+            }
+          ]
+        }
+      },
+      "session": "ctx-owner"
+    },
+    {
+      "step": "set_clock",
+      "instant": "2030-01-01T00:04:00Z"
+    },
+    {
+      "step": "query",
+      "operation": "evidence.inspect",
+      "payload": {
+        "artifact": {
+          "kind": "evidence.artifact",
+          "id": "check.w-unknown.1"
+        }
+      },
+      "expect": {
+        "ok": {
+          "state": "sealed",
+          "descriptor": {
+            "producer": {
+              "principal": "kernel"
+            }
+          }
+        }
+      },
+      "capture": {
+        "c_unknown": "/result/descriptor/digest"
+      },
+      "eventually_ms": 20000,
+      "session": "rec-owner"
+    },
+    {
+      "step": "query",
+      "operation": "evidence.fetch",
+      "payload": {
+        "artifact": {
+          "kind": "evidence.artifact",
+          "id": "check.w-unknown.1"
+        },
+        "digest": {
+          "$var": "c_unknown"
+        }
+      },
+      "expect": {
+        "ok": {
+          "data_base64": {
+            "$base64_json": {
+              "format": "combraton-thirdparty-kernel-check/1",
+              "work_id": "w-unknown",
+              "boundary": "dispatch",
+              "state": "unknown",
+              "decision": "withhold"
+            }
+          }
+        }
+      },
+      "session": "rec-owner"
+    },
+    {
+      "step": "query",
+      "operation": "evidence.inspect",
+      "payload": {
+        "artifact": {
+          "kind": "evidence.artifact",
+          "id": "dispatch.w-unknown"
+        }
+      },
+      "expect": {
+        "error": "not_found"
+      },
+      "session": "rec-owner"
+    },
+    {
+      "step": "query",
+      "operation": "evidence.inspect",
+      "payload": {
+        "artifact": {
+          "kind": "evidence.artifact",
+          "id": "dispatch.w-req"
+        }
+      },
+      "expect": {
+        "error": "not_found"
+      },
+      "session": "rec-owner"
+    },
+    {
+      "step": "stop_client",
+      "name": "kernel"
+    },
+    {
+      "step": "stop_participant",
+      "name": "rec"
+    },
+    {
+      "step": "stop_participant",
+      "name": "ctx"
+    }
+  ]
+}

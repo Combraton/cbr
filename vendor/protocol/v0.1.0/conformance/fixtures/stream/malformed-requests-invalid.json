@@ -1,0 +1,69 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "stream.malformed-requests-invalid",
+  "version": 1,
+  "title": "Extra members, boolean ids and empty-string ids are invalid_request",
+  "requirements": [
+    "TRN-1"
+  ],
+  "spec_refs": [
+    "docs/spec/bindings/STREAM.md#3-json-rpc-mapping"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "core",
+      "major": 1
+    }
+  ],
+  "polarity": "negative",
+  "kills": [
+    "lenient-jsonrpc-shape"
+  ],
+  "steps": [
+    {
+      "step": "start"
+    },
+    {
+      "step": "raw",
+      "text": "{\"jsonrpc\":\"2.0\",\"id\":900,\"method\":\"core.describe\",\"params\":{\"operation\":\"core.describe\",\"message_id\":\"msg-describe\",\"payload\":{}},\"extra\":1}"
+    },
+    {
+      "step": "expect_frame",
+      "expect": {
+        "frame": {
+          "id": 900
+        },
+        "error": "invalid_request"
+      }
+    },
+    {
+      "step": "raw",
+      "text": "{\"jsonrpc\":\"2.0\",\"id\":true,\"method\":\"core.describe\",\"params\":{\"operation\":\"core.describe\",\"message_id\":\"msg-describe\",\"payload\":{}}}"
+    },
+    {
+      "step": "expect_frame",
+      "expect": {
+        "error": "invalid_request",
+        "id_null": true
+      }
+    },
+    {
+      "step": "raw",
+      "text": "{\"jsonrpc\":\"2.0\",\"id\":\"\",\"method\":\"core.describe\",\"params\":{\"operation\":\"core.describe\",\"message_id\":\"msg-describe\",\"payload\":{}}}"
+    },
+    {
+      "step": "expect_frame",
+      "expect": {
+        "error": "invalid_request",
+        "id_null": true
+      }
+    },
+    {
+      "step": "describe"
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

@@ -1,0 +1,706 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "context.request-items-are-checkable-and-obligations-negotiated",
+  "version": 2,
+  "title": "Unknown obligations, reliance labels and check kinds, missing selecting authority, misplaced transitions and a commit-only basis declared complete are refused; each repository keeps its tree; an obligation whose feature was not negotiated is unsupported",
+  "requirements": [
+    "CTX-2",
+    "CTX-3",
+    "CTX-9"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/CONTEXT.md#1-dependencies-and-negotiation",
+    "docs/spec/profiles/CONTEXT.md#3-requests"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "context",
+      "major": 1
+    }
+  ],
+  "features": [
+    "core.events",
+    "context.advisory",
+    "context.required_before_start"
+  ],
+  "requires_controls": [
+    "context.script",
+    "clock.file"
+  ],
+  "polarity": "negative",
+  "kills": [
+    "uncheckable-item-accepted",
+    "dirty-basis-complete-accepted",
+    "transition-as-advisory"
+  ],
+  "steps": [
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ],
+        "context": {
+          "default_script": [
+            {
+              "publish": {}
+            }
+          ]
+        },
+        "clock": {
+          "controlled": "2030-01-01T00:00:00Z"
+        }
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "context",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": [
+              "context.advisory",
+              "context.required_before_start"
+            ]
+          },
+          {
+            "name": "evidence",
+            "majors": [
+              1
+            ],
+            "required": false,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "context.request.submit",
+      "command_id": "submit-v-1",
+      "subject": {
+        "kind": "context.request",
+        "id": "v-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "context.request",
+            "id": "v-1"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "consumer": {
+          "task": "fix the build",
+          "principal": "agent-1"
+        },
+        "basis": {
+          "repositories": [
+            {
+              "id": "repo-a",
+              "tree": "tree-1",
+              "workspace": "clean",
+              "dirty": null
+            }
+          ],
+          "completeness": "complete"
+        },
+        "items": [
+          {
+            "item_id": "i-1",
+            "selector": {
+              "kind": "path",
+              "value": "src/i-1"
+            },
+            "obligation": "required_before_start",
+            "reliance": "binding",
+            "selected_by": "owner",
+            "check": {
+              "kind": "understand_repository"
+            }
+          }
+        ],
+        "limits": {
+          "deadline": "2030-01-01T01:00:00Z",
+          "investigation": {
+            "units": "queries",
+            "amount": 100
+          },
+          "output_capacity": {
+            "units": "bytes",
+            "amount": 4096
+          }
+        }
+      },
+      "expect": {
+        "error": "invalid_envelope"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "context.request.submit",
+      "command_id": "submit-v-1-no-authority",
+      "subject": {
+        "kind": "context.request",
+        "id": "v-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "context.request",
+            "id": "v-1"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "consumer": {
+          "task": "fix the build",
+          "principal": "agent-1"
+        },
+        "basis": {
+          "repositories": [
+            {
+              "id": "repo-a",
+              "tree": "tree-1",
+              "workspace": "clean",
+              "dirty": null
+            }
+          ],
+          "completeness": "complete"
+        },
+        "items": [
+          {
+            "item_id": "i-1",
+            "selector": {
+              "kind": "path",
+              "value": "src/i-1"
+            },
+            "obligation": "required_before_start",
+            "reliance": "binding",
+            "check": {
+              "kind": "source_included",
+              "repository": "repo-a",
+              "path": "src/i-1"
+            }
+          }
+        ],
+        "limits": {
+          "deadline": "2030-01-01T01:00:00Z",
+          "investigation": {
+            "units": "queries",
+            "amount": 100
+          },
+          "output_capacity": {
+            "units": "bytes",
+            "amount": 4096
+          }
+        }
+      },
+      "expect": {
+        "error": "invalid_envelope"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "context.request.submit",
+      "command_id": "submit-v-1-obligation",
+      "subject": {
+        "kind": "context.request",
+        "id": "v-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "context.request",
+            "id": "v-1"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "consumer": {
+          "task": "fix the build",
+          "principal": "agent-1"
+        },
+        "basis": {
+          "repositories": [
+            {
+              "id": "repo-a",
+              "tree": "tree-1",
+              "workspace": "clean",
+              "dirty": null
+            }
+          ],
+          "completeness": "complete"
+        },
+        "items": [
+          {
+            "item_id": "i-1",
+            "selector": {
+              "kind": "path",
+              "value": "src/i-1"
+            },
+            "obligation": "eventually",
+            "reliance": "binding",
+            "selected_by": "owner",
+            "check": {
+              "kind": "source_included",
+              "repository": "repo-a",
+              "path": "src/i-1"
+            }
+          }
+        ],
+        "limits": {
+          "deadline": "2030-01-01T01:00:00Z",
+          "investigation": {
+            "units": "queries",
+            "amount": 100
+          },
+          "output_capacity": {
+            "units": "bytes",
+            "amount": 4096
+          }
+        }
+      },
+      "expect": {
+        "error": "invalid_envelope"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "context.request.submit",
+      "command_id": "submit-v-1-reliance",
+      "subject": {
+        "kind": "context.request",
+        "id": "v-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "context.request",
+            "id": "v-1"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "consumer": {
+          "task": "fix the build",
+          "principal": "agent-1"
+        },
+        "basis": {
+          "repositories": [
+            {
+              "id": "repo-a",
+              "tree": "tree-1",
+              "workspace": "clean",
+              "dirty": null
+            }
+          ],
+          "completeness": "complete"
+        },
+        "items": [
+          {
+            "item_id": "i-1",
+            "selector": {
+              "kind": "path",
+              "value": "src/i-1"
+            },
+            "obligation": "required_before_start",
+            "reliance": "vibes",
+            "selected_by": "owner",
+            "check": {
+              "kind": "source_included",
+              "repository": "repo-a",
+              "path": "src/i-1"
+            }
+          }
+        ],
+        "limits": {
+          "deadline": "2030-01-01T01:00:00Z",
+          "investigation": {
+            "units": "queries",
+            "amount": 100
+          },
+          "output_capacity": {
+            "units": "bytes",
+            "amount": 4096
+          }
+        }
+      },
+      "expect": {
+        "error": "invalid_envelope"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "context.request.submit",
+      "command_id": "submit-v-1-transition",
+      "subject": {
+        "kind": "context.request",
+        "id": "v-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "context.request",
+            "id": "v-1"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "consumer": {
+          "task": "fix the build",
+          "principal": "agent-1"
+        },
+        "basis": {
+          "repositories": [
+            {
+              "id": "repo-a",
+              "tree": "tree-1",
+              "workspace": "clean",
+              "dirty": null
+            }
+          ],
+          "completeness": "complete"
+        },
+        "items": [
+          {
+            "item_id": "i-1",
+            "selector": {
+              "kind": "path",
+              "value": "src/i-1"
+            },
+            "obligation": "required_before_start",
+            "reliance": "binding",
+            "selected_by": "owner",
+            "check": {
+              "kind": "source_included",
+              "repository": "repo-a",
+              "path": "src/i-1"
+            },
+            "transition": "merge"
+          }
+        ],
+        "limits": {
+          "deadline": "2030-01-01T01:00:00Z",
+          "investigation": {
+            "units": "queries",
+            "amount": 100
+          },
+          "output_capacity": {
+            "units": "bytes",
+            "amount": 4096
+          }
+        }
+      },
+      "note": "the item schema forbids transition here; the path is the member or its item",
+      "expect": {
+        "any_of": [
+          {
+            "error": "invalid_envelope",
+            "details": {
+              "path": "/payload/items/0/transition"
+            }
+          },
+          {
+            "error": "invalid_envelope",
+            "details": {
+              "path": "/payload/items/0"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "context.request.submit",
+      "command_id": "submit-v-2",
+      "subject": {
+        "kind": "context.request",
+        "id": "v-2"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "context.request",
+            "id": "v-2"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "consumer": {
+          "task": "fix the build",
+          "principal": "agent-1"
+        },
+        "basis": {
+          "repositories": [
+            {
+              "id": "repo-a",
+              "tree": "tree-1",
+              "workspace": "dirty",
+              "dirty": null
+            }
+          ],
+          "completeness": "complete"
+        },
+        "items": [
+          {
+            "item_id": "i-1",
+            "selector": {
+              "kind": "path",
+              "value": "src/i-1"
+            },
+            "obligation": "required_before_start",
+            "reliance": "binding",
+            "selected_by": "owner",
+            "check": {
+              "kind": "source_included",
+              "repository": "repo-a",
+              "path": "src/i-1"
+            }
+          }
+        ],
+        "limits": {
+          "deadline": "2030-01-01T01:00:00Z",
+          "investigation": {
+            "units": "queries",
+            "amount": 100
+          },
+          "output_capacity": {
+            "units": "bytes",
+            "amount": 4096
+          }
+        }
+      },
+      "expect": {
+        "error": "invalid_envelope",
+        "details": {
+          "path": "/payload/basis/completeness"
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "context.request.submit",
+      "command_id": "submit-v-3",
+      "subject": {
+        "kind": "context.request",
+        "id": "v-3"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "context.request",
+            "id": "v-3"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "consumer": {
+          "task": "fix the build",
+          "principal": "agent-1"
+        },
+        "basis": {
+          "repositories": [
+            {
+              "id": "repo-a",
+              "tree": "tree-1",
+              "workspace": "clean",
+              "dirty": null
+            }
+          ],
+          "completeness": "complete"
+        },
+        "items": [
+          {
+            "item_id": "i-1",
+            "selector": {
+              "kind": "path",
+              "value": "src/i-1"
+            },
+            "obligation": "required_before_transition",
+            "reliance": "binding",
+            "selected_by": "owner",
+            "check": {
+              "kind": "source_included",
+              "repository": "repo-a",
+              "path": "src/i-1"
+            },
+            "transition": "merge"
+          }
+        ],
+        "limits": {
+          "deadline": "2030-01-01T01:00:00Z",
+          "investigation": {
+            "units": "queries",
+            "amount": 100
+          },
+          "output_capacity": {
+            "units": "bytes",
+            "amount": 4096
+          }
+        }
+      },
+      "expect": {
+        "error": "unsupported_required_feature",
+        "details": {
+          "features": [
+            "context.required_before_transition"
+          ]
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "context.request.submit",
+      "command_id": "submit-v-4",
+      "subject": {
+        "kind": "context.request",
+        "id": "v-4"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "context.request",
+            "id": "v-4"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "consumer": {
+          "task": "fix the build",
+          "principal": "agent-1"
+        },
+        "basis": {
+          "repositories": [
+            {
+              "id": "repo-a",
+              "tree": "tree-1",
+              "workspace": "dirty",
+              "dirty": null
+            },
+            {
+              "id": "repo-b",
+              "tree": "tree-9",
+              "workspace": "dirty",
+              "dirty": {
+                "snapshot_digest": "sha256:16a0eeb0791b6c92451fd284dd9f599e0a7dbe7f6ebea6e2d2d06c7f74aec112"
+              }
+            }
+          ],
+          "completeness": "partial"
+        },
+        "items": [
+          {
+            "item_id": "i-1",
+            "selector": {
+              "kind": "path",
+              "value": "src/i-1"
+            },
+            "obligation": "required_before_start",
+            "reliance": "binding",
+            "selected_by": "owner",
+            "check": {
+              "kind": "source_included",
+              "repository": "repo-a",
+              "path": "src/i-1"
+            }
+          }
+        ],
+        "limits": {
+          "deadline": "2030-01-01T01:00:00Z",
+          "investigation": {
+            "units": "queries",
+            "amount": 100
+          },
+          "output_capacity": {
+            "units": "bytes",
+            "amount": 4096
+          }
+        }
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "state": "preparing"
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "context.packet.inspect",
+      "payload": {
+        "packet": "v-4",
+        "revision": 1
+      },
+      "expect": {
+        "ok": {
+          "provenance": {
+            "basis": {
+              "completeness": "partial",
+              "repositories": [
+                {
+                  "id": "repo-a",
+                  "tree": "tree-1",
+                  "dirty": null
+                },
+                {
+                  "id": "repo-b",
+                  "tree": "tree-9",
+                  "dirty": {
+                    "snapshot_digest": "sha256:16a0eeb0791b6c92451fd284dd9f599e0a7dbe7f6ebea6e2d2d06c7f74aec112"
+                  }
+                }
+              ]
+            }
+          },
+          "items": [
+            {
+              "item_id": "i-1",
+              "result": "unmet",
+              "reason": "unavailable"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

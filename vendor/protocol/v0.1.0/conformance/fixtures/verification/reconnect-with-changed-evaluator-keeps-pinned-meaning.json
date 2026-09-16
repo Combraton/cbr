@@ -1,0 +1,1181 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "verification.reconnect-with-changed-evaluator-keeps-pinned-meaning",
+  "version": 3,
+  "title": "A provider restarts with its evaluator version changed: the caller renegotiates and sees the capability change; the pinned job keeps its recorded result, marks unfinished properties indeterminate and never switches versions; the old version is capability_unavailable, the new one runs, and earlier receipts and knowledge evaluations keep their evaluator",
+  "requirements": [
+    "SCN-7",
+    "CORE-16",
+    "CORE-17"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/VERIFICATION.md#4-evaluating-a-contract-verificationjobs-ver-3-m5-q9",
+    "docs/spec/profiles/KNOWLEDGE.md#8-applicability-knw-7-m5-q4"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "verification",
+      "major": 1
+    },
+    {
+      "name": "evidence",
+      "major": 1
+    },
+    {
+      "name": "knowledge",
+      "major": 1
+    }
+  ],
+  "features": [
+    "core.events",
+    "core.grants",
+    "core.capabilities",
+    "verification.jobs"
+  ],
+  "requires_controls": [
+    "clock.file",
+    "verifier.script",
+    "knowledge.store"
+  ],
+  "polarity": "negative",
+  "kills": [
+    "lost-evaluator-reports-pass",
+    "lost-evaluator-switches-version",
+    "recorded-results-rewritten",
+    "queued-loss-passes-through-running",
+    "queued-loss-observed-from-submission"
+  ],
+  "steps": [
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ],
+        "clock": {
+          "controlled": "2030-01-01T00:00:00Z"
+        },
+        "verifier": {
+          "evaluators": [
+            {
+              "id": "journey",
+              "version": "1"
+            }
+          ],
+          "scripts": {
+            "j1": [
+              {
+                "property": {
+                  "property_id": "upload.journey",
+                  "result": "pass"
+                }
+              },
+              {
+                "wait_until": "2030-01-01T00:01:00Z"
+              },
+              {
+                "property": {
+                  "property_id": "upload.visual",
+                  "result": "pass"
+                }
+              },
+              {
+                "complete": true
+              }
+            ]
+          }
+        },
+        "knowledge": {
+          "evaluator": {
+            "id": "tree-conditions",
+            "version": "1"
+          }
+        }
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.grants",
+              "core.capabilities"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "verification",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": [
+              "verification.jobs",
+              "verification.record"
+            ]
+          },
+          {
+            "name": "evidence",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          },
+          {
+            "name": "knowledge",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.upload.prepare",
+      "command_id": "upload-prepare-c-visual",
+      "subject": {
+        "kind": "evidence.artifact",
+        "id": "c-visual"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.artifact",
+            "id": "c-visual"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "digest": "sha256:4252c99d8cbc960b47f0230fe81b8f83358c2f305ab96b6b78947ebcb8ecf63e",
+        "size": 500,
+        "media_type": "text/plain",
+        "producer": {
+          "producer_id": "fixture-producer"
+        },
+        "source": {
+          "kind": "test_report",
+          "id": "run-1"
+        },
+        "scope": "project-a",
+        "capture": {
+          "captured_at": "2030-01-01T00:00:00Z",
+          "anchors": [
+            {
+              "kind": "code_tree",
+              "id": "tree-1"
+            }
+          ]
+        },
+        "coverage": {
+          "completeness": "complete",
+          "covered": [
+            "report"
+          ],
+          "gaps": []
+        },
+        "retention_class": "standard"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.upload.append",
+      "command_id": "upload-append-c-visual",
+      "subject": {
+        "kind": "evidence.artifact",
+        "id": "c-visual"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.artifact",
+            "id": "c-visual"
+          },
+          "revision": 1
+        }
+      ],
+      "payload": {
+        "offset": 0,
+        "data_base64": "eyJlbnZpcm9ubWVudCI6eyJyZXF1aXJlZF9hbmNob3JzIjpbXX0sImV2YWx1YXRvcnMiOm51bGwsImZvcm1hdCI6ImNvbWJyYXRvbi12ZXJpZmljYXRpb24tY29udHJhY3QvMSIsImZyZXNobmVzcyI6bnVsbCwib3V0Y29tZSI6InVwbG9hZCBwcm9kdWNlcyB0aGUgZXhwZWN0ZWQgYXJ0aWZhY3QiLCJwcm9wZXJ0aWVzIjpbeyJsYXllciI6ImpvdXJuZXkiLCJwcm9wZXJ0eV9pZCI6InVwbG9hZC5qb3VybmV5IiwicmVxdWlyZWQiOnRydWUsInN0YXRlbWVudCI6ImFuIHVwbG9hZCBwcm9kdWNlcyB0aGUgYXJ0aWZhY3QifSx7ImxheWVyIjoicXVhbGl0YXRpdmUiLCJwcm9wZXJ0eV9pZCI6InVwbG9hZC52aXN1YWwiLCJyZXF1aXJlZCI6dHJ1ZSwic3RhdGVtZW50IjoidGhlIHByZXZpZXcgcmVuZGVycyJ9XSwic3ViamVjdHMiOlt7ImtpbmQiOiJyZXBvc2l0b3J5X3RyZWUiLCJyb2xlIjoidHJlZSJ9LHsia2luZCI6ImV2aWRlbmNlLmFydGlmYWN0Iiwicm9sZSI6Im91dHB1dCJ9XX0="
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.seal",
+      "command_id": "seal-c-visual",
+      "subject": {
+        "kind": "evidence.artifact",
+        "id": "c-visual"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.artifact",
+            "id": "c-visual"
+          },
+          "revision": 2
+        }
+      ],
+      "payload": {},
+      "expect": {
+        "ok": {
+          "outcome": {
+            "state": "sealed"
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core.capabilities",
+      "payload": {},
+      "expect": {
+        "ok": {
+          "predicates": {
+            "$contains": {
+              "name": "verification.evaluator.journey.v1",
+              "status": "supported"
+            }
+          }
+        }
+      },
+      "capture": {
+        "cap_revision": "/result/revision"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "verification.evaluate_contract",
+      "command_id": "evaluate_contract-j1",
+      "subject": {
+        "kind": "verification.job",
+        "id": "j1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "verification.job",
+            "id": "j1"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "contract": {
+          "provider": "conformance-provider",
+          "artifact": {
+            "kind": "evidence.artifact",
+            "id": "c-visual"
+          },
+          "digest": "sha256:4252c99d8cbc960b47f0230fe81b8f83358c2f305ab96b6b78947ebcb8ecf63e"
+        },
+        "subjects": [
+          {
+            "role": "tree",
+            "digest": "t12"
+          },
+          {
+            "role": "output",
+            "digest": "sha256:db6ac92fefefaf3fa8610a74cd8dcef8815d173fbd7853f2ed5ac18c8ac1ff45"
+          }
+        ],
+        "evaluator": {
+          "id": "journey",
+          "version": "1"
+        }
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "state": "queued"
+          }
+        }
+      }
+    },
+    {
+      "step": "set_clock",
+      "instant": "2030-01-01T00:00:10Z"
+    },
+    {
+      "step": "query",
+      "operation": "verification.job.inspect",
+      "payload": {
+        "job": "j1"
+      },
+      "expect": {
+        "ok": {
+          "state": "running",
+          "evaluator": {
+            "id": "journey",
+            "version": "1"
+          },
+          "recorded": [
+            {
+              "property_id": "upload.journey",
+              "result": "pass"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.claim.propose",
+      "command_id": "claim-propose-c-parser",
+      "subject": {
+        "kind": "knowledge.claim",
+        "id": "c-parser"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.claim",
+            "id": "c-parser"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "plane": "observed",
+        "statement": {
+          "subject": {
+            "kind": "app.service",
+            "id": "billing"
+          },
+          "predicate": "queue",
+          "value": "v1",
+          "cardinality": "single"
+        },
+        "scope": {
+          "id": "svc",
+          "qualifiers": {}
+        },
+        "support": [],
+        "derivation": {
+          "kind": "deterministic",
+          "inputs": []
+        },
+        "conditions": [
+          {
+            "condition_id": "k-tree",
+            "kind": "repository_tree",
+            "repository": "repo-a",
+            "expected": "t12"
+          }
+        ]
+      },
+      "capture": {
+        "d_c-parser": "/result/outcome/reference/digest"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.applicability.evaluate",
+      "command_id": "applicability-evaluate-ev-v1",
+      "subject": {
+        "kind": "knowledge.evaluation",
+        "id": "ev-v1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.evaluation",
+            "id": "ev-v1"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "claim": {
+          "provider": "conformance-provider",
+          "claim": "c-parser",
+          "revision": 1,
+          "digest": {
+            "$var": "d_c-parser"
+          }
+        },
+        "target": {
+          "repositories": [
+            {
+              "id": "repo-a",
+              "tree": "t12"
+            }
+          ],
+          "completeness": "complete"
+        }
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "result": "applicable",
+            "evaluator": {
+              "id": "tree-conditions",
+              "version": "1"
+            }
+          }
+        }
+      }
+    },
+    {
+      "step": "stop"
+    },
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ],
+        "clock": {
+          "controlled": "2030-01-01T00:00:20Z"
+        },
+        "verifier": {
+          "evaluators": [
+            {
+              "id": "journey",
+              "version": "2"
+            }
+          ],
+          "scripts": {
+            "j3": [
+              {
+                "property": {
+                  "property_id": "upload.journey",
+                  "result": "pass"
+                }
+              },
+              {
+                "property": {
+                  "property_id": "upload.visual",
+                  "result": "fail"
+                }
+              },
+              {
+                "complete": true
+              }
+            ]
+          }
+        },
+        "knowledge": {
+          "evaluator": {
+            "id": "tree-conditions",
+            "version": "2"
+          }
+        }
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.grants",
+              "core.capabilities"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "verification",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": [
+              "verification.jobs",
+              "verification.record"
+            ]
+          },
+          {
+            "name": "evidence",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          },
+          {
+            "name": "knowledge",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core.events.read",
+      "payload": {
+        "from": "start",
+        "limit": 100,
+        "kinds": [
+          "core.capabilities"
+        ]
+      },
+      "expect": {
+        "ok": {
+          "items": {
+            "$contains": {
+              "event": {
+                "type": "core.capabilities.changed",
+                "payload": {
+                  "predicates": {
+                    "$contains": {
+                      "name": "verification.evaluator.journey.v2",
+                      "status": "supported"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core.capabilities",
+      "payload": {},
+      "expect": {
+        "ok": {
+          "revision": {
+            "$ne_var": "cap_revision"
+          },
+          "predicates": {
+            "$contains": {
+              "name": "verification.evaluator.journey.v2"
+            }
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "verification.job.inspect",
+      "payload": {
+        "job": "j1"
+      },
+      "expect": {
+        "ok": {
+          "state": "completed",
+          "evaluator": {
+            "id": "journey",
+            "version": "1"
+          },
+          "recorded": [
+            {
+              "property_id": "upload.journey",
+              "result": "pass"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "verification.receipt.inspect",
+      "payload": {
+        "receipt": "j1"
+      },
+      "expect": {
+        "ok": {
+          "content": {
+            "evaluator": {
+              "id": "journey",
+              "version": "1"
+            },
+            "properties": [
+              {
+                "property_id": "upload.journey",
+                "result": "pass"
+              },
+              {
+                "property_id": "upload.visual",
+                "result": "indeterminate",
+                "reason": "evaluator_unavailable"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "verification.evaluate_contract",
+      "command_id": "evaluate_contract-j2",
+      "subject": {
+        "kind": "verification.job",
+        "id": "j2"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "verification.job",
+            "id": "j2"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "contract": {
+          "provider": "conformance-provider",
+          "artifact": {
+            "kind": "evidence.artifact",
+            "id": "c-visual"
+          },
+          "digest": "sha256:4252c99d8cbc960b47f0230fe81b8f83358c2f305ab96b6b78947ebcb8ecf63e"
+        },
+        "subjects": [
+          {
+            "role": "tree",
+            "digest": "t12"
+          },
+          {
+            "role": "output",
+            "digest": "sha256:db6ac92fefefaf3fa8610a74cd8dcef8815d173fbd7853f2ed5ac18c8ac1ff45"
+          }
+        ],
+        "evaluator": {
+          "id": "journey",
+          "version": "1"
+        }
+      },
+      "expect": {
+        "error": "capability_unavailable",
+        "details": {
+          "capability": "verification.evaluator.journey.v1",
+          "status": "unknown"
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "verification.evaluate_contract",
+      "command_id": "evaluate_contract-j3",
+      "subject": {
+        "kind": "verification.job",
+        "id": "j3"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "verification.job",
+            "id": "j3"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "contract": {
+          "provider": "conformance-provider",
+          "artifact": {
+            "kind": "evidence.artifact",
+            "id": "c-visual"
+          },
+          "digest": "sha256:4252c99d8cbc960b47f0230fe81b8f83358c2f305ab96b6b78947ebcb8ecf63e"
+        },
+        "subjects": [
+          {
+            "role": "tree",
+            "digest": "t12"
+          },
+          {
+            "role": "output",
+            "digest": "sha256:db6ac92fefefaf3fa8610a74cd8dcef8815d173fbd7853f2ed5ac18c8ac1ff45"
+          }
+        ],
+        "evaluator": {
+          "id": "journey",
+          "version": "2"
+        }
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "state": "queued"
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "verification.receipt.inspect",
+      "payload": {
+        "receipt": "j3"
+      },
+      "expect": {
+        "ok": {
+          "content": {
+            "evaluator": {
+              "id": "journey",
+              "version": "2"
+            },
+            "properties": [
+              {
+                "result": "pass"
+              },
+              {
+                "result": "fail"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "knowledge.claim.inspect",
+      "payload": {
+        "claim": "c-parser"
+      },
+      "expect": {
+        "ok": {
+          "applicability": [
+            {
+              "evaluation": "ev-v1",
+              "evaluator": {
+                "id": "tree-conditions",
+                "version": "1"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.applicability.evaluate",
+      "command_id": "applicability-evaluate-ev-v2",
+      "subject": {
+        "kind": "knowledge.evaluation",
+        "id": "ev-v2"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.evaluation",
+            "id": "ev-v2"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "claim": {
+          "provider": "conformance-provider",
+          "claim": "c-parser",
+          "revision": 1,
+          "digest": {
+            "$var": "d_c-parser"
+          }
+        },
+        "target": {
+          "repositories": [
+            {
+              "id": "repo-a",
+              "tree": "t12"
+            }
+          ],
+          "completeness": "complete"
+        }
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "evaluator": {
+              "id": "tree-conditions",
+              "version": "2"
+            },
+            "supersedes_evaluation": "ev-v1"
+          }
+        }
+      }
+    },
+    {
+      "step": "stop"
+    },
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ],
+        "clock": {
+          "controlled": "2030-01-01T00:02:00Z"
+        },
+        "verifier": {
+          "evaluators": [
+            {
+              "id": "journey",
+              "version": "2"
+            }
+          ],
+          "scripts": {
+            "j-wait": [
+              {
+                "wait_until": "2030-01-01T09:00:00Z"
+              },
+              {
+                "property": {
+                  "property_id": "upload.journey",
+                  "result": "pass"
+                }
+              },
+              {
+                "complete": true
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.grants",
+              "core.capabilities"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "verification",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": [
+              "verification.jobs",
+              "verification.record"
+            ]
+          },
+          {
+            "name": "evidence",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          },
+          {
+            "name": "knowledge",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "verification.evaluate_contract",
+      "command_id": "evaluate_contract-j-wait",
+      "subject": {
+        "kind": "verification.job",
+        "id": "j-wait"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "verification.job",
+            "id": "j-wait"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "contract": {
+          "provider": "conformance-provider",
+          "artifact": {
+            "kind": "evidence.artifact",
+            "id": "c-visual"
+          },
+          "digest": "sha256:4252c99d8cbc960b47f0230fe81b8f83358c2f305ab96b6b78947ebcb8ecf63e"
+        },
+        "subjects": [
+          {
+            "role": "tree",
+            "digest": "t12"
+          },
+          {
+            "role": "output",
+            "digest": "sha256:db6ac92fefefaf3fa8610a74cd8dcef8815d173fbd7853f2ed5ac18c8ac1ff45"
+          }
+        ],
+        "evaluator": {
+          "id": "journey",
+          "version": "2"
+        }
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "state": "queued"
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "verification.job.inspect",
+      "payload": {
+        "job": "j-wait"
+      },
+      "expect": {
+        "ok": {
+          "state": "queued",
+          "recorded": []
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core.events.read",
+      "payload": {
+        "from": "now",
+        "limit": 10,
+        "kinds": [
+          "verification.job"
+        ]
+      },
+      "capture": {
+        "before_loss": "/result/next_cursor"
+      }
+    },
+    {
+      "step": "stop"
+    },
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ],
+        "clock": {
+          "controlled": "2030-01-01T00:03:00Z"
+        },
+        "verifier": {
+          "evaluators": []
+        }
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.grants",
+              "core.capabilities"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "verification",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": [
+              "verification.jobs",
+              "verification.record"
+            ]
+          },
+          {
+            "name": "evidence",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          },
+          {
+            "name": "knowledge",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "query",
+      "operation": "verification.job.inspect",
+      "payload": {
+        "job": "j-wait"
+      },
+      "expect": {
+        "ok": {
+          "state": "completed",
+          "evaluator": {
+            "id": "journey",
+            "version": "2"
+          },
+          "recorded": []
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core.events.read",
+      "payload": {
+        "cursor": {
+          "$var": "before_loss"
+        },
+        "limit": 10,
+        "kinds": [
+          "verification.job"
+        ]
+      },
+      "expect": {
+        "ok": {
+          "items": [
+            {
+              "event": {
+                "type": "verification.job.changed",
+                "subject": {
+                  "id": "j-wait"
+                },
+                "payload": {
+                  "state": "completed"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "verification.receipt.inspect",
+      "payload": {
+        "receipt": "j-wait"
+      },
+      "expect": {
+        "ok": {
+          "content": {
+            "evaluator": {
+              "id": "journey",
+              "version": "2"
+            },
+            "properties": [
+              {
+                "property_id": "upload.journey",
+                "result": "indeterminate",
+                "reason": "evaluator_unavailable"
+              },
+              {
+                "property_id": "upload.visual",
+                "result": "indeterminate",
+                "reason": "evaluator_unavailable"
+              }
+            ]
+          }
+        }
+      },
+      "capture": {
+        "wait_until_obs": "/result/content/observed_until"
+      }
+    },
+    {
+      "step": "query",
+      "operation": "verification.receipt.inspect",
+      "payload": {
+        "receipt": "j-wait"
+      },
+      "expect": {
+        "ok": {
+          "content": {
+            "observed_from": {
+              "$var": "wait_until_obs"
+            }
+          }
+        }
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

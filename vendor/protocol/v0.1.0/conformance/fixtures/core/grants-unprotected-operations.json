@@ -1,0 +1,220 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "core.grants.unprotected-operations",
+  "version": 1,
+  "title": "Unprotected operations need no grant, and a grant field on them is not evaluated",
+  "requirements": [
+    "CORE-11",
+    "CORE-16"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/CORE.md#15-principals-and-grants"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "core-test",
+      "major": 1
+    }
+  ],
+  "features": [
+    "core.grants",
+    "core.capabilities",
+    "core.events"
+  ],
+  "polarity": "negative",
+  "kills": [
+    "capabilities-protected",
+    "grant-field-evaluated-on-unprotected"
+  ],
+  "steps": [
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ]
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.grants",
+              "core.capabilities",
+              "core.events"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "core-test",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "core.grant.issue",
+      "command_id": "issue-g-1",
+      "subject": {
+        "kind": "core.grant",
+        "id": "g-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core.grant",
+            "id": "g-1"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "holder": "agent-1",
+        "audience": "conformance-provider",
+        "rights": [
+          "core-test.read"
+        ],
+        "resources": [
+          {
+            "kind": "core-test.subject",
+            "id_prefix": "s-"
+          }
+        ],
+        "delegation": {
+          "allowed": false,
+          "max_depth": 0
+        }
+      }
+    },
+    {
+      "step": "stop"
+    },
+    {
+      "step": "start",
+      "config": {
+        "principal": "agent-1",
+        "authority_principals": [
+          "owner"
+        ]
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.grants",
+              "core.capabilities",
+              "core.events"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "core-test",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core.capabilities",
+      "payload": {},
+      "expect": {
+        "ok": {
+          "revision": {
+            "$type": "integer"
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core.capabilities",
+      "payload": {},
+      "expect": {
+        "ok": {
+          "revision": {
+            "$type": "integer"
+          }
+        }
+      },
+      "set": {
+        "grant": "g-none"
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core.grant.get",
+      "payload": {
+        "grant": "g-1"
+      },
+      "expect": {
+        "ok": {
+          "grant": {
+            "holder": "agent-1"
+          }
+        }
+      },
+      "set": {
+        "grant": "g-none"
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core.events.unsubscribe",
+      "payload": {
+        "subscription": "sub-none"
+      },
+      "expect": {
+        "error": "not_found"
+      },
+      "set": {
+        "grant": "g-none"
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

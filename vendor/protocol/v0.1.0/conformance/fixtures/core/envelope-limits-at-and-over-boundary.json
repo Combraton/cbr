@@ -1,0 +1,379 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "core.envelope.limits-at-and-over-boundary",
+  "version": 1,
+  "title": "Values exactly at each declared limit are accepted and one more is refused",
+  "requirements": [
+    "CORE-5"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/CORE.md#9-limits"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "core-test",
+      "major": 1
+    }
+  ],
+  "polarity": "negative",
+  "kills": [
+    "limits-off-by-one",
+    "ignore-limits"
+  ],
+  "config": {
+    "limits": {
+      "max_string_bytes": 128,
+      "max_array_items": 4,
+      "max_depth": 6,
+      "max_payload_bytes": 256
+    }
+  },
+  "steps": [
+    {
+      "step": "start"
+    },
+    {
+      "step": "negotiate"
+    },
+    {
+      "step": "command",
+      "operation": "core-test.subject.put",
+      "command_id": "cmd-s",
+      "subject": {
+        "kind": "core-test.subject",
+        "id": "s-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core-test.subject",
+            "id": "s-1"
+          },
+          "revision": 0
+        }
+      ],
+      "authority_epoch": 0,
+      "payload": {
+        "value": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      },
+      "expect": {
+        "ok": {
+          "replay": false
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "core-test.subject.put",
+      "command_id": "cmd-k",
+      "subject": {
+        "kind": "core-test.subject",
+        "id": "s-2"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core-test.subject",
+            "id": "s-2"
+          },
+          "revision": 0
+        }
+      ],
+      "authority_epoch": 0,
+      "payload": {
+        "value": "v"
+      },
+      "extensions": {
+        "example.org/note": {
+          "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk": 1
+        }
+      },
+      "expect": {
+        "error": "limit_exceeded",
+        "details": {
+          "limit": "max_string_bytes"
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "core-test.subject.put",
+      "command_id": "cmd-a1",
+      "subject": {
+        "kind": "core-test.subject",
+        "id": "s-3"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core-test.subject",
+            "id": "s-3"
+          },
+          "revision": 0
+        }
+      ],
+      "authority_epoch": 0,
+      "payload": {
+        "value": "v"
+      },
+      "extensions": {
+        "example.org/a": [
+          1,
+          2,
+          3,
+          4
+        ]
+      },
+      "expect": {
+        "ok": {
+          "replay": false
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "core-test.subject.put",
+      "command_id": "cmd-a2",
+      "subject": {
+        "kind": "core-test.subject",
+        "id": "s-4"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core-test.subject",
+            "id": "s-4"
+          },
+          "revision": 0
+        }
+      ],
+      "authority_epoch": 0,
+      "payload": {
+        "value": "v"
+      },
+      "extensions": {
+        "example.org/a": [
+          1,
+          2,
+          3,
+          4,
+          5
+        ]
+      },
+      "expect": {
+        "error": "limit_exceeded",
+        "details": {
+          "limit": "max_array_items"
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "core-test.subject.put",
+      "command_id": "cmd-d1",
+      "subject": {
+        "kind": "core-test.subject",
+        "id": "s-5"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core-test.subject",
+            "id": "s-5"
+          },
+          "revision": 0
+        }
+      ],
+      "authority_epoch": 0,
+      "payload": {
+        "value": "v"
+      },
+      "extensions": {
+        "example.org/d": [
+          [
+            [
+              [
+                1
+              ]
+            ]
+          ]
+        ]
+      },
+      "expect": {
+        "ok": {
+          "replay": false
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "core-test.subject.put",
+      "command_id": "cmd-d2",
+      "subject": {
+        "kind": "core-test.subject",
+        "id": "s-6"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core-test.subject",
+            "id": "s-6"
+          },
+          "revision": 0
+        }
+      ],
+      "authority_epoch": 0,
+      "payload": {
+        "value": "v"
+      },
+      "extensions": {
+        "example.org/d": [
+          [
+            [
+              [
+                [
+                  1
+                ]
+              ]
+            ]
+          ]
+        ]
+      },
+      "expect": {
+        "error": "limit_exceeded",
+        "details": {
+          "limit": "max_depth"
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "core-test.subject.put",
+      "command_id": "cmd-p1",
+      "subject": {
+        "kind": "core-test.subject",
+        "id": "s-7"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core-test.subject",
+            "id": "s-7"
+          },
+          "revision": 0
+        }
+      ],
+      "authority_epoch": 0,
+      "payload": {
+        "value": "v",
+        "labels": {
+          "a": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+          "b": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+          "c": "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"
+        }
+      },
+      "expect": {
+        "ok": {
+          "replay": false
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "core-test.subject.put",
+      "command_id": "cmd-p2",
+      "subject": {
+        "kind": "core-test.subject",
+        "id": "s-8"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core-test.subject",
+            "id": "s-8"
+          },
+          "revision": 0
+        }
+      ],
+      "authority_epoch": 0,
+      "payload": {
+        "value": "v",
+        "labels": {
+          "a": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+          "b": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+          "c": "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"
+        }
+      },
+      "expect": {
+        "error": "limit_exceeded",
+        "details": {
+          "limit": "max_payload_bytes"
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core-test.subject.applied_count",
+      "payload": {
+        "subject": {
+          "kind": "core-test.subject",
+          "id": "s-2"
+        }
+      },
+      "expect": {
+        "ok": {
+          "applied_count": 0
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core-test.subject.applied_count",
+      "payload": {
+        "subject": {
+          "kind": "core-test.subject",
+          "id": "s-4"
+        }
+      },
+      "expect": {
+        "ok": {
+          "applied_count": 0
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core-test.subject.applied_count",
+      "payload": {
+        "subject": {
+          "kind": "core-test.subject",
+          "id": "s-6"
+        }
+      },
+      "expect": {
+        "ok": {
+          "applied_count": 0
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core-test.subject.applied_count",
+      "payload": {
+        "subject": {
+          "kind": "core-test.subject",
+          "id": "s-8"
+        }
+      },
+      "expect": {
+        "ok": {
+          "applied_count": 0
+        }
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

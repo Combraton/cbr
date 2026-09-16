@@ -1,0 +1,279 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "execution.restart-reattaches-instead-of-respawning",
+  "version": 1,
+  "title": "After a provider restart a running execution continues under the same host generation with no second prompt effect",
+  "requirements": [
+    "SCN-13",
+    "EXE-22"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/EXECUTION.md#71-restart-recovery"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "execution",
+      "major": 1
+    }
+  ],
+  "features": [
+    "core.events",
+    "core.capabilities",
+    "core.effects"
+  ],
+  "requires_controls": [
+    "executor.script",
+    "clock.file"
+  ],
+  "polarity": "negative",
+  "kills": [
+    "respawn-on-restart"
+  ],
+  "kill_expectations": {
+    "respawn-on-restart": {
+      "step": 7,
+      "reason_contains": "result/"
+    }
+  },
+  "steps": [
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ],
+        "executor": {
+          "scripts": {
+            "e-1": [
+              {
+                "deliver": "provider_ack_id"
+              },
+              {
+                "runtime": "active"
+              },
+              {
+                "wait_until": "2030-01-01T00:01:00Z"
+              },
+              {
+                "complete": {
+                  "completion_id": "c-1",
+                  "content": "result"
+                }
+              },
+              {
+                "exit": {
+                  "code": 0
+                }
+              }
+            ]
+          }
+        },
+        "clock": {
+          "controlled": "2030-01-01T00:00:00Z"
+        }
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.capabilities",
+              "core.effects"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "execution",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "execution.submit",
+      "command_id": "submit-e-1",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "e-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "e-1"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "brief": {
+          "digest": "sha256:abababababababababababababababababababababababababababababababab",
+          "media_type": "text/plain"
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "execution.inspect",
+      "payload": {
+        "execution": "e-1"
+      },
+      "expect": {
+        "ok": {
+          "runtime": "active",
+          "host": {
+            "generation": 1
+          }
+        }
+      }
+    },
+    {
+      "step": "kill"
+    },
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ],
+        "executor": {
+          "scripts": {
+            "e-1": [
+              {
+                "deliver": "provider_ack_id"
+              },
+              {
+                "runtime": "active"
+              },
+              {
+                "wait_until": "2030-01-01T00:01:00Z"
+              },
+              {
+                "complete": {
+                  "completion_id": "c-1",
+                  "content": "result"
+                }
+              },
+              {
+                "exit": {
+                  "code": 0
+                }
+              }
+            ]
+          }
+        },
+        "clock": {
+          "controlled": "2030-01-01T00:00:00Z"
+        }
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.capabilities",
+              "core.effects"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "execution",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "query",
+      "operation": "execution.inspect",
+      "payload": {
+        "execution": "e-1"
+      },
+      "expect": {
+        "ok": {
+          "runtime": "active",
+          "host": {
+            "generation": 1
+          },
+          "deliveries": {
+            "$len": 1
+          },
+          "effects": [
+            "e-1.delivery-1"
+          ],
+          "recovery": []
+        }
+      }
+    },
+    {
+      "step": "set_clock",
+      "instant": "2030-01-01T00:01:00Z"
+    },
+    {
+      "step": "query",
+      "operation": "execution.inspect",
+      "payload": {
+        "execution": "e-1"
+      },
+      "expect": {
+        "ok": {
+          "result": "returned",
+          "completions": [
+            {
+              "completion_id": "c-1",
+              "generation": 1,
+              "status": "recorded"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

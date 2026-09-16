@@ -1,0 +1,744 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "context.packet-is-an-exact-sealed-evidence-artifact",
+  "version": 2,
+  "title": "A published packet revision maps to one sealed Evidence artifact whose fetched bytes match its digest; result facts carry labels, citations, per-producer coverage and authority revisions; the excerpt has no digest",
+  "requirements": [
+    "CTX-5",
+    "CTX-6",
+    "CTX-14",
+    "CTX-20"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/CONTEXT.md#2-identities",
+    "docs/spec/profiles/CONTEXT.md#5-results-and-packets",
+    "docs/spec/profiles/CONTEXT.md#6-inspect-and-expand"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "context",
+      "major": 1
+    }
+  ],
+  "features": [
+    "core.events"
+  ],
+  "requires_controls": [
+    "context.script",
+    "clock.file"
+  ],
+  "polarity": "negative",
+  "kills": [
+    "packet-bytes-regenerated",
+    "excerpt-carries-digest",
+    "global-coverage-cursor",
+    "unobserved-frontier-claimed",
+    "unlabeled-section",
+    "authority-revision-dropped"
+  ],
+  "steps": [
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ],
+        "context": {
+          "scripts": {
+            "r-1": [
+              {
+                "section": {
+                  "section_id": "s-1",
+                  "label": "source_inspected",
+                  "content": "fn main() {}",
+                  "item_id": "i-src",
+                  "source": {
+                    "repository": "repo-a",
+                    "path": "src/main.rs",
+                    "tree": "tree-1"
+                  }
+                }
+              },
+              {
+                "section": {
+                  "section_id": "s-2",
+                  "label": "binding",
+                  "content": "Use the v2 API.",
+                  "item_id": "i-auth",
+                  "authority_revision": 3,
+                  "citations": [
+                    {
+                      "citation_id": "c-1",
+                      "evidence": {
+                        "provider": "conformance-provider",
+                        "artifact": {
+                          "kind": "evidence.artifact",
+                          "id": "ev-decision"
+                        },
+                        "digest": "sha256:54d72d834db4543d3af0a4b1f697ae37f17670eedd6a7f6829041cc50fa9421f"
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "section": {
+                  "section_id": "s-3",
+                  "label": "hypothesis",
+                  "content": "The cache may be stale."
+                }
+              },
+              {
+                "coverage": {
+                  "producer": "git",
+                  "frontier": "tree-1",
+                  "gaps": []
+                }
+              },
+              {
+                "coverage": {
+                  "producer": "ci",
+                  "frontier": "run-41",
+                  "gaps": [
+                    "run-42 not ingested"
+                  ]
+                }
+              },
+              {
+                "conditions": [
+                  {
+                    "condition_id": "k-1",
+                    "kind": "repository_tree",
+                    "repository": "repo-a",
+                    "expected": "tree-1"
+                  }
+                ]
+              },
+              {
+                "publish": {}
+              }
+            ]
+          }
+        },
+        "clock": {
+          "controlled": "2030-01-01T00:00:00Z"
+        }
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "context",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": [
+              "context.advisory",
+              "context.required_before_start",
+              "context.required_before_transition",
+              "context.shared_jobs",
+              "context.updates",
+              "context.expand"
+            ]
+          },
+          {
+            "name": "evidence",
+            "majors": [
+              1
+            ],
+            "required": false,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.upload.prepare",
+      "command_id": "prepare-ev-decision",
+      "subject": {
+        "kind": "evidence.artifact",
+        "id": "ev-decision"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.artifact",
+            "id": "ev-decision"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "digest": "sha256:54d72d834db4543d3af0a4b1f697ae37f17670eedd6a7f6829041cc50fa9421f",
+        "size": 28,
+        "media_type": "text/plain",
+        "producer": {
+          "producer_id": "fixture"
+        },
+        "source": {
+          "kind": "decision_record",
+          "id": "ev-decision"
+        },
+        "scope": "project-a",
+        "capture": {
+          "captured_at": "2030-01-01T00:00:00Z",
+          "anchors": []
+        },
+        "coverage": {
+          "completeness": "complete"
+        },
+        "retention_class": "standard"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.upload.append",
+      "command_id": "append-ev-decision",
+      "subject": {
+        "kind": "evidence.artifact",
+        "id": "ev-decision"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.artifact",
+            "id": "ev-decision"
+          },
+          "revision": 1
+        }
+      ],
+      "payload": {
+        "offset": 0,
+        "data_base64": "RGVjaXNpb24gMTI6IHVzZSB0aGUgdjIgQVBJLg=="
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.seal",
+      "command_id": "seal-ev-decision",
+      "subject": {
+        "kind": "evidence.artifact",
+        "id": "ev-decision"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.artifact",
+            "id": "ev-decision"
+          },
+          "revision": 2
+        }
+      ],
+      "payload": {},
+      "expect": {
+        "ok": {
+          "outcome": {
+            "state": "sealed"
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "context.request.submit",
+      "command_id": "submit-r-1",
+      "subject": {
+        "kind": "context.request",
+        "id": "r-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "context.request",
+            "id": "r-1"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "consumer": {
+          "task": "fix the build",
+          "principal": "agent-1"
+        },
+        "basis": {
+          "repositories": [
+            {
+              "id": "repo-a",
+              "tree": "tree-1",
+              "workspace": "clean",
+              "dirty": null
+            }
+          ],
+          "completeness": "complete"
+        },
+        "items": [
+          {
+            "item_id": "i-src",
+            "selector": {
+              "kind": "path",
+              "value": "src/i-src"
+            },
+            "obligation": "required_before_start",
+            "reliance": "binding",
+            "selected_by": "owner",
+            "check": {
+              "kind": "source_included",
+              "repository": "repo-a",
+              "path": "src/main.rs"
+            }
+          },
+          {
+            "item_id": "i-auth",
+            "selector": {
+              "kind": "path",
+              "value": "src/i-auth"
+            },
+            "obligation": "required_before_start",
+            "reliance": "binding",
+            "selected_by": "owner",
+            "check": {
+              "kind": "authority_content_included"
+            }
+          }
+        ],
+        "limits": {
+          "deadline": "2030-01-01T01:00:00Z",
+          "investigation": {
+            "units": "queries",
+            "amount": 100
+          },
+          "output_capacity": {
+            "units": "bytes",
+            "amount": 4096
+          }
+        },
+        "authority_content": [
+          {
+            "item_id": "i-auth",
+            "evidence": {
+              "provider": "conformance-provider",
+              "artifact": {
+                "kind": "evidence.artifact",
+                "id": "ev-decision"
+              },
+              "digest": "sha256:54d72d834db4543d3af0a4b1f697ae37f17670eedd6a7f6829041cc50fa9421f"
+            },
+            "authority_revision": 3
+          }
+        ]
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "request": {
+              "kind": "context.request",
+              "id": "r-1"
+            },
+            "state": "preparing",
+            "job": {
+              "kind": "context.job",
+              "id": "r-1"
+            }
+          },
+          "acknowledgment": {
+            "revision": 1
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "context.request.inspect",
+      "payload": {
+        "request": "r-1"
+      },
+      "expect": {
+        "ok": {
+          "state": "ready",
+          "job": {
+            "kind": "context.job",
+            "id": "r-1"
+          },
+          "items": [
+            {
+              "item_id": "i-src",
+              "result": "satisfied"
+            },
+            {
+              "item_id": "i-auth",
+              "result": "satisfied"
+            }
+          ],
+          "packets": [
+            {
+              "reference": {
+                "packet": {
+                  "kind": "context.packet",
+                  "id": "r-1"
+                },
+                "revision": 1,
+                "artifact": {
+                  "provider": "conformance-provider",
+                  "artifact": {
+                    "kind": "evidence.artifact",
+                    "id": "packet.r-1.1"
+                  },
+                  "digest": {
+                    "$type": "string"
+                  }
+                }
+              },
+              "current": true
+            }
+          ]
+        }
+      },
+      "capture": {
+        "d1": "/result/packets/0/reference/artifact/digest"
+      }
+    },
+    {
+      "step": "query",
+      "operation": "context.packet.inspect",
+      "payload": {
+        "packet": "r-1",
+        "revision": 1
+      },
+      "expect": {
+        "ok": {
+          "reference": {
+            "packet": {
+              "kind": "context.packet",
+              "id": "r-1"
+            },
+            "revision": 1,
+            "artifact": {
+              "provider": "conformance-provider",
+              "artifact": {
+                "kind": "evidence.artifact",
+                "id": "packet.r-1.1"
+              },
+              "digest": {
+                "$var": "d1"
+              }
+            }
+          },
+          "request": {
+            "kind": "context.request",
+            "id": "r-1"
+          },
+          "job": {
+            "kind": "context.job",
+            "id": "r-1"
+          },
+          "current": true,
+          "supersedes": {
+            "$absent": true
+          },
+          "sections": [
+            {
+              "section_id": "s-1",
+              "item_id": "i-src",
+              "label": "source_inspected",
+              "length": 12,
+              "citations": [],
+              "historical": false
+            },
+            {
+              "section_id": "s-2",
+              "item_id": "i-auth",
+              "label": "binding",
+              "citations": [
+                "c-1"
+              ],
+              "historical": false
+            },
+            {
+              "section_id": "s-3",
+              "label": "hypothesis",
+              "historical": false
+            }
+          ],
+          "inclusions": [
+            "s-1",
+            "s-2",
+            "s-3"
+          ],
+          "omissions": [],
+          "citations": [
+            {
+              "citation_id": "c-1",
+              "evidence": {
+                "provider": "conformance-provider",
+                "artifact": {
+                  "kind": "evidence.artifact",
+                  "id": "ev-decision"
+                },
+                "digest": "sha256:54d72d834db4543d3af0a4b1f697ae37f17670eedd6a7f6829041cc50fa9421f"
+              }
+            }
+          ],
+          "coverage": [
+            {
+              "producer": "git",
+              "frontier": "tree-1",
+              "gaps": []
+            },
+            {
+              "producer": "ci",
+              "frontier": "run-41",
+              "gaps": [
+                "run-42 not ingested"
+              ]
+            }
+          ],
+          "authority": [
+            {
+              "item_id": "i-auth",
+              "authority_revision": 3,
+              "evidence": {
+                "provider": "conformance-provider",
+                "artifact": {
+                  "kind": "evidence.artifact",
+                  "id": "ev-decision"
+                },
+                "digest": "sha256:54d72d834db4543d3af0a4b1f697ae37f17670eedd6a7f6829041cc50fa9421f"
+              }
+            }
+          ],
+          "applicability": {
+            "basis": {
+              "repositories": [
+                {
+                  "id": "repo-a",
+                  "tree": "tree-1",
+                  "workspace": "clean",
+                  "dirty": null
+                }
+              ],
+              "completeness": "complete"
+            },
+            "conditions": [
+              {
+                "condition_id": "k-1",
+                "kind": "repository_tree",
+                "expected": "tree-1"
+              }
+            ]
+          },
+          "selected": {
+            "$contains": {
+              "repository": "repo-a",
+              "path": "src/main.rs",
+              "tree": "tree-1"
+            }
+          },
+          "provenance": {
+            "job": {
+              "kind": "context.job",
+              "id": "r-1"
+            },
+            "basis": {
+              "repositories": [
+                {
+                  "id": "repo-a",
+                  "tree": "tree-1",
+                  "workspace": "clean",
+                  "dirty": null
+                }
+              ],
+              "completeness": "complete"
+            }
+          },
+          "excerpt": {
+            "offset": 0,
+            "digest": {
+              "$absent": true
+            }
+          }
+        }
+      },
+      "capture": {
+        "whole": "/result/excerpt/data_base64",
+        "size": "/result/excerpt/size"
+      }
+    },
+    {
+      "step": "query",
+      "operation": "evidence.fetch",
+      "payload": {
+        "artifact": {
+          "kind": "evidence.artifact",
+          "id": "packet.r-1.1"
+        },
+        "digest": {
+          "$var": "d1"
+        }
+      },
+      "expect": {
+        "ok": {
+          "data_base64": {
+            "$sha256_base64": {
+              "$var": "d1"
+            }
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "evidence.fetch",
+      "payload": {
+        "artifact": {
+          "kind": "evidence.artifact",
+          "id": "packet.r-1.1"
+        },
+        "digest": {
+          "$var": "d1"
+        }
+      },
+      "expect": {
+        "ok": {
+          "data_base64": {
+            "$var": "whole"
+          },
+          "size": {
+            "$var": "size"
+          }
+        }
+      },
+      "note": "the excerpt was an exact range of the sealed bytes"
+    },
+    {
+      "step": "query",
+      "operation": "evidence.inspect",
+      "payload": {
+        "artifact": {
+          "kind": "evidence.artifact",
+          "id": "packet.r-1.1"
+        }
+      },
+      "expect": {
+        "ok": {
+          "state": "sealed",
+          "descriptor": {
+            "media_type": "application/vnd.combraton.context-packet+json",
+            "producer": {
+              "principal": "conformance-provider"
+            },
+            "digest": {
+              "$var": "d1"
+            }
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "context.packet.inspect",
+      "payload": {
+        "packet": "r-1",
+        "revision": 1,
+        "offset": 10,
+        "max_bytes": 20
+      },
+      "expect": {
+        "ok": {
+          "excerpt": {
+            "offset": 10,
+            "length": 20,
+            "digest": {
+              "$absent": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "context.packet.inspect",
+      "payload": {
+        "packet": "r-1",
+        "revision": 2
+      },
+      "expect": {
+        "error": "not_found"
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core.events.read",
+      "payload": {
+        "from": "start",
+        "limit": 100,
+        "kinds": [
+          "context.request"
+        ]
+      },
+      "expect": {
+        "ok": {
+          "items": {
+            "$contains": {
+              "event": {
+                "type": "context.packet.published",
+                "subject": {
+                  "kind": "context.request",
+                  "id": "r-1"
+                },
+                "origin": "provider",
+                "payload": {
+                  "reference": {
+                    "packet": {
+                      "kind": "context.packet",
+                      "id": "r-1"
+                    },
+                    "revision": 1,
+                    "artifact": {
+                      "provider": "conformance-provider",
+                      "artifact": {
+                        "kind": "evidence.artifact",
+                        "id": "packet.r-1.1"
+                      },
+                      "digest": {
+                        "$var": "d1"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

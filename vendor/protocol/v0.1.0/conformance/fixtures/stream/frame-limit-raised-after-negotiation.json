@@ -1,0 +1,105 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "stream.frame-limit-raised-after-negotiation",
+  "version": 1,
+  "title": "The advertised frame limit applies after negotiation",
+  "requirements": [
+    "TRN-2",
+    "CORE-5"
+  ],
+  "spec_refs": [
+    "docs/spec/bindings/STREAM.md#1-frames"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "core-test",
+      "major": 1
+    }
+  ],
+  "polarity": "negative",
+  "kills": [
+    "frame-limit-never-raised"
+  ],
+  "config": {
+    "limits": {
+      "max_frame_bytes": 2097152
+    }
+  },
+  "steps": [
+    {
+      "step": "start"
+    },
+    {
+      "step": "raw",
+      "padded": {
+        "message": {
+          "jsonrpc": "2.0",
+          "id": 900,
+          "method": "core.describe",
+          "params": {
+            "operation": "core.describe",
+            "message_id": "msg-describe",
+            "payload": {}
+          }
+        },
+        "frame_bytes": 1572864
+      }
+    },
+    {
+      "step": "expect_frame",
+      "expect": {
+        "error": "frame_too_large",
+        "id_null": true
+      }
+    },
+    {
+      "step": "expect_close"
+    },
+    {
+      "step": "start"
+    },
+    {
+      "step": "negotiate",
+      "expect": {
+        "ok": {
+          "limits": {
+            "max_frame_bytes": 2097152
+          }
+        }
+      }
+    },
+    {
+      "step": "raw",
+      "padded": {
+        "message": {
+          "jsonrpc": "2.0",
+          "id": 900,
+          "method": "core.describe",
+          "params": {
+            "operation": "core.describe",
+            "message_id": "msg-describe",
+            "payload": {}
+          }
+        },
+        "frame_bytes": 1572864
+      }
+    },
+    {
+      "step": "expect_frame",
+      "expect": {
+        "frame": {
+          "id": 900,
+          "result": {
+            "provider": {
+              "$any": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

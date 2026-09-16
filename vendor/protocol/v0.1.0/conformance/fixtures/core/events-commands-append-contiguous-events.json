@@ -1,0 +1,175 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "core.events.commands-append-contiguous-events",
+  "version": 1,
+  "title": "Accepted commands append contiguous events that carry causation",
+  "requirements": [
+    "OBS-1",
+    "OBS-4",
+    "CORE-2"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/CORE.md#16-events-and-subscriptions"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "core-test",
+      "major": 1
+    }
+  ],
+  "features": [
+    "core.events"
+  ],
+  "polarity": "negative",
+  "kills": [
+    "events-not-recorded",
+    "event-sequence-gap",
+    "drop-caused-by"
+  ],
+  "steps": [
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ]
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "core-test",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "core-test.subject.put",
+      "command_id": "cmd-1",
+      "subject": {
+        "kind": "core-test.subject",
+        "id": "s-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core-test.subject",
+            "id": "s-1"
+          },
+          "revision": 0
+        }
+      ],
+      "authority_epoch": 0,
+      "payload": {
+        "value": "a"
+      },
+      "set": {
+        "caused_by": [
+          "why-1"
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "core-test.authority.claim",
+      "command_id": "claim-1",
+      "subject": {
+        "kind": "core-test.authority",
+        "id": "core-test"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core-test.authority",
+            "id": "core-test"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {}
+    },
+    {
+      "step": "query",
+      "operation": "core.events.read",
+      "payload": {
+        "limit": 100,
+        "from": "start"
+      },
+      "expect": {
+        "ok": {
+          "filtered": false,
+          "items": [
+            {
+              "event": {
+                "epoch": 1,
+                "sequence": 1,
+                "type": "core-test.subject.changed",
+                "subject": {
+                  "kind": "core-test.subject",
+                  "id": "s-1"
+                },
+                "revision": 1,
+                "command_id": "cmd-1",
+                "caused_by": [
+                  "why-1"
+                ],
+                "payload": {
+                  "value": "a"
+                }
+              }
+            },
+            {
+              "event": {
+                "epoch": 1,
+                "sequence": 2,
+                "type": "core-test.authority.claimed",
+                "subject": {
+                  "kind": "core-test.authority",
+                  "id": "core-test"
+                },
+                "revision": 1,
+                "command_id": "claim-1",
+                "caused_by": [],
+                "payload": {
+                  "epoch": 1
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

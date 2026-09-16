@@ -1,0 +1,282 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "execution.reconcile-after-lost-acknowledgment-never-resubmits",
+  "version": 1,
+  "title": "After losing a submit acknowledgment, reconciling by command ID or delivery ID shows exactly one execution and one delivery",
+  "requirements": [
+    "EXE-10",
+    "SCN-2",
+    "EXE-22"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/EXECUTION.md#4-operations-base-profile"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "execution",
+      "major": 1
+    }
+  ],
+  "features": [
+    "core.events",
+    "core.capabilities",
+    "core.effects"
+  ],
+  "requires_controls": [
+    "executor.script"
+  ],
+  "polarity": "negative",
+  "kills": [
+    "reconcile-resubmits"
+  ],
+  "kill_expectations": {
+    "reconcile-resubmits": {
+      "step": 7,
+      "reason_contains": "result/deliveries: expected 1 items, found 2"
+    }
+  },
+  "steps": [
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ],
+        "executor": {
+          "scripts": {
+            "e-1": [
+              {
+                "deliver": "provider_ack_id"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.capabilities",
+              "core.effects"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "execution",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "execution.submit",
+      "command_id": "submit-e-1",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "e-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "e-1"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "brief": {
+          "digest": "sha256:abababababababababababababababababababababababababababababababab",
+          "media_type": "text/plain"
+        }
+      },
+      "note": "the caller loses this acknowledgment"
+    },
+    {
+      "step": "describe"
+    },
+    {
+      "step": "kill"
+    },
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ],
+        "executor": {
+          "scripts": {
+            "e-1": [
+              {
+                "deliver": "provider_ack_id"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.capabilities",
+              "core.effects"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "execution",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "query",
+      "operation": "execution.reconcile",
+      "payload": {
+        "command_id": "submit-e-1"
+      },
+      "expect": {
+        "ok": {
+          "executions": [
+            {
+              "kind": "execution.execution",
+              "id": "e-1"
+            }
+          ],
+          "deliveries": [
+            {
+              "delivery_id": "e-1.delivery-1",
+              "delivery": "acknowledged"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "execution.reconcile",
+      "payload": {
+        "delivery_id": "e-1.delivery-1"
+      },
+      "expect": {
+        "ok": {
+          "executions": [
+            {
+              "kind": "execution.execution",
+              "id": "e-1"
+            }
+          ],
+          "deliveries": {
+            "$len": 1
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "execution.reconcile",
+      "payload": {
+        "command_id": "never-sent"
+      },
+      "expect": {
+        "ok": {
+          "executions": [],
+          "deliveries": []
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "execution.submit",
+      "command_id": "submit-e-1",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "e-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "e-1"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "brief": {
+          "digest": "sha256:abababababababababababababababababababababababababababababababab",
+          "media_type": "text/plain"
+        }
+      },
+      "expect": {
+        "ok": {
+          "replay": true
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "execution.inspect",
+      "payload": {
+        "execution": "e-1"
+      },
+      "expect": {
+        "ok": {
+          "deliveries": {
+            "$len": 1
+          }
+        }
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

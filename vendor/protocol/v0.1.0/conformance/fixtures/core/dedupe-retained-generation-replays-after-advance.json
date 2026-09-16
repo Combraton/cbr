@@ -1,0 +1,174 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "core.dedupe.retained-generation-replays-after-advance",
+  "version": 1,
+  "title": "Records inside the retained window survive a generation advance",
+  "requirements": [
+    "CORE-8",
+    "CORE-7"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/CORE.md#63-deduplication-generations"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "core-test",
+      "major": 1
+    }
+  ],
+  "polarity": "positive",
+  "kills": [
+    "lose-dedupe-on-restart"
+  ],
+  "steps": [
+    {
+      "step": "start"
+    },
+    {
+      "step": "negotiate",
+      "capture": {
+        "gen": "/result/dedupe_window/current"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "core-test.subject.put",
+      "command_id": "cmd-1",
+      "subject": {
+        "kind": "core-test.subject",
+        "id": "s-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core-test.subject",
+            "id": "s-1"
+          },
+          "revision": 0
+        }
+      ],
+      "authority_epoch": 0,
+      "payload": {
+        "value": "a"
+      }
+    },
+    {
+      "step": "stop"
+    },
+    {
+      "step": "start",
+      "config": {
+        "dedupe": {
+          "advance_on_start": 1,
+          "retain_generations": 5
+        }
+      }
+    },
+    {
+      "step": "negotiate",
+      "expect": {
+        "ok": {
+          "dedupe_window": {
+            "current": {
+              "$ne_var": "gen"
+            }
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "core-test.subject.put",
+      "command_id": "cmd-1",
+      "subject": {
+        "kind": "core-test.subject",
+        "id": "s-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core-test.subject",
+            "id": "s-1"
+          },
+          "revision": 0
+        }
+      ],
+      "authority_epoch": 0,
+      "payload": {
+        "value": "a"
+      },
+      "dedupe_generation": {
+        "$var": "gen"
+      },
+      "expect": {
+        "ok": {
+          "replay": true
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "core-test.subject.put",
+      "command_id": "cmd-2",
+      "subject": {
+        "kind": "core-test.subject",
+        "id": "s-2"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core-test.subject",
+            "id": "s-2"
+          },
+          "revision": 0
+        }
+      ],
+      "authority_epoch": 0,
+      "payload": {
+        "value": "b"
+      },
+      "dedupe_generation": {
+        "$var": "gen"
+      },
+      "expect": {
+        "ok": {
+          "replay": false
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core-test.subject.applied_count",
+      "payload": {
+        "subject": {
+          "kind": "core-test.subject",
+          "id": "s-1"
+        }
+      },
+      "expect": {
+        "ok": {
+          "applied_count": 1
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core-test.subject.applied_count",
+      "payload": {
+        "subject": {
+          "kind": "core-test.subject",
+          "id": "s-2"
+        }
+      },
+      "expect": {
+        "ok": {
+          "applied_count": 1
+        }
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Combraton/protocol/schemas/context/1/context.request.cancel.result.schema.json",
+  "title": "context.request.cancel result",
+  "type": "object",
+  "required": [
+    "acknowledgment",
+    "outcome",
+    "replay"
+  ],
+  "properties": {
+    "acknowledgment": {
+      "$ref": "../../core/1/common.schema.json#/$defs/acknowledgment"
+    },
+    "replay": {
+      "type": "boolean"
+    },
+    "outcome": {
+      "type": "object",
+      "required": [
+        "request",
+        "state",
+        "job",
+        "job_continues"
+      ],
+      "properties": {
+        "request": {
+          "$ref": "common.schema.json#/$defs/request_subject"
+        },
+        "state": {
+          "const": "cancelled"
+        },
+        "job": {
+          "$ref": "common.schema.json#/$defs/job_subject"
+        },
+        "job_continues": {
+          "type": "boolean"
+        }
+      },
+      "unevaluatedProperties": false
+    }
+  },
+  "unevaluatedProperties": false
+}

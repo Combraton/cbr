@@ -1,0 +1,466 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "execution.revalidation-repeats-at-dispatch-and-after-queueing",
+  "version": 1,
+  "title": "A binding current at admission is checked again at dispatch, so a basis change before dispatch blocks the start; a binding stale at admission is checked again after queueing and admitted once current",
+  "requirements": [
+    "CTX-15",
+    "SCN-9"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/EXECUTION.md#131-context-revalidation-executioncontext_revalidation"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "execution",
+      "major": 1
+    }
+  ],
+  "features": [
+    "core.events",
+    "core.capabilities",
+    "core.effects",
+    "execution.context",
+    "execution.context_revalidation"
+  ],
+  "requires_controls": [
+    "executor.script"
+  ],
+  "polarity": "negative",
+  "kills": [
+    "admission-check-only"
+  ],
+  "steps": [
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ],
+        "executor": {
+          "context_packets": [
+            {
+              "reference": {
+                "packet": {
+                  "kind": "context.packet",
+                  "id": "r-1"
+                },
+                "revision": 1,
+                "artifact": {
+                  "provider": "context-1",
+                  "artifact": {
+                    "kind": "evidence.artifact",
+                    "id": "packet.r-1.1"
+                  },
+                  "digest": "sha256:2563192958eb20cd51510fc184bc436e218dade28f6e6d38a425348624622a82"
+                }
+              }
+            },
+            {
+              "ref": "pkt-1",
+              "digest": "sha256:2563192958eb20cd51510fc184bc436e218dade28f6e6d38a425348624622a82"
+            }
+          ],
+          "observed_basis": {
+            "repositories": {
+              "repo-a": {
+                "tree": "tree-1"
+              }
+            }
+          },
+          "scripts": {
+            "e-dispatch": [
+              {
+                "observe_basis": {
+                  "repositories": {
+                    "repo-a": {
+                      "tree": "tree-2"
+                    }
+                  }
+                }
+              },
+              {
+                "deliver": "provider_ack_id"
+              },
+              {
+                "stall": true
+              }
+            ],
+            "e-queued": [
+              {
+                "deliver": "provider_ack_id"
+              },
+              {
+                "stall": true
+              }
+            ]
+          },
+          "default_script": [
+            {
+              "stall": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.capabilities",
+              "core.effects"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "execution",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "execution.context",
+              "execution.context_revalidation"
+            ],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "execution.submit",
+      "command_id": "submit-e-dispatch",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "e-dispatch"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "e-dispatch"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "brief": {
+          "digest": "sha256:abababababababababababababababababababababababababababababababab",
+          "media_type": "text/plain"
+        },
+        "context_bindings": [
+          {
+            "binding_id": "b-d",
+            "packet": {
+              "packet": {
+                "kind": "context.packet",
+                "id": "r-1"
+              },
+              "revision": 1,
+              "artifact": {
+                "provider": "context-1",
+                "artifact": {
+                  "kind": "evidence.artifact",
+                  "id": "packet.r-1.1"
+                },
+                "digest": "sha256:2563192958eb20cd51510fc184bc436e218dade28f6e6d38a425348624622a82"
+              }
+            },
+            "obligation": "required_before_start",
+            "selected_by": "owner",
+            "conditions": [
+              {
+                "condition_id": "k-tree",
+                "kind": "repository_tree",
+                "expected": "tree-1",
+                "repository": "repo-a"
+              }
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "admission": "admitted"
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "execution.inspect",
+      "payload": {
+        "execution": "e-dispatch"
+      },
+      "expect": {
+        "ok": {
+          "admission": "admitted",
+          "delivery": "pending",
+          "context": {
+            "blocked": {
+              "boundary": "dispatch",
+              "binding_id": "b-d",
+              "reason": "context_binding_stale"
+            },
+            "bindings": [
+              {
+                "revalidation": "stale"
+              }
+            ],
+            "checks": [
+              {
+                "boundary": "admission",
+                "state": "current"
+              },
+              {
+                "boundary": "dispatch",
+                "state": "stale",
+                "results": [
+                  {
+                    "result": "mismatch",
+                    "observed": "tree-2"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "note": "the admission check did not make the later dispatch current"
+    },
+    {
+      "step": "command",
+      "operation": "execution.submit",
+      "command_id": "submit-e-queued",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "e-queued"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "e-queued"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "brief": {
+          "digest": "sha256:abababababababababababababababababababababababababababababababab",
+          "media_type": "text/plain"
+        },
+        "context_bindings": [
+          {
+            "binding_id": "b-q",
+            "packet": {
+              "packet": {
+                "kind": "context.packet",
+                "id": "r-1"
+              },
+              "revision": 1,
+              "artifact": {
+                "provider": "context-1",
+                "artifact": {
+                  "kind": "evidence.artifact",
+                  "id": "packet.r-1.1"
+                },
+                "digest": "sha256:2563192958eb20cd51510fc184bc436e218dade28f6e6d38a425348624622a82"
+              }
+            },
+            "obligation": "required_before_start",
+            "selected_by": "owner",
+            "conditions": [
+              {
+                "condition_id": "k-tree",
+                "kind": "repository_tree",
+                "expected": "tree-3",
+                "repository": "repo-a"
+              }
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "admission": "queued",
+            "queue_reason": "context_binding_stale"
+          }
+        }
+      }
+    },
+    {
+      "step": "stop"
+    },
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ],
+        "executor": {
+          "context_packets": [
+            {
+              "reference": {
+                "packet": {
+                  "kind": "context.packet",
+                  "id": "r-1"
+                },
+                "revision": 1,
+                "artifact": {
+                  "provider": "context-1",
+                  "artifact": {
+                    "kind": "evidence.artifact",
+                    "id": "packet.r-1.1"
+                  },
+                  "digest": "sha256:2563192958eb20cd51510fc184bc436e218dade28f6e6d38a425348624622a82"
+                }
+              }
+            },
+            {
+              "ref": "pkt-1",
+              "digest": "sha256:2563192958eb20cd51510fc184bc436e218dade28f6e6d38a425348624622a82"
+            }
+          ],
+          "observed_basis": {
+            "repositories": {
+              "repo-a": {
+                "tree": "tree-3"
+              }
+            }
+          },
+          "scripts": {
+            "e-queued": [
+              {
+                "deliver": "provider_ack_id"
+              },
+              {
+                "stall": true
+              }
+            ]
+          },
+          "default_script": [
+            {
+              "stall": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.capabilities",
+              "core.effects"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "execution",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "execution.context",
+              "execution.context_revalidation"
+            ],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "query",
+      "operation": "execution.inspect",
+      "payload": {
+        "execution": "e-queued"
+      },
+      "expect": {
+        "ok": {
+          "admission": "admitted",
+          "queue_reason": {
+            "$absent": true
+          }
+        }
+      },
+      "note": "revalidated at admission after queueing"
+    },
+    {
+      "step": "query",
+      "operation": "execution.inspect",
+      "payload": {
+        "execution": "e-queued"
+      },
+      "expect": {
+        "ok": {
+          "admission": "admitted",
+          "delivery": "acknowledged",
+          "context": {
+            "bindings": [
+              {
+                "revalidation": "current",
+                "state": "satisfied"
+              }
+            ],
+            "checks": [
+              {
+                "boundary": "admission",
+                "state": "stale"
+              },
+              {
+                "boundary": "admission",
+                "state": "current"
+              },
+              {
+                "boundary": "dispatch",
+                "state": "current"
+              }
+            ]
+          }
+        }
+      },
+      "note": "the executor's observed basis changed across the restart"
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

@@ -1,0 +1,46 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "socket.already-authenticated",
+  "version": 1,
+  "title": "A second authentication on a socket session is refused",
+  "requirements": [
+    "CORE-15"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/CORE.md#18-principal-credentials-on-shared-connections"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "core-test",
+      "major": 1
+    }
+  ],
+  "features": [],
+  "binding": "unix",
+  "polarity": "positive",
+  "kills": [],
+  "steps": [
+    {
+      "step": "start"
+    },
+    {
+      "step": "query",
+      "operation": "core.authenticate",
+      "payload": {
+        "credential": {
+          "$var": "credential.conformance-caller"
+        }
+      },
+      "expect": {
+        "error": "already_authenticated"
+      }
+    },
+    {
+      "step": "negotiate"
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

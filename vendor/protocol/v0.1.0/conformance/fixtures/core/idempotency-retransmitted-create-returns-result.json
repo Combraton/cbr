@@ -1,0 +1,100 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "core.idempotency.retransmitted-create-returns-result",
+  "version": 1,
+  "title": "A retransmitted successful create replays instead of failing its precondition",
+  "requirements": [
+    "CORE-7",
+    "CORE-9"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/CORE.md#7-preconditions-and-revisions",
+    "docs/spec/profiles/CORE.md#10-command-processing-order"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "core-test",
+      "major": 1
+    }
+  ],
+  "polarity": "negative",
+  "kills": [
+    "checks-before-dedupe"
+  ],
+  "steps": [
+    {
+      "step": "start"
+    },
+    {
+      "step": "negotiate"
+    },
+    {
+      "step": "command",
+      "operation": "core-test.subject.put",
+      "command_id": "cmd-1",
+      "subject": {
+        "kind": "core-test.subject",
+        "id": "s-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core-test.subject",
+            "id": "s-1"
+          },
+          "revision": 0
+        }
+      ],
+      "authority_epoch": 0,
+      "payload": {
+        "value": "a"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "core-test.subject.put",
+      "command_id": "cmd-1",
+      "subject": {
+        "kind": "core-test.subject",
+        "id": "s-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core-test.subject",
+            "id": "s-1"
+          },
+          "revision": 0
+        }
+      ],
+      "authority_epoch": 0,
+      "payload": {
+        "value": "a"
+      },
+      "expect": {
+        "ok": {
+          "replay": true
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core-test.subject.applied_count",
+      "payload": {
+        "subject": {
+          "kind": "core-test.subject",
+          "id": "s-1"
+        }
+      },
+      "expect": {
+        "ok": {
+          "applied_count": 1
+        }
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

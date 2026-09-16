@@ -1,0 +1,211 @@
+{
+  "type": "object",
+  "required": [
+    "artifact",
+    "revision",
+    "descriptor",
+    "state",
+    "availability",
+    "holds"
+  ],
+  "properties": {
+    "artifact": {
+      "$ref": "common.schema.json#/$defs/artifact_subject"
+    },
+    "revision": {
+      "$ref": "../../core/1/common.schema.json#/$defs/revision"
+    },
+    "descriptor": {
+      "$ref": "common.schema.json#/$defs/descriptor"
+    },
+    "state": {
+      "enum": [
+        "staged",
+        "sealed",
+        "abandoned"
+      ]
+    },
+    "availability": {
+      "$ref": "common.schema.json#/$defs/availability"
+    },
+    "received": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "abandoned_reason": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "holds": {
+      "type": "array",
+      "maxItems": 1024,
+      "items": {
+        "type": "object",
+        "required": [
+          "hold",
+          "revision",
+          "state",
+          "owner",
+          "holder_ref"
+        ],
+        "properties": {
+          "hold": {
+            "$ref": "common.schema.json#/$defs/hold_subject"
+          },
+          "revision": {
+            "$ref": "../../core/1/common.schema.json#/$defs/revision"
+          },
+          "state": {
+            "enum": [
+              "active",
+              "released",
+              "expired"
+            ]
+          },
+          "owner": {
+            "$ref": "../../core/1/common.schema.json#/$defs/principal"
+          },
+          "holder_ref": {
+            "$ref": "../../core/1/common.schema.json#/$defs/subject"
+          }
+        },
+        "unevaluatedProperties": false
+      }
+    },
+    "loss": {
+      "type": "object",
+      "required": [
+        "artifact",
+        "digest",
+        "requested_at",
+        "released_holds",
+        "affected",
+        "coverage"
+      ],
+      "properties": {
+        "artifact": {
+          "$ref": "common.schema.json#/$defs/artifact_subject"
+        },
+        "digest": {
+          "$ref": "../../core/1/common.schema.json#/$defs/digest"
+        },
+        "requested_at": {
+          "$ref": "../../core/1/common.schema.json#/$defs/instant"
+        },
+        "confirmed_at": {
+          "$ref": "../../core/1/common.schema.json#/$defs/instant"
+        },
+        "released_holds": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "$ref": "common.schema.json#/$defs/hold_subject"
+          }
+        },
+        "affected": {
+          "type": "array",
+          "maxItems": 1024,
+          "items": {
+            "type": "object",
+            "required": [
+              "kind",
+              "subject"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64
+              },
+              "subject": {
+                "$ref": "../../core/1/common.schema.json#/$defs/subject"
+              }
+            },
+            "unevaluatedProperties": false
+          }
+        },
+        "coverage": {
+          "type": "object",
+          "required": [
+            "tracked",
+            "filtered"
+          ],
+          "properties": {
+            "tracked": {
+              "type": "array",
+              "maxItems": 16,
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64
+              }
+            },
+            "filtered": {
+              "type": "boolean"
+            }
+          },
+          "unevaluatedProperties": false
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "completeness": {
+      "type": "object",
+      "required": [
+        "state",
+        "children"
+      ],
+      "properties": {
+        "state": {
+          "enum": [
+            "complete",
+            "incomplete",
+            "undetermined"
+          ]
+        },
+        "children": {
+          "type": "array",
+          "maxItems": 1024,
+          "items": {
+            "type": "object",
+            "required": [
+              "role",
+              "evidence",
+              "required",
+              "state"
+            ],
+            "properties": {
+              "role": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
+              },
+              "evidence": {
+                "$ref": "common.schema.json#/$defs/reference"
+              },
+              "required": {
+                "type": "boolean"
+              },
+              "state": {
+                "enum": [
+                  "present",
+                  "missing",
+                  "unverified",
+                  "withheld"
+                ]
+              }
+            },
+            "unevaluatedProperties": false
+          }
+        }
+      },
+      "unevaluatedProperties": false
+    }
+  },
+  "unevaluatedProperties": false,
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Combraton/protocol/schemas/evidence/1/evidence.inspect.result.schema.json",
+  "title": "evidence.inspect result"
+}

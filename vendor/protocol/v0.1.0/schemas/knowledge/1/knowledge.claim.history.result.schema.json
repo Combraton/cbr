@@ -1,0 +1,273 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Combraton/protocol/schemas/knowledge/1/knowledge.claim.history.result.schema.json",
+  "title": "knowledge.claim.history result",
+  "type": "object",
+  "required": [
+    "claim",
+    "revisions",
+    "decisions",
+    "evaluations",
+    "conflicts"
+  ],
+  "properties": {
+    "claim": {
+      "$ref": "../../core/1/common.schema.json#/$defs/identifier"
+    },
+    "revisions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "reference",
+          "producer",
+          "supersedes",
+          "recorded_at",
+          "position"
+        ],
+        "properties": {
+          "reference": {
+            "$ref": "common.schema.json#/$defs/claim_reference"
+          },
+          "producer": {
+            "$ref": "../../core/1/common.schema.json#/$defs/principal"
+          },
+          "supersedes": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "revision",
+                  "digest"
+                ],
+                "properties": {
+                  "revision": {
+                    "type": "integer"
+                  },
+                  "digest": {
+                    "$ref": "../../core/1/common.schema.json#/$defs/digest"
+                  }
+                },
+                "unevaluatedProperties": false
+              }
+            ]
+          },
+          "recorded_at": {
+            "$ref": "../../core/1/common.schema.json#/$defs/instant"
+          },
+          "position": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "common.schema.json#/$defs/position"
+              }
+            ]
+          }
+        },
+        "unevaluatedProperties": false
+      }
+    },
+    "decisions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "decision",
+          "claim",
+          "value",
+          "permitted_use",
+          "decider",
+          "author_is_decider",
+          "epoch",
+          "supersedes_decision",
+          "recorded_at",
+          "position"
+        ],
+        "properties": {
+          "decision": {
+            "$ref": "../../core/1/common.schema.json#/$defs/identifier"
+          },
+          "claim": {
+            "$ref": "common.schema.json#/$defs/claim_reference"
+          },
+          "value": {
+            "enum": [
+              "accepted_for_use",
+              "rejected",
+              "superseded"
+            ]
+          },
+          "permitted_use": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "common.schema.json#/$defs/permitted_use"
+              }
+            ]
+          },
+          "decider": {
+            "$ref": "../../core/1/common.schema.json#/$defs/principal"
+          },
+          "author_is_decider": {
+            "type": "boolean"
+          },
+          "epoch": {
+            "type": "integer"
+          },
+          "supersedes_decision": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "../../core/1/common.schema.json#/$defs/identifier"
+              }
+            ]
+          },
+          "recorded_at": {
+            "$ref": "../../core/1/common.schema.json#/$defs/instant"
+          },
+          "position": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "common.schema.json#/$defs/position"
+              }
+            ]
+          }
+        },
+        "unevaluatedProperties": false
+      }
+    },
+    "evaluations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "evaluation",
+          "claim",
+          "target",
+          "result",
+          "evaluator",
+          "supersedes_evaluation",
+          "recorded_at",
+          "position"
+        ],
+        "properties": {
+          "evaluation": {
+            "$ref": "../../core/1/common.schema.json#/$defs/identifier"
+          },
+          "claim": {
+            "$ref": "common.schema.json#/$defs/claim_reference"
+          },
+          "target": {
+            "$ref": "common.schema.json#/$defs/basis"
+          },
+          "result": {
+            "$ref": "common.schema.json#/$defs/applicability_result"
+          },
+          "evaluator": {
+            "$ref": "common.schema.json#/$defs/evaluator"
+          },
+          "supersedes_evaluation": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "../../core/1/common.schema.json#/$defs/identifier"
+              }
+            ]
+          },
+          "recorded_at": {
+            "$ref": "../../core/1/common.schema.json#/$defs/instant"
+          },
+          "position": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "common.schema.json#/$defs/position"
+              }
+            ]
+          }
+        },
+        "unevaluatedProperties": false
+      }
+    },
+    "conflicts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "conflict",
+          "kind",
+          "status",
+          "revisions",
+          "state",
+          "resolution",
+          "recorded_at",
+          "position"
+        ],
+        "properties": {
+          "conflict": {
+            "$ref": "../../core/1/common.schema.json#/$defs/identifier"
+          },
+          "kind": {
+            "$ref": "common.schema.json#/$defs/conflict_kind"
+          },
+          "status": {
+            "$ref": "common.schema.json#/$defs/conflict_status"
+          },
+          "revisions": {
+            "type": "array",
+            "items": {
+              "$ref": "common.schema.json#/$defs/claim_reference"
+            }
+          },
+          "state": {
+            "enum": [
+              "open",
+              "resolved"
+            ]
+          },
+          "resolution": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "common.schema.json#/$defs/resolution"
+              }
+            ]
+          },
+          "recorded_at": {
+            "$ref": "../../core/1/common.schema.json#/$defs/instant"
+          },
+          "position": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "common.schema.json#/$defs/position"
+              }
+            ]
+          }
+        },
+        "unevaluatedProperties": false
+      }
+    }
+  },
+  "unevaluatedProperties": false
+}

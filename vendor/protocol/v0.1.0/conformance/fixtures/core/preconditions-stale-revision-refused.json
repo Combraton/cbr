@@ -1,0 +1,131 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "core.preconditions.stale-revision-refused",
+  "version": 1,
+  "title": "A stale expected revision is refused with the current revision",
+  "requirements": [
+    "CORE-9"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/CORE.md#7-preconditions-and-revisions"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "core-test",
+      "major": 1
+    }
+  ],
+  "polarity": "negative",
+  "kills": [
+    "ignore-preconditions"
+  ],
+  "steps": [
+    {
+      "step": "start"
+    },
+    {
+      "step": "negotiate"
+    },
+    {
+      "step": "command",
+      "operation": "core-test.subject.put",
+      "command_id": "cmd-1",
+      "subject": {
+        "kind": "core-test.subject",
+        "id": "s-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core-test.subject",
+            "id": "s-1"
+          },
+          "revision": 0
+        }
+      ],
+      "authority_epoch": 0,
+      "payload": {
+        "value": "a"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "core-test.subject.put",
+      "command_id": "cmd-2",
+      "subject": {
+        "kind": "core-test.subject",
+        "id": "s-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core-test.subject",
+            "id": "s-1"
+          },
+          "revision": 1
+        }
+      ],
+      "authority_epoch": 0,
+      "payload": {
+        "value": "b"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "core-test.subject.put",
+      "command_id": "cmd-3",
+      "subject": {
+        "kind": "core-test.subject",
+        "id": "s-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core-test.subject",
+            "id": "s-1"
+          },
+          "revision": 1
+        }
+      ],
+      "authority_epoch": 0,
+      "payload": {
+        "value": "c"
+      },
+      "expect": {
+        "error": "precondition_failed",
+        "details": {
+          "failed": [
+            {
+              "subject": {
+                "kind": "core-test.subject",
+                "id": "s-1"
+              },
+              "expected": 1,
+              "current": 2
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core-test.subject.get",
+      "payload": {
+        "subject": {
+          "kind": "core-test.subject",
+          "id": "s-1"
+        }
+      },
+      "expect": {
+        "ok": {
+          "revision": 2,
+          "value": "b"
+        }
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

@@ -1,0 +1,43 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "stream.negative-zero-closes",
+  "version": 1,
+  "title": "Negative zero is outside the value domain and closes the connection",
+  "requirements": [
+    "TRN-2",
+    "CORE-6"
+  ],
+  "spec_refs": [
+    "docs/spec/bindings/ENCODING.md#1-the-json-value-domain"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "core",
+      "major": 1
+    }
+  ],
+  "polarity": "negative",
+  "kills": [
+    "lax-numbers"
+  ],
+  "steps": [
+    {
+      "step": "start"
+    },
+    {
+      "step": "raw",
+      "text": "{\"jsonrpc\":\"2.0\",\"id\":-0,\"method\":\"core.describe\",\"params\":{\"operation\":\"core.describe\",\"message_id\":\"msg-describe\",\"payload\":{}}}"
+    },
+    {
+      "step": "expect_frame",
+      "expect": {
+        "error": "parse_error",
+        "id_null": true
+      }
+    },
+    {
+      "step": "expect_close"
+    }
+  ]
+}

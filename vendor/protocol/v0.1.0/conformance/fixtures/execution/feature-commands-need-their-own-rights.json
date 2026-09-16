@@ -1,0 +1,417 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "execution.feature-commands-need-their-own-rights",
+  "version": 1,
+  "title": "Under a grant, answering an action and steering need their own rights; submit and read rights do not authorize them",
+  "requirements": [
+    "EXE-14",
+    "EXE-9",
+    "CORE-11"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/EXECUTION.md#11-optional-features"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "execution",
+      "major": 1
+    }
+  ],
+  "features": [
+    "core.events",
+    "core.capabilities",
+    "core.effects",
+    "core.grants",
+    "execution.actions",
+    "execution.steering"
+  ],
+  "requires_controls": [
+    "executor.script"
+  ],
+  "polarity": "positive",
+  "kills": [],
+  "steps": [
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ],
+        "executor": {
+          "adapter": {
+            "steering": "live"
+          },
+          "scripts": {
+            "a1-e": [
+              {
+                "deliver": "provider_ack_id"
+              },
+              {
+                "request_action": {
+                  "action_id": "act-1",
+                  "owner": "user"
+                }
+              },
+              {
+                "wait_for": "action"
+              },
+              {
+                "exit": {
+                  "code": 0
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.capabilities",
+              "core.effects",
+              "core.grants"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "execution",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "execution.actions",
+              "execution.steering"
+            ],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "core.grant.issue",
+      "command_id": "issue-g-1",
+      "subject": {
+        "kind": "core.grant",
+        "id": "g-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core.grant",
+            "id": "g-1"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "holder": "agent-1",
+        "audience": "conformance-provider",
+        "rights": [
+          "execution.submit",
+          "execution.read"
+        ],
+        "resources": [
+          {
+            "kind": "execution.execution",
+            "id_prefix": "a1-"
+          }
+        ],
+        "delegation": {
+          "allowed": false,
+          "max_depth": 0
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "core.grant.issue",
+      "command_id": "issue-g-2",
+      "subject": {
+        "kind": "core.grant",
+        "id": "g-2"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core.grant",
+            "id": "g-2"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "holder": "agent-1",
+        "audience": "conformance-provider",
+        "rights": [
+          "execution.read",
+          "execution.respond_action"
+        ],
+        "resources": [
+          {
+            "kind": "execution.execution",
+            "id_prefix": "a1-"
+          }
+        ],
+        "delegation": {
+          "allowed": false,
+          "max_depth": 0
+        }
+      }
+    },
+    {
+      "step": "stop"
+    },
+    {
+      "step": "start",
+      "config": {
+        "principal": "agent-1",
+        "authority_principals": [
+          "owner"
+        ],
+        "executor": {
+          "adapter": {
+            "steering": "live"
+          },
+          "scripts": {
+            "a1-e": [
+              {
+                "deliver": "provider_ack_id"
+              },
+              {
+                "request_action": {
+                  "action_id": "act-1",
+                  "owner": "user"
+                }
+              },
+              {
+                "wait_for": "action"
+              },
+              {
+                "exit": {
+                  "code": 0
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.capabilities",
+              "core.effects",
+              "core.grants"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "execution",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "execution.actions",
+              "execution.steering"
+            ],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "execution.submit",
+      "command_id": "submit-a1-e",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "a1-e"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "a1-e"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "brief": {
+          "digest": "sha256:abababababababababababababababababababababababababababababababab",
+          "media_type": "text/plain"
+        }
+      },
+      "set": {
+        "grant": "g-1"
+      }
+    },
+    {
+      "step": "query",
+      "operation": "execution.inspect",
+      "payload": {
+        "execution": "a1-e"
+      },
+      "expect": {
+        "ok": {
+          "runtime": "requires_action"
+        }
+      },
+      "capture": {
+        "r": "/result/revision"
+      },
+      "set": {
+        "grant": "g-1"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "execution.respond_action",
+      "command_id": "respond_action-a1-e",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "a1-e"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "a1-e"
+          },
+          "revision": {
+            "$var": "r"
+          }
+        }
+      ],
+      "payload": {
+        "action_id": "act-1",
+        "response": {
+          "digest": "sha256:cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+          "media_type": "text/plain"
+        }
+      },
+      "expect": {
+        "error": "permission_denied",
+        "details": {
+          "reason": "right_missing"
+        }
+      },
+      "set": {
+        "grant": "g-1"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "execution.steer",
+      "command_id": "steer-a1-e",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "a1-e"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "a1-e"
+          },
+          "revision": {
+            "$var": "r"
+          }
+        }
+      ],
+      "payload": {
+        "message": {
+          "digest": "sha256:cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+          "media_type": "text/plain"
+        }
+      },
+      "expect": {
+        "error": "permission_denied",
+        "details": {
+          "reason": "right_missing"
+        }
+      },
+      "set": {
+        "grant": "g-2"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "execution.respond_action",
+      "command_id": "respond-under-g-2",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "a1-e"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "a1-e"
+          },
+          "revision": {
+            "$var": "r"
+          }
+        }
+      ],
+      "payload": {
+        "action_id": "act-1",
+        "response": {
+          "digest": "sha256:cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+          "media_type": "text/plain"
+        }
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "state": "answered"
+          }
+        }
+      },
+      "set": {
+        "grant": "g-2"
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

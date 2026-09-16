@@ -1,0 +1,93 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "socket.feature-dependencies-after-authentication",
+  "version": 1,
+  "title": "On a shared transport core.feature_dependencies follows the existing authentication rule: refused before core.authenticate, answered after it and before negotiation",
+  "requirements": [
+    "CMP-5",
+    "CORE-15"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/CORE.md#43-corefeature_dependencies-query-m6-q1",
+    "docs/spec/profiles/CORE.md#182-coreauthenticate"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "core-test",
+      "major": 1
+    }
+  ],
+  "features": [],
+  "binding": "unix",
+  "polarity": "negative",
+  "kills": [
+    "skip-authentication"
+  ],
+  "steps": [
+    {
+      "step": "start",
+      "auto_authenticate": false
+    },
+    {
+      "step": "describe"
+    },
+    {
+      "step": "query",
+      "operation": "core.feature_dependencies",
+      "payload": {},
+      "expect": {
+        "error": "authentication_required"
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core.authenticate",
+      "payload": {
+        "credential": {
+          "$var": "credential.conformance-caller"
+        }
+      },
+      "expect": {
+        "ok": {
+          "principal": "conformance-caller"
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core.feature_dependencies",
+      "payload": {},
+      "expect": {
+        "ok": {
+          "dependencies": {
+            "$contains": {
+              "profile": "core-test",
+              "major": 1,
+              "trigger": {
+                "$exact": {
+                  "kind": "profile"
+                }
+              },
+              "requires": [
+                {
+                  "$exact": {
+                    "profile": "core",
+                    "major": 1,
+                    "features": []
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "step": "negotiate"
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

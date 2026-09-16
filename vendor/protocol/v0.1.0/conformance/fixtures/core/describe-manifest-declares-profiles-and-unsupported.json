@@ -1,0 +1,67 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "core.describe.manifest-declares-profiles-and-unsupported",
+  "version": 1,
+  "title": "Describe lists supported profiles with dependencies and the profiles declared unsupported",
+  "requirements": [
+    "REL-2",
+    "REL-9"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/CORE.md#41-coredescribe-query"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "core",
+      "major": 1
+    }
+  ],
+  "polarity": "positive",
+  "kills": [],
+  "steps": [
+    {
+      "step": "start"
+    },
+    {
+      "step": "describe",
+      "expect": {
+        "ok": {
+          "profiles": {
+            "$contains": {
+              "name": "core",
+              "majors": {
+                "$contains": 1
+              }
+            }
+          },
+          "unsupported_profiles": {
+            "$contains": {
+              "name": "coordination"
+            }
+          },
+          "dedupe_window": {
+            "current": {
+              "$type": "integer"
+            }
+          }
+        }
+      }
+    },
+    {
+      "step": "describe",
+      "expect": {
+        "ok": {
+          "unsupported_profiles": {
+            "$contains": {
+              "name": "remote-trust"
+            }
+          }
+        }
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

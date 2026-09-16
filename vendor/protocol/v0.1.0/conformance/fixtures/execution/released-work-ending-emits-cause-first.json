@@ -1,0 +1,550 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "execution.released-work-ending-emits-cause-first",
+  "version": 1,
+  "title": "Released work that ends before dispatch emits its cause first: a passed delivery timeout, its overdue obligations, the delivery observation, then the scheduling change; a cancellation starts with the delivery observation",
+  "requirements": [
+    "CTX-18",
+    "EXE-3"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/EXECUTION.md#131-context-revalidation-executioncontext_revalidation",
+    "docs/spec/profiles/EXECUTION.md#151-conformance-executor-conventions"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "execution",
+      "major": 1
+    }
+  ],
+  "features": [
+    "core.events",
+    "core.capabilities",
+    "core.effects",
+    "execution.context",
+    "execution.context_revalidation"
+  ],
+  "requires_controls": [
+    "executor.script",
+    "clock.file"
+  ],
+  "polarity": "negative",
+  "kills": [
+    "released-ending-before-cause"
+  ],
+  "kill_expectations": {
+    "released-ending-before-cause": {
+      "step": 10,
+      "reason_contains": "expected 4 items, found 3"
+    }
+  },
+  "steps": [
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ],
+        "clock": {
+          "controlled": "2030-01-01T00:00:00Z"
+        },
+        "executor": {
+          "context_packets": [
+            {
+              "reference": {
+                "packet": {
+                  "kind": "context.packet",
+                  "id": "r-1"
+                },
+                "revision": 1,
+                "artifact": {
+                  "provider": "context-1",
+                  "artifact": {
+                    "kind": "evidence.artifact",
+                    "id": "packet.r-1.1"
+                  },
+                  "digest": "sha256:2563192958eb20cd51510fc184bc436e218dade28f6e6d38a425348624622a82"
+                }
+              }
+            }
+          ],
+          "observed_basis": {
+            "repositories": {
+              "repo-a": {
+                "tree": "tree-1"
+              }
+            }
+          },
+          "scripts": {
+            "e-late": [
+              {
+                "wait_until": "2030-01-01T00:00:20Z"
+              },
+              {
+                "deliver": "provider_ack_id"
+              },
+              {
+                "stall": true
+              }
+            ],
+            "e-cancel": [
+              {
+                "wait_until": "2030-01-01T00:00:20Z"
+              },
+              {
+                "deliver": "provider_ack_id"
+              },
+              {
+                "stall": true
+              }
+            ]
+          },
+          "default_script": [
+            {
+              "stall": true
+            }
+          ],
+          "capacity": 5,
+          "basis_changes": [
+            {
+              "at": "2030-01-01T00:00:10Z",
+              "observed_basis": {
+                "repositories": {
+                  "repo-a": {
+                    "tree": "tree-2"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.capabilities",
+              "core.effects",
+              "core.grants"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "execution",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "execution.context",
+              "execution.context_revalidation"
+            ],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "execution.submit",
+      "command_id": "submit-e-late",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "e-late"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "e-late"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "brief": {
+          "digest": "sha256:abababababababababababababababababababababababababababababababab",
+          "media_type": "text/plain"
+        },
+        "timeouts": {
+          "delivery": 25
+        },
+        "context_bindings": [
+          {
+            "binding_id": "b-l",
+            "packet": {
+              "packet": {
+                "kind": "context.packet",
+                "id": "r-1"
+              },
+              "revision": 1,
+              "artifact": {
+                "provider": "context-1",
+                "artifact": {
+                  "kind": "evidence.artifact",
+                  "id": "packet.r-1.1"
+                },
+                "digest": "sha256:2563192958eb20cd51510fc184bc436e218dade28f6e6d38a425348624622a82"
+              }
+            },
+            "obligation": "required_before_start",
+            "selected_by": "owner",
+            "conditions": [
+              {
+                "condition_id": "k-tree",
+                "kind": "repository_tree",
+                "repository": "repo-a",
+                "expected": "tree-1"
+              }
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "admission": "admitted"
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "execution.submit",
+      "command_id": "submit-e-cancel",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "e-cancel"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "e-cancel"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "brief": {
+          "digest": "sha256:abababababababababababababababababababababababababababababababab",
+          "media_type": "text/plain"
+        },
+        "context_bindings": [
+          {
+            "binding_id": "b-c",
+            "packet": {
+              "packet": {
+                "kind": "context.packet",
+                "id": "r-1"
+              },
+              "revision": 1,
+              "artifact": {
+                "provider": "context-1",
+                "artifact": {
+                  "kind": "evidence.artifact",
+                  "id": "packet.r-1.1"
+                },
+                "digest": "sha256:2563192958eb20cd51510fc184bc436e218dade28f6e6d38a425348624622a82"
+              }
+            },
+            "obligation": "required_before_start",
+            "selected_by": "owner",
+            "conditions": [
+              {
+                "condition_id": "k-tree",
+                "kind": "repository_tree",
+                "repository": "repo-a",
+                "expected": "tree-1"
+              }
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "admission": "admitted"
+          }
+        }
+      }
+    },
+    {
+      "step": "set_clock",
+      "instant": "2030-01-01T00:00:20Z",
+      "note": "both bindings are stale at dispatch, so both release their slots"
+    },
+    {
+      "step": "query",
+      "operation": "execution.inspect",
+      "payload": {
+        "execution": "e-late"
+      },
+      "expect": {
+        "ok": {
+          "delivery": "pending",
+          "scheduling": {
+            "capacity": "released"
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "execution.inspect",
+      "payload": {
+        "execution": "e-cancel"
+      },
+      "expect": {
+        "ok": {
+          "delivery": "pending",
+          "scheduling": {
+            "capacity": "released"
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core.events.read",
+      "payload": {
+        "from": "start",
+        "limit": 100,
+        "kinds": [
+          "execution.execution"
+        ]
+      },
+      "capture": {
+        "before_timeout": "/result/next_cursor"
+      }
+    },
+    {
+      "step": "set_clock",
+      "instant": "2030-01-01T00:00:30Z",
+      "note": "the delivery timeout of e-late passed at T25"
+    },
+    {
+      "step": "query",
+      "operation": "execution.inspect",
+      "payload": {
+        "execution": "e-late"
+      },
+      "expect": {
+        "ok": {
+          "delivery": "failed_before_delivery",
+          "scheduling": {
+            "capacity": "released",
+            "reason": "deadline_passed"
+          },
+          "deliveries": [
+            {
+              "delivery": "failed_before_delivery",
+              "evidence": {
+                "class": "delivery_timeout_before_dispatch"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core.events.read",
+      "payload": {
+        "cursor": {
+          "$var": "before_timeout"
+        },
+        "limit": 100,
+        "kinds": [
+          "execution.execution"
+        ]
+      },
+      "expect": {
+        "ok": {
+          "items": [
+            {
+              "event": {
+                "type": "execution.timeout.passed",
+                "payload": {
+                  "timeout": "delivery"
+                }
+              }
+            },
+            {
+              "event": {
+                "type": "core.effect.obligation.overdue",
+                "payload": {
+                  "effect": "e-late.delivery-1"
+                }
+              }
+            },
+            {
+              "event": {
+                "type": "execution.delivery.observed",
+                "payload": {
+                  "delivery": "failed_before_delivery",
+                  "evidence": {
+                    "class": "delivery_timeout_before_dispatch"
+                  }
+                }
+              }
+            },
+            {
+              "event": {
+                "type": "execution.scheduling.changed",
+                "payload": {
+                  "capacity": "released",
+                  "reason": "deadline_passed"
+                }
+              }
+            }
+          ]
+        }
+      },
+      "capture": {
+        "before_cancel": "/result/next_cursor"
+      }
+    },
+    {
+      "step": "query",
+      "operation": "execution.inspect",
+      "payload": {
+        "execution": "e-cancel"
+      },
+      "expect": {
+        "ok": {
+          "delivery": "pending",
+          "scheduling": {
+            "capacity": "released"
+          }
+        }
+      },
+      "capture": {
+        "rev": "/result/revision"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "execution.cancel",
+      "command_id": "cancel-e-cancel",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "e-cancel"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "e-cancel"
+          },
+          "revision": {
+            "$var": "rev"
+          }
+        }
+      ],
+      "payload": {},
+      "expect": {
+        "ok": {
+          "outcome": {
+            "receipt": {
+              "state": "cancel_requested"
+            }
+          }
+        }
+      }
+    },
+    {
+      "step": "set_clock",
+      "instant": "2030-01-01T00:00:35Z"
+    },
+    {
+      "step": "query",
+      "operation": "execution.inspect",
+      "payload": {
+        "execution": "e-cancel"
+      },
+      "expect": {
+        "ok": {
+          "delivery": "failed_before_delivery",
+          "scheduling": {
+            "capacity": "released",
+            "reason": "cancelled"
+          },
+          "deliveries": [
+            {
+              "delivery": "failed_before_delivery",
+              "evidence": {
+                "class": "scheduling"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core.events.read",
+      "payload": {
+        "cursor": {
+          "$var": "before_cancel"
+        },
+        "limit": 100,
+        "kinds": [
+          "execution.execution"
+        ]
+      },
+      "expect": {
+        "ok": {
+          "items": [
+            {
+              "event": {
+                "type": "execution.cancel.requested"
+              }
+            },
+            {
+              "event": {
+                "type": "execution.delivery.observed",
+                "payload": {
+                  "delivery": "failed_before_delivery",
+                  "evidence": {
+                    "class": "scheduling"
+                  }
+                }
+              }
+            },
+            {
+              "event": {
+                "type": "execution.scheduling.changed",
+                "payload": {
+                  "capacity": "released",
+                  "reason": "cancelled"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

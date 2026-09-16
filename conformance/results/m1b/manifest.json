@@ -1,0 +1,365 @@
+{
+  "coverage_limits": [],
+  "environment": {
+    "arch": "aarch64",
+    "os": "macos"
+  },
+  "format": "combraton-conformance-result/1",
+  "participant": {
+    "claimed_profiles": [
+      {
+        "major": 1,
+        "name": "core"
+      },
+      {
+        "major": 1,
+        "name": "core-test"
+      }
+    ],
+    "client_mutant": null,
+    "descriptor_digest": "sha256:c15abd957b54194af9d38d50c5fba0d6d9740007bbd8405dccc8badbc738a18b",
+    "mutant": null,
+    "name": "cbr-provider",
+    "version": "0.1.0"
+  },
+  "results": [
+    {
+      "failed_step": null,
+      "fixture": "stream.control-methods-not-served",
+      "fixture_digest": "sha256:8f85bc9f0515d2b7653b5ea1437fba67a5463aefc0b7aaddf08eea475ff14a41",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "CORE-14",
+        "TRN-1"
+      ],
+      "transcript": "transcripts/stream.control-methods-not-served.jsonl",
+      "version": 2
+    },
+    {
+      "failed_step": null,
+      "fixture": "stream.duplicate-member-closes",
+      "fixture_digest": "sha256:0c22977f3f66ac6bc40d4554d264ed19069b20832cfd5751ae83af21316fefab",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "TRN-2",
+        "CORE-6"
+      ],
+      "transcript": "transcripts/stream.duplicate-member-closes.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "stream.exits-at-end-of-input",
+      "fixture_digest": "sha256:be7a5991a3498de4437315ee43115bc53f81886fafe42f4304746e2aa05df57c",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "TRN-2",
+        "TRN-5"
+      ],
+      "transcript": "transcripts/stream.exits-at-end-of-input.jsonl",
+      "version": 2
+    },
+    {
+      "failed_step": null,
+      "fixture": "stream.fraction-closes",
+      "fixture_digest": "sha256:5a3c2e337bb693cd16c1665b10bf18c6983df16a02c225c11f9231a421e53b80",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "TRN-2",
+        "CORE-6"
+      ],
+      "transcript": "transcripts/stream.fraction-closes.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "stream.frame-at-limit-accepted",
+      "fixture_digest": "sha256:d0aadba350aff189211e1e7dc451a5c4a4ca0c16ee931d0d8a23a62acba4988a",
+      "outcome": "pass",
+      "polarity": "positive",
+      "reason": null,
+      "requirements": [
+        "TRN-2",
+        "CORE-5"
+      ],
+      "transcript": "transcripts/stream.frame-at-limit-accepted.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "stream.frame-limit-raised-after-negotiation",
+      "fixture_digest": "sha256:416848addd0b589aa65a975ca3fef794e369799d9924cc381201e372e1dcaa70",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "TRN-2",
+        "CORE-5"
+      ],
+      "transcript": "transcripts/stream.frame-limit-raised-after-negotiation.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "stream.frame-over-limit-closes",
+      "fixture_digest": "sha256:553a7cef0e42c2021c599726c26b90d6ca81e17651e8e512a74985f4daac09ea",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "TRN-2",
+        "CORE-5"
+      ],
+      "transcript": "transcripts/stream.frame-over-limit-closes.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "stream.idless-non-notification-invalid",
+      "fixture_digest": "sha256:46a62b0c886afec6a44a169ddaf5b8e13872149e584523d934250b0e2a40fea0",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "TRN-1"
+      ],
+      "transcript": "transcripts/stream.idless-non-notification-invalid.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "stream.integer-outside-safe-range-closes",
+      "fixture_digest": "sha256:6f3795f7958140d9064077d9ec41b11d450ed53485fc1d0d28c6b602f6a3c1d3",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "TRN-2",
+        "CORE-6"
+      ],
+      "transcript": "transcripts/stream.integer-outside-safe-range-closes.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "stream.invalid-utf8-closes",
+      "fixture_digest": "sha256:01a92ce3c83e4c967211468af67df617b8272fa7f259ee28aa8b49837335dc4e",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "TRN-2"
+      ],
+      "transcript": "transcripts/stream.invalid-utf8-closes.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "stream.lone-surrogate-escape-closes",
+      "fixture_digest": "sha256:b992ae036da20df7933a72f5c255070afe56ac08dc71e1852d2cba9643fae568",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "TRN-2",
+        "CORE-6"
+      ],
+      "transcript": "transcripts/stream.lone-surrogate-escape-closes.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "stream.malformed-requests-invalid",
+      "fixture_digest": "sha256:c20caef91336a1393801a9ca9b96b7789e263292a09035197bfb7f10572b9254",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "TRN-1"
+      ],
+      "transcript": "transcripts/stream.malformed-requests-invalid.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "stream.method-operation-mismatch-refused",
+      "fixture_digest": "sha256:af6763ab58902390be3becf44ef59915d08e0ca8443d62e15307759231ed5f56",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "TRN-1"
+      ],
+      "transcript": "transcripts/stream.method-operation-mismatch-refused.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "stream.negative-zero-closes",
+      "fixture_digest": "sha256:e4f3141a5200dfa643ccb58e2d0fb76abed405ff0c85c5be7b00c3631682116a",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "TRN-2",
+        "CORE-6"
+      ],
+      "transcript": "transcripts/stream.negative-zero-closes.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "stream.noncharacter-closes",
+      "fixture_digest": "sha256:66c8201cdd6d6438d66bbcea094fa4f093a63fc5ec80e5f335229c8ad12f9df5",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "TRN-2",
+        "CORE-6"
+      ],
+      "transcript": "transcripts/stream.noncharacter-closes.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "stream.not-json-closes",
+      "fixture_digest": "sha256:03da4c0301518484faf94fe3c07b017cc0f8d9cb5bd1572f4e3e41fe7bc7eff6",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "TRN-2"
+      ],
+      "transcript": "transcripts/stream.not-json-closes.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "stream.notification-not-processed",
+      "fixture_digest": "sha256:d41d34458f9b0e4592d1c043820f3136dae53e08248a8ec387c3aba98dea6cd3",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "TRN-1"
+      ],
+      "transcript": "transcripts/stream.notification-not-processed.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "stream.null-id-invalid-request-stays-open",
+      "fixture_digest": "sha256:17f68c0011730d41e932c5b92fcd3b02340dea83f5fd9bd7e7d101a1bdbc4e3b",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "TRN-1"
+      ],
+      "transcript": "transcripts/stream.null-id-invalid-request-stays-open.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "stream.raw-newline-in-string-closes",
+      "fixture_digest": "sha256:f6dae0afe5bbc29085d7d15aa677c0e6fbfd1b5ebb7c0f3bd4fcb33869403c87",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "TRN-2"
+      ],
+      "transcript": "transcripts/stream.raw-newline-in-string-closes.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "stream.request-id-is-not-deduplication-key",
+      "fixture_digest": "sha256:b7414383ad79d8d8aaeac471ebf3bc24c93bcc9088f29ddedbb328369d505d99",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "CORE-1",
+        "TRN-1"
+      ],
+      "transcript": "transcripts/stream.request-id-is-not-deduplication-key.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "stream.string-id-code-points",
+      "fixture_digest": "sha256:5a8e9ccc9297b607022074f4d9daf863134d09f62c60e1935cb80170210eed87",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "TRN-1"
+      ],
+      "transcript": "transcripts/stream.string-id-code-points.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "stream.top-level-array-invalid-request-stays-open",
+      "fixture_digest": "sha256:f58efe9ced1a0d98a058d20f975ebf039624885c646eb68ba75e0ed33603341a",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "TRN-1"
+      ],
+      "transcript": "transcripts/stream.top-level-array-invalid-request-stays-open.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "stream.unterminated-frame-discarded",
+      "fixture_digest": "sha256:879c68c62ec2a70cca102c149baf57a12b0d577ac7e58cdb81fb7a06db566f5e",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "TRN-2"
+      ],
+      "transcript": "transcripts/stream.unterminated-frame-discarded.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "stream.whitespace-blank-frames-and-string-ids",
+      "fixture_digest": "sha256:e639145dec1309334ba7482a84773b03b01b0731899d25fba0d9248d65c39755",
+      "outcome": "pass",
+      "polarity": "positive",
+      "reason": null,
+      "requirements": [
+        "TRN-1",
+        "TRN-2"
+      ],
+      "transcript": "transcripts/stream.whitespace-blank-frames-and-string-ids.jsonl",
+      "version": 1
+    }
+  ],
+  "runner": {
+    "name": "combraton-conformance",
+    "version": "0.1.0"
+  },
+  "status_note": "Protocol 0.1 conformance suite. A result is a conformance claim only for the fixtures it lists as passing, run from the v0.1.0 release inventory; skipped and unsupported outcomes are coverage limits, not passes.",
+  "suite": {
+    "fixtures": 24,
+    "fixtures_digest": "sha256:8d8acff2e54695665219e271d274c8d34be01ba7b89a624f196bd5ba6478707a",
+    "protocol_commit": "51695670b978e227cef2463c9eaea009d6a8b62b"
+  },
+  "summary": {
+    "pass": 24
+  }
+}

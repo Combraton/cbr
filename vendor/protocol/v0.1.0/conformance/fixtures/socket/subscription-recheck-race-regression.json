@@ -1,0 +1,298 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "socket.subscription-recheck-race-regression",
+  "version": 1,
+  "title": "A revoke and put committed while an idle re-check is paused are never delivered to the revoked subscriber",
+  "requirements": [
+    "OBS-9",
+    "REL-13",
+    "TRN-3"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/CORE.md#165-subscriptions",
+    "docs/decisions/007-execution-test-controls.md",
+    "docs/spec/bindings/STREAM.md#6-unix-domain-socket-form"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "core-test",
+      "major": 1
+    }
+  ],
+  "features": [
+    "core.events",
+    "core.grants"
+  ],
+  "binding": "unix",
+  "requires_barriers": [
+    "subscription.recheck.after_authorization"
+  ],
+  "polarity": "negative",
+  "kills": [
+    "recheck-outside-lock"
+  ],
+  "kill_expectations": {
+    "recheck-outside-lock": {
+      "step": 13,
+      "reason_contains": "params/ended: missing"
+    }
+  },
+  "steps": [
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ]
+      },
+      "credential_principals": [
+        "agent-1"
+      ],
+      "barriers": [
+        "subscription.recheck.after_authorization"
+      ]
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.grants"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "core-test",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "core.grant.issue",
+      "command_id": "issue-g-1",
+      "subject": {
+        "kind": "core.grant",
+        "id": "g-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core.grant",
+            "id": "g-1"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "holder": "agent-1",
+        "audience": "conformance-provider",
+        "rights": [
+          "core.events.read",
+          "core-test.read"
+        ],
+        "resources": [
+          {
+            "kind": "core-test.subject",
+            "id_prefix": "s-"
+          }
+        ],
+        "delegation": {
+          "allowed": false,
+          "max_depth": 0
+        }
+      }
+    },
+    {
+      "step": "connect",
+      "session": "a",
+      "principal": "agent-1"
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.grants"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "core-test",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      },
+      "session": "a"
+    },
+    {
+      "step": "query",
+      "operation": "core.events.subscribe",
+      "payload": {
+        "from": "now",
+        "kinds": [
+          "core-test.subject"
+        ]
+      },
+      "capture": {
+        "sub": "/result/subscription"
+      },
+      "set": {
+        "grant": "g-1"
+      },
+      "session": "a"
+    },
+    {
+      "step": "await_barrier",
+      "name": "subscription.recheck.after_authorization",
+      "note": "A re-authorized g-1 and paused before reading events"
+    },
+    {
+      "step": "command",
+      "operation": "core.grant.revoke",
+      "command_id": "revoke-g-1",
+      "subject": {
+        "kind": "core.grant",
+        "id": "g-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core.grant",
+            "id": "g-1"
+          },
+          "revision": 1
+        }
+      ],
+      "payload": {},
+      "await": false,
+      "name": "revoke",
+      "note": "correct: blocks on the lock and signals; mutant: commits"
+    },
+    {
+      "step": "command",
+      "operation": "core-test.subject.put",
+      "command_id": "cmd-1",
+      "subject": {
+        "kind": "core-test.subject",
+        "id": "s-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core-test.subject",
+            "id": "s-1"
+          },
+          "revision": 0
+        }
+      ],
+      "authority_epoch": 0,
+      "payload": {
+        "value": "after-revoke"
+      },
+      "await": false,
+      "name": "put"
+    },
+    {
+      "step": "await_any",
+      "signals": [
+        "processing.lock.contended"
+      ],
+      "responses": [
+        "revoke",
+        "put"
+      ],
+      "within_ms": 10000
+    },
+    {
+      "step": "release_barrier",
+      "name": "subscription.recheck.after_authorization"
+    },
+    {
+      "step": "expect_response",
+      "name": "revoke",
+      "expect": {
+        "ok": {
+          "outcome": {
+            "revoked": [
+              "g-1"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "step": "expect_response",
+      "name": "put",
+      "expect": {
+        "ok": {
+          "replay": false
+        }
+      }
+    },
+    {
+      "step": "expect_notification",
+      "within_ms": 2000,
+      "expect": {
+        "params": {
+          "subscription": {
+            "$var": "sub"
+          },
+          "items": [],
+          "ended": {
+            "reason": "authorization_lost"
+          }
+        }
+      },
+      "session": "a"
+    },
+    {
+      "step": "expect_no_notification",
+      "session": "a"
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

@@ -1,0 +1,303 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "execution.terminate-policy-is-terminal-and-never-reopened",
+  "version": 1,
+  "title": "An executor may terminate undispatched work on recovery; once declared failed before delivery it is never reopened by a later restart",
+  "requirements": [
+    "EXE-24"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/EXECUTION.md#71-restart-recovery"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "execution",
+      "major": 1
+    }
+  ],
+  "features": [
+    "core.events",
+    "core.capabilities",
+    "core.effects"
+  ],
+  "requires_controls": [
+    "executor.script"
+  ],
+  "polarity": "negative",
+  "kills": [
+    "failed-before-delivery-reopened"
+  ],
+  "kill_expectations": {
+    "failed-before-delivery-reopened": {
+      "step": 11,
+      "reason_contains": "result/"
+    }
+  },
+  "steps": [
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ],
+        "executor": {
+          "recovery_policy": "terminate",
+          "scripts": {
+            "e-1": [
+              {
+                "crash": "before_dispatch"
+              },
+              {
+                "deliver": "provider_ack_id"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.capabilities",
+              "core.effects"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "execution",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "execution.submit",
+      "command_id": "submit-e-1",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "e-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "e-1"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "brief": {
+          "digest": "sha256:abababababababababababababababababababababababababababababababab",
+          "media_type": "text/plain"
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core.describe",
+      "payload": {},
+      "await": false,
+      "name": "crashing-request",
+      "note": "the executor tick at the start of this request reaches the scripted crash"
+    },
+    {
+      "step": "expect_close"
+    },
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ],
+        "executor": {
+          "recovery_policy": "terminate",
+          "scripts": {
+            "e-1": [
+              {
+                "crash": "before_dispatch"
+              },
+              {
+                "deliver": "provider_ack_id"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.capabilities",
+              "core.effects"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "execution",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "query",
+      "operation": "execution.inspect",
+      "payload": {
+        "execution": "e-1"
+      },
+      "expect": {
+        "ok": {
+          "delivery": "failed_before_delivery",
+          "recovery": [
+            {
+              "decision": "failed_before_delivery",
+              "reason": "recovery_policy"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "kill"
+    },
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ],
+        "executor": {
+          "scripts": {
+            "e-1": [
+              {
+                "crash": "before_dispatch"
+              },
+              {
+                "deliver": "provider_ack_id"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.capabilities",
+              "core.effects"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "execution",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "query",
+      "operation": "execution.inspect",
+      "payload": {
+        "execution": "e-1"
+      },
+      "expect": {
+        "ok": {
+          "delivery": "failed_before_delivery",
+          "recovery": {
+            "$len": 1
+          },
+          "deliveries": [
+            {
+              "delivery": "failed_before_delivery"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core.effects.get",
+      "payload": {
+        "effect": "e-1.delivery-1"
+      },
+      "expect": {
+        "ok": {
+          "status": "failed"
+        }
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}
