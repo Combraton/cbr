@@ -36,7 +36,10 @@ One timeout was seen, on `core.acknowledgment.effect-refs-empty-for-effect-free-
 
 **Correction to STACK §2's wording.** "The session thread never blocks on a consumer that stopped reading" is too strong. It waits for the room deadline and no longer, and never inside a write; on one connection that wait is the backpressure. A command's commit never waits on output.
 
-**Two readings to flag.** Under a grant, `core.effects.get` reports `out_of_scope` whenever the effect's target is not readable, including when there is no effect, because CBR's effect targets will not share one family and an absent effect has no right to evaluate; the reference provider can compute the reason from its single family. And CORE §19.4 names no subject or payload for the overdue event; CBR uses the effect subject and the aborted event's `{ effect, obligation, target }`.
+**Accepted by the reviewer, 2026-09-16.**
+
+- **A deliberate divergence from the reference provider, not from the specification.** Under a grant, `core.effects.get` reports `out_of_scope` whenever the effect's target is not readable, including when there is no effect. CORE-12 requires only that an existing and an absent effect are refused identically, and does not fix the reason; CBR satisfies that. The reference provider reports the reason computed from its single target family's read right, which CBR cannot do because its effect targets will not share one family and an absent effect has no right to evaluate. A consumer written against the reference may see a different `details.reason` from CBR for the same situation; it will never see CBR distinguish existence.
+- **Two gaps recorded** in [PROTOCOL-PIN §4](readiness/PROTOCOL-PIN.md) and filed together as [Combraton/protocol#12](https://github.com/Combraton/protocol/issues/12): **G6**, the overdue-obligation event's unnamed subject and payload (CBR uses the effect subject and `{ effect, obligation, target }`); **G7**, the stale "not normative" banner on §19.
 
 ### Mutants
 
