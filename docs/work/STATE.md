@@ -3,12 +3,63 @@
 This is a dated navigation snapshot. Reconcile it with Git, linked issues and current task evidence before acting. Issues own live progress; this file does not grant authority or maintain a second backlog.
 
 - **Updated:** 2026-09-16.
-- **Owner/task:** Claude Code session as implementation lead for standalone CBR. Active task: [issue #3](https://github.com/Combraton/cbr/issues/3), milestone M1 stage (c4), on branch `m1c4/core-capabilities`, stacked on the owner follow-ups branch `owner/ceiling-builddigest-transcripts` (PR #8). Merge commits keep SHAs, so this head does not change when #8 merges. Parent: [issue #1](https://github.com/Combraton/cbr/issues/1). An independent reviewer session reviews this read-only.
-- **Merged:** PR #2 as `d68e9d6`, pinned to `877139f`; PR #4 as `a939446`, pinned to `630011c`; PR #5 (c1) as `8b75129`; PR #6 (c2) as `da1e650`, pinned to `b00ec49`; **PR #7 (c3) as `8ba2594`, pinned to `5b98a9f`, confirmed from `merged: true` and `merged_at: 2026-09-16T15:31:51Z`**. Earlier: PR #6 pinned to `b00ec49`, confirmed from `merged: true` and `merged_at: 2026-09-16T14:26:34Z`**, the draft marked ready first and the head re-read unchanged before merging. Every owner decision, including the ceiling, is in [ADR 001](../decisions/001-standalone-v0.1-scope-and-stack.md).
+- **Owner/task:** Claude Code session as implementation lead for standalone CBR. Active task: [issue #3](https://github.com/Combraton/cbr/issues/3), milestone M1 stage (d), on branch `m1d/socket-binding`. Parent: [issue #1](https://github.com/Combraton/cbr/issues/1). An independent reviewer session reviews this read-only.
+- **Merged:** PR #2 as `d68e9d6`, pinned to `877139f`; PR #4 as `a939446`, pinned to `630011c`; PR #5 (c1) as `8b75129`; PR #6 (c2) as `da1e650`, pinned to `b00ec49`; **PR #7 (c3) as `8ba2594`, pinned to `5b98a9f`, confirmed from `merged: true` and `merged_at: 2026-09-16T15:31:51Z`**. Earlier: PR #6 pinned to `b00ec49`, confirmed from `merged: true` and `merged_at: 2026-09-16T14:26:34Z`**, the draft marked ready first and the head re-read unchanged before merging. Every owner decision, including the ceiling, is in [ADR 001](../decisions/001-standalone-v0.1-scope-and-stack.md). **PR #8 (owner follow-ups) as `f00faaf`, pinned to `40cb30b`, `merged_at: 2026-09-16T16:57:29Z`; PR #9 (c4) as `9a7b8f5`, pinned to `5db9d7c`, `merged_at: 2026-09-16T16:57:53Z`**, in that order, each confirmed from `merged` and `merged_at`.
 - **Merge rule, 2026-09-16, superseded the same day.** This session ran `gh pr merge` on PR #2 after the owner replied "you can merge PR 2" in-session, having first reported the contradicting claim with evidence and waited. It landed the exact reviewed head `877139f` and is kept. A stricter rule was then recorded, and the owner then **granted merge authority under four conditions**, now in [AGENTS.md](../../AGENTS.md): pin with `--match-head-commit`; the head's CI is green; the reviewer has seen that head; no squash. Confirm from `merged` and `merged_at` afterwards, **never `merge_commit_sha`** — GitHub populates that on an open pull request with the test-merge candidate. Tags and releases remain the owner's alone.
 - **Inspected revisions:** protocol `v0.1.0` = `cbf8e4df9df2ca8a9b50264df6acace6e4c3a0fc`; combraton `9af69ce`; pio `e65b7c0`; benchmarks `c8d5878`.
 
-## This change — M1 stage (c4)
+## This change — M1 stage (d)
+
+The Unix-socket binding. Three commits: G6 and G7 recorded (`a339a1a`), the binding with `core.authenticate` and the recheck barrier (`1693243`), and durability, results and documentation.
+
+| Command | Exit | Result |
+|---|---|---|
+| `check_docs.py` / `verify_pin.py` | 0 / 0 | 21 files, 0 errors; 429 and 420 files match their anchors |
+| `cargo fmt --all -- --check` | 0 | — |
+| `cargo clippy --workspace --all-targets --locked -- -D warnings` | 0 | — |
+| `cargo build --workspace --locked` | 0 | — |
+| `cargo test --workspace --locked` | 0 | **63 tests**: 19 encoding, 36 provider unit, 8 against the real binary |
+| `git diff --check` | 0 | — |
+| `run_fixtures.py --filter stream.` + `check_results.py` | 0 | 24 of 24, unchanged |
+| `run_fixtures.py --filter core.` + `check_results.py` | 0 | 130 / 5 / 0, unchanged |
+| `run_fixtures.py --filter socket. --participant …unix.json` + `check_results.py` | 0 | **11 pass, 2 unsupported by name, 0 fail**, stable over three runs |
+| `result_paths.py conformance/results/*/` | 0 | no machine paths in m1b, m1c2, m1c3, m1c4, m1d |
+
+**Expected versus measured.** `socket.json` was derived from declared profiles, features, controls and barriers: 11 / 2 / 0 with the barrier. An unimplemented run gave 2 pass, 8 fail, 3 unsupported — and **the 2 passes were vacuous**: `malformed-clock-file-refused` and `unsafe-directory-refused` need only a failed start, and the old binary failed on the unknown `--socket` flag. With the binding and the barrier undeclared: 10 / 3 / 0. With the barrier declared, in the commit that implements its pause point: **11 / 2 / 0, as predicted.**
+
+### What changed
+
+- `socket.rs`: pathname socket `0600`; directory refused unless a real directory owned by this user with no group or other permissions, checked before the store opens; peer uid by `getpeereid` / `SO_PEERCRED`, a different user closed without a frame; one thread per connection; lifetime tied to standard input.
+- `Provider::connect`: a further session with its own store connection and the process's shared clock, and none of the start-time effects.
+- A process-wide processing lock serializes requests and subscription re-checks; contention signals `processing.lock.contended`. The barrier `subscription.recheck.after_authorization` sits between re-authorization and the event read under that lock.
+- `core.authenticate` on its real path: unauthenticated sessions may call only `core.describe` and `core.authenticate`; constant-time digest comparison across every stored credential; one indistinguishable failure; only digests kept.
+- Idle sessions poll every 40 ms; a frame split across a timeout is kept; idle wakes re-check subscriptions, deliver other sessions' events, and mark overdue obligations.
+- The conformance default principal is `conformance-caller`; an explicit principal wins (a first version overwrote it, and five SIGKILL tests failed until fixed).
+
+### Mutants
+
+All observed, all restored.
+
+| Mutant | Killed by | At |
+|---|---|---|
+| No authentication required | `authentication-required-before-negotiation` 2 · `feature-dependencies-after-authentication` 2 · `authentication-failures-indistinguishable` 4 | `expected error authentication_required` |
+| Socket directory with group or other access accepted | `socket.unsafe-directory-refused` | step 0, "participant listened" |
+| Malformed clock file at start accepted | `socket.malformed-clock-file-refused` | step 0, "participant listened" — **matches the fixture's declared `clock-file-start-unchecked` kill: step 0, reason contains "listened"** |
+| Revoked credential accepted | `authentication-failures-indistinguishable` | step 3, `received success {"principal":"mallory"}` |
+| Re-check outside the processing lock | `socket.subscription-recheck-race-regression` | step 13, `params/ended: missing` — **exactly the fixture's declared `recheck-outside-lock` kill: step 13, same reason** |
+| Idle sessions inert (no re-check, no delivery) | `events-delivered-across-sessions` 6 · `idle-subscription-ends-at-grant-expiry` 7 · `idle-subscription-ends-on-revocation-elsewhere` 7 · `subscription-recheck-race-regression` 13, all timeouts | — |
+| A connection advances the deduplication generation | `two_socket_sessions_one_mid_subscription_survive_sigkill` | the writer's first put refused `dedupe_history_unavailable`, before the kill |
+
+**Named honestly.** The idle mutant is broader than the fixtures' `idle-subscriptions-not-rechecked`: it also stops cross-session delivery, so `idle-subscription-ends-at-grant-expiry` failed at step 7, not the declared step 9. It is recorded under its own name rather than claimed as that kill. The peer-check refusal has **no mutant**, because nothing here can observe it.
+
+### Coverage limits
+
+- **Different-user peer check:** a coverage limit, not a pass. Protocol's CI tests it only as root through passwordless `sudo`; this machine has none (`sudo -n true` asks for a password).
+- The 2 `socket` fixtures declaring `execution`, permanently.
+- `evidence` (16) not run.
+- No production credential administration exists: a production socket launch has no way to issue a credential yet. Stage (e)'s CLI needs one, and brings the handoff file of CORE §18.1.
+
+## Earlier — M1 stage (c4)
 
 `core.capabilities` fixture-backed; `core.events.backpressure` and `core.effects` on CBR's own tests. Three commits, one per feature.
 

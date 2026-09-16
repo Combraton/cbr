@@ -49,6 +49,8 @@ python3 scripts/run_fixtures.py --filter stream. --out conformance/results/m1b
 python3 scripts/check_results.py conformance/results/m1b conformance/expectations/stream.json
 python3 scripts/run_fixtures.py --filter core.   --out conformance/results/m1c4
 python3 scripts/check_results.py conformance/results/m1c4 conformance/expectations/core-c4.json
+python3 scripts/run_fixtures.py --filter socket. --participant conformance/participants/cbr-provider-unix.json --out conformance/results/m1d
+python3 scripts/check_results.py conformance/results/m1d conformance/expectations/socket.json
 ```
 
 `build_runner.py` downloads the archive once and reuses it afterwards; `--archive PATH` uses a copy you already have and `--offline` refuses to download. It verifies the archive against the pinned SHA-256, verifies every extracted file against the archive's own `BUNDLE-SHA256SUMS`, checks the archive's recorded commit against the pin, and records the runner identity that `run_fixtures.py` stamps into every results manifest.
@@ -60,12 +62,13 @@ python3 scripts/check_results.py conformance/results/m1c4 conformance/expectatio
 | `cargo fmt --all -- --check` | Formatting only | — |
 | `cargo clippy … -D warnings` | Lints clean; warnings fail | Correctness |
 | `cargo build --workspace --locked` | The workspace builds from the committed `Cargo.lock` with no dependency resolution | Runtime behaviour |
-| `cargo test --workspace --locked` | **60 tests.** In `cbr-encoding`, every pinned encoding vector — 12 canonical, 18 rejected, 1 command intent — plus the property tests, 19 in all; a rejected vector must be refused **for the reason the vector states**, so a parser that refused everything would fail. In `cbr-provider`, 34 unit tests and 7 that drive the real binary: production refuses `core-test/1` and every test control; state, events, a grant **and its revocation**, and a capability change **and its event** survive `SIGKILL`; and a consumer that stops reading standard output ends the process with the bound recorded. **The only evidence for `core.events.backpressure` and `core.effects` is among these tests** (below). | Any profile conformance on its own |
+| `cargo test --workspace --locked` | **63 tests.** In `cbr-encoding`, every pinned encoding vector — 12 canonical, 18 rejected, 1 command intent — plus the property tests, 19 in all; a rejected vector must be refused **for the reason the vector states**, so a parser that refused everything would fail. In `cbr-provider`, 36 unit tests and 8 that drive the real binary: production refuses `core-test/1` and every test control; state, events, a grant **and its revocation**, and a capability change **and its event** survive `SIGKILL`; **two concurrent socket sessions, one part-way through a subscription, survive `SIGKILL`** with every acknowledged write at its position and the subscriber's last cursor resuming to exactly what it had not seen; and a consumer that stops reading standard output ends the process with the bound recorded. **The only evidence for `core.events.backpressure` and `core.effects` is among these tests** (below). | Any profile conformance on its own |
 | `build_runner.py` | The runner was built from the published release archive, with its own lockfile, and its identity is recorded | Anything about CBR |
 | `run_fixtures.py --filter core.` | **130 of the 135 `core` fixtures pass, 5 are unsupported by name, none fails** — the most the suite allows a provider that never serves `execution/1`. | The 5, permanently (below). **Nothing about `core.effects` or `core.events.backpressure`**, which no fixture CBR can run exercises. |
 | `run_fixtures.py --filter stream.` | Runs the suite and writes the runner's manifest, the transcripts, and a `cbr-run.json` sidecar. The manifest stays byte-for-byte the runner's own output. | Nothing on its own: it reports, it does not gate |
+| `run_fixtures.py --filter socket. --participant …unix.json` | **11 of the 13 `socket` fixtures pass, 2 are unsupported by name, none fails.** | The 2, permanently: they declare `execution`. **Nothing about a different operating-system user** (below). |
 | `result_paths.py conformance/results/*/` | No committed result carries a machine path — the same check `run_fixtures.py` applies when it records a run | That the results are correct |
-| `check_results.py` | **The gate.** The outcome multiset matches a recorded expectation exactly: pass count, total, the named unsupported set, and zero `fail`, `timeout`, `harness_error` and `skipped`. | Every suite with no expectation file. `stream` and `core` have one; `socket` and `evidence` do not. |
+| `check_results.py` | **The gate.** The outcome multiset matches a recorded expectation exactly: pass count, total, the named unsupported set, and zero `fail`, `timeout`, `harness_error` and `skipped`. | Every suite with no expectation file. `stream`, `core` and `socket` have one; `evidence` does not yet. |
 
 ### Why the gate is an outcome multiset
 
@@ -87,7 +90,15 @@ Five of the 135 `core` fixtures declare the `execution` profile and require the 
 
 So the maximum attainable on the `core` suite is **130 of 135**, with exactly those five `unsupported`. Any statement of the form "all 135 core fixtures pass" is unattainable and must not be written.
 
-**What is and is not established.** `stream` passes completely; `core` passes every fixture a provider that never serves `execution/1` can pass. The `socket` (13) and `evidence` (16) suites have **not** been run and no claim is made about them. The store **is** durable — SQLite in WAL mode with `synchronous=FULL`, verified by reading the PRAGMAs back from the open connection, and by tests that `SIGKILL` the provider and restart it over the same data directory. No packet, model call, Knowledge or Context code exists.
+**What is and is not established.** `stream` passes completely; `core` passes every fixture a provider that never serves `execution/1` can pass. `socket` passes every fixture a provider that never serves `execution/1` can pass. The `evidence` (16) suite has **not** been run and no claim is made about it. The store **is** durable — SQLite in WAL mode with `synchronous=FULL`, verified by reading the PRAGMAs back from the open connection, and by tests that `SIGKILL` the provider and restart it over the same data directory. No packet, model call, Knowledge or Context code exists.
+
+### The socket binding, and what it cannot show here
+
+**The different-user branch of the peer check is a coverage limit on this machine, not a pass.** STREAM §6 requires a connection from another operating-system user to be closed without a frame. The socket directory is `0700`, so an ordinary second user cannot reach the socket at all; the only way to reach the provider's own peer check is a user that bypasses directory permissions. Protocol's CI does that by connecting as **root through passwordless `sudo`**, and root is the only other user it tests. This machine has no passwordless `sudo` (`sudo -n true` asks for a password), so CBR exercises only the positive control: a unit test that a same-user connection's peer is this user. The refusal is implemented with `getpeereid` on macOS and `SO_PEERCRED` on Linux, and has no test that could fail if it were removed.
+
+**Two socket fixtures passed vacuously before the binding existed.** `socket.malformed-clock-file-refused` and `socket.unsafe-directory-refused` require only that the provider fails to start, and an unimplemented binary failed on the unknown `--socket` flag. They are now backed by mutants: removing either check makes its fixture fail at step 0 with "participant listened".
+
+**Committed socket transcripts contain the runner's synthetic test credentials.** The conformance README says they will: the runner derives a deterministic credential per principal from the run's temporary directory and authenticates each session with it. They are not real credentials and grant nothing outside that run. The redaction applied to machine paths does not apply to them.
 
 ### Two features with no fixture evidence
 
