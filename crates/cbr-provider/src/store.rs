@@ -380,6 +380,9 @@ impl Store {
     /// entry may not survive a crash even though `rename` itself is atomic.
     /// Only after this returns may a caller commit a row naming the object.
     pub fn publish_object(&self, digest: &str, bytes: &[u8]) -> Result<PathBuf, StoreError> {
+        // A cheap pre-check on the caller's own bytes. It is not the
+        // verification that matters -- that one reads back from disk below --
+        // but it avoids writing bytes that were already wrong.
         let computed = cbr_encoding::digest_bytes(bytes);
         if computed != digest {
             return Err(StoreError::DigestMismatch {
@@ -406,6 +409,23 @@ impl Store {
             file.write_all(bytes)?;
             file.sync_all()?;
         }
+
+        // STACK section 3 step 2: verify the digest **from what was actually
+        // written**, after the sync, not from the buffer that was handed in.
+        // Checking the input argument proves only that the caller computed its
+        // own digest correctly; it says nothing about what reached the disk, so
+        // a short write or a corrupting filesystem would still publish and the
+        // row naming it would be a lie.
+        let written = fs::read(&staged)?;
+        let on_disk = cbr_encoding::digest_bytes(&written);
+        if on_disk != digest {
+            let _ = fs::remove_file(&staged);
+            return Err(StoreError::DigestMismatch {
+                expected: digest.to_string(),
+                computed: on_disk,
+            });
+        }
+
         fs::rename(&staged, &final_path)?;
         fs::File::open(&directory)?.sync_all()?;
 
@@ -540,6 +560,51 @@ mod tests {
         // them, or a row could name content that is not what it claims.
         let wrong = store.publish_object(&digest, b"different bytes");
         assert!(matches!(wrong, Err(StoreError::DigestMismatch { .. })));
+
+        // Nothing is left behind by a refused publication.
+        let staged: Vec<_> = walk(&store.objects)
+            .into_iter()
+            .filter(|path| {
+                path.file_name()
+                    .is_some_and(|n| n.to_string_lossy().starts_with(".staging-"))
+            })
+            .collect();
+        assert!(
+            staged.is_empty(),
+            "a refused publication left staging files: {staged:?}"
+        );
+    }
+
+    fn walk(root: &std::path::Path) -> Vec<PathBuf> {
+        let mut out = Vec::new();
+        let Ok(entries) = fs::read_dir(root) else {
+            return out;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                out.extend(walk(&path));
+            } else {
+                out.push(path);
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn the_published_digest_is_verified_from_the_bytes_on_disk() {
+        let (_directory, store) = store();
+        let bytes = b"evidence that must land intact";
+        let digest = cbr_encoding::digest_bytes(bytes);
+        let path = store.publish_object(&digest, bytes).expect("publishes");
+
+        // The check that matters is the one against what the filesystem holds,
+        // so re-reading the published object must reproduce the digest it was
+        // published under.
+        assert_eq!(
+            cbr_encoding::digest_bytes(&fs::read(&path).unwrap()),
+            digest
+        );
 
         // Republishing identical bytes is a no-op, not an error.
         assert_eq!(store.publish_object(&digest, bytes).unwrap(), path);
