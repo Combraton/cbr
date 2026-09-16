@@ -6,6 +6,8 @@ Read [repository scope](../README.md), then [memory spec](spec/SPEC.md), [memory
 - [Verification](VERIFICATION.md) — commands that actually exist and their limits.
 - [Decision records](decisions/README.md) — accepted internal choices and supersessions.
 - [Task work](work/README.md) — durable plans and handoffs.
+- [Implementation readiness](work/readiness/TALK.md) — proposed release scope, stack and milestones for standalone v0.1, with the questions still open.
+- [Journey verification](verification/JOURNEYS.md) — the journey acceptance matrix and evidence records. No journey has been run.
 - [Shared baseline](https://github.com/Combraton/combraton/blob/main/docs/architecture/BASELINE.md) — product ownership and invariants.
 - [Publication provenance](https://github.com/Combraton/combraton/blob/main/docs/architecture/PUBLICATION.md) — source import and historical material boundary.
 
