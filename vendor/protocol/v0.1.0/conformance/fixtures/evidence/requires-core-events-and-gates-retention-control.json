@@ -1,0 +1,291 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "evidence.requires-core-events-and-gates-retention-control",
+  "version": 1,
+  "title": "evidence/1 needs core.events at negotiation; holds, release and purge need evidence.retention_control",
+  "requirements": [
+    "EVD-6",
+    "CORE-3",
+    "CMP-5"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/EVIDENCE.md#1-dependencies-and-negotiation"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "evidence",
+      "major": 1
+    }
+  ],
+  "features": [
+    "core.events",
+    "evidence.retention_control"
+  ],
+  "polarity": "negative",
+  "kills": [
+    "execution-dependency-unchecked",
+    "feature-operations-ungated"
+  ],
+  "steps": [
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ]
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          },
+          {
+            "name": "evidence",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": [
+              "evidence.manifests",
+              "evidence.retention_control"
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "error": "unsupported_profile",
+        "details": {
+          "unsatisfied": [
+            {
+              "profile": "evidence",
+              "feature": "core.events",
+              "reason": "dependency_not_selected"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "evidence",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": [
+              "evidence.manifests"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.upload.prepare",
+      "command_id": "prepare-a-3",
+      "subject": {
+        "kind": "evidence.artifact",
+        "id": "a-3"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.artifact",
+            "id": "a-3"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "digest": "sha256:8f998dfb54f42f3c312986af74b33c6bc7f3f39751dcddc4b5bb860634423dae",
+        "size": 5,
+        "media_type": "text/plain",
+        "producer": {
+          "producer_id": "fixture-producer"
+        },
+        "source": {
+          "kind": "test_report",
+          "id": "run-1"
+        },
+        "scope": "project-a",
+        "capture": {
+          "captured_at": "2030-01-01T00:00:00Z",
+          "uncertainty": {
+            "not_before": "2029-12-31T23:59:58Z",
+            "not_after": "2030-01-01T00:00:00Z"
+          },
+          "anchors": [
+            {
+              "kind": "code_tree",
+              "id": "tree-1"
+            }
+          ]
+        },
+        "coverage": {
+          "completeness": "complete"
+        },
+        "retention_class": "standard"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.upload.append",
+      "command_id": "append-a-3-0",
+      "subject": {
+        "kind": "evidence.artifact",
+        "id": "a-3"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.artifact",
+            "id": "a-3"
+          },
+          "revision": 1
+        }
+      ],
+      "payload": {
+        "offset": 0,
+        "data_base64": "Z2F0ZWQ="
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.seal",
+      "command_id": "seal-a-3",
+      "subject": {
+        "kind": "evidence.artifact",
+        "id": "a-3"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.artifact",
+            "id": "a-3"
+          },
+          "revision": 2
+        }
+      ],
+      "payload": {},
+      "expect": {
+        "ok": {
+          "outcome": {
+            "state": "sealed",
+            "digest": "sha256:8f998dfb54f42f3c312986af74b33c6bc7f3f39751dcddc4b5bb860634423dae"
+          },
+          "acknowledgment": {
+            "revision": 3
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.hold",
+      "command_id": "hold-h-4",
+      "subject": {
+        "kind": "evidence.hold",
+        "id": "h-4"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.hold",
+            "id": "h-4"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "artifact": {
+          "kind": "evidence.artifact",
+          "id": "a-3"
+        },
+        "holder_ref": {
+          "kind": "fixture.case",
+          "id": "h-4"
+        },
+        "reason": "audit"
+      },
+      "expect": {
+        "error": "unsupported_required_feature",
+        "details": {
+          "features": [
+            "evidence.retention_control"
+          ]
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.purge",
+      "command_id": "purge-a-3",
+      "subject": {
+        "kind": "evidence.artifact",
+        "id": "a-3"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.artifact",
+            "id": "a-3"
+          },
+          "revision": 3
+        }
+      ],
+      "payload": {},
+      "expect": {
+        "error": "unsupported_required_feature",
+        "details": {
+          "features": [
+            "evidence.retention_control"
+          ]
+        }
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

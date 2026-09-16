@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Combraton/protocol/schemas/knowledge/1/knowledge.applicability.evaluate.params.schema.json",
+  "title": "knowledge.applicability.evaluate params",
+  "allOf": [
+    {
+      "$ref": "../../core/1/command.schema.json"
+    }
+  ],
+  "properties": {
+    "operation": {
+      "const": "knowledge.applicability.evaluate"
+    },
+    "payload": {
+      "type": "object",
+      "required": [
+        "claim",
+        "target"
+      ],
+      "properties": {
+        "claim": {
+          "$ref": "common.schema.json#/$defs/claim_reference"
+        },
+        "target": {
+          "$ref": "common.schema.json#/$defs/basis"
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "subject": {
+      "$ref": "common.schema.json#/$defs/evaluation_subject"
+    },
+    "preconditions": {
+      "minItems": 1,
+      "maxItems": 1
+    }
+  },
+  "unevaluatedProperties": false
+}

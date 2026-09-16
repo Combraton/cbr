@@ -1,0 +1,83 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "stream.unterminated-frame-discarded",
+  "version": 1,
+  "title": "Bytes after the last line feed at end of input are not processed",
+  "requirements": [
+    "TRN-2"
+  ],
+  "spec_refs": [
+    "docs/spec/bindings/STREAM.md#1-frames"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "core-test",
+      "major": 1
+    }
+  ],
+  "polarity": "negative",
+  "kills": [
+    "parse-unterminated"
+  ],
+  "steps": [
+    {
+      "step": "start"
+    },
+    {
+      "step": "negotiate"
+    },
+    {
+      "step": "raw",
+      "terminate": false,
+      "command": {
+        "operation": "core-test.subject.put",
+        "command_id": "cmd-1",
+        "subject": {
+          "kind": "core-test.subject",
+          "id": "s-1"
+        },
+        "preconditions": [
+          {
+            "subject": {
+              "kind": "core-test.subject",
+              "id": "s-1"
+            },
+            "revision": 0
+          }
+        ],
+        "authority_epoch": 0,
+        "payload": {
+          "value": "v"
+        }
+      }
+    },
+    {
+      "step": "stop"
+    },
+    {
+      "step": "start"
+    },
+    {
+      "step": "negotiate"
+    },
+    {
+      "step": "query",
+      "operation": "core-test.subject.applied_count",
+      "payload": {
+        "subject": {
+          "kind": "core-test.subject",
+          "id": "s-1"
+        }
+      },
+      "expect": {
+        "ok": {
+          "applied_count": 0
+        }
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

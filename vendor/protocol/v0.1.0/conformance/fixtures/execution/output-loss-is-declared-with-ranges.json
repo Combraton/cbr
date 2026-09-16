@@ -1,0 +1,317 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "execution.output-loss-is-declared-with-ranges",
+  "version": 1,
+  "title": "Output telemetry is read by byte offset from a bounded spool; every discarded or never-received range is declared with offsets, its byte count where known and its coverage effect, and each loss is also a semantic event",
+  "requirements": [
+    "OBS-7",
+    "TRN-4"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/EXECUTION.md#14-output-telemetry-and-backpressure"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "execution",
+      "major": 1
+    }
+  ],
+  "features": [
+    "core.events",
+    "core.capabilities",
+    "core.effects",
+    "execution.output"
+  ],
+  "requires_controls": [
+    "executor.script"
+  ],
+  "polarity": "negative",
+  "kills": [
+    "output-dropped-silently",
+    "lost-range-without-bytes"
+  ],
+  "kill_expectations": {
+    "output-dropped-silently": {
+      "step": 4,
+      "reason_contains": "lost_ranges"
+    },
+    "lost-range-without-bytes": {
+      "step": 4,
+      "reason_contains": "lost_ranges/0/bytes"
+    }
+  },
+  "steps": [
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ],
+        "executor": {
+          "output_spool_bytes": 16,
+          "scripts": {
+            "e-1": [
+              {
+                "deliver": "provider_ack_id"
+              },
+              {
+                "output": {
+                  "text": "0123456789"
+                }
+              },
+              {
+                "output": {
+                  "text": "abcdefghij"
+                }
+              },
+              {
+                "output_lost": {
+                  "reason": "harness_dropped"
+                }
+              },
+              {
+                "output_lost": {
+                  "reason": "harness_dropped",
+                  "bytes": 7
+                }
+              },
+              {
+                "output": {
+                  "text": "XYZ"
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.capabilities",
+              "core.effects"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "execution",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "execution.output"
+            ],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "execution.submit",
+      "command_id": "submit-e-1",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "e-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "e-1"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "brief": {
+          "digest": "sha256:abababababababababababababababababababababababababababababababab",
+          "media_type": "text/plain"
+        }
+      }
+    },
+    {
+      "step": "describe"
+    },
+    {
+      "step": "query",
+      "operation": "execution.output.read",
+      "payload": {
+        "execution": "e-1"
+      },
+      "expect": {
+        "ok": {
+          "offset": 7,
+          "data_base64": "Nzg5YWJjZGVmZ2hpalhZWg==",
+          "next_offset": 23,
+          "end_offset": 23,
+          "coverage": "incomplete",
+          "policy": {
+            "spool_bytes": 16,
+            "overflow": "discard_oldest"
+          },
+          "lost_ranges": [
+            {
+              "from": 0,
+              "to": 7,
+              "bytes": 7,
+              "reason": "spool_limit",
+              "coverage": "incomplete"
+            },
+            {
+              "from": 20,
+              "to": 20,
+              "bytes": {
+                "$absent": true
+              },
+              "reason": "harness_dropped",
+              "coverage": "incomplete"
+            },
+            {
+              "from": 20,
+              "to": 20,
+              "bytes": 7,
+              "reason": "harness_dropped"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "execution.output.read",
+      "payload": {
+        "execution": "e-1",
+        "offset": 10,
+        "max_bytes": 4
+      },
+      "expect": {
+        "ok": {
+          "offset": 10,
+          "data_base64": "YWJjZA==",
+          "next_offset": 14,
+          "end_offset": 23
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "execution.output.read",
+      "payload": {
+        "execution": "e-1",
+        "offset": 0,
+        "max_bytes": 4
+      },
+      "expect": {
+        "ok": {
+          "offset": 7,
+          "data_base64": "Nzg5YQ==",
+          "next_offset": 11
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core.events.read",
+      "payload": {
+        "from": "start",
+        "limit": 100,
+        "kinds": [
+          "execution.execution"
+        ]
+      },
+      "expect": {
+        "ok": {
+          "items": [
+            {
+              "event": {
+                "type": "execution.admission.changed"
+              }
+            },
+            {
+              "event": {
+                "type": "execution.delivery.observed"
+              }
+            },
+            {
+              "event": {
+                "type": "execution.output.lost",
+                "origin": "provider",
+                "payload": {
+                  "from": 0,
+                  "to": 4,
+                  "bytes": 4,
+                  "reason": "spool_limit"
+                }
+              }
+            },
+            {
+              "event": {
+                "type": "execution.output.lost",
+                "payload": {
+                  "from": 20,
+                  "to": 20,
+                  "reason": "harness_dropped"
+                }
+              }
+            },
+            {
+              "event": {
+                "type": "execution.output.lost",
+                "payload": {
+                  "from": 20,
+                  "to": 20,
+                  "bytes": 7,
+                  "reason": "harness_dropped"
+                }
+              }
+            },
+            {
+              "event": {
+                "type": "execution.output.lost",
+                "payload": {
+                  "from": 4,
+                  "to": 7,
+                  "bytes": 3,
+                  "reason": "spool_limit"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "execution.output.read",
+      "payload": {
+        "execution": "e-missing"
+      },
+      "expect": {
+        "error": "not_found"
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

@@ -1,0 +1,135 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "core.identity.retransmission-versus-new-command",
+  "version": 1,
+  "title": "A retransmission keeps its command identity; a new command identity is a new change",
+  "requirements": [
+    "CORE-1",
+    "CORE-7"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/CORE.md#2-identities-are-distinct"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "core-test",
+      "major": 1
+    }
+  ],
+  "polarity": "positive",
+  "kills": [],
+  "steps": [
+    {
+      "step": "start"
+    },
+    {
+      "step": "negotiate"
+    },
+    {
+      "step": "command",
+      "operation": "core-test.subject.put",
+      "command_id": "cmd-1",
+      "subject": {
+        "kind": "core-test.subject",
+        "id": "s-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core-test.subject",
+            "id": "s-1"
+          },
+          "revision": 0
+        }
+      ],
+      "authority_epoch": 0,
+      "payload": {
+        "value": "a"
+      },
+      "capture": {
+        "ack": "/result/acknowledgment"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "core-test.subject.put",
+      "command_id": "cmd-1",
+      "subject": {
+        "kind": "core-test.subject",
+        "id": "s-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core-test.subject",
+            "id": "s-1"
+          },
+          "revision": 0
+        }
+      ],
+      "authority_epoch": 0,
+      "payload": {
+        "value": "a"
+      },
+      "id": "retry-transport-id",
+      "expect": {
+        "ok": {
+          "replay": true,
+          "acknowledgment": {
+            "$var": "ack"
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "core-test.subject.put",
+      "command_id": "cmd-2",
+      "subject": {
+        "kind": "core-test.subject",
+        "id": "s-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core-test.subject",
+            "id": "s-1"
+          },
+          "revision": 1
+        }
+      ],
+      "authority_epoch": 0,
+      "payload": {
+        "value": "a"
+      },
+      "expect": {
+        "ok": {
+          "replay": false,
+          "acknowledgment": {
+            "revision": 2,
+            "command_id": "cmd-2"
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core-test.subject.applied_count",
+      "payload": {
+        "subject": {
+          "kind": "core-test.subject",
+          "id": "s-1"
+        }
+      },
+      "expect": {
+        "ok": {
+          "applied_count": 2
+        }
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

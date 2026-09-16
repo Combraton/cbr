@@ -1,0 +1,3132 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "context.claims-in-packets-are-negotiated-snapshots",
+  "version": 3,
+  "title": "Under context.claims a packet carries exact claim snapshots: labels cannot promote an unaccepted claim, only invalid_for_target makes a section stale, needs_check stays current, an altered claim is never carried, the named revision is kept; later rejections are reported as claim changes and claim invalidations without rewriting the packet; sessions without the feature see M4 behavior",
+  "requirements": [
+    "KNW-10",
+    "KNW-9",
+    "CMP-9"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/CONTEXT.md#14-claims-in-packets",
+    "docs/spec/profiles/KNOWLEDGE.md#12-claims-in-context-packets"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "context",
+      "major": 1
+    },
+    {
+      "name": "knowledge",
+      "major": 1
+    },
+    {
+      "name": "evidence",
+      "major": 1
+    }
+  ],
+  "features": [
+    "core.events",
+    "core.grants",
+    "context.required_before_start",
+    "context.advisory",
+    "context.claims"
+  ],
+  "requires_controls": [
+    "clock.file",
+    "context.script",
+    "knowledge.store"
+  ],
+  "polarity": "negative",
+  "kills": [
+    "label-promotes-claim",
+    "unknown-applicability-marked-stale",
+    "claim-latest-substituted",
+    "claim-digest-unchecked",
+    "claims-without-negotiation",
+    "claim-invalidation-unreported",
+    "claims-format-without-negotiation",
+    "historical-claim-reason-unavailable",
+    "hypothesis-invalidation-unreported",
+    "scripted-unmet-overrides-satisfied"
+  ],
+  "steps": [
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ],
+        "clock": {
+          "controlled": "2030-01-01T00:00:00Z"
+        },
+        "knowledge": {
+          "serve_altered_claims": [
+            "X"
+          ]
+        }
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.grants"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "knowledge",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          },
+          {
+            "name": "evidence",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          },
+          {
+            "name": "context",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": [
+              "context.advisory",
+              "context.required_before_start",
+              "context.claims"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.authority.bind",
+      "command_id": "authority-bind-svc",
+      "subject": {
+        "kind": "knowledge.authority",
+        "id": "svc"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.authority",
+            "id": "svc"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "authority": "owner"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.claim.propose",
+      "command_id": "claim-propose-A",
+      "subject": {
+        "kind": "knowledge.claim",
+        "id": "A"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.claim",
+            "id": "A"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "plane": "normative",
+        "statement": {
+          "subject": {
+            "kind": "app.service",
+            "id": "billing"
+          },
+          "predicate": "queue",
+          "value": "v2",
+          "cardinality": "single"
+        },
+        "scope": {
+          "id": "svc",
+          "qualifiers": {}
+        },
+        "support": [],
+        "derivation": {
+          "kind": "deterministic",
+          "inputs": []
+        },
+        "conditions": [
+          {
+            "condition_id": "k-tree",
+            "kind": "repository_tree",
+            "repository": "repo-a",
+            "expected": "t1"
+          }
+        ]
+      },
+      "capture": {
+        "d_A": "/result/outcome/reference/digest"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.applicability.evaluate",
+      "command_id": "applicability-evaluate-ev-A",
+      "subject": {
+        "kind": "knowledge.evaluation",
+        "id": "ev-A"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.evaluation",
+            "id": "ev-A"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "claim": {
+          "provider": "conformance-provider",
+          "claim": "A",
+          "revision": 1,
+          "digest": {
+            "$var": "d_A"
+          }
+        },
+        "target": {
+          "repositories": [
+            {
+              "id": "repo-a",
+              "tree": "t1"
+            }
+          ],
+          "completeness": "complete"
+        }
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "result": "applicable"
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.decision.record",
+      "command_id": "decision-record-dec-A",
+      "subject": {
+        "kind": "knowledge.decision",
+        "id": "dec-A"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.decision",
+            "id": "dec-A"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "claim": {
+          "provider": "conformance-provider",
+          "claim": "A",
+          "revision": 1,
+          "digest": {
+            "$var": "d_A"
+          }
+        },
+        "decision": "accepted_for_use",
+        "validation_basis": {
+          "evidence": [],
+          "receipts": []
+        },
+        "rationale": "accepted_for_use A",
+        "permitted_use": "binding"
+      },
+      "set": {
+        "authority_epoch": 1
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.claim.propose",
+      "command_id": "claim-propose-R",
+      "subject": {
+        "kind": "knowledge.claim",
+        "id": "R"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.claim",
+            "id": "R"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "plane": "normative",
+        "statement": {
+          "subject": {
+            "kind": "app.service",
+            "id": "billing"
+          },
+          "predicate": "test_order",
+          "value": "migrations first",
+          "cardinality": "single"
+        },
+        "scope": {
+          "id": "svc",
+          "qualifiers": {}
+        },
+        "support": [],
+        "derivation": {
+          "kind": "model_assisted",
+          "inputs": []
+        },
+        "conditions": [
+          {
+            "condition_id": "k-tree",
+            "kind": "repository_tree",
+            "repository": "repo-a",
+            "expected": "t1"
+          }
+        ]
+      },
+      "capture": {
+        "d_R": "/result/outcome/reference/digest"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.applicability.evaluate",
+      "command_id": "applicability-evaluate-ev-R",
+      "subject": {
+        "kind": "knowledge.evaluation",
+        "id": "ev-R"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.evaluation",
+            "id": "ev-R"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "claim": {
+          "provider": "conformance-provider",
+          "claim": "R",
+          "revision": 1,
+          "digest": {
+            "$var": "d_R"
+          }
+        },
+        "target": {
+          "repositories": [
+            {
+              "id": "repo-a",
+              "tree": "t1"
+            }
+          ],
+          "completeness": "complete"
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.claim.propose",
+      "command_id": "claim-propose-S",
+      "subject": {
+        "kind": "knowledge.claim",
+        "id": "S"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.claim",
+            "id": "S"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "plane": "observed",
+        "statement": {
+          "subject": {
+            "kind": "app.component",
+            "id": "parser"
+          },
+          "predicate": "handles_bom",
+          "value": true,
+          "cardinality": "single"
+        },
+        "scope": {
+          "id": "svc",
+          "qualifiers": {}
+        },
+        "support": [],
+        "derivation": {
+          "kind": "deterministic",
+          "inputs": []
+        },
+        "conditions": [
+          {
+            "condition_id": "k-tree",
+            "kind": "repository_tree",
+            "repository": "repo-a",
+            "expected": "t0"
+          }
+        ]
+      },
+      "capture": {
+        "d_S": "/result/outcome/reference/digest"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.applicability.evaluate",
+      "command_id": "applicability-evaluate-ev-S",
+      "subject": {
+        "kind": "knowledge.evaluation",
+        "id": "ev-S"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.evaluation",
+            "id": "ev-S"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "claim": {
+          "provider": "conformance-provider",
+          "claim": "S",
+          "revision": 1,
+          "digest": {
+            "$var": "d_S"
+          }
+        },
+        "target": {
+          "repositories": [
+            {
+              "id": "repo-a",
+              "tree": "t1"
+            }
+          ],
+          "completeness": "complete"
+        }
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "result": "invalid_for_target"
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.decision.record",
+      "command_id": "decision-record-dec-S",
+      "subject": {
+        "kind": "knowledge.decision",
+        "id": "dec-S"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.decision",
+            "id": "dec-S"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "claim": {
+          "provider": "conformance-provider",
+          "claim": "S",
+          "revision": 1,
+          "digest": {
+            "$var": "d_S"
+          }
+        },
+        "decision": "accepted_for_use",
+        "validation_basis": {
+          "evidence": [],
+          "receipts": []
+        },
+        "rationale": "accepted_for_use S",
+        "permitted_use": "evidence"
+      },
+      "set": {
+        "authority_epoch": 1
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.claim.propose",
+      "command_id": "claim-propose-D",
+      "subject": {
+        "kind": "knowledge.claim",
+        "id": "D"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.claim",
+            "id": "D"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "plane": "observed",
+        "statement": {
+          "subject": {
+            "kind": "app.service",
+            "id": "billing"
+          },
+          "predicate": "retry_limit",
+          "value": 3,
+          "cardinality": "single"
+        },
+        "scope": {
+          "id": "svc",
+          "qualifiers": {}
+        },
+        "support": [],
+        "derivation": {
+          "kind": "deterministic",
+          "inputs": []
+        }
+      },
+      "capture": {
+        "d_D": "/result/outcome/reference/digest"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.claim.propose",
+      "command_id": "claim-propose-N",
+      "subject": {
+        "kind": "knowledge.claim",
+        "id": "N"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.claim",
+            "id": "N"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "plane": "observed",
+        "statement": {
+          "subject": {
+            "kind": "app.service",
+            "id": "billing"
+          },
+          "predicate": "retries_capped",
+          "value": true,
+          "cardinality": "single"
+        },
+        "scope": {
+          "id": "svc",
+          "qualifiers": {}
+        },
+        "support": [],
+        "derivation": {
+          "kind": "deterministic",
+          "inputs": []
+        },
+        "dependencies": [
+          {
+            "provider": "conformance-provider",
+            "claim": "D",
+            "revision": 1,
+            "digest": {
+              "$var": "d_D"
+            }
+          }
+        ],
+        "conditions": [
+          {
+            "condition_id": "k-tree",
+            "kind": "repository_tree",
+            "repository": "repo-a",
+            "expected": "t1"
+          }
+        ]
+      },
+      "capture": {
+        "d_N": "/result/outcome/reference/digest"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.applicability.evaluate",
+      "command_id": "applicability-evaluate-ev-N",
+      "subject": {
+        "kind": "knowledge.evaluation",
+        "id": "ev-N"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.evaluation",
+            "id": "ev-N"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "claim": {
+          "provider": "conformance-provider",
+          "claim": "N",
+          "revision": 1,
+          "digest": {
+            "$var": "d_N"
+          }
+        },
+        "target": {
+          "repositories": [
+            {
+              "id": "repo-a",
+              "tree": "t1"
+            }
+          ],
+          "completeness": "complete"
+        }
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "result": "needs_check"
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.decision.record",
+      "command_id": "decision-record-dec-N",
+      "subject": {
+        "kind": "knowledge.decision",
+        "id": "dec-N"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.decision",
+            "id": "dec-N"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "claim": {
+          "provider": "conformance-provider",
+          "claim": "N",
+          "revision": 1,
+          "digest": {
+            "$var": "d_N"
+          }
+        },
+        "decision": "accepted_for_use",
+        "validation_basis": {
+          "evidence": [],
+          "receipts": []
+        },
+        "rationale": "accepted_for_use N",
+        "permitted_use": "evidence"
+      },
+      "set": {
+        "authority_epoch": 1
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.claim.propose",
+      "command_id": "claim-propose-X",
+      "subject": {
+        "kind": "knowledge.claim",
+        "id": "X"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.claim",
+            "id": "X"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "plane": "normative",
+        "statement": {
+          "subject": {
+            "kind": "app.service",
+            "id": "billing"
+          },
+          "predicate": "altered",
+          "value": "original",
+          "cardinality": "single"
+        },
+        "scope": {
+          "id": "svc",
+          "qualifiers": {}
+        },
+        "support": [],
+        "derivation": {
+          "kind": "deterministic",
+          "inputs": []
+        },
+        "conditions": [
+          {
+            "condition_id": "k-tree",
+            "kind": "repository_tree",
+            "repository": "repo-a",
+            "expected": "t1"
+          }
+        ]
+      },
+      "capture": {
+        "d_X": "/result/outcome/reference/digest"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.applicability.evaluate",
+      "command_id": "applicability-evaluate-ev-X",
+      "subject": {
+        "kind": "knowledge.evaluation",
+        "id": "ev-X"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.evaluation",
+            "id": "ev-X"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "claim": {
+          "provider": "conformance-provider",
+          "claim": "X",
+          "revision": 1,
+          "digest": {
+            "$var": "d_X"
+          }
+        },
+        "target": {
+          "repositories": [
+            {
+              "id": "repo-a",
+              "tree": "t1"
+            }
+          ],
+          "completeness": "complete"
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.decision.record",
+      "command_id": "decision-record-dec-X",
+      "subject": {
+        "kind": "knowledge.decision",
+        "id": "dec-X"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.decision",
+            "id": "dec-X"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "claim": {
+          "provider": "conformance-provider",
+          "claim": "X",
+          "revision": 1,
+          "digest": {
+            "$var": "d_X"
+          }
+        },
+        "decision": "accepted_for_use",
+        "validation_basis": {
+          "evidence": [],
+          "receipts": []
+        },
+        "rationale": "accepted_for_use X",
+        "permitted_use": "binding"
+      },
+      "set": {
+        "authority_epoch": 1
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.claim.propose",
+      "command_id": "claim-propose-L",
+      "subject": {
+        "kind": "knowledge.claim",
+        "id": "L"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.claim",
+            "id": "L"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "plane": "normative",
+        "statement": {
+          "subject": {
+            "kind": "app.service",
+            "id": "ledger"
+          },
+          "predicate": "queue",
+          "value": "v1",
+          "cardinality": "single"
+        },
+        "scope": {
+          "id": "svc",
+          "qualifiers": {}
+        },
+        "support": [],
+        "derivation": {
+          "kind": "deterministic",
+          "inputs": []
+        },
+        "conditions": [
+          {
+            "condition_id": "k-tree",
+            "kind": "repository_tree",
+            "repository": "repo-a",
+            "expected": "t1"
+          }
+        ]
+      },
+      "capture": {
+        "d_L": "/result/outcome/reference/digest"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.applicability.evaluate",
+      "command_id": "applicability-evaluate-ev-L",
+      "subject": {
+        "kind": "knowledge.evaluation",
+        "id": "ev-L"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.evaluation",
+            "id": "ev-L"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "claim": {
+          "provider": "conformance-provider",
+          "claim": "L",
+          "revision": 1,
+          "digest": {
+            "$var": "d_L"
+          }
+        },
+        "target": {
+          "repositories": [
+            {
+              "id": "repo-a",
+              "tree": "t1"
+            }
+          ],
+          "completeness": "complete"
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.decision.record",
+      "command_id": "decision-record-dec-L",
+      "subject": {
+        "kind": "knowledge.decision",
+        "id": "dec-L"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.decision",
+            "id": "dec-L"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "claim": {
+          "provider": "conformance-provider",
+          "claim": "L",
+          "revision": 1,
+          "digest": {
+            "$var": "d_L"
+          }
+        },
+        "decision": "accepted_for_use",
+        "validation_basis": {
+          "evidence": [],
+          "receipts": []
+        },
+        "rationale": "accepted_for_use L",
+        "permitted_use": "binding"
+      },
+      "set": {
+        "authority_epoch": 1
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.claim.propose",
+      "command_id": "claim-propose-HE",
+      "subject": {
+        "kind": "knowledge.claim",
+        "id": "HE"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.claim",
+            "id": "HE"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "plane": "observed",
+        "statement": {
+          "subject": {
+            "kind": "app.service",
+            "id": "billing"
+          },
+          "predicate": "cache_primed",
+          "value": true,
+          "cardinality": "single"
+        },
+        "scope": {
+          "id": "svc",
+          "qualifiers": {}
+        },
+        "support": [],
+        "derivation": {
+          "kind": "deterministic",
+          "inputs": []
+        },
+        "conditions": [
+          {
+            "condition_id": "k-tree",
+            "kind": "repository_tree",
+            "repository": "repo-a",
+            "expected": "t0"
+          }
+        ]
+      },
+      "capture": {
+        "d_HE": "/result/outcome/reference/digest"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.claim.propose",
+      "command_id": "claim-propose-HM",
+      "subject": {
+        "kind": "knowledge.claim",
+        "id": "HM"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.claim",
+            "id": "HM"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "plane": "observed",
+        "statement": {
+          "subject": {
+            "kind": "app.service",
+            "id": "billing"
+          },
+          "predicate": "cache_warm",
+          "value": true,
+          "cardinality": "single"
+        },
+        "scope": {
+          "id": "svc",
+          "qualifiers": {}
+        },
+        "support": [],
+        "derivation": {
+          "kind": "deterministic",
+          "inputs": []
+        },
+        "dependencies": [
+          {
+            "provider": "conformance-provider",
+            "claim": "HE",
+            "revision": 1,
+            "digest": {
+              "$var": "d_HE"
+            }
+          }
+        ],
+        "conditions": [
+          {
+            "condition_id": "k-tree",
+            "kind": "repository_tree",
+            "repository": "repo-a",
+            "expected": "t1"
+          }
+        ]
+      },
+      "capture": {
+        "d_HM": "/result/outcome/reference/digest"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.applicability.evaluate",
+      "command_id": "applicability-evaluate-ev-HM",
+      "subject": {
+        "kind": "knowledge.evaluation",
+        "id": "ev-HM"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.evaluation",
+            "id": "ev-HM"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "claim": {
+          "provider": "conformance-provider",
+          "claim": "HM",
+          "revision": 1,
+          "digest": {
+            "$var": "d_HM"
+          }
+        },
+        "target": {
+          "repositories": [
+            {
+              "id": "repo-a",
+              "tree": "t1"
+            }
+          ],
+          "completeness": "complete"
+        }
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "result": "needs_check"
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.claim.revise",
+      "command_id": "claim-revise-L",
+      "subject": {
+        "kind": "knowledge.claim",
+        "id": "L"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.claim",
+            "id": "L"
+          },
+          "revision": 1
+        }
+      ],
+      "payload": {
+        "plane": "normative",
+        "statement": {
+          "subject": {
+            "kind": "app.service",
+            "id": "ledger"
+          },
+          "predicate": "queue",
+          "value": "v1b",
+          "cardinality": "single"
+        },
+        "scope": {
+          "id": "svc",
+          "qualifiers": {}
+        },
+        "support": [],
+        "derivation": {
+          "kind": "deterministic",
+          "inputs": []
+        },
+        "conditions": [
+          {
+            "condition_id": "k-tree",
+            "kind": "repository_tree",
+            "repository": "repo-a",
+            "expected": "t1"
+          }
+        ],
+        "supersedes": {
+          "revision": 1,
+          "digest": {
+            "$var": "d_L"
+          }
+        }
+      }
+    },
+    {
+      "step": "stop"
+    },
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ],
+        "clock": {
+          "controlled": "2030-01-01T00:00:00Z"
+        },
+        "context": {
+          "scripts": {
+            "r-1": [
+              {
+                "section": {
+                  "section_id": "s-a",
+                  "item_id": "i-a",
+                  "label": "binding",
+                  "content": "billing must use queue v2",
+                  "claim": {
+                    "provider": "conformance-provider",
+                    "claim": "A",
+                    "revision": 1,
+                    "digest": {
+                      "$var": "d_A"
+                    }
+                  }
+                }
+              },
+              {
+                "section": {
+                  "section_id": "s-r",
+                  "item_id": "i-r",
+                  "label": "binding",
+                  "content": "run migrations before tests",
+                  "claim": {
+                    "provider": "conformance-provider",
+                    "claim": "R",
+                    "revision": 1,
+                    "digest": {
+                      "$var": "d_R"
+                    }
+                  }
+                }
+              },
+              {
+                "section": {
+                  "section_id": "s-s",
+                  "item_id": "i-s",
+                  "label": "observation",
+                  "content": "the parser handles a BOM",
+                  "claim": {
+                    "provider": "conformance-provider",
+                    "claim": "S",
+                    "revision": 1,
+                    "digest": {
+                      "$var": "d_S"
+                    }
+                  }
+                }
+              },
+              {
+                "section": {
+                  "section_id": "s-n",
+                  "item_id": "i-n",
+                  "label": "observation",
+                  "content": "retries are capped",
+                  "claim": {
+                    "provider": "conformance-provider",
+                    "claim": "N",
+                    "revision": 1,
+                    "digest": {
+                      "$var": "d_N"
+                    }
+                  }
+                }
+              },
+              {
+                "section": {
+                  "section_id": "s-x",
+                  "item_id": "i-x",
+                  "label": "binding",
+                  "content": "the altered claim",
+                  "claim": {
+                    "provider": "conformance-provider",
+                    "claim": "X",
+                    "revision": 1,
+                    "digest": {
+                      "$var": "d_X"
+                    }
+                  }
+                }
+              },
+              {
+                "section": {
+                  "section_id": "s-l",
+                  "item_id": "i-l",
+                  "label": "binding",
+                  "content": "ledger uses queue v1",
+                  "claim": {
+                    "provider": "conformance-provider",
+                    "claim": "L",
+                    "revision": 1,
+                    "digest": {
+                      "$var": "d_L"
+                    }
+                  }
+                }
+              },
+              {
+                "publish": {}
+              }
+            ],
+            "r-h": [
+              {
+                "section": {
+                  "section_id": "s-hs",
+                  "item_id": "i-hs",
+                  "label": "hypothesis",
+                  "content": "the parser handles a BOM",
+                  "claim": {
+                    "provider": "conformance-provider",
+                    "claim": "S",
+                    "revision": 1,
+                    "digest": {
+                      "$var": "d_S"
+                    }
+                  }
+                }
+              },
+              {
+                "section": {
+                  "section_id": "s-hm",
+                  "item_id": "i-hm",
+                  "label": "hypothesis",
+                  "content": "the cache is warm",
+                  "claim": {
+                    "provider": "conformance-provider",
+                    "claim": "HM",
+                    "revision": 1,
+                    "digest": {
+                      "$var": "d_HM"
+                    }
+                  }
+                }
+              },
+              {
+                "section": {
+                  "section_id": "s-hx",
+                  "item_id": "i-hx",
+                  "label": "hypothesis",
+                  "content": "the altered claim",
+                  "claim": {
+                    "provider": "conformance-provider",
+                    "claim": "X",
+                    "revision": 1,
+                    "digest": {
+                      "$var": "d_X"
+                    }
+                  }
+                }
+              },
+              {
+                "unmet": {
+                  "item_id": "i-hm",
+                  "reason": "scripted_gap"
+                }
+              },
+              {
+                "unmet": {
+                  "item_id": "i-hx",
+                  "reason": "scripted_gap"
+                }
+              },
+              {
+                "publish": {}
+              }
+            ],
+            "r-plain": [
+              {
+                "section": {
+                  "section_id": "s-p",
+                  "item_id": "i-p",
+                  "label": "observation",
+                  "content": "readme",
+                  "source": {
+                    "repository": "repo-a",
+                    "path": "README",
+                    "tree": "t1"
+                  }
+                }
+              },
+              {
+                "publish": {}
+              }
+            ]
+          }
+        },
+        "knowledge": {
+          "serve_altered_claims": [
+            "X"
+          ]
+        }
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.grants"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "knowledge",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          },
+          {
+            "name": "evidence",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          },
+          {
+            "name": "context",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": [
+              "context.advisory",
+              "context.required_before_start",
+              "context.claims"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "context.request.submit",
+      "command_id": "request-submit-r-1",
+      "subject": {
+        "kind": "context.request",
+        "id": "r-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "context.request",
+            "id": "r-1"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "consumer": {
+          "task": "change billing",
+          "principal": "owner"
+        },
+        "basis": {
+          "repositories": [
+            {
+              "id": "repo-a",
+              "tree": "t1",
+              "workspace": "clean",
+              "dirty": null
+            }
+          ],
+          "completeness": "complete"
+        },
+        "items": [
+          {
+            "item_id": "i-a",
+            "selector": {
+              "kind": "claim",
+              "value": "A"
+            },
+            "obligation": "required_before_start",
+            "reliance": "binding",
+            "selected_by": "owner",
+            "check": {
+              "kind": "claim_included",
+              "claim": {
+                "provider": "conformance-provider",
+                "claim": "A",
+                "revision": 1,
+                "digest": {
+                  "$var": "d_A"
+                }
+              }
+            }
+          },
+          {
+            "item_id": "i-r",
+            "selector": {
+              "kind": "claim",
+              "value": "R"
+            },
+            "obligation": "required_before_start",
+            "reliance": "binding",
+            "selected_by": "owner",
+            "check": {
+              "kind": "claim_included",
+              "claim": {
+                "provider": "conformance-provider",
+                "claim": "R",
+                "revision": 1,
+                "digest": {
+                  "$var": "d_R"
+                }
+              }
+            }
+          },
+          {
+            "item_id": "i-s",
+            "selector": {
+              "kind": "claim",
+              "value": "S"
+            },
+            "obligation": "advisory",
+            "reliance": "evidence",
+            "selected_by": "owner",
+            "check": {
+              "kind": "claim_included",
+              "claim": {
+                "provider": "conformance-provider",
+                "claim": "S",
+                "revision": 1,
+                "digest": {
+                  "$var": "d_S"
+                }
+              }
+            }
+          },
+          {
+            "item_id": "i-n",
+            "selector": {
+              "kind": "claim",
+              "value": "N"
+            },
+            "obligation": "required_before_start",
+            "reliance": "evidence",
+            "selected_by": "owner",
+            "check": {
+              "kind": "claim_included",
+              "claim": {
+                "provider": "conformance-provider",
+                "claim": "N",
+                "revision": 1,
+                "digest": {
+                  "$var": "d_N"
+                }
+              }
+            }
+          },
+          {
+            "item_id": "i-x",
+            "selector": {
+              "kind": "claim",
+              "value": "X"
+            },
+            "obligation": "required_before_start",
+            "reliance": "binding",
+            "selected_by": "owner",
+            "check": {
+              "kind": "claim_included",
+              "claim": {
+                "provider": "conformance-provider",
+                "claim": "X",
+                "revision": 1,
+                "digest": {
+                  "$var": "d_X"
+                }
+              }
+            }
+          },
+          {
+            "item_id": "i-l",
+            "selector": {
+              "kind": "claim",
+              "value": "L"
+            },
+            "obligation": "required_before_start",
+            "reliance": "binding",
+            "selected_by": "owner",
+            "check": {
+              "kind": "claim_included",
+              "claim": {
+                "provider": "conformance-provider",
+                "claim": "L",
+                "revision": 1,
+                "digest": {
+                  "$var": "d_L"
+                }
+              }
+            }
+          }
+        ],
+        "limits": {
+          "deadline": "2030-01-01T01:00:00Z",
+          "investigation": {
+            "units": "queries",
+            "amount": 10
+          },
+          "output_capacity": {
+            "units": "bytes",
+            "amount": 4096
+          }
+        }
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "state": "preparing"
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "context.request.inspect",
+      "payload": {
+        "request": "r-1"
+      },
+      "expect": {
+        "ok": {
+          "state": "unmet",
+          "items": [
+            {
+              "item_id": "i-a",
+              "result": "satisfied"
+            },
+            {
+              "item_id": "i-r",
+              "result": "unmet",
+              "reason": "not_accepted"
+            },
+            {
+              "item_id": "i-s",
+              "result": "degraded",
+              "reason": "invalid_for_target"
+            },
+            {
+              "item_id": "i-n",
+              "result": "unmet",
+              "reason": "applicability_not_established"
+            },
+            {
+              "item_id": "i-x",
+              "result": "unmet",
+              "reason": "claim_digest_mismatch"
+            },
+            {
+              "item_id": "i-l",
+              "result": "satisfied"
+            }
+          ]
+        }
+      },
+      "capture": {
+        "p_r1": "/result/packets/0/reference/artifact/digest"
+      }
+    },
+    {
+      "step": "query",
+      "operation": "evidence.fetch",
+      "payload": {
+        "artifact": {
+          "kind": "evidence.artifact",
+          "id": "packet.r-1.1"
+        },
+        "digest": {
+          "$var": "p_r1"
+        }
+      },
+      "expect": {
+        "ok": {
+          "data_base64": {
+            "$base64_json": {
+              "format": "combraton-context-packet/2",
+              "sections": {
+                "$contains": {
+                  "section_id": "s-a",
+                  "claim": {
+                    "reference": {
+                      "provider": "conformance-provider",
+                      "claim": "A",
+                      "revision": 1,
+                      "digest": {
+                        "$var": "d_A"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "context.packet.inspect",
+      "payload": {
+        "packet": "r-1",
+        "revision": 1
+      },
+      "expect": {
+        "ok": {
+          "sections": [
+            {
+              "section_id": "s-a",
+              "label": "binding",
+              "historical": false,
+              "claim": {
+                "reference": {
+                  "provider": "conformance-provider",
+                  "claim": "A",
+                  "revision": 1,
+                  "digest": {
+                    "$var": "d_A"
+                  }
+                },
+                "plane": "normative",
+                "reliance": {
+                  "state": "accepted_for_use",
+                  "permitted_use": "binding",
+                  "decision": "dec-A"
+                },
+                "applicability": {
+                  "result": "applicable",
+                  "evaluation": "ev-A"
+                },
+                "conflicts": [],
+                "support": {
+                  "class": "unsupported"
+                }
+              }
+            },
+            {
+              "section_id": "s-r",
+              "label": "hypothesis",
+              "historical": false,
+              "claim": {
+                "reference": {
+                  "provider": "conformance-provider",
+                  "claim": "R",
+                  "revision": 1,
+                  "digest": {
+                    "$var": "d_R"
+                  }
+                },
+                "reliance": {
+                  "state": "proposed"
+                },
+                "applicability": {
+                  "result": "applicable"
+                }
+              }
+            },
+            {
+              "section_id": "s-s",
+              "label": "stale",
+              "historical": true,
+              "claim": {
+                "reference": {
+                  "provider": "conformance-provider",
+                  "claim": "S",
+                  "revision": 1,
+                  "digest": {
+                    "$var": "d_S"
+                  }
+                },
+                "applicability": {
+                  "result": "invalid_for_target"
+                }
+              }
+            },
+            {
+              "section_id": "s-n",
+              "label": "observation",
+              "historical": false,
+              "claim": {
+                "reference": {
+                  "provider": "conformance-provider",
+                  "claim": "N",
+                  "revision": 1,
+                  "digest": {
+                    "$var": "d_N"
+                  }
+                },
+                "reliance": {
+                  "state": "accepted_for_use"
+                },
+                "applicability": {
+                  "result": "needs_check"
+                }
+              }
+            },
+            {
+              "section_id": "s-l",
+              "label": "binding",
+              "historical": false,
+              "claim": {
+                "reference": {
+                  "provider": "conformance-provider",
+                  "claim": "L",
+                  "revision": 1,
+                  "digest": {
+                    "$var": "d_L"
+                  }
+                }
+              }
+            }
+          ],
+          "omissions": {
+            "$contains": {
+              "section_id": "s-x",
+              "item_id": "i-x",
+              "reason": "unavailable"
+            }
+          },
+          "claim_changes": [
+            {
+              "section_id": "s-l",
+              "claim": {
+                "provider": "conformance-provider",
+                "claim": "L",
+                "revision": 1,
+                "digest": {
+                  "$var": "d_L"
+                }
+              },
+              "change": "lineage_revised"
+            }
+          ],
+          "invalidated_items": [],
+          "unverified_items": []
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.decision.record",
+      "command_id": "decision-record-dec-A-reject",
+      "subject": {
+        "kind": "knowledge.decision",
+        "id": "dec-A-reject"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.decision",
+            "id": "dec-A-reject"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "claim": {
+          "provider": "conformance-provider",
+          "claim": "A",
+          "revision": 1,
+          "digest": {
+            "$var": "d_A"
+          }
+        },
+        "decision": "rejected",
+        "validation_basis": {
+          "evidence": [],
+          "receipts": []
+        },
+        "rationale": "rejected A",
+        "supersedes_decision": "dec-A"
+      },
+      "set": {
+        "authority_epoch": 1
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.applicability.evaluate",
+      "command_id": "applicability-evaluate-ev-L-again",
+      "subject": {
+        "kind": "knowledge.evaluation",
+        "id": "ev-L-again"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.evaluation",
+            "id": "ev-L-again"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "claim": {
+          "provider": "conformance-provider",
+          "claim": "L",
+          "revision": 1,
+          "digest": {
+            "$var": "d_L"
+          }
+        },
+        "target": {
+          "repositories": [
+            {
+              "id": "repo-a",
+              "tree": "t1"
+            }
+          ],
+          "completeness": "complete"
+        }
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "result": "applicable",
+            "supersedes_evaluation": "ev-L"
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "context.packet.inspect",
+      "payload": {
+        "packet": "r-1",
+        "revision": 1
+      },
+      "expect": {
+        "ok": {
+          "sections": {
+            "$contains": {
+              "section_id": "s-a",
+              "label": "binding",
+              "claim": {
+                "reliance": {
+                  "state": "accepted_for_use"
+                }
+              }
+            }
+          },
+          "claim_changes": [
+            {
+              "section_id": "s-a",
+              "claim": {
+                "provider": "conformance-provider",
+                "claim": "A",
+                "revision": 1,
+                "digest": {
+                  "$var": "d_A"
+                }
+              },
+              "change": "reliance_changed"
+            },
+            {
+              "section_id": "s-l",
+              "claim": {
+                "provider": "conformance-provider",
+                "claim": "L",
+                "revision": 1,
+                "digest": {
+                  "$var": "d_L"
+                }
+              },
+              "change": "lineage_revised"
+            }
+          ],
+          "invalidated_items": [
+            {
+              "item_id": "i-a",
+              "claim": {
+                "provider": "conformance-provider",
+                "claim": "A",
+                "revision": 1,
+                "digest": {
+                  "$var": "d_A"
+                }
+              },
+              "reason": "permitted_use_lost"
+            }
+          ],
+          "unverified_items": []
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "context.request.submit",
+      "command_id": "request-submit-r-h",
+      "subject": {
+        "kind": "context.request",
+        "id": "r-h"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "context.request",
+            "id": "r-h"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "consumer": {
+          "task": "change billing",
+          "principal": "owner"
+        },
+        "basis": {
+          "repositories": [
+            {
+              "id": "repo-a",
+              "tree": "t1",
+              "workspace": "clean",
+              "dirty": null
+            }
+          ],
+          "completeness": "complete"
+        },
+        "items": [
+          {
+            "item_id": "i-hs",
+            "selector": {
+              "kind": "claim",
+              "value": "S"
+            },
+            "obligation": "required_before_start",
+            "reliance": "hypothesis",
+            "selected_by": "owner",
+            "check": {
+              "kind": "claim_included",
+              "claim": {
+                "provider": "conformance-provider",
+                "claim": "S",
+                "revision": 1,
+                "digest": {
+                  "$var": "d_S"
+                }
+              }
+            }
+          },
+          {
+            "item_id": "i-hm",
+            "selector": {
+              "kind": "claim",
+              "value": "HM"
+            },
+            "obligation": "required_before_start",
+            "reliance": "hypothesis",
+            "selected_by": "owner",
+            "check": {
+              "kind": "claim_included",
+              "claim": {
+                "provider": "conformance-provider",
+                "claim": "HM",
+                "revision": 1,
+                "digest": {
+                  "$var": "d_HM"
+                }
+              }
+            }
+          },
+          {
+            "item_id": "i-hx",
+            "selector": {
+              "kind": "claim",
+              "value": "X"
+            },
+            "obligation": "required_before_start",
+            "reliance": "hypothesis",
+            "selected_by": "owner",
+            "check": {
+              "kind": "claim_included",
+              "claim": {
+                "provider": "conformance-provider",
+                "claim": "X",
+                "revision": 1,
+                "digest": {
+                  "$var": "d_X"
+                }
+              }
+            }
+          }
+        ],
+        "limits": {
+          "deadline": "2030-01-01T01:00:00Z",
+          "investigation": {
+            "units": "queries",
+            "amount": 10
+          },
+          "output_capacity": {
+            "units": "bytes",
+            "amount": 4096
+          }
+        }
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "state": "preparing"
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "context.request.inspect",
+      "payload": {
+        "request": "r-h"
+      },
+      "expect": {
+        "ok": {
+          "state": "unmet",
+          "items": [
+            {
+              "item_id": "i-hs",
+              "result": "unmet",
+              "reason": "invalid_for_target"
+            },
+            {
+              "item_id": "i-hm",
+              "result": "satisfied"
+            },
+            {
+              "item_id": "i-hx",
+              "result": "unmet",
+              "reason": "scripted_gap"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.applicability.evaluate",
+      "command_id": "applicability-evaluate-ev-HE",
+      "subject": {
+        "kind": "knowledge.evaluation",
+        "id": "ev-HE"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.evaluation",
+            "id": "ev-HE"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "claim": {
+          "provider": "conformance-provider",
+          "claim": "HE",
+          "revision": 1,
+          "digest": {
+            "$var": "d_HE"
+          }
+        },
+        "target": {
+          "repositories": [
+            {
+              "id": "repo-a",
+              "tree": "t1"
+            }
+          ],
+          "completeness": "complete"
+        }
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "result": "invalid_for_target"
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.applicability.evaluate",
+      "command_id": "applicability-evaluate-ev-HM-again",
+      "subject": {
+        "kind": "knowledge.evaluation",
+        "id": "ev-HM-again"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.evaluation",
+            "id": "ev-HM-again"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "claim": {
+          "provider": "conformance-provider",
+          "claim": "HM",
+          "revision": 1,
+          "digest": {
+            "$var": "d_HM"
+          }
+        },
+        "target": {
+          "repositories": [
+            {
+              "id": "repo-a",
+              "tree": "t1"
+            }
+          ],
+          "completeness": "complete"
+        }
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "result": "invalid_for_target"
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "context.packet.inspect",
+      "payload": {
+        "packet": "r-h",
+        "revision": 1
+      },
+      "expect": {
+        "ok": {
+          "claim_changes": [
+            {
+              "section_id": "s-hm",
+              "claim": {
+                "provider": "conformance-provider",
+                "claim": "HM",
+                "revision": 1,
+                "digest": {
+                  "$var": "d_HM"
+                }
+              },
+              "change": "applicability_changed"
+            }
+          ],
+          "invalidated_items": [
+            {
+              "item_id": "i-hm",
+              "claim": {
+                "provider": "conformance-provider",
+                "claim": "HM",
+                "revision": 1,
+                "digest": {
+                  "$var": "d_HM"
+                }
+              },
+              "reason": "invalid_for_target"
+            }
+          ],
+          "unverified_items": []
+        }
+      }
+    },
+    {
+      "step": "stop"
+    },
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ],
+        "clock": {
+          "controlled": "2030-01-01T00:00:00Z"
+        },
+        "context": {
+          "scripts": {
+            "r-1": [
+              {
+                "section": {
+                  "section_id": "s-a",
+                  "item_id": "i-a",
+                  "label": "binding",
+                  "content": "billing must use queue v2",
+                  "claim": {
+                    "provider": "conformance-provider",
+                    "claim": "A",
+                    "revision": 1,
+                    "digest": {
+                      "$var": "d_A"
+                    }
+                  }
+                }
+              },
+              {
+                "section": {
+                  "section_id": "s-r",
+                  "item_id": "i-r",
+                  "label": "binding",
+                  "content": "run migrations before tests",
+                  "claim": {
+                    "provider": "conformance-provider",
+                    "claim": "R",
+                    "revision": 1,
+                    "digest": {
+                      "$var": "d_R"
+                    }
+                  }
+                }
+              },
+              {
+                "section": {
+                  "section_id": "s-s",
+                  "item_id": "i-s",
+                  "label": "observation",
+                  "content": "the parser handles a BOM",
+                  "claim": {
+                    "provider": "conformance-provider",
+                    "claim": "S",
+                    "revision": 1,
+                    "digest": {
+                      "$var": "d_S"
+                    }
+                  }
+                }
+              },
+              {
+                "section": {
+                  "section_id": "s-n",
+                  "item_id": "i-n",
+                  "label": "observation",
+                  "content": "retries are capped",
+                  "claim": {
+                    "provider": "conformance-provider",
+                    "claim": "N",
+                    "revision": 1,
+                    "digest": {
+                      "$var": "d_N"
+                    }
+                  }
+                }
+              },
+              {
+                "section": {
+                  "section_id": "s-x",
+                  "item_id": "i-x",
+                  "label": "binding",
+                  "content": "the altered claim",
+                  "claim": {
+                    "provider": "conformance-provider",
+                    "claim": "X",
+                    "revision": 1,
+                    "digest": {
+                      "$var": "d_X"
+                    }
+                  }
+                }
+              },
+              {
+                "section": {
+                  "section_id": "s-l",
+                  "item_id": "i-l",
+                  "label": "binding",
+                  "content": "ledger uses queue v1",
+                  "claim": {
+                    "provider": "conformance-provider",
+                    "claim": "L",
+                    "revision": 1,
+                    "digest": {
+                      "$var": "d_L"
+                    }
+                  }
+                }
+              },
+              {
+                "publish": {}
+              }
+            ],
+            "r-h": [
+              {
+                "section": {
+                  "section_id": "s-hs",
+                  "item_id": "i-hs",
+                  "label": "hypothesis",
+                  "content": "the parser handles a BOM",
+                  "claim": {
+                    "provider": "conformance-provider",
+                    "claim": "S",
+                    "revision": 1,
+                    "digest": {
+                      "$var": "d_S"
+                    }
+                  }
+                }
+              },
+              {
+                "section": {
+                  "section_id": "s-hm",
+                  "item_id": "i-hm",
+                  "label": "hypothesis",
+                  "content": "the cache is warm",
+                  "claim": {
+                    "provider": "conformance-provider",
+                    "claim": "HM",
+                    "revision": 1,
+                    "digest": {
+                      "$var": "d_HM"
+                    }
+                  }
+                }
+              },
+              {
+                "section": {
+                  "section_id": "s-hx",
+                  "item_id": "i-hx",
+                  "label": "hypothesis",
+                  "content": "the altered claim",
+                  "claim": {
+                    "provider": "conformance-provider",
+                    "claim": "X",
+                    "revision": 1,
+                    "digest": {
+                      "$var": "d_X"
+                    }
+                  }
+                }
+              },
+              {
+                "unmet": {
+                  "item_id": "i-hm",
+                  "reason": "scripted_gap"
+                }
+              },
+              {
+                "unmet": {
+                  "item_id": "i-hx",
+                  "reason": "scripted_gap"
+                }
+              },
+              {
+                "publish": {}
+              }
+            ],
+            "r-plain": [
+              {
+                "section": {
+                  "section_id": "s-p",
+                  "item_id": "i-p",
+                  "label": "observation",
+                  "content": "readme",
+                  "source": {
+                    "repository": "repo-a",
+                    "path": "README",
+                    "tree": "t1"
+                  }
+                }
+              },
+              {
+                "publish": {}
+              }
+            ]
+          }
+        },
+        "knowledge": {
+          "serve_altered_claims": [
+            "X"
+          ]
+        }
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.grants"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "knowledge",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          },
+          {
+            "name": "evidence",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          },
+          {
+            "name": "context",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": [
+              "context.advisory",
+              "context.required_before_start"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "step": "query",
+      "operation": "context.packet.inspect",
+      "payload": {
+        "packet": "r-1",
+        "revision": 1
+      },
+      "expect": {
+        "ok": {
+          "sections": {
+            "$contains": {
+              "section_id": "s-a",
+              "claim": {
+                "$absent": true
+              }
+            }
+          },
+          "invalidated_items": [],
+          "claim_changes": {
+            "$absent": true
+          },
+          "unverified_items": {
+            "$absent": true
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "context.request.submit",
+      "command_id": "request-submit-r-2",
+      "subject": {
+        "kind": "context.request",
+        "id": "r-2"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "context.request",
+            "id": "r-2"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "consumer": {
+          "task": "change billing",
+          "principal": "owner"
+        },
+        "basis": {
+          "repositories": [
+            {
+              "id": "repo-a",
+              "tree": "t1",
+              "workspace": "clean",
+              "dirty": null
+            }
+          ],
+          "completeness": "complete"
+        },
+        "items": [
+          {
+            "item_id": "i-a",
+            "selector": {
+              "kind": "claim",
+              "value": "A"
+            },
+            "obligation": "required_before_start",
+            "reliance": "binding",
+            "selected_by": "owner",
+            "check": {
+              "kind": "claim_included",
+              "claim": {
+                "provider": "conformance-provider",
+                "claim": "A",
+                "revision": 1,
+                "digest": {
+                  "$var": "d_A"
+                }
+              }
+            }
+          }
+        ],
+        "limits": {
+          "deadline": "2030-01-01T01:00:00Z",
+          "investigation": {
+            "units": "queries",
+            "amount": 10
+          },
+          "output_capacity": {
+            "units": "bytes",
+            "amount": 4096
+          }
+        }
+      },
+      "expect": {
+        "error": "unsupported_required_feature",
+        "details": {
+          "features": [
+            "context.claims"
+          ]
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "context.request.submit",
+      "command_id": "request-submit-r-plain",
+      "subject": {
+        "kind": "context.request",
+        "id": "r-plain"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "context.request",
+            "id": "r-plain"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "consumer": {
+          "task": "change billing",
+          "principal": "owner"
+        },
+        "basis": {
+          "repositories": [
+            {
+              "id": "repo-a",
+              "tree": "t1",
+              "workspace": "clean",
+              "dirty": null
+            }
+          ],
+          "completeness": "complete"
+        },
+        "items": [
+          {
+            "item_id": "i-p",
+            "selector": {
+              "kind": "path",
+              "value": "README"
+            },
+            "obligation": "required_before_start",
+            "reliance": "reference",
+            "selected_by": "owner",
+            "check": {
+              "kind": "source_included",
+              "repository": "repo-a",
+              "path": "README"
+            }
+          }
+        ],
+        "limits": {
+          "deadline": "2030-01-01T01:00:00Z",
+          "investigation": {
+            "units": "queries",
+            "amount": 10
+          },
+          "output_capacity": {
+            "units": "bytes",
+            "amount": 4096
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "context.packet.inspect",
+      "payload": {
+        "packet": "r-plain",
+        "revision": 1
+      },
+      "expect": {
+        "ok": {
+          "sections": [
+            {
+              "section_id": "s-p",
+              "claim": {
+                "$absent": true
+              }
+            }
+          ],
+          "items": [
+            {
+              "item_id": "i-p",
+              "result": "satisfied"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "context.request.inspect",
+      "payload": {
+        "request": "r-plain"
+      },
+      "capture": {
+        "p_plain": "/result/packets/0/reference/artifact/digest"
+      }
+    },
+    {
+      "step": "query",
+      "operation": "evidence.fetch",
+      "payload": {
+        "artifact": {
+          "kind": "evidence.artifact",
+          "id": "packet.r-plain.1"
+        },
+        "digest": {
+          "$var": "p_plain"
+        }
+      },
+      "expect": {
+        "ok": {
+          "data_base64": {
+            "$base64_json": {
+              "format": "combraton-context-packet/1",
+              "sections": [
+                {
+                  "section_id": "s-p",
+                  "claim": {
+                    "$absent": true
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "step": "stop"
+    },
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ],
+        "clock": {
+          "controlled": "2030-01-01T00:00:00Z"
+        },
+        "context": {
+          "scripts": {
+            "r-1": [
+              {
+                "section": {
+                  "section_id": "s-a",
+                  "item_id": "i-a",
+                  "label": "binding",
+                  "content": "billing must use queue v2",
+                  "claim": {
+                    "provider": "conformance-provider",
+                    "claim": "A",
+                    "revision": 1,
+                    "digest": {
+                      "$var": "d_A"
+                    }
+                  }
+                }
+              },
+              {
+                "section": {
+                  "section_id": "s-r",
+                  "item_id": "i-r",
+                  "label": "binding",
+                  "content": "run migrations before tests",
+                  "claim": {
+                    "provider": "conformance-provider",
+                    "claim": "R",
+                    "revision": 1,
+                    "digest": {
+                      "$var": "d_R"
+                    }
+                  }
+                }
+              },
+              {
+                "section": {
+                  "section_id": "s-s",
+                  "item_id": "i-s",
+                  "label": "observation",
+                  "content": "the parser handles a BOM",
+                  "claim": {
+                    "provider": "conformance-provider",
+                    "claim": "S",
+                    "revision": 1,
+                    "digest": {
+                      "$var": "d_S"
+                    }
+                  }
+                }
+              },
+              {
+                "section": {
+                  "section_id": "s-n",
+                  "item_id": "i-n",
+                  "label": "observation",
+                  "content": "retries are capped",
+                  "claim": {
+                    "provider": "conformance-provider",
+                    "claim": "N",
+                    "revision": 1,
+                    "digest": {
+                      "$var": "d_N"
+                    }
+                  }
+                }
+              },
+              {
+                "section": {
+                  "section_id": "s-x",
+                  "item_id": "i-x",
+                  "label": "binding",
+                  "content": "the altered claim",
+                  "claim": {
+                    "provider": "conformance-provider",
+                    "claim": "X",
+                    "revision": 1,
+                    "digest": {
+                      "$var": "d_X"
+                    }
+                  }
+                }
+              },
+              {
+                "section": {
+                  "section_id": "s-l",
+                  "item_id": "i-l",
+                  "label": "binding",
+                  "content": "ledger uses queue v1",
+                  "claim": {
+                    "provider": "conformance-provider",
+                    "claim": "L",
+                    "revision": 1,
+                    "digest": {
+                      "$var": "d_L"
+                    }
+                  }
+                }
+              },
+              {
+                "publish": {}
+              }
+            ],
+            "r-h": [
+              {
+                "section": {
+                  "section_id": "s-hs",
+                  "item_id": "i-hs",
+                  "label": "hypothesis",
+                  "content": "the parser handles a BOM",
+                  "claim": {
+                    "provider": "conformance-provider",
+                    "claim": "S",
+                    "revision": 1,
+                    "digest": {
+                      "$var": "d_S"
+                    }
+                  }
+                }
+              },
+              {
+                "section": {
+                  "section_id": "s-hm",
+                  "item_id": "i-hm",
+                  "label": "hypothesis",
+                  "content": "the cache is warm",
+                  "claim": {
+                    "provider": "conformance-provider",
+                    "claim": "HM",
+                    "revision": 1,
+                    "digest": {
+                      "$var": "d_HM"
+                    }
+                  }
+                }
+              },
+              {
+                "section": {
+                  "section_id": "s-hx",
+                  "item_id": "i-hx",
+                  "label": "hypothesis",
+                  "content": "the altered claim",
+                  "claim": {
+                    "provider": "conformance-provider",
+                    "claim": "X",
+                    "revision": 1,
+                    "digest": {
+                      "$var": "d_X"
+                    }
+                  }
+                }
+              },
+              {
+                "unmet": {
+                  "item_id": "i-hm",
+                  "reason": "scripted_gap"
+                }
+              },
+              {
+                "unmet": {
+                  "item_id": "i-hx",
+                  "reason": "scripted_gap"
+                }
+              },
+              {
+                "publish": {}
+              }
+            ],
+            "r-plain": [
+              {
+                "section": {
+                  "section_id": "s-p",
+                  "item_id": "i-p",
+                  "label": "observation",
+                  "content": "readme",
+                  "source": {
+                    "repository": "repo-a",
+                    "path": "README",
+                    "tree": "t1"
+                  }
+                }
+              },
+              {
+                "publish": {}
+              }
+            ]
+          }
+        },
+        "knowledge": {
+          "serve_altered_claims": [
+            "X"
+          ],
+          "evaluator": {
+            "id": "reference-conditions",
+            "version": "2",
+            "condition_kinds": [
+              "dirty_snapshot"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.grants"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "knowledge",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          },
+          {
+            "name": "evidence",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          },
+          {
+            "name": "context",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": [
+              "context.advisory",
+              "context.required_before_start",
+              "context.claims"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.applicability.evaluate",
+      "command_id": "applicability-evaluate-ev-L-v2",
+      "subject": {
+        "kind": "knowledge.evaluation",
+        "id": "ev-L-v2"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.evaluation",
+            "id": "ev-L-v2"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "claim": {
+          "provider": "conformance-provider",
+          "claim": "L",
+          "revision": 1,
+          "digest": {
+            "$var": "d_L"
+          }
+        },
+        "target": {
+          "repositories": [
+            {
+              "id": "repo-a",
+              "tree": "t1"
+            }
+          ],
+          "completeness": "complete"
+        }
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "result": "unknown",
+            "evaluator": {
+              "version": "2"
+            }
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "context.packet.inspect",
+      "payload": {
+        "packet": "r-1",
+        "revision": 1
+      },
+      "expect": {
+        "ok": {
+          "claim_changes": [
+            {
+              "section_id": "s-a",
+              "claim": {
+                "provider": "conformance-provider",
+                "claim": "A",
+                "revision": 1,
+                "digest": {
+                  "$var": "d_A"
+                }
+              },
+              "change": "reliance_changed"
+            },
+            {
+              "section_id": "s-l",
+              "claim": {
+                "provider": "conformance-provider",
+                "claim": "L",
+                "revision": 1,
+                "digest": {
+                  "$var": "d_L"
+                }
+              },
+              "change": "applicability_changed"
+            },
+            {
+              "section_id": "s-l",
+              "claim": {
+                "provider": "conformance-provider",
+                "claim": "L",
+                "revision": 1,
+                "digest": {
+                  "$var": "d_L"
+                }
+              },
+              "change": "lineage_revised"
+            }
+          ],
+          "invalidated_items": [
+            {
+              "item_id": "i-a",
+              "claim": {
+                "provider": "conformance-provider",
+                "claim": "A",
+                "revision": 1,
+                "digest": {
+                  "$var": "d_A"
+                }
+              },
+              "reason": "permitted_use_lost"
+            }
+          ],
+          "unverified_items": [
+            {
+              "item_id": "i-l",
+              "claim": {
+                "provider": "conformance-provider",
+                "claim": "L",
+                "revision": 1,
+                "digest": {
+                  "$var": "d_L"
+                }
+              },
+              "reason": "applicability_not_established"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

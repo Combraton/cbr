@@ -1,0 +1,283 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "socket.idle-subscription-ends-at-grant-expiry",
+  "version": 1,
+  "title": "A grant expiring while its subscriber is idle ends the subscription within the bound, with no later delivery",
+  "requirements": [
+    "OBS-9",
+    "CORE-11",
+    "TRN-3"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/CORE.md#165-subscriptions",
+    "docs/decisions/007-execution-test-controls.md"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "core-test",
+      "major": 1
+    }
+  ],
+  "features": [
+    "core.events",
+    "core.grants"
+  ],
+  "binding": "unix",
+  "requires_controls": [
+    "clock.file"
+  ],
+  "polarity": "negative",
+  "kills": [
+    "clock-file-ignored",
+    "idle-subscriptions-not-rechecked"
+  ],
+  "kill_expectations": {
+    "clock-file-ignored": {
+      "step": 9,
+      "reason_contains": "no frame within"
+    },
+    "idle-subscriptions-not-rechecked": {
+      "step": 9,
+      "reason_contains": "no frame within"
+    }
+  },
+  "steps": [
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ],
+        "clock": {
+          "controlled": "2030-01-01T00:00:00Z"
+        }
+      },
+      "credential_principals": [
+        "agent-1"
+      ]
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.grants"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "core-test",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "core.grant.issue",
+      "command_id": "issue-g-1",
+      "subject": {
+        "kind": "core.grant",
+        "id": "g-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core.grant",
+            "id": "g-1"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "holder": "agent-1",
+        "audience": "conformance-provider",
+        "rights": [
+          "core.events.read",
+          "core-test.read"
+        ],
+        "resources": [
+          {
+            "kind": "core-test.subject",
+            "id_prefix": "s-"
+          }
+        ],
+        "delegation": {
+          "allowed": false,
+          "max_depth": 0
+        },
+        "expires_at": "2030-01-01T01:00:00Z"
+      }
+    },
+    {
+      "step": "connect",
+      "session": "a",
+      "principal": "agent-1"
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.grants"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "core-test",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      },
+      "session": "a"
+    },
+    {
+      "step": "query",
+      "operation": "core.events.subscribe",
+      "payload": {
+        "from": "now",
+        "kinds": [
+          "core-test.subject"
+        ]
+      },
+      "capture": {
+        "sub": "/result/subscription"
+      },
+      "set": {
+        "grant": "g-1"
+      },
+      "session": "a"
+    },
+    {
+      "step": "command",
+      "operation": "core-test.subject.put",
+      "command_id": "cmd-1",
+      "subject": {
+        "kind": "core-test.subject",
+        "id": "s-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core-test.subject",
+            "id": "s-1"
+          },
+          "revision": 0
+        }
+      ],
+      "authority_epoch": 0,
+      "payload": {
+        "value": "a"
+      }
+    },
+    {
+      "step": "expect_notification",
+      "session": "a",
+      "within_ms": 2000,
+      "expect": {
+        "params": {
+          "subscription": {
+            "$var": "sub"
+          },
+          "items": [
+            {
+              "event": {
+                "command_id": "cmd-1"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "set_clock",
+      "instant": "2030-01-01T01:00:00Z",
+      "note": "the grant is expired from expires_at onward; A stays idle"
+    },
+    {
+      "step": "expect_notification",
+      "within_ms": 2000,
+      "expect": {
+        "params": {
+          "subscription": {
+            "$var": "sub"
+          },
+          "items": [],
+          "ended": {
+            "reason": "authorization_lost"
+          }
+        }
+      },
+      "session": "a"
+    },
+    {
+      "step": "command",
+      "operation": "core-test.subject.put",
+      "command_id": "cmd-2",
+      "subject": {
+        "kind": "core-test.subject",
+        "id": "s-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core-test.subject",
+            "id": "s-1"
+          },
+          "revision": 1
+        }
+      ],
+      "authority_epoch": 0,
+      "payload": {
+        "value": "b"
+      }
+    },
+    {
+      "step": "expect_no_notification",
+      "session": "a"
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

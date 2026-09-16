@@ -1,0 +1,1860 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "knowledge.dependencies-resolve-only-exact-references",
+  "version": 3,
+  "title": "A dependency resolves only as an exact local provider, claim, revision and digest: another digest, another provider, a missing, future or self reference stays unchecked with its reason and the claim needs_check, and no unrelated evaluation satisfies it; commands naming a revision under another provider are not_found",
+  "requirements": [
+    "KNW-7",
+    "KNW-1"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/KNOWLEDGE.md#8-applicability-knw-7-m5-q4",
+    "docs/spec/profiles/KNOWLEDGE.md#2-identities"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "knowledge",
+      "major": 1
+    }
+  ],
+  "features": [
+    "core.events",
+    "core.grants"
+  ],
+  "polarity": "negative",
+  "kills": [
+    "dependency-digest-ignored",
+    "dependency-provider-ignored",
+    "missing-dependency-satisfied",
+    "reference-provider-unchecked",
+    "dependency-read-unauthorized",
+    "self-reference-before-provider"
+  ],
+  "steps": [
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ]
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.grants"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "knowledge",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.claim.propose",
+      "command_id": "claim-propose-D",
+      "subject": {
+        "kind": "knowledge.claim",
+        "id": "D"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.claim",
+            "id": "D"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "plane": "observed",
+        "statement": {
+          "subject": {
+            "kind": "app.service",
+            "id": "billing"
+          },
+          "predicate": "dep_d",
+          "value": "v1",
+          "cardinality": "single"
+        },
+        "scope": {
+          "id": "svc",
+          "qualifiers": {}
+        },
+        "support": [],
+        "derivation": {
+          "kind": "deterministic",
+          "inputs": []
+        },
+        "conditions": [
+          {
+            "condition_id": "k-tree",
+            "kind": "repository_tree",
+            "repository": "repo-a",
+            "expected": "t1"
+          }
+        ]
+      },
+      "capture": {
+        "d_D": "/result/outcome/reference/digest"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.applicability.evaluate",
+      "command_id": "applicability-evaluate-ev-D",
+      "subject": {
+        "kind": "knowledge.evaluation",
+        "id": "ev-D"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.evaluation",
+            "id": "ev-D"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "claim": {
+          "provider": "conformance-provider",
+          "claim": "D",
+          "revision": 1,
+          "digest": {
+            "$var": "d_D"
+          }
+        },
+        "target": {
+          "repositories": [
+            {
+              "id": "repo-a",
+              "tree": "t1"
+            }
+          ],
+          "completeness": "complete"
+        }
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "result": "applicable"
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.claim.propose",
+      "command_id": "claim-propose-E",
+      "subject": {
+        "kind": "knowledge.claim",
+        "id": "E"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.claim",
+            "id": "E"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "plane": "observed",
+        "statement": {
+          "subject": {
+            "kind": "app.service",
+            "id": "billing"
+          },
+          "predicate": "dep_e",
+          "value": "v1",
+          "cardinality": "single"
+        },
+        "scope": {
+          "id": "svc",
+          "qualifiers": {}
+        },
+        "support": [],
+        "derivation": {
+          "kind": "deterministic",
+          "inputs": []
+        }
+      },
+      "capture": {
+        "d_E": "/result/outcome/reference/digest"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.claim.propose",
+      "command_id": "claim-propose-c-exact",
+      "subject": {
+        "kind": "knowledge.claim",
+        "id": "c-exact"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.claim",
+            "id": "c-exact"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "plane": "observed",
+        "statement": {
+          "subject": {
+            "kind": "app.service",
+            "id": "billing"
+          },
+          "predicate": "exact",
+          "value": "v1",
+          "cardinality": "single"
+        },
+        "scope": {
+          "id": "svc",
+          "qualifiers": {}
+        },
+        "support": [],
+        "derivation": {
+          "kind": "deterministic",
+          "inputs": []
+        },
+        "dependencies": [
+          {
+            "provider": "conformance-provider",
+            "claim": "D",
+            "revision": 1,
+            "digest": {
+              "$var": "d_D"
+            }
+          }
+        ],
+        "conditions": [
+          {
+            "condition_id": "k-tree",
+            "kind": "repository_tree",
+            "repository": "repo-a",
+            "expected": "t1"
+          }
+        ]
+      },
+      "capture": {
+        "d_c-exact": "/result/outcome/reference/digest"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.applicability.evaluate",
+      "command_id": "applicability-evaluate-ev-exact",
+      "subject": {
+        "kind": "knowledge.evaluation",
+        "id": "ev-exact"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.evaluation",
+            "id": "ev-exact"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "claim": {
+          "provider": "conformance-provider",
+          "claim": "c-exact",
+          "revision": 1,
+          "digest": {
+            "$var": "d_c-exact"
+          }
+        },
+        "target": {
+          "repositories": [
+            {
+              "id": "repo-a",
+              "tree": "t1"
+            }
+          ],
+          "completeness": "complete"
+        }
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "result": "applicable",
+            "findings": [
+              {
+                "condition_id": "k-tree",
+                "finding": "match"
+              },
+              {
+                "dependency": {
+                  "provider": "conformance-provider",
+                  "claim": "D",
+                  "revision": 1,
+                  "digest": {
+                    "$var": "d_D"
+                  }
+                },
+                "finding": "match",
+                "reason": {
+                  "$absent": true
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.claim.propose",
+      "command_id": "claim-propose-c-digest",
+      "subject": {
+        "kind": "knowledge.claim",
+        "id": "c-digest"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.claim",
+            "id": "c-digest"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "plane": "observed",
+        "statement": {
+          "subject": {
+            "kind": "app.service",
+            "id": "billing"
+          },
+          "predicate": "other_digest",
+          "value": "v1",
+          "cardinality": "single"
+        },
+        "scope": {
+          "id": "svc",
+          "qualifiers": {}
+        },
+        "support": [],
+        "derivation": {
+          "kind": "deterministic",
+          "inputs": []
+        },
+        "dependencies": [
+          {
+            "provider": "conformance-provider",
+            "claim": "D",
+            "revision": 1,
+            "digest": {
+              "$var": "d_E"
+            }
+          }
+        ],
+        "conditions": [
+          {
+            "condition_id": "k-tree",
+            "kind": "repository_tree",
+            "repository": "repo-a",
+            "expected": "t1"
+          }
+        ]
+      },
+      "capture": {
+        "d_c-digest": "/result/outcome/reference/digest"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.applicability.evaluate",
+      "command_id": "applicability-evaluate-ev-digest",
+      "subject": {
+        "kind": "knowledge.evaluation",
+        "id": "ev-digest"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.evaluation",
+            "id": "ev-digest"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "claim": {
+          "provider": "conformance-provider",
+          "claim": "c-digest",
+          "revision": 1,
+          "digest": {
+            "$var": "d_c-digest"
+          }
+        },
+        "target": {
+          "repositories": [
+            {
+              "id": "repo-a",
+              "tree": "t1"
+            }
+          ],
+          "completeness": "complete"
+        }
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "result": "needs_check",
+            "findings": [
+              {
+                "condition_id": "k-tree",
+                "finding": "match"
+              },
+              {
+                "dependency": {
+                  "provider": "conformance-provider",
+                  "claim": "D",
+                  "revision": 1,
+                  "digest": {
+                    "$var": "d_E"
+                  }
+                },
+                "finding": "unchecked",
+                "reason": "unresolved"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.claim.propose",
+      "command_id": "claim-propose-c-provider",
+      "subject": {
+        "kind": "knowledge.claim",
+        "id": "c-provider"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.claim",
+            "id": "c-provider"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "plane": "observed",
+        "statement": {
+          "subject": {
+            "kind": "app.service",
+            "id": "billing"
+          },
+          "predicate": "other_provider",
+          "value": "v1",
+          "cardinality": "single"
+        },
+        "scope": {
+          "id": "svc",
+          "qualifiers": {}
+        },
+        "support": [],
+        "derivation": {
+          "kind": "deterministic",
+          "inputs": []
+        },
+        "dependencies": [
+          {
+            "provider": "knowledge-other",
+            "claim": "D",
+            "revision": 1,
+            "digest": {
+              "$var": "d_D"
+            }
+          }
+        ],
+        "conditions": [
+          {
+            "condition_id": "k-tree",
+            "kind": "repository_tree",
+            "repository": "repo-a",
+            "expected": "t1"
+          }
+        ]
+      },
+      "capture": {
+        "d_c-provider": "/result/outcome/reference/digest"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.applicability.evaluate",
+      "command_id": "applicability-evaluate-ev-provider",
+      "subject": {
+        "kind": "knowledge.evaluation",
+        "id": "ev-provider"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.evaluation",
+            "id": "ev-provider"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "claim": {
+          "provider": "conformance-provider",
+          "claim": "c-provider",
+          "revision": 1,
+          "digest": {
+            "$var": "d_c-provider"
+          }
+        },
+        "target": {
+          "repositories": [
+            {
+              "id": "repo-a",
+              "tree": "t1"
+            }
+          ],
+          "completeness": "complete"
+        }
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "result": "needs_check",
+            "findings": [
+              {
+                "condition_id": "k-tree",
+                "finding": "match"
+              },
+              {
+                "dependency": {
+                  "provider": "knowledge-other",
+                  "claim": "D",
+                  "revision": 1,
+                  "digest": {
+                    "$var": "d_D"
+                  }
+                },
+                "finding": "unchecked",
+                "reason": "remote_dependency"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.claim.propose",
+      "command_id": "claim-propose-c-missing",
+      "subject": {
+        "kind": "knowledge.claim",
+        "id": "c-missing"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.claim",
+            "id": "c-missing"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "plane": "observed",
+        "statement": {
+          "subject": {
+            "kind": "app.service",
+            "id": "billing"
+          },
+          "predicate": "missing",
+          "value": "v1",
+          "cardinality": "single"
+        },
+        "scope": {
+          "id": "svc",
+          "qualifiers": {}
+        },
+        "support": [],
+        "derivation": {
+          "kind": "deterministic",
+          "inputs": []
+        },
+        "dependencies": [
+          {
+            "provider": "conformance-provider",
+            "claim": "absent",
+            "revision": 1,
+            "digest": {
+              "$var": "d_D"
+            }
+          }
+        ],
+        "conditions": [
+          {
+            "condition_id": "k-tree",
+            "kind": "repository_tree",
+            "repository": "repo-a",
+            "expected": "t1"
+          }
+        ]
+      },
+      "capture": {
+        "d_c-missing": "/result/outcome/reference/digest"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.applicability.evaluate",
+      "command_id": "applicability-evaluate-ev-missing",
+      "subject": {
+        "kind": "knowledge.evaluation",
+        "id": "ev-missing"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.evaluation",
+            "id": "ev-missing"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "claim": {
+          "provider": "conformance-provider",
+          "claim": "c-missing",
+          "revision": 1,
+          "digest": {
+            "$var": "d_c-missing"
+          }
+        },
+        "target": {
+          "repositories": [
+            {
+              "id": "repo-a",
+              "tree": "t1"
+            }
+          ],
+          "completeness": "complete"
+        }
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "result": "needs_check",
+            "findings": [
+              {
+                "condition_id": "k-tree",
+                "finding": "match"
+              },
+              {
+                "dependency": {
+                  "provider": "conformance-provider",
+                  "claim": "absent",
+                  "revision": 1,
+                  "digest": {
+                    "$var": "d_D"
+                  }
+                },
+                "finding": "unchecked",
+                "reason": "unresolved"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.claim.propose",
+      "command_id": "claim-propose-c-future",
+      "subject": {
+        "kind": "knowledge.claim",
+        "id": "c-future"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.claim",
+            "id": "c-future"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "plane": "observed",
+        "statement": {
+          "subject": {
+            "kind": "app.service",
+            "id": "billing"
+          },
+          "predicate": "future",
+          "value": "v1",
+          "cardinality": "single"
+        },
+        "scope": {
+          "id": "svc",
+          "qualifiers": {}
+        },
+        "support": [],
+        "derivation": {
+          "kind": "deterministic",
+          "inputs": []
+        },
+        "dependencies": [
+          {
+            "provider": "conformance-provider",
+            "claim": "later",
+            "revision": 2,
+            "digest": "sha256:6d586e68e8de996023ed09b236caa41f956709564e18d2c8526ae253b35b522f"
+          }
+        ],
+        "conditions": [
+          {
+            "condition_id": "k-tree",
+            "kind": "repository_tree",
+            "repository": "repo-a",
+            "expected": "t1"
+          }
+        ]
+      },
+      "capture": {
+        "d_c-future": "/result/outcome/reference/digest"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.claim.propose",
+      "command_id": "claim-propose-later",
+      "subject": {
+        "kind": "knowledge.claim",
+        "id": "later"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.claim",
+            "id": "later"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "plane": "observed",
+        "statement": {
+          "subject": {
+            "kind": "app.service",
+            "id": "billing"
+          },
+          "predicate": "later",
+          "value": "v1",
+          "cardinality": "single"
+        },
+        "scope": {
+          "id": "svc",
+          "qualifiers": {}
+        },
+        "support": [],
+        "derivation": {
+          "kind": "deterministic",
+          "inputs": []
+        },
+        "conditions": [
+          {
+            "condition_id": "k-tree",
+            "kind": "repository_tree",
+            "repository": "repo-a",
+            "expected": "t1"
+          }
+        ]
+      },
+      "capture": {
+        "d_later": "/result/outcome/reference/digest"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.claim.revise",
+      "command_id": "claim-revise-later",
+      "subject": {
+        "kind": "knowledge.claim",
+        "id": "later"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.claim",
+            "id": "later"
+          },
+          "revision": 1
+        }
+      ],
+      "payload": {
+        "plane": "observed",
+        "statement": {
+          "subject": {
+            "kind": "app.service",
+            "id": "billing"
+          },
+          "predicate": "later",
+          "value": "v2",
+          "cardinality": "single"
+        },
+        "scope": {
+          "id": "svc",
+          "qualifiers": {}
+        },
+        "support": [],
+        "derivation": {
+          "kind": "deterministic",
+          "inputs": []
+        },
+        "conditions": [
+          {
+            "condition_id": "k-tree",
+            "kind": "repository_tree",
+            "repository": "repo-a",
+            "expected": "t1"
+          }
+        ],
+        "supersedes": {
+          "revision": 1,
+          "digest": {
+            "$var": "d_later"
+          }
+        }
+      },
+      "capture": {
+        "d_later_2": "/result/outcome/reference/digest"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.applicability.evaluate",
+      "command_id": "applicability-evaluate-ev-later-2",
+      "subject": {
+        "kind": "knowledge.evaluation",
+        "id": "ev-later-2"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.evaluation",
+            "id": "ev-later-2"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "claim": {
+          "provider": "conformance-provider",
+          "claim": "later",
+          "revision": 2,
+          "digest": {
+            "$var": "d_later_2"
+          }
+        },
+        "target": {
+          "repositories": [
+            {
+              "id": "repo-a",
+              "tree": "t1"
+            }
+          ],
+          "completeness": "complete"
+        }
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "result": "applicable"
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.applicability.evaluate",
+      "command_id": "applicability-evaluate-ev-future",
+      "subject": {
+        "kind": "knowledge.evaluation",
+        "id": "ev-future"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.evaluation",
+            "id": "ev-future"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "claim": {
+          "provider": "conformance-provider",
+          "claim": "c-future",
+          "revision": 1,
+          "digest": {
+            "$var": "d_c-future"
+          }
+        },
+        "target": {
+          "repositories": [
+            {
+              "id": "repo-a",
+              "tree": "t1"
+            }
+          ],
+          "completeness": "complete"
+        }
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "result": "needs_check",
+            "findings": [
+              {
+                "condition_id": "k-tree",
+                "finding": "match"
+              },
+              {
+                "dependency": {
+                  "provider": "conformance-provider",
+                  "claim": "later",
+                  "revision": 2,
+                  "digest": "sha256:6d586e68e8de996023ed09b236caa41f956709564e18d2c8526ae253b35b522f"
+                },
+                "finding": "unchecked",
+                "reason": "unresolved"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.claim.propose",
+      "command_id": "claim-propose-self",
+      "subject": {
+        "kind": "knowledge.claim",
+        "id": "self"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.claim",
+            "id": "self"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "plane": "observed",
+        "statement": {
+          "subject": {
+            "kind": "app.service",
+            "id": "billing"
+          },
+          "predicate": "self",
+          "value": "v1",
+          "cardinality": "single"
+        },
+        "scope": {
+          "id": "svc",
+          "qualifiers": {}
+        },
+        "support": [],
+        "derivation": {
+          "kind": "deterministic",
+          "inputs": []
+        },
+        "conditions": [
+          {
+            "condition_id": "k-tree",
+            "kind": "repository_tree",
+            "repository": "repo-a",
+            "expected": "t1"
+          }
+        ]
+      },
+      "capture": {
+        "d_self": "/result/outcome/reference/digest"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.claim.revise",
+      "command_id": "claim-revise-self",
+      "subject": {
+        "kind": "knowledge.claim",
+        "id": "self"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.claim",
+            "id": "self"
+          },
+          "revision": 1
+        }
+      ],
+      "payload": {
+        "plane": "observed",
+        "statement": {
+          "subject": {
+            "kind": "app.service",
+            "id": "billing"
+          },
+          "predicate": "self",
+          "value": "v2",
+          "cardinality": "single"
+        },
+        "scope": {
+          "id": "svc",
+          "qualifiers": {}
+        },
+        "support": [],
+        "derivation": {
+          "kind": "deterministic",
+          "inputs": []
+        },
+        "dependencies": [
+          {
+            "provider": "conformance-provider",
+            "claim": "self",
+            "revision": 2,
+            "digest": "sha256:6d586e68e8de996023ed09b236caa41f956709564e18d2c8526ae253b35b522f"
+          }
+        ],
+        "conditions": [
+          {
+            "condition_id": "k-tree",
+            "kind": "repository_tree",
+            "repository": "repo-a",
+            "expected": "t1"
+          }
+        ],
+        "supersedes": {
+          "revision": 1,
+          "digest": {
+            "$var": "d_self"
+          }
+        }
+      },
+      "capture": {
+        "d_self_2": "/result/outcome/reference/digest"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.applicability.evaluate",
+      "command_id": "applicability-evaluate-ev-self-1",
+      "subject": {
+        "kind": "knowledge.evaluation",
+        "id": "ev-self-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.evaluation",
+            "id": "ev-self-1"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "claim": {
+          "provider": "conformance-provider",
+          "claim": "self",
+          "revision": 1,
+          "digest": {
+            "$var": "d_self"
+          }
+        },
+        "target": {
+          "repositories": [
+            {
+              "id": "repo-a",
+              "tree": "t1"
+            }
+          ],
+          "completeness": "complete"
+        }
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "result": "applicable"
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.applicability.evaluate",
+      "command_id": "applicability-evaluate-ev-self-2",
+      "subject": {
+        "kind": "knowledge.evaluation",
+        "id": "ev-self-2"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.evaluation",
+            "id": "ev-self-2"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "claim": {
+          "provider": "conformance-provider",
+          "claim": "self",
+          "revision": 2,
+          "digest": {
+            "$var": "d_self_2"
+          }
+        },
+        "target": {
+          "repositories": [
+            {
+              "id": "repo-a",
+              "tree": "t1"
+            }
+          ],
+          "completeness": "complete"
+        }
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "result": "needs_check",
+            "findings": [
+              {
+                "condition_id": "k-tree",
+                "finding": "match"
+              },
+              {
+                "dependency": {
+                  "provider": "conformance-provider",
+                  "claim": "self",
+                  "revision": 2,
+                  "digest": "sha256:6d586e68e8de996023ed09b236caa41f956709564e18d2c8526ae253b35b522f"
+                },
+                "finding": "unchecked",
+                "reason": "self_reference"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.claim.propose",
+      "command_id": "claim-propose-rself",
+      "subject": {
+        "kind": "knowledge.claim",
+        "id": "rself"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.claim",
+            "id": "rself"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "plane": "observed",
+        "statement": {
+          "subject": {
+            "kind": "app.service",
+            "id": "billing"
+          },
+          "predicate": "remote_self",
+          "value": "v1",
+          "cardinality": "single"
+        },
+        "scope": {
+          "id": "svc",
+          "qualifiers": {}
+        },
+        "support": [],
+        "derivation": {
+          "kind": "deterministic",
+          "inputs": []
+        },
+        "conditions": [
+          {
+            "condition_id": "k-tree",
+            "kind": "repository_tree",
+            "repository": "repo-a",
+            "expected": "t1"
+          }
+        ]
+      },
+      "capture": {
+        "d_rself": "/result/outcome/reference/digest"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.claim.revise",
+      "command_id": "claim-revise-rself",
+      "subject": {
+        "kind": "knowledge.claim",
+        "id": "rself"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.claim",
+            "id": "rself"
+          },
+          "revision": 1
+        }
+      ],
+      "payload": {
+        "plane": "observed",
+        "statement": {
+          "subject": {
+            "kind": "app.service",
+            "id": "billing"
+          },
+          "predicate": "remote_self",
+          "value": "v2",
+          "cardinality": "single"
+        },
+        "scope": {
+          "id": "svc",
+          "qualifiers": {}
+        },
+        "support": [],
+        "derivation": {
+          "kind": "deterministic",
+          "inputs": []
+        },
+        "dependencies": [
+          {
+            "provider": "knowledge-other",
+            "claim": "rself",
+            "revision": 2,
+            "digest": "sha256:6d586e68e8de996023ed09b236caa41f956709564e18d2c8526ae253b35b522f"
+          }
+        ],
+        "conditions": [
+          {
+            "condition_id": "k-tree",
+            "kind": "repository_tree",
+            "repository": "repo-a",
+            "expected": "t1"
+          }
+        ],
+        "supersedes": {
+          "revision": 1,
+          "digest": {
+            "$var": "d_rself"
+          }
+        }
+      },
+      "capture": {
+        "d_rself_2": "/result/outcome/reference/digest"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.applicability.evaluate",
+      "command_id": "applicability-evaluate-ev-rself-2",
+      "subject": {
+        "kind": "knowledge.evaluation",
+        "id": "ev-rself-2"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.evaluation",
+            "id": "ev-rself-2"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "claim": {
+          "provider": "conformance-provider",
+          "claim": "rself",
+          "revision": 2,
+          "digest": {
+            "$var": "d_rself_2"
+          }
+        },
+        "target": {
+          "repositories": [
+            {
+              "id": "repo-a",
+              "tree": "t1"
+            }
+          ],
+          "completeness": "complete"
+        }
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "result": "needs_check",
+            "findings": [
+              {
+                "condition_id": "k-tree",
+                "finding": "match"
+              },
+              {
+                "dependency": {
+                  "provider": "knowledge-other",
+                  "claim": "rself",
+                  "revision": 2,
+                  "digest": "sha256:6d586e68e8de996023ed09b236caa41f956709564e18d2c8526ae253b35b522f"
+                },
+                "finding": "unchecked",
+                "reason": "remote_dependency"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.claim.propose",
+      "command_id": "claim-propose-c-pending",
+      "subject": {
+        "kind": "knowledge.claim",
+        "id": "c-pending"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.claim",
+            "id": "c-pending"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "plane": "observed",
+        "statement": {
+          "subject": {
+            "kind": "app.service",
+            "id": "billing"
+          },
+          "predicate": "pending",
+          "value": "v1",
+          "cardinality": "single"
+        },
+        "scope": {
+          "id": "svc",
+          "qualifiers": {}
+        },
+        "support": [],
+        "derivation": {
+          "kind": "deterministic",
+          "inputs": []
+        },
+        "dependencies": [
+          {
+            "provider": "conformance-provider",
+            "claim": "E",
+            "revision": 1,
+            "digest": {
+              "$var": "d_E"
+            }
+          }
+        ],
+        "conditions": [
+          {
+            "condition_id": "k-tree",
+            "kind": "repository_tree",
+            "repository": "repo-a",
+            "expected": "t1"
+          }
+        ]
+      },
+      "capture": {
+        "d_c-pending": "/result/outcome/reference/digest"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.applicability.evaluate",
+      "command_id": "applicability-evaluate-ev-pending-1",
+      "subject": {
+        "kind": "knowledge.evaluation",
+        "id": "ev-pending-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.evaluation",
+            "id": "ev-pending-1"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "claim": {
+          "provider": "conformance-provider",
+          "claim": "c-pending",
+          "revision": 1,
+          "digest": {
+            "$var": "d_c-pending"
+          }
+        },
+        "target": {
+          "repositories": [
+            {
+              "id": "repo-a",
+              "tree": "t1"
+            }
+          ],
+          "completeness": "complete"
+        }
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "result": "needs_check",
+            "findings": [
+              {
+                "condition_id": "k-tree",
+                "finding": "match"
+              },
+              {
+                "dependency": {
+                  "provider": "conformance-provider",
+                  "claim": "E",
+                  "revision": 1,
+                  "digest": {
+                    "$var": "d_E"
+                  }
+                },
+                "finding": "unchecked",
+                "reason": "not_evaluated"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.applicability.evaluate",
+      "command_id": "applicability-evaluate-ev-E",
+      "subject": {
+        "kind": "knowledge.evaluation",
+        "id": "ev-E"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.evaluation",
+            "id": "ev-E"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "claim": {
+          "provider": "conformance-provider",
+          "claim": "E",
+          "revision": 1,
+          "digest": {
+            "$var": "d_E"
+          }
+        },
+        "target": {
+          "repositories": [
+            {
+              "id": "repo-a",
+              "tree": "t1"
+            }
+          ],
+          "completeness": "complete"
+        }
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "result": "unknown"
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.applicability.evaluate",
+      "command_id": "applicability-evaluate-ev-pending-2",
+      "subject": {
+        "kind": "knowledge.evaluation",
+        "id": "ev-pending-2"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.evaluation",
+            "id": "ev-pending-2"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "claim": {
+          "provider": "conformance-provider",
+          "claim": "c-pending",
+          "revision": 1,
+          "digest": {
+            "$var": "d_c-pending"
+          }
+        },
+        "target": {
+          "repositories": [
+            {
+              "id": "repo-a",
+              "tree": "t1"
+            }
+          ],
+          "completeness": "complete"
+        }
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "result": "needs_check",
+            "findings": [
+              {
+                "condition_id": "k-tree",
+                "finding": "match"
+              },
+              {
+                "dependency": {
+                  "provider": "conformance-provider",
+                  "claim": "E",
+                  "revision": 1,
+                  "digest": {
+                    "$var": "d_E"
+                  }
+                },
+                "finding": "unchecked",
+                "reason": "not_established"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.claim.propose",
+      "command_id": "claim-propose-c-malformed",
+      "subject": {
+        "kind": "knowledge.claim",
+        "id": "c-malformed"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.claim",
+            "id": "c-malformed"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "plane": "observed",
+        "statement": {
+          "subject": {
+            "kind": "app.service",
+            "id": "billing"
+          },
+          "predicate": "malformed",
+          "value": "v1",
+          "cardinality": "single"
+        },
+        "scope": {
+          "id": "svc",
+          "qualifiers": {}
+        },
+        "support": [],
+        "derivation": {
+          "kind": "deterministic",
+          "inputs": []
+        },
+        "dependencies": [
+          {
+            "provider": "conformance-provider",
+            "claim": "D",
+            "revision": 1,
+            "digest": "sha256:not-hex"
+          }
+        ]
+      },
+      "expect": {
+        "error": "invalid_envelope"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.applicability.evaluate",
+      "command_id": "applicability-evaluate-ev-foreign",
+      "subject": {
+        "kind": "knowledge.evaluation",
+        "id": "ev-foreign"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.evaluation",
+            "id": "ev-foreign"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "claim": {
+          "provider": "knowledge-other",
+          "claim": "D",
+          "revision": 1,
+          "digest": {
+            "$var": "d_D"
+          }
+        },
+        "target": {
+          "repositories": [
+            {
+              "id": "repo-a",
+              "tree": "t1"
+            }
+          ],
+          "completeness": "complete"
+        }
+      },
+      "expect": {
+        "error": "not_found"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.conflict.open",
+      "command_id": "conflict-open-x-foreign",
+      "subject": {
+        "kind": "knowledge.conflict",
+        "id": "x-foreign"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.conflict",
+            "id": "x-foreign"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "revisions": [
+          {
+            "provider": "knowledge-other",
+            "claim": "D",
+            "revision": 1,
+            "digest": {
+              "$var": "d_D"
+            }
+          },
+          {
+            "provider": "conformance-provider",
+            "claim": "E",
+            "revision": 1,
+            "digest": {
+              "$var": "d_E"
+            }
+          }
+        ]
+      },
+      "expect": {
+        "error": "not_found"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "core.grant.issue",
+      "command_id": "grant-issue-g-evaluator",
+      "subject": {
+        "kind": "core.grant",
+        "id": "g-evaluator"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core.grant",
+            "id": "g-evaluator"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "holder": "evaluator",
+        "audience": "conformance-provider",
+        "rights": [
+          "knowledge.propose",
+          "knowledge.read"
+        ],
+        "resources": [
+          {
+            "kind": "knowledge.claim",
+            "id": "c-exact"
+          },
+          {
+            "kind": "knowledge.evaluation"
+          }
+        ],
+        "delegation": {
+          "allowed": false,
+          "max_depth": 0
+        }
+      }
+    },
+    {
+      "step": "stop"
+    },
+    {
+      "step": "start",
+      "config": {
+        "principal": "evaluator",
+        "authority_principals": [
+          "owner"
+        ]
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.grants"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "knowledge",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.applicability.evaluate",
+      "command_id": "applicability-evaluate-ev-unread-dependency",
+      "subject": {
+        "kind": "knowledge.evaluation",
+        "id": "ev-unread-dependency"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.evaluation",
+            "id": "ev-unread-dependency"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "claim": {
+          "provider": "conformance-provider",
+          "claim": "c-exact",
+          "revision": 1,
+          "digest": {
+            "$var": "d_c-exact"
+          }
+        },
+        "target": {
+          "repositories": [
+            {
+              "id": "repo-a",
+              "tree": "t1"
+            }
+          ],
+          "completeness": "complete"
+        }
+      },
+      "set": {
+        "grant": "g-evaluator"
+      },
+      "expect": {
+        "error": "permission_denied",
+        "details": {
+          "reason": "out_of_scope"
+        }
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

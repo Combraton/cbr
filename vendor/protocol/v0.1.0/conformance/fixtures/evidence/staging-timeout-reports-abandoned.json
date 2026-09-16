@@ -1,0 +1,229 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "evidence.staging-timeout-reports-abandoned",
+  "version": 1,
+  "title": "A staged upload past the scripted staging timeout is reported abandoned with reason staging_expired, never not_found",
+  "requirements": [
+    "EVD-2"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/EVIDENCE.md#4-upload-and-seal-owner-decision-m4-q1",
+    "docs/spec/profiles/EVIDENCE.md#14-conformance-and-test-controls"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "evidence",
+      "major": 1
+    }
+  ],
+  "features": [
+    "core.events"
+  ],
+  "requires_controls": [
+    "clock.file",
+    "evidence.store"
+  ],
+  "polarity": "positive",
+  "kills": [],
+  "steps": [
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ],
+        "clock": {
+          "controlled": "2030-01-01T00:00:00Z"
+        },
+        "evidence_store": {
+          "staging_timeout_seconds": 30
+        }
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "evidence",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": [
+              "evidence.manifests",
+              "evidence.retention_control"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.upload.prepare",
+      "command_id": "prepare-s-1",
+      "subject": {
+        "kind": "evidence.artifact",
+        "id": "s-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.artifact",
+            "id": "s-1"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "digest": "sha256:e602609c65baa533e3e8e028ee8eb7272d7c4c8a4ce6945a176f02fd8d6b8fe5",
+        "size": 14,
+        "media_type": "text/plain",
+        "producer": {
+          "producer_id": "fixture-producer"
+        },
+        "source": {
+          "kind": "test_report",
+          "id": "run-1"
+        },
+        "scope": "project-a",
+        "capture": {
+          "captured_at": "2030-01-01T00:00:00Z",
+          "uncertainty": {
+            "not_before": "2029-12-31T23:59:58Z",
+            "not_after": "2030-01-01T00:00:00Z"
+          },
+          "anchors": [
+            {
+              "kind": "code_tree",
+              "id": "tree-1"
+            }
+          ]
+        },
+        "coverage": {
+          "completeness": "complete"
+        },
+        "retention_class": "standard"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.upload.append",
+      "command_id": "append-s-1-0",
+      "subject": {
+        "kind": "evidence.artifact",
+        "id": "s-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.artifact",
+            "id": "s-1"
+          },
+          "revision": 1
+        }
+      ],
+      "payload": {
+        "offset": 0,
+        "data_base64": "bmV2ZXI="
+      }
+    },
+    {
+      "step": "set_clock",
+      "instant": "2030-01-01T00:00:30Z"
+    },
+    {
+      "step": "query",
+      "operation": "evidence.inspect",
+      "payload": {
+        "artifact": {
+          "kind": "evidence.artifact",
+          "id": "s-1"
+        }
+      },
+      "expect": {
+        "ok": {
+          "state": "abandoned",
+          "abandoned_reason": "staging_expired",
+          "revision": 3
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.upload.append",
+      "command_id": "append-s-1-5",
+      "subject": {
+        "kind": "evidence.artifact",
+        "id": "s-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.artifact",
+            "id": "s-1"
+          },
+          "revision": 3
+        }
+      ],
+      "payload": {
+        "offset": 5,
+        "data_base64": "IGZpbmlzaGVk"
+      },
+      "expect": {
+        "error": "not_found"
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core.events.read",
+      "payload": {
+        "from": "start",
+        "limit": 100,
+        "kinds": [
+          "evidence.artifact"
+        ]
+      },
+      "expect": {
+        "ok": {
+          "items": {
+            "$contains": {
+              "event": {
+                "type": "evidence.artifact.abandoned",
+                "origin": "provider",
+                "revision": 3,
+                "payload": {
+                  "reason": "staging_expired"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

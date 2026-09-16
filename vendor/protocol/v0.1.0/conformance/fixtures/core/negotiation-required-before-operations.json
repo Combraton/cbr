@@ -1,0 +1,44 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "core.negotiation.required-before-operations",
+  "version": 1,
+  "title": "Operations other than describe and negotiate need negotiation first",
+  "requirements": [
+    "CORE-3"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/CORE.md#3-sessions"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "core-test",
+      "major": 1
+    }
+  ],
+  "polarity": "negative",
+  "kills": [
+    "no-negotiation-gate"
+  ],
+  "steps": [
+    {
+      "step": "start"
+    },
+    {
+      "step": "query",
+      "operation": "core-test.subject.get",
+      "payload": {
+        "subject": {
+          "kind": "core-test.subject",
+          "id": "s-1"
+        }
+      },
+      "expect": {
+        "error": "negotiation_required"
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

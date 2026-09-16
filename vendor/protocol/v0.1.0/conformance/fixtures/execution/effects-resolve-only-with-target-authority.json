@@ -1,0 +1,426 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "execution.effects-resolve-only-with-target-authority",
+  "version": 1,
+  "title": "Effect references replay unchanged and resolve only for principals that may read the execution; another principal's effect and a nonexistent one are refused alike",
+  "requirements": [
+    "CMP-6",
+    "EFF-1",
+    "CORE-12"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/CORE.md#19-effects-and-obligations",
+    "docs/spec/profiles/CORE.md#11-acknowledgment-and-outcome"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "execution",
+      "major": 1
+    }
+  ],
+  "features": [
+    "core.events",
+    "core.capabilities",
+    "core.effects",
+    "core.grants"
+  ],
+  "requires_controls": [
+    "executor.script"
+  ],
+  "polarity": "negative",
+  "kills": [
+    "effect-visible-across-principals",
+    "replay-effect-refs-differ"
+  ],
+  "kill_expectations": {
+    "effect-visible-across-principals": {
+      "step": 13,
+      "reason_contains": "expected error permission_denied"
+    },
+    "replay-effect-refs-differ": {
+      "step": 9,
+      "reason_contains": "acknowledgment"
+    }
+  },
+  "steps": [
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ],
+        "executor": {
+          "default_script": [
+            {
+              "deliver": "provider_ack_id"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.capabilities",
+              "core.effects",
+              "core.grants"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "execution",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "core.grant.issue",
+      "command_id": "issue-g-1",
+      "subject": {
+        "kind": "core.grant",
+        "id": "g-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core.grant",
+            "id": "g-1"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "holder": "agent-1",
+        "audience": "conformance-provider",
+        "rights": [
+          "execution.submit",
+          "execution.read"
+        ],
+        "resources": [
+          {
+            "kind": "execution.execution",
+            "id_prefix": "a1-"
+          }
+        ],
+        "delegation": {
+          "allowed": false,
+          "max_depth": 0
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "core.grant.issue",
+      "command_id": "issue-g-2",
+      "subject": {
+        "kind": "core.grant",
+        "id": "g-2"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core.grant",
+            "id": "g-2"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "holder": "agent-2",
+        "audience": "conformance-provider",
+        "rights": [
+          "execution.read"
+        ],
+        "resources": [
+          {
+            "kind": "execution.execution",
+            "id_prefix": "a2-"
+          }
+        ],
+        "delegation": {
+          "allowed": false,
+          "max_depth": 0
+        }
+      }
+    },
+    {
+      "step": "stop"
+    },
+    {
+      "step": "start",
+      "config": {
+        "principal": "agent-1",
+        "authority_principals": [
+          "owner"
+        ],
+        "executor": {
+          "default_script": [
+            {
+              "deliver": "provider_ack_id"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.capabilities",
+              "core.effects",
+              "core.grants"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "execution",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "execution.submit",
+      "command_id": "submit-a1-e",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "a1-e"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "a1-e"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "brief": {
+          "digest": "sha256:abababababababababababababababababababababababababababababababab",
+          "media_type": "text/plain"
+        }
+      },
+      "expect": {
+        "ok": {
+          "acknowledgment": {
+            "effect_refs": [
+              "a1-e.delivery-1"
+            ]
+          }
+        }
+      },
+      "set": {
+        "grant": "g-1"
+      },
+      "capture": {
+        "ack": "/result/acknowledgment"
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core.effects.get",
+      "payload": {
+        "effect": "a1-e.delivery-1"
+      },
+      "expect": {
+        "ok": {
+          "effect": {
+            "id": "a1-e.delivery-1"
+          }
+        }
+      },
+      "set": {
+        "grant": "g-1"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "execution.submit",
+      "command_id": "submit-a1-e",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "a1-e"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "a1-e"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "brief": {
+          "digest": "sha256:abababababababababababababababababababababababababababababababab",
+          "media_type": "text/plain"
+        }
+      },
+      "expect": {
+        "ok": {
+          "replay": true,
+          "acknowledgment": {
+            "$var": "ack"
+          }
+        }
+      },
+      "set": {
+        "grant": "g-1"
+      }
+    },
+    {
+      "step": "stop"
+    },
+    {
+      "step": "start",
+      "config": {
+        "principal": "agent-2",
+        "authority_principals": [
+          "owner"
+        ],
+        "executor": {
+          "default_script": [
+            {
+              "deliver": "provider_ack_id"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.capabilities",
+              "core.effects",
+              "core.grants"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "execution",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core.effects.get",
+      "payload": {
+        "effect": "a1-e.delivery-1"
+      },
+      "expect": {
+        "error": "permission_denied",
+        "details": {
+          "reason": "out_of_scope"
+        }
+      },
+      "set": {
+        "grant": "g-2"
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core.effects.get",
+      "payload": {
+        "effect": "a2-none.delivery-1"
+      },
+      "expect": {
+        "error": "permission_denied",
+        "details": {
+          "reason": "out_of_scope"
+        }
+      },
+      "set": {
+        "grant": "g-2"
+      }
+    },
+    {
+      "step": "query",
+      "operation": "execution.inspect",
+      "payload": {
+        "execution": "a1-e"
+      },
+      "expect": {
+        "error": "permission_denied",
+        "details": {
+          "reason": "out_of_scope"
+        }
+      },
+      "set": {
+        "grant": "g-2"
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

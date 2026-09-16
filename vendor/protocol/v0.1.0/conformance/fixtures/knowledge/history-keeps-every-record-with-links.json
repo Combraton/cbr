@@ -1,0 +1,606 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "knowledge.history-keeps-every-record-with-links",
+  "version": 1,
+  "title": "History returns every revision, decision, evaluation and conflict in recorded order with stream positions and explicit supersession links; a superseded revision stays inspectable, and unknown validity stays unknown",
+  "requirements": [
+    "KNW-8"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/KNOWLEDGE.md#9-history-knw-8-m5-q8"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "knowledge",
+      "major": 1
+    }
+  ],
+  "features": [
+    "core.events",
+    "core.grants"
+  ],
+  "polarity": "negative",
+  "kills": [
+    "history-drops-superseded",
+    "validity-filled-from-recorded"
+  ],
+  "steps": [
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ]
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.grants"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "knowledge",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.authority.bind",
+      "command_id": "authority-bind-svc",
+      "subject": {
+        "kind": "knowledge.authority",
+        "id": "svc"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.authority",
+            "id": "svc"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "authority": "owner"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.claim.propose",
+      "command_id": "claim-propose-h",
+      "subject": {
+        "kind": "knowledge.claim",
+        "id": "h"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.claim",
+            "id": "h"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "plane": "normative",
+        "statement": {
+          "subject": {
+            "kind": "app.service",
+            "id": "billing"
+          },
+          "predicate": "queue",
+          "value": "v1",
+          "cardinality": "single"
+        },
+        "scope": {
+          "id": "svc",
+          "qualifiers": {}
+        },
+        "support": [],
+        "derivation": {
+          "kind": "deterministic",
+          "inputs": []
+        }
+      },
+      "capture": {
+        "d_h": "/result/outcome/reference/digest"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.claim.revise",
+      "command_id": "claim-revise-h",
+      "subject": {
+        "kind": "knowledge.claim",
+        "id": "h"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.claim",
+            "id": "h"
+          },
+          "revision": 1
+        }
+      ],
+      "payload": {
+        "plane": "normative",
+        "statement": {
+          "subject": {
+            "kind": "app.service",
+            "id": "billing"
+          },
+          "predicate": "queue",
+          "value": "v2",
+          "cardinality": "single"
+        },
+        "scope": {
+          "id": "svc",
+          "qualifiers": {}
+        },
+        "support": [],
+        "derivation": {
+          "kind": "deterministic",
+          "inputs": []
+        },
+        "supersedes": {
+          "revision": 1,
+          "digest": {
+            "$var": "d_h"
+          }
+        }
+      },
+      "capture": {
+        "d_h_2": "/result/outcome/reference/digest"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.claim.propose",
+      "command_id": "claim-propose-h-other",
+      "subject": {
+        "kind": "knowledge.claim",
+        "id": "h-other"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.claim",
+            "id": "h-other"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "plane": "normative",
+        "statement": {
+          "subject": {
+            "kind": "app.service",
+            "id": "billing"
+          },
+          "predicate": "queue",
+          "value": "v3",
+          "cardinality": "single"
+        },
+        "scope": {
+          "id": "svc",
+          "qualifiers": {}
+        },
+        "support": [],
+        "derivation": {
+          "kind": "deterministic",
+          "inputs": []
+        }
+      },
+      "capture": {
+        "d_h-other": "/result/outcome/reference/digest"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.decision.record",
+      "command_id": "decision-record-hd-1",
+      "subject": {
+        "kind": "knowledge.decision",
+        "id": "hd-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.decision",
+            "id": "hd-1"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "claim": {
+          "provider": "conformance-provider",
+          "claim": "h",
+          "revision": 1,
+          "digest": {
+            "$var": "d_h"
+          }
+        },
+        "decision": "accepted_for_use",
+        "permitted_use": "binding",
+        "validation_basis": {
+          "evidence": [],
+          "receipts": []
+        },
+        "rationale": "adopt"
+      },
+      "set": {
+        "authority_epoch": 1
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.decision.record",
+      "command_id": "decision-record-hd-2",
+      "subject": {
+        "kind": "knowledge.decision",
+        "id": "hd-2"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.decision",
+            "id": "hd-2"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "claim": {
+          "provider": "conformance-provider",
+          "claim": "h",
+          "revision": 1,
+          "digest": {
+            "$var": "d_h"
+          }
+        },
+        "decision": "superseded",
+        "supersedes_decision": "hd-1",
+        "validation_basis": {
+          "evidence": [],
+          "receipts": []
+        },
+        "rationale": "replaced by revision 2"
+      },
+      "set": {
+        "authority_epoch": 1
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.applicability.evaluate",
+      "command_id": "applicability-evaluate-he-1",
+      "subject": {
+        "kind": "knowledge.evaluation",
+        "id": "he-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.evaluation",
+            "id": "he-1"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "claim": {
+          "provider": "conformance-provider",
+          "claim": "h",
+          "revision": 2,
+          "digest": {
+            "$var": "d_h_2"
+          }
+        },
+        "target": {
+          "repositories": [
+            {
+              "id": "repo-a",
+              "tree": "t1"
+            }
+          ],
+          "completeness": "complete"
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.applicability.evaluate",
+      "command_id": "applicability-evaluate-he-2",
+      "subject": {
+        "kind": "knowledge.evaluation",
+        "id": "he-2"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.evaluation",
+            "id": "he-2"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "claim": {
+          "provider": "conformance-provider",
+          "claim": "h",
+          "revision": 2,
+          "digest": {
+            "$var": "d_h_2"
+          }
+        },
+        "target": {
+          "repositories": [
+            {
+              "id": "repo-a",
+              "tree": "t1"
+            }
+          ],
+          "completeness": "complete"
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.conflict.open",
+      "command_id": "conflict-open-hx",
+      "subject": {
+        "kind": "knowledge.conflict",
+        "id": "hx"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.conflict",
+            "id": "hx"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "revisions": [
+          {
+            "provider": "conformance-provider",
+            "claim": "h",
+            "revision": 2,
+            "digest": {
+              "$var": "d_h_2"
+            }
+          },
+          {
+            "provider": "conformance-provider",
+            "claim": "h-other",
+            "revision": 1,
+            "digest": {
+              "$var": "d_h-other"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.conflict.resolve",
+      "command_id": "conflict-resolve-hx",
+      "subject": {
+        "kind": "knowledge.conflict",
+        "id": "hx"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.conflict",
+            "id": "hx"
+          },
+          "revision": 1
+        }
+      ],
+      "payload": {
+        "resolution": "select",
+        "selected": {
+          "provider": "conformance-provider",
+          "claim": "h",
+          "revision": 2,
+          "digest": {
+            "$var": "d_h_2"
+          }
+        },
+        "rationale": "revision 2 is current"
+      },
+      "set": {
+        "authority_epoch": 1
+      }
+    },
+    {
+      "step": "query",
+      "operation": "knowledge.claim.history",
+      "payload": {
+        "claim": "h"
+      },
+      "expect": {
+        "ok": {
+          "claim": "h",
+          "revisions": [
+            {
+              "reference": {
+                "provider": "conformance-provider",
+                "claim": "h",
+                "revision": 1,
+                "digest": {
+                  "$var": "d_h"
+                }
+              },
+              "producer": "owner",
+              "supersedes": null,
+              "recorded_at": {
+                "$type": "string"
+              },
+              "position": {
+                "epoch": 1,
+                "sequence": {
+                  "$type": "integer"
+                }
+              }
+            },
+            {
+              "reference": {
+                "provider": "conformance-provider",
+                "claim": "h",
+                "revision": 2,
+                "digest": {
+                  "$var": "d_h_2"
+                }
+              },
+              "producer": "owner",
+              "supersedes": {
+                "revision": 1,
+                "digest": {
+                  "$var": "d_h"
+                }
+              },
+              "position": {
+                "$type": "object"
+              }
+            }
+          ],
+          "decisions": [
+            {
+              "decision": "hd-1",
+              "claim": {
+                "provider": "conformance-provider",
+                "claim": "h",
+                "revision": 1,
+                "digest": {
+                  "$var": "d_h"
+                }
+              },
+              "value": "accepted_for_use",
+              "permitted_use": "binding",
+              "decider": "owner",
+              "author_is_decider": true,
+              "epoch": 1,
+              "supersedes_decision": null,
+              "position": {
+                "$type": "object"
+              }
+            },
+            {
+              "decision": "hd-2",
+              "claim": {
+                "provider": "conformance-provider",
+                "claim": "h",
+                "revision": 1,
+                "digest": {
+                  "$var": "d_h"
+                }
+              },
+              "value": "superseded",
+              "permitted_use": null,
+              "supersedes_decision": "hd-1",
+              "position": {
+                "$type": "object"
+              }
+            }
+          ],
+          "evaluations": [
+            {
+              "evaluation": "he-1",
+              "claim": {
+                "provider": "conformance-provider",
+                "claim": "h",
+                "revision": 2,
+                "digest": {
+                  "$var": "d_h_2"
+                }
+              },
+              "result": "unknown",
+              "supersedes_evaluation": null
+            },
+            {
+              "evaluation": "he-2",
+              "supersedes_evaluation": "he-1"
+            }
+          ],
+          "conflicts": [
+            {
+              "conflict": "hx",
+              "kind": "conflict",
+              "status": "potential",
+              "state": "resolved",
+              "resolution": "select"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "knowledge.claim.inspect",
+      "payload": {
+        "claim": "h",
+        "revision": 1
+      },
+      "expect": {
+        "ok": {
+          "record": {
+            "statement": {
+              "value": "v1"
+            },
+            "validity": null
+          },
+          "reliance": {
+            "state": "superseded",
+            "decision": "hd-2"
+          },
+          "current_revision": 2
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "knowledge.claim.history",
+      "payload": {
+        "claim": "nope"
+      },
+      "expect": {
+        "error": "not_found"
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

@@ -1,0 +1,905 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "composition.context-provider-outage-advisory-proceeds-required-waits",
+  "version": 3,
+  "title": "With the context provider down, the bound revision's currency is unavailable: required work waits at admission as unknown and advisory work proceeds with a visible gap; after the provider returns, the required work is admitted",
+  "requirements": [
+    "SCN-8",
+    "CTX-15"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/EXECUTION.md#131-context-revalidation-executioncontext_revalidation",
+    "docs/spec/profiles/CONTEXT.md#9-provider-unavailability"
+  ],
+  "role": "provider",
+  "binding": "unix",
+  "profiles": [
+    {
+      "name": "execution",
+      "major": 1
+    },
+    {
+      "name": "context",
+      "major": 1
+    },
+    {
+      "name": "evidence",
+      "major": 1
+    }
+  ],
+  "features": [
+    "core.events",
+    "core.grants",
+    "core.capabilities",
+    "core.effects",
+    "execution.context",
+    "execution.context_revalidation"
+  ],
+  "requires_controls": [
+    "context.script",
+    "clock.file",
+    "executor.script"
+  ],
+  "polarity": "negative",
+  "kills": [
+    "context-outage-fails-open"
+  ],
+  "steps": [
+    {
+      "step": "start_participant",
+      "name": "evd",
+      "config": {
+        "provider_id": "evidence-1",
+        "authority_principals": [
+          "owner"
+        ],
+        "clock": {
+          "controlled": "2030-01-01T00:00:00Z"
+        }
+      },
+      "credential_principals": [
+        "ctx-service",
+        "exec-1"
+      ]
+    },
+    {
+      "step": "start_participant",
+      "name": "exe",
+      "config": {
+        "provider_id": "executor-1",
+        "authority_principals": [
+          "owner"
+        ],
+        "clock": {
+          "controlled": "2030-01-01T00:00:00Z"
+        },
+        "executor": {
+          "observed_basis": {
+            "repositories": {
+              "repo-a": {
+                "tree": "tree-1"
+              }
+            }
+          },
+          "peers": [
+            {
+              "provider_id": "context-1",
+              "socket": {
+                "$var": "socket.ctx"
+              },
+              "credential": {
+                "$var": "credential.exec-1"
+              }
+            },
+            {
+              "provider_id": "evidence-1",
+              "socket": {
+                "$var": "socket.evd"
+              },
+              "credential": {
+                "$var": "credential.exec-1"
+              }
+            }
+          ],
+          "scripts": {
+            "e-req": [
+              {
+                "deliver": "provider_ack_id"
+              },
+              {
+                "stall": true
+              }
+            ]
+          },
+          "default_script": [
+            {
+              "stall": true
+            }
+          ]
+        }
+      },
+      "credential_principals": [
+        "ctx-service"
+      ]
+    },
+    {
+      "step": "start_participant",
+      "name": "ctx",
+      "config": {
+        "provider_id": "context-1",
+        "authority_principals": [
+          "owner"
+        ],
+        "clock": {
+          "controlled": "2030-01-01T00:00:00Z"
+        },
+        "context": {
+          "scripts": {
+            "r-1": [
+              {
+                "section": {
+                  "section_id": "s-1",
+                  "item_id": "i-1",
+                  "label": "source_inspected",
+                  "content": "fn main() {}",
+                  "source": {
+                    "repository": "repo-a",
+                    "path": "src/i-1",
+                    "tree": "tree-1"
+                  }
+                }
+              },
+              {
+                "conditions": [
+                  {
+                    "condition_id": "k-1",
+                    "kind": "repository_tree",
+                    "repository": "repo-a",
+                    "expected": "tree-1"
+                  }
+                ]
+              },
+              {
+                "publish": {}
+              }
+            ]
+          },
+          "evidence_provider": {
+            "provider_id": "evidence-1",
+            "socket": {
+              "$var": "socket.evd"
+            },
+            "credential": {
+              "$var": "credential.ctx-service"
+            },
+            "grant": "g-ctx-publish"
+          },
+          "executor": {
+            "provider_id": "executor-1",
+            "socket": {
+              "$var": "socket.exe"
+            },
+            "credential": {
+              "$var": "credential.ctx-service"
+            },
+            "grant": "g-ctx-execute"
+          }
+        }
+      },
+      "credential_principals": [
+        "exec-1"
+      ]
+    },
+    {
+      "step": "connect",
+      "session": "evd-owner",
+      "participant": "evd",
+      "principal": "owner"
+    },
+    {
+      "step": "negotiate",
+      "session": "evd-owner",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.grants"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "evidence",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "session": "evd-owner",
+      "operation": "core.grant.issue",
+      "command_id": "issue-g-ctx-publish",
+      "subject": {
+        "kind": "core.grant",
+        "id": "g-ctx-publish"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core.grant",
+            "id": "g-ctx-publish"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "holder": "ctx-service",
+        "audience": "evidence-1",
+        "rights": [
+          "evidence.publish"
+        ],
+        "resources": [
+          {
+            "kind": "evidence.artifact",
+            "id_prefix": "packet."
+          }
+        ],
+        "delegation": {
+          "allowed": false,
+          "max_depth": 0
+        }
+      },
+      "expect": {
+        "ok": {
+          "outcome": {}
+        }
+      }
+    },
+    {
+      "step": "command",
+      "session": "evd-owner",
+      "operation": "core.grant.issue",
+      "command_id": "issue-g-artifacts",
+      "subject": {
+        "kind": "core.grant",
+        "id": "g-artifacts"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core.grant",
+            "id": "g-artifacts"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "holder": "exec-1",
+        "audience": "evidence-1",
+        "rights": [
+          "evidence.read"
+        ],
+        "resources": [
+          {
+            "kind": "evidence.artifact",
+            "id_prefix": "packet."
+          }
+        ],
+        "delegation": {
+          "allowed": false,
+          "max_depth": 0
+        }
+      },
+      "expect": {
+        "ok": {
+          "outcome": {}
+        }
+      }
+    },
+    {
+      "step": "connect",
+      "session": "ctx-owner",
+      "participant": "ctx",
+      "principal": "owner"
+    },
+    {
+      "step": "negotiate",
+      "session": "ctx-owner",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.grants"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "context",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": [
+              "context.advisory",
+              "context.required_before_start",
+              "context.updates",
+              "context.shared_jobs"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "session": "ctx-owner",
+      "operation": "core.grant.issue",
+      "command_id": "issue-g-packets",
+      "subject": {
+        "kind": "core.grant",
+        "id": "g-packets"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core.grant",
+            "id": "g-packets"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "holder": "exec-1",
+        "audience": "context-1",
+        "rights": [
+          "context.packet.read"
+        ],
+        "resources": [
+          {
+            "kind": "context.packet"
+          }
+        ],
+        "delegation": {
+          "allowed": false,
+          "max_depth": 0
+        }
+      },
+      "expect": {
+        "ok": {
+          "outcome": {}
+        }
+      }
+    },
+    {
+      "step": "connect",
+      "session": "caller",
+      "participant": "exe",
+      "principal": "owner"
+    },
+    {
+      "step": "negotiate",
+      "session": "caller",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.capabilities",
+              "core.effects",
+              "core.grants"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "execution",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "execution.context",
+              "execution.context_revalidation"
+            ],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "session": "caller",
+      "operation": "core.grant.issue",
+      "command_id": "issue-g-ctx-execute",
+      "subject": {
+        "kind": "core.grant",
+        "id": "g-ctx-execute"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core.grant",
+            "id": "g-ctx-execute"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "holder": "ctx-service",
+        "audience": "executor-1",
+        "rights": [
+          "execution.submit",
+          "execution.read"
+        ],
+        "resources": [
+          {
+            "kind": "execution.execution",
+            "id_prefix": "inv-"
+          }
+        ],
+        "delegation": {
+          "allowed": false,
+          "max_depth": 0
+        }
+      },
+      "expect": {
+        "ok": {
+          "outcome": {}
+        }
+      }
+    },
+    {
+      "step": "command",
+      "session": "ctx-owner",
+      "operation": "context.request.submit",
+      "command_id": "submit-r-1",
+      "subject": {
+        "kind": "context.request",
+        "id": "r-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "context.request",
+            "id": "r-1"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "consumer": {
+          "task": "fix the build",
+          "principal": "exec-1",
+          "executor": "executor-1"
+        },
+        "basis": {
+          "repositories": [
+            {
+              "id": "repo-a",
+              "tree": "tree-1",
+              "workspace": "clean",
+              "dirty": null
+            }
+          ],
+          "completeness": "complete"
+        },
+        "items": [
+          {
+            "item_id": "i-1",
+            "selector": {
+              "kind": "path",
+              "value": "src/i-1"
+            },
+            "obligation": "required_before_start",
+            "reliance": "binding",
+            "selected_by": "owner",
+            "check": {
+              "kind": "source_included",
+              "repository": "repo-a",
+              "path": "src/i-1"
+            }
+          }
+        ],
+        "limits": {
+          "deadline": "2030-01-01T01:00:00Z",
+          "investigation": {
+            "units": "queries",
+            "amount": 10
+          },
+          "output_capacity": {
+            "units": "bytes",
+            "amount": 4096
+          }
+        }
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "state": "preparing"
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "session": "ctx-owner",
+      "operation": "context.request.inspect",
+      "payload": {
+        "request": "r-1"
+      },
+      "expect": {
+        "ok": {
+          "state": "ready"
+        }
+      },
+      "capture": {
+        "d1": "/result/packets/0/reference/artifact/digest"
+      }
+    },
+    {
+      "step": "kill_participant",
+      "name": "ctx"
+    },
+    {
+      "step": "command",
+      "session": "caller",
+      "operation": "execution.submit",
+      "command_id": "submit-e-req",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "e-req"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "e-req"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "brief": {
+          "digest": "sha256:abababababababababababababababababababababababababababababababab",
+          "media_type": "text/plain"
+        },
+        "context_bindings": [
+          {
+            "binding_id": "b-req",
+            "request": {
+              "kind": "context.request",
+              "id": "r-1"
+            },
+            "packet": {
+              "packet": {
+                "kind": "context.packet",
+                "id": "r-1"
+              },
+              "revision": 1,
+              "artifact": {
+                "provider": "evidence-1",
+                "artifact": {
+                  "kind": "evidence.artifact",
+                  "id": "packet.r-1.1"
+                },
+                "digest": {
+                  "$var": "d1"
+                }
+              }
+            },
+            "obligation": "required_before_start",
+            "selected_by": "owner",
+            "conditions": [
+              {
+                "condition_id": "k-1",
+                "kind": "repository_tree",
+                "repository": "repo-a",
+                "expected": "tree-1"
+              }
+            ],
+            "fetch": {
+              "context": {
+                "provider": "context-1",
+                "grant": "g-packets"
+              },
+              "evidence": {
+                "provider": "evidence-1",
+                "grant": "g-artifacts"
+              }
+            }
+          }
+        ]
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "admission": "queued",
+            "queue_reason": "context_binding_unknown"
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "session": "caller",
+      "operation": "execution.inspect",
+      "payload": {
+        "execution": "e-req"
+      },
+      "expect": {
+        "ok": {
+          "context": {
+            "checks": [
+              {
+                "boundary": "admission",
+                "held": true,
+                "state": "unknown",
+                "results": {
+                  "$contains": {
+                    "condition_id": "packet.facts",
+                    "result": "unavailable"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "session": "caller",
+      "operation": "execution.submit",
+      "command_id": "submit-e-adv",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "e-adv"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "e-adv"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "brief": {
+          "digest": "sha256:abababababababababababababababababababababababababababababababab",
+          "media_type": "text/plain"
+        },
+        "context_bindings": [
+          {
+            "binding_id": "b-adv",
+            "request": {
+              "kind": "context.request",
+              "id": "r-1"
+            },
+            "packet": {
+              "packet": {
+                "kind": "context.packet",
+                "id": "r-1"
+              },
+              "revision": 1,
+              "artifact": {
+                "provider": "evidence-1",
+                "artifact": {
+                  "kind": "evidence.artifact",
+                  "id": "packet.r-1.1"
+                },
+                "digest": {
+                  "$var": "d1"
+                }
+              }
+            },
+            "obligation": "advisory",
+            "selected_by": "owner",
+            "conditions": [
+              {
+                "condition_id": "k-1",
+                "kind": "repository_tree",
+                "repository": "repo-a",
+                "expected": "tree-1"
+              }
+            ],
+            "fetch": {
+              "context": {
+                "provider": "context-1",
+                "grant": "g-packets"
+              },
+              "evidence": {
+                "provider": "evidence-1",
+                "grant": "g-artifacts"
+              }
+            }
+          }
+        ]
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "admission": "admitted"
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "session": "caller",
+      "operation": "execution.inspect",
+      "payload": {
+        "execution": "e-adv"
+      },
+      "expect": {
+        "ok": {
+          "context": {
+            "bindings": [
+              {
+                "state": "gap",
+                "revalidation": "unknown"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "step": "start_participant",
+      "name": "ctx",
+      "config": {
+        "provider_id": "context-1",
+        "authority_principals": [
+          "owner"
+        ],
+        "clock": {
+          "controlled": "2030-01-01T00:00:00Z"
+        },
+        "context": {
+          "scripts": {
+            "r-1": [
+              {
+                "section": {
+                  "section_id": "s-1",
+                  "item_id": "i-1",
+                  "label": "source_inspected",
+                  "content": "fn main() {}",
+                  "source": {
+                    "repository": "repo-a",
+                    "path": "src/i-1",
+                    "tree": "tree-1"
+                  }
+                }
+              },
+              {
+                "conditions": [
+                  {
+                    "condition_id": "k-1",
+                    "kind": "repository_tree",
+                    "repository": "repo-a",
+                    "expected": "tree-1"
+                  }
+                ]
+              },
+              {
+                "publish": {}
+              }
+            ]
+          },
+          "evidence_provider": {
+            "provider_id": "evidence-1",
+            "socket": {
+              "$var": "socket.evd"
+            },
+            "credential": {
+              "$var": "credential.ctx-service"
+            },
+            "grant": "g-ctx-publish"
+          },
+          "executor": {
+            "provider_id": "executor-1",
+            "socket": {
+              "$var": "socket.exe"
+            },
+            "credential": {
+              "$var": "credential.ctx-service"
+            },
+            "grant": "g-ctx-execute"
+          }
+        }
+      },
+      "credential_principals": [
+        "exec-1"
+      ]
+    },
+    {
+      "step": "query",
+      "session": "caller",
+      "operation": "execution.inspect",
+      "payload": {
+        "execution": "e-req"
+      },
+      "expect": {
+        "ok": {
+          "admission": "admitted"
+        }
+      },
+      "note": "revalidated after the context provider returned"
+    },
+    {
+      "step": "query",
+      "session": "caller",
+      "operation": "execution.inspect",
+      "payload": {
+        "execution": "e-req"
+      },
+      "expect": {
+        "ok": {
+          "delivery": "acknowledged",
+          "context": {
+            "bindings": [
+              {
+                "revalidation": "current",
+                "state": "satisfied"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "step": "stop_participant",
+      "name": "ctx"
+    },
+    {
+      "step": "stop_participant",
+      "name": "exe"
+    },
+    {
+      "step": "stop_participant",
+      "name": "evd"
+    }
+  ]
+}

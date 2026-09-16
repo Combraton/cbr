@@ -1,0 +1,317 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "core.grants.test-clock-never-moves-backward",
+  "version": 1,
+  "title": "The controlled clock ignores backward and malformed writes, so an expired grant stays expired",
+  "requirements": [
+    "REL-12",
+    "CORE-11"
+  ],
+  "spec_refs": [
+    "docs/decisions/007-execution-test-controls.md",
+    "docs/spec/profiles/CORE.md#153-operations"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "core-test",
+      "major": 1
+    }
+  ],
+  "features": [
+    "core.grants"
+  ],
+  "requires_controls": [
+    "clock.file"
+  ],
+  "polarity": "negative",
+  "kills": [
+    "clock-follows-backward-time",
+    "clock-malformed-resets"
+  ],
+  "kill_expectations": {
+    "clock-follows-backward-time": {
+      "step": 10,
+      "reason_contains": "expected error permission_denied"
+    },
+    "clock-malformed-resets": {
+      "step": 12,
+      "reason_contains": "expected error permission_denied"
+    }
+  },
+  "steps": [
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ],
+        "clock": {
+          "controlled": "2030-01-01T00:00:00Z"
+        }
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.grants"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "core-test",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "core.grant.issue",
+      "command_id": "issue-g-1",
+      "subject": {
+        "kind": "core.grant",
+        "id": "g-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core.grant",
+            "id": "g-1"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "holder": "agent-1",
+        "audience": "conformance-provider",
+        "rights": [
+          "core-test.read",
+          "core-test.write"
+        ],
+        "resources": [
+          {
+            "kind": "core-test.subject",
+            "id_prefix": "s-"
+          }
+        ],
+        "delegation": {
+          "allowed": false,
+          "max_depth": 0
+        },
+        "expires_at": "2030-01-01T01:00:00Z"
+      }
+    },
+    {
+      "step": "stop"
+    },
+    {
+      "step": "start",
+      "config": {
+        "principal": "agent-1",
+        "authority_principals": [
+          "owner"
+        ],
+        "clock": {
+          "controlled": "2030-01-01T00:00:00Z"
+        }
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.grants"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "core-test",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "core-test.subject.put",
+      "command_id": "cmd-1",
+      "subject": {
+        "kind": "core-test.subject",
+        "id": "s-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core-test.subject",
+            "id": "s-1"
+          },
+          "revision": 0
+        }
+      ],
+      "authority_epoch": 0,
+      "payload": {
+        "value": "a"
+      },
+      "expect": {
+        "ok": {
+          "replay": false
+        }
+      },
+      "set": {
+        "grant": "g-1"
+      }
+    },
+    {
+      "step": "set_clock",
+      "instant": "2030-01-01T02:00:00Z"
+    },
+    {
+      "step": "command",
+      "operation": "core-test.subject.put",
+      "command_id": "cmd-2",
+      "subject": {
+        "kind": "core-test.subject",
+        "id": "s-2"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core-test.subject",
+            "id": "s-2"
+          },
+          "revision": 0
+        }
+      ],
+      "authority_epoch": 0,
+      "payload": {
+        "value": "b"
+      },
+      "expect": {
+        "error": "permission_denied",
+        "details": {
+          "reason": "expired"
+        }
+      },
+      "set": {
+        "grant": "g-1"
+      }
+    },
+    {
+      "step": "set_clock",
+      "instant": "2030-01-01T00:00:00Z",
+      "allow_backward": true,
+      "note": "a backward write is ignored"
+    },
+    {
+      "step": "command",
+      "operation": "core-test.subject.put",
+      "command_id": "cmd-3",
+      "subject": {
+        "kind": "core-test.subject",
+        "id": "s-3"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core-test.subject",
+            "id": "s-3"
+          },
+          "revision": 0
+        }
+      ],
+      "authority_epoch": 0,
+      "payload": {
+        "value": "c"
+      },
+      "expect": {
+        "error": "permission_denied",
+        "details": {
+          "reason": "expired"
+        }
+      },
+      "set": {
+        "grant": "g-1"
+      }
+    },
+    {
+      "step": "set_clock",
+      "raw": "not-an-instant",
+      "note": "a malformed file keeps the last good instant"
+    },
+    {
+      "step": "command",
+      "operation": "core-test.subject.put",
+      "command_id": "cmd-4",
+      "subject": {
+        "kind": "core-test.subject",
+        "id": "s-4"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core-test.subject",
+            "id": "s-4"
+          },
+          "revision": 0
+        }
+      ],
+      "authority_epoch": 0,
+      "payload": {
+        "value": "d"
+      },
+      "expect": {
+        "error": "permission_denied",
+        "details": {
+          "reason": "expired"
+        }
+      },
+      "set": {
+        "grant": "g-1"
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

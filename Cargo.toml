@@ -1,0 +1,14 @@
+[workspace]
+resolver = "3"
+members = ["crates/cbr-encoding"]
+
+[workspace.package]
+edition = "2024"
+version = "0.1.0"
+publish = false
+rust-version = "1.97"
+# No `license` key: the project licence is not selected yet (see README.md).
+# Every crate here sets `publish = false`, so Cargo does not require one.
+
+[workspace.dependencies]
+sha2 = "0.11.0"

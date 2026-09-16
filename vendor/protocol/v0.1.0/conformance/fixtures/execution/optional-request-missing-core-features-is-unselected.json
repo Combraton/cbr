@@ -1,0 +1,118 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "execution.optional-request-missing-core-features-is-unselected",
+  "version": 1,
+  "title": "An optional execution/1 request without its Core features is reported unselected with actionable items, and execution operations are then refused",
+  "requirements": [
+    "CMP-5",
+    "CORE-3"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/EXECUTION.md#1-dependencies-and-negotiation"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "execution",
+      "major": 1
+    }
+  ],
+  "features": [
+    "core.events",
+    "core.capabilities",
+    "core.effects"
+  ],
+  "requires_controls": [
+    "executor.script"
+  ],
+  "polarity": "negative",
+  "kills": [
+    "execution-dependency-unchecked"
+  ],
+  "kill_expectations": {
+    "execution-dependency-unchecked": {
+      "step": 1,
+      "reason_contains": "result/"
+    }
+  },
+  "steps": [
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ],
+        "executor": {}
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "execution",
+            "majors": [
+              1
+            ],
+            "required": false,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      },
+      "expect": {
+        "ok": {
+          "selected": [
+            {
+              "name": "core"
+            }
+          ],
+          "unselected": [
+            {
+              "profile": "execution",
+              "feature": "core.capabilities",
+              "reason": "dependency_not_selected"
+            },
+            {
+              "profile": "execution",
+              "feature": "core.effects",
+              "reason": "dependency_not_selected"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "execution.inspect",
+      "payload": {
+        "execution": "e-1"
+      },
+      "expect": {
+        "error": "profile_not_negotiated"
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

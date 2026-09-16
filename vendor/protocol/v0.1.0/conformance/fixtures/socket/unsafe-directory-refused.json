@@ -1,0 +1,31 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "socket.unsafe-directory-refused",
+  "version": 1,
+  "title": "A provider refuses to listen in a socket directory with group or other permissions",
+  "requirements": [
+    "TRN-3"
+  ],
+  "spec_refs": [
+    "docs/spec/bindings/STREAM.md#6-unix-domain-socket-form"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "core-test",
+      "major": 1
+    }
+  ],
+  "features": [],
+  "binding": "unix",
+  "polarity": "negative",
+  "kills": [
+    "unchecked-socket-directory"
+  ],
+  "steps": [
+    {
+      "step": "expect_start_failure",
+      "unsafe_socket_directory": true
+    }
+  ]
+}

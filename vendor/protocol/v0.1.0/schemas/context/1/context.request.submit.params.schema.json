@@ -1,0 +1,126 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Combraton/protocol/schemas/context/1/context.request.submit.params.schema.json",
+  "title": "context.request.submit params",
+  "allOf": [
+    {
+      "$ref": "../../core/1/command.schema.json"
+    }
+  ],
+  "properties": {
+    "operation": {
+      "const": "context.request.submit"
+    },
+    "payload": {
+      "type": "object",
+      "required": [
+        "consumer",
+        "basis",
+        "items",
+        "limits"
+      ],
+      "properties": {
+        "consumer": {
+          "type": "object",
+          "required": [
+            "task",
+            "principal"
+          ],
+          "properties": {
+            "task": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "principal": {
+              "$ref": "../../core/1/common.schema.json#/$defs/principal"
+            },
+            "executor": {
+              "$ref": "../../core/1/common.schema.json#/$defs/identifier"
+            }
+          },
+          "unevaluatedProperties": false
+        },
+        "basis": {
+          "$ref": "common.schema.json#/$defs/basis"
+        },
+        "items": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "$ref": "common.schema.json#/$defs/item"
+          },
+          "minItems": 1
+        },
+        "fallback": {
+          "enum": [
+            "proceed_with_gap",
+            "wait_until_deadline"
+          ]
+        },
+        "limits": {
+          "$ref": "common.schema.json#/$defs/limits"
+        },
+        "authority_content": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "type": "object",
+            "required": [
+              "item_id",
+              "evidence",
+              "authority_revision"
+            ],
+            "properties": {
+              "item_id": {
+                "$ref": "../../core/1/common.schema.json#/$defs/identifier"
+              },
+              "evidence": {
+                "$ref": "../../evidence/1/common.schema.json#/$defs/reference"
+              },
+              "authority_revision": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "unevaluatedProperties": false
+          }
+        },
+        "origin": {
+          "type": "object",
+          "required": [
+            "initiator",
+            "depth",
+            "call_budget"
+          ],
+          "properties": {
+            "initiator": {
+              "$ref": "../../core/1/common.schema.json#/$defs/subject"
+            },
+            "depth": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "call_budget": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          "unevaluatedProperties": false
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "subject": {
+      "$ref": "common.schema.json#/$defs/request_subject"
+    },
+    "preconditions": {
+      "minItems": 1,
+      "maxItems": 1
+    }
+  },
+  "unevaluatedProperties": false
+}

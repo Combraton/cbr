@@ -1,0 +1,544 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "context.deadline-leaves-required-unmet-and-advisory-follows-fallback",
+  "version": 2,
+  "title": "At the deadline a missing required item is unmet, never satisfied or downgraded; advisory items degrade at publication under proceed_with_gap and wait for the deadline under wait_until_deadline",
+  "requirements": [
+    "CTX-7"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/CONTEXT.md#3-requests",
+    "docs/spec/profiles/CONTEXT.md#5-results-and-packets"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "context",
+      "major": 1
+    }
+  ],
+  "features": [
+    "core.events"
+  ],
+  "requires_controls": [
+    "context.script",
+    "clock.file"
+  ],
+  "polarity": "negative",
+  "kills": [
+    "required-downgraded-to-advisory",
+    "missing-required-satisfied"
+  ],
+  "steps": [
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ],
+        "context": {
+          "scripts": {
+            "r-gap": [
+              {
+                "section": {
+                  "section_id": "s-adv",
+                  "label": "observation",
+                  "content": "advisory note",
+                  "item_id": "i-adv",
+                  "source": {
+                    "repository": "repo-a",
+                    "path": "src/i-adv",
+                    "tree": "tree-1"
+                  }
+                }
+              },
+              {
+                "stall": true
+              }
+            ],
+            "r-wait": [
+              {
+                "section": {
+                  "section_id": "s-req2",
+                  "label": "binding",
+                  "content": "required content",
+                  "item_id": "i-req2",
+                  "source": {
+                    "repository": "repo-a",
+                    "path": "src/i-req2",
+                    "tree": "tree-1"
+                  }
+                }
+              },
+              {
+                "publish": {}
+              }
+            ],
+            "r-proceed": [
+              {
+                "section": {
+                  "section_id": "s-req3",
+                  "label": "binding",
+                  "content": "required content",
+                  "item_id": "i-req3",
+                  "source": {
+                    "repository": "repo-a",
+                    "path": "src/i-req3",
+                    "tree": "tree-1"
+                  }
+                }
+              },
+              {
+                "publish": {}
+              }
+            ]
+          }
+        },
+        "clock": {
+          "controlled": "2030-01-01T00:00:00Z"
+        }
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "context",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": [
+              "context.advisory",
+              "context.required_before_start",
+              "context.required_before_transition",
+              "context.shared_jobs",
+              "context.updates",
+              "context.expand"
+            ]
+          },
+          {
+            "name": "evidence",
+            "majors": [
+              1
+            ],
+            "required": false,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "context.request.submit",
+      "command_id": "submit-r-gap",
+      "subject": {
+        "kind": "context.request",
+        "id": "r-gap"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "context.request",
+            "id": "r-gap"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "consumer": {
+          "task": "fix the build",
+          "principal": "agent-1"
+        },
+        "basis": {
+          "repositories": [
+            {
+              "id": "repo-a",
+              "tree": "tree-1",
+              "workspace": "clean",
+              "dirty": null
+            }
+          ],
+          "completeness": "complete"
+        },
+        "items": [
+          {
+            "item_id": "i-req",
+            "selector": {
+              "kind": "path",
+              "value": "src/i-req"
+            },
+            "obligation": "required_before_start",
+            "reliance": "binding",
+            "selected_by": "owner",
+            "check": {
+              "kind": "source_included",
+              "repository": "repo-a",
+              "path": "src/i-req"
+            }
+          },
+          {
+            "item_id": "i-adv",
+            "selector": {
+              "kind": "path",
+              "value": "src/i-adv"
+            },
+            "obligation": "advisory",
+            "reliance": "reference",
+            "selected_by": "owner",
+            "check": {
+              "kind": "source_included",
+              "repository": "repo-a",
+              "path": "src/i-adv"
+            }
+          }
+        ],
+        "limits": {
+          "deadline": "2030-01-01T00:01:00Z",
+          "investigation": {
+            "units": "queries",
+            "amount": 100
+          },
+          "output_capacity": {
+            "units": "bytes",
+            "amount": 4096
+          }
+        },
+        "fallback": "proceed_with_gap"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "context.request.submit",
+      "command_id": "submit-r-wait",
+      "subject": {
+        "kind": "context.request",
+        "id": "r-wait"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "context.request",
+            "id": "r-wait"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "consumer": {
+          "task": "fix the build",
+          "principal": "agent-1"
+        },
+        "basis": {
+          "repositories": [
+            {
+              "id": "repo-a",
+              "tree": "tree-1",
+              "workspace": "clean",
+              "dirty": null
+            }
+          ],
+          "completeness": "complete"
+        },
+        "items": [
+          {
+            "item_id": "i-req2",
+            "selector": {
+              "kind": "path",
+              "value": "src/i-req2"
+            },
+            "obligation": "required_before_start",
+            "reliance": "binding",
+            "selected_by": "owner",
+            "check": {
+              "kind": "source_included",
+              "repository": "repo-a",
+              "path": "src/i-req2"
+            }
+          },
+          {
+            "item_id": "i-adv2",
+            "selector": {
+              "kind": "path",
+              "value": "src/i-adv2"
+            },
+            "obligation": "advisory",
+            "reliance": "reference",
+            "selected_by": "owner",
+            "check": {
+              "kind": "source_included",
+              "repository": "repo-a",
+              "path": "src/i-adv2"
+            }
+          }
+        ],
+        "limits": {
+          "deadline": "2030-01-01T00:01:00Z",
+          "investigation": {
+            "units": "queries",
+            "amount": 100
+          },
+          "output_capacity": {
+            "units": "bytes",
+            "amount": 4096
+          }
+        },
+        "fallback": "wait_until_deadline"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "context.request.submit",
+      "command_id": "submit-r-proceed",
+      "subject": {
+        "kind": "context.request",
+        "id": "r-proceed"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "context.request",
+            "id": "r-proceed"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "consumer": {
+          "task": "fix the build",
+          "principal": "agent-1"
+        },
+        "basis": {
+          "repositories": [
+            {
+              "id": "repo-a",
+              "tree": "tree-1",
+              "workspace": "clean",
+              "dirty": null
+            }
+          ],
+          "completeness": "complete"
+        },
+        "items": [
+          {
+            "item_id": "i-req3",
+            "selector": {
+              "kind": "path",
+              "value": "src/i-req3"
+            },
+            "obligation": "required_before_start",
+            "reliance": "binding",
+            "selected_by": "owner",
+            "check": {
+              "kind": "source_included",
+              "repository": "repo-a",
+              "path": "src/i-req3"
+            }
+          },
+          {
+            "item_id": "i-adv3",
+            "selector": {
+              "kind": "path",
+              "value": "src/i-adv3"
+            },
+            "obligation": "advisory",
+            "reliance": "reference",
+            "selected_by": "owner",
+            "check": {
+              "kind": "source_included",
+              "repository": "repo-a",
+              "path": "src/i-adv3"
+            }
+          }
+        ],
+        "limits": {
+          "deadline": "2030-01-01T00:01:00Z",
+          "investigation": {
+            "units": "queries",
+            "amount": 100
+          },
+          "output_capacity": {
+            "units": "bytes",
+            "amount": 4096
+          }
+        },
+        "fallback": "proceed_with_gap"
+      }
+    },
+    {
+      "step": "query",
+      "operation": "context.request.inspect",
+      "payload": {
+        "request": "r-proceed"
+      },
+      "expect": {
+        "ok": {
+          "state": "partial",
+          "items": [
+            {
+              "item_id": "i-req3",
+              "result": "satisfied"
+            },
+            {
+              "item_id": "i-adv3",
+              "obligation": "advisory",
+              "result": "degraded",
+              "reason": "unavailable"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "context.request.inspect",
+      "payload": {
+        "request": "r-wait"
+      },
+      "expect": {
+        "ok": {
+          "state": "preparing",
+          "packets": [],
+          "items": [
+            {
+              "item_id": "i-req2",
+              "result": "satisfied"
+            },
+            {
+              "item_id": "i-adv2",
+              "result": "pending"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "context.request.inspect",
+      "payload": {
+        "request": "r-gap"
+      },
+      "expect": {
+        "ok": {
+          "state": "preparing",
+          "packets": [],
+          "items": [
+            {
+              "item_id": "i-req",
+              "result": "pending"
+            },
+            {
+              "item_id": "i-adv",
+              "result": "satisfied"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "set_clock",
+      "instant": "2030-01-01T00:01:00Z"
+    },
+    {
+      "step": "query",
+      "operation": "context.request.inspect",
+      "payload": {
+        "request": "r-gap"
+      },
+      "expect": {
+        "ok": {
+          "state": "unmet",
+          "items": [
+            {
+              "item_id": "i-req",
+              "obligation": "required_before_start",
+              "result": "unmet",
+              "reason": "deadline_passed"
+            },
+            {
+              "item_id": "i-adv",
+              "result": "satisfied"
+            }
+          ],
+          "packets": {
+            "$len": 1
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "context.request.inspect",
+      "payload": {
+        "request": "r-wait"
+      },
+      "expect": {
+        "ok": {
+          "state": "partial",
+          "items": [
+            {
+              "item_id": "i-req2",
+              "result": "satisfied"
+            },
+            {
+              "item_id": "i-adv2",
+              "result": "degraded",
+              "reason": "deadline_passed"
+            }
+          ],
+          "packets": {
+            "$len": 1
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "context.packet.inspect",
+      "payload": {
+        "packet": "r-gap",
+        "revision": 1
+      },
+      "expect": {
+        "ok": {
+          "items": [
+            {
+              "item_id": "i-req",
+              "obligation": "required_before_start",
+              "result": "unmet"
+            },
+            {
+              "item_id": "i-adv",
+              "result": "satisfied"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

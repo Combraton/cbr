@@ -1,0 +1,298 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "execution.transition-block-clears-when-current",
+  "version": 1,
+  "title": "A required-before-transition binding holds only its transition while stale; when the observed basis makes it current the block clears, the transition is observed and the work completes",
+  "requirements": [
+    "CTX-15"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/EXECUTION.md#131-context-revalidation-executioncontext_revalidation"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "execution",
+      "major": 1
+    }
+  ],
+  "features": [
+    "core.events",
+    "core.capabilities",
+    "core.effects",
+    "execution.context",
+    "execution.context_revalidation"
+  ],
+  "requires_controls": [
+    "executor.script",
+    "clock.file"
+  ],
+  "polarity": "negative",
+  "kills": [
+    "admission-check-only"
+  ],
+  "steps": [
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ],
+        "clock": {
+          "controlled": "2030-01-01T00:00:00Z"
+        },
+        "executor": {
+          "context_packets": [
+            {
+              "reference": {
+                "packet": {
+                  "kind": "context.packet",
+                  "id": "r-1"
+                },
+                "revision": 1,
+                "artifact": {
+                  "provider": "context-1",
+                  "artifact": {
+                    "kind": "evidence.artifact",
+                    "id": "packet.r-1.1"
+                  },
+                  "digest": "sha256:2563192958eb20cd51510fc184bc436e218dade28f6e6d38a425348624622a82"
+                }
+              }
+            }
+          ],
+          "observed_basis": {
+            "repositories": {
+              "repo-a": {
+                "tree": "tree-1"
+              }
+            }
+          },
+          "scripts": {
+            "e-trans": [
+              {
+                "deliver": "provider_ack_id"
+              },
+              {
+                "transition": "merge"
+              },
+              {
+                "complete": {
+                  "completion_id": "c-1",
+                  "content": "done"
+                }
+              },
+              {
+                "exit": {
+                  "code": 0
+                }
+              }
+            ]
+          },
+          "default_script": [
+            {
+              "stall": true
+            }
+          ],
+          "basis_changes": [
+            {
+              "at": "2030-01-01T00:00:30Z",
+              "observed_basis": {
+                "repositories": {
+                  "repo-a": {
+                    "tree": "tree-0"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.capabilities",
+              "core.effects"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "execution",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "execution.context",
+              "execution.context_revalidation"
+            ],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "execution.submit",
+      "command_id": "submit-e-trans",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "e-trans"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "e-trans"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "brief": {
+          "digest": "sha256:abababababababababababababababababababababababababababababababab",
+          "media_type": "text/plain"
+        },
+        "context_bindings": [
+          {
+            "binding_id": "b-t",
+            "packet": {
+              "packet": {
+                "kind": "context.packet",
+                "id": "r-1"
+              },
+              "revision": 1,
+              "artifact": {
+                "provider": "context-1",
+                "artifact": {
+                  "kind": "evidence.artifact",
+                  "id": "packet.r-1.1"
+                },
+                "digest": "sha256:2563192958eb20cd51510fc184bc436e218dade28f6e6d38a425348624622a82"
+              }
+            },
+            "obligation": "required_before_transition",
+            "selected_by": "owner",
+            "conditions": [
+              {
+                "condition_id": "k-tree",
+                "kind": "repository_tree",
+                "repository": "repo-a",
+                "expected": "tree-0"
+              }
+            ],
+            "transition": "merge"
+          }
+        ]
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "admission": "admitted"
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "execution.inspect",
+      "payload": {
+        "execution": "e-trans"
+      },
+      "expect": {
+        "ok": {
+          "delivery": "acknowledged",
+          "result": "absent",
+          "scheduling": {
+            "$absent": true
+          },
+          "context": {
+            "blocked": {
+              "boundary": "transition",
+              "transition": "merge",
+              "reason": "context_binding_stale"
+            }
+          }
+        }
+      }
+    },
+    {
+      "step": "set_clock",
+      "instant": "2030-01-01T00:00:30Z"
+    },
+    {
+      "step": "query",
+      "operation": "execution.inspect",
+      "payload": {
+        "execution": "e-trans"
+      },
+      "expect": {
+        "ok": {
+          "result": "returned",
+          "context": {
+            "blocked": {
+              "$absent": true
+            },
+            "checks": {
+              "$contains": {
+                "boundary": "transition",
+                "transition": "merge",
+                "state": "current"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core.events.read",
+      "payload": {
+        "from": "start",
+        "limit": 500,
+        "kinds": [
+          "execution.execution"
+        ]
+      },
+      "expect": {
+        "ok": {
+          "items": {
+            "$contains": {
+              "event": {
+                "type": "execution.transition.observed",
+                "subject": {
+                  "kind": "execution.execution",
+                  "id": "e-trans"
+                },
+                "payload": {
+                  "transition": "merge"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

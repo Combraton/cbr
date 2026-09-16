@@ -1,0 +1,195 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "execution.discovery-keeps-facts-separate",
+  "version": 1,
+  "title": "Discovery reports detection, adapter recognition, version support, authentication, reachability and verification as separate facts; only a fully verified installation is usable",
+  "requirements": [
+    "EXE-12"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/EXECUTION.md#11-optional-features"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "execution",
+      "major": 1
+    }
+  ],
+  "features": [
+    "core.events",
+    "core.capabilities",
+    "core.effects",
+    "execution.discovery"
+  ],
+  "requires_controls": [
+    "executor.script"
+  ],
+  "polarity": "negative",
+  "kills": [
+    "detected-offered-as-usable",
+    "discovery-unknown-as-yes"
+  ],
+  "kill_expectations": {
+    "detected-offered-as-usable": {
+      "step": 2,
+      "reason_contains": "usable"
+    },
+    "discovery-unknown-as-yes": {
+      "step": 2,
+      "reason_contains": "installations/1/authentication"
+    }
+  },
+  "steps": [
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ],
+        "executor": {
+          "installations": [
+            {
+              "installation_id": "inst-ready",
+              "harness": "example-harness",
+              "version": "2.1.0",
+              "detected": true,
+              "adapter_recognized": "yes",
+              "version_supported": "yes",
+              "authentication": "authenticated",
+              "reachable": "yes",
+              "last_verified": "2030-01-01T00:00:00Z"
+            },
+            {
+              "installation_id": "inst-auth-unknown",
+              "harness": "example-harness",
+              "version": "2.1.0",
+              "detected": true,
+              "adapter_recognized": "yes",
+              "version_supported": "yes",
+              "authentication": "unknown",
+              "reachable": "yes",
+              "last_verified": "2030-01-01T00:00:00Z"
+            },
+            {
+              "installation_id": "inst-unrecognized",
+              "harness": "other-harness",
+              "detected": true,
+              "adapter_recognized": "no"
+            },
+            {
+              "installation_id": "inst-unverified",
+              "harness": "example-harness",
+              "version": "2.1.0",
+              "detected": true,
+              "adapter_recognized": "yes",
+              "version_supported": "yes",
+              "authentication": "authenticated",
+              "reachable": "yes"
+            },
+            {
+              "installation_id": "inst-absent",
+              "harness": "example-harness",
+              "detected": false
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.capabilities",
+              "core.effects"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "execution",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "execution.discovery"
+            ],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "query",
+      "operation": "execution.discovery.list",
+      "payload": {},
+      "expect": {
+        "ok": {
+          "installations": [
+            {
+              "installation_id": "inst-ready",
+              "detected": true,
+              "adapter_recognized": "yes",
+              "version_supported": "yes",
+              "authentication": "authenticated",
+              "reachable": "yes",
+              "last_verified": "2030-01-01T00:00:00Z",
+              "usable": true
+            },
+            {
+              "installation_id": "inst-auth-unknown",
+              "detected": true,
+              "authentication": "unknown",
+              "usable": false
+            },
+            {
+              "installation_id": "inst-unrecognized",
+              "detected": true,
+              "adapter_recognized": "no",
+              "version_supported": "unknown",
+              "authentication": "unknown",
+              "reachable": "unknown",
+              "last_verified": {
+                "$absent": true
+              },
+              "usable": false
+            },
+            {
+              "installation_id": "inst-unverified",
+              "detected": true,
+              "last_verified": {
+                "$absent": true
+              },
+              "usable": false
+            },
+            {
+              "installation_id": "inst-absent",
+              "detected": false,
+              "reachable": "unknown",
+              "usable": false
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

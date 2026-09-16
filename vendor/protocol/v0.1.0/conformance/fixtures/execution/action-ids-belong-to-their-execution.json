@@ -1,0 +1,420 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "execution.action-ids-belong-to-their-execution",
+  "version": 1,
+  "title": "A native action request is reported as requires_action with its ID and owner; its ID belongs to its execution, so answering it elsewhere is not_found and authorizes nothing",
+  "requirements": [
+    "EXE-4",
+    "EXE-14"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/EXECUTION.md#11-optional-features",
+    "docs/spec/profiles/EXECUTION.md#3-status-axes"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "execution",
+      "major": 1
+    }
+  ],
+  "features": [
+    "core.events",
+    "core.capabilities",
+    "core.effects",
+    "execution.actions"
+  ],
+  "requires_controls": [
+    "executor.script"
+  ],
+  "polarity": "negative",
+  "kills": [
+    "global-action-namespace",
+    "requires-action-without-identity"
+  ],
+  "kill_expectations": {
+    "global-action-namespace": {
+      "step": 6,
+      "reason_contains": "expected error not_found"
+    },
+    "requires-action-without-identity": {
+      "step": 4,
+      "reason_contains": "runtime_detail"
+    }
+  },
+  "steps": [
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ],
+        "executor": {
+          "scripts": {
+            "e-a": [
+              {
+                "deliver": "provider_ack_id"
+              },
+              {
+                "request_action": {
+                  "action_id": "act-1",
+                  "owner": "user"
+                }
+              },
+              {
+                "wait_for": "action"
+              },
+              {
+                "exit": {
+                  "code": 0
+                }
+              }
+            ],
+            "e-b": [
+              {
+                "deliver": "provider_ack_id"
+              },
+              {
+                "runtime": "active"
+              },
+              {
+                "stall": true
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.capabilities",
+              "core.effects"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "execution",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "execution.actions"
+            ],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "execution.submit",
+      "command_id": "submit-e-a",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "e-a"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "e-a"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "brief": {
+          "digest": "sha256:abababababababababababababababababababababababababababababababab",
+          "media_type": "text/plain"
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "execution.submit",
+      "command_id": "submit-e-b",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "e-b"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "e-b"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "brief": {
+          "digest": "sha256:abababababababababababababababababababababababababababababababab",
+          "media_type": "text/plain"
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "execution.inspect",
+      "payload": {
+        "execution": "e-a"
+      },
+      "expect": {
+        "ok": {
+          "runtime": "requires_action",
+          "runtime_detail": {
+            "action_id": "act-1",
+            "owner": "user"
+          },
+          "actions": [
+            {
+              "action_id": "act-1",
+              "owner": "user",
+              "state": "pending"
+            }
+          ]
+        }
+      },
+      "capture": {
+        "ra": "/result/revision"
+      }
+    },
+    {
+      "step": "query",
+      "operation": "execution.inspect",
+      "payload": {
+        "execution": "e-b"
+      },
+      "expect": {
+        "ok": {
+          "runtime": "active",
+          "actions": {
+            "$absent": true
+          }
+        }
+      },
+      "capture": {
+        "rb": "/result/revision"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "execution.respond_action",
+      "command_id": "respond_action-e-b",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "e-b"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "e-b"
+          },
+          "revision": {
+            "$var": "rb"
+          }
+        }
+      ],
+      "payload": {
+        "action_id": "act-1",
+        "response": {
+          "digest": "sha256:cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+          "media_type": "text/plain"
+        }
+      },
+      "expect": {
+        "error": "not_found"
+      }
+    },
+    {
+      "step": "query",
+      "operation": "execution.inspect",
+      "payload": {
+        "execution": "e-a"
+      },
+      "expect": {
+        "ok": {
+          "runtime": "requires_action",
+          "actions": [
+            {
+              "action_id": "act-1",
+              "state": "pending"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "execution.respond_action",
+      "command_id": "respond_action-e-a",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "e-a"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "e-a"
+          },
+          "revision": {
+            "$var": "ra"
+          }
+        }
+      ],
+      "payload": {
+        "action_id": "act-1",
+        "response": {
+          "digest": "sha256:cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+          "media_type": "text/plain"
+        }
+      },
+      "expect": {
+        "ok": {
+          "acknowledgment": {
+            "effect_refs": [
+              "e-a.response-1"
+            ]
+          },
+          "outcome": {
+            "action_id": "act-1",
+            "state": "answered",
+            "response_effect": "e-a.response-1"
+          }
+        }
+      }
+    },
+    {
+      "step": "describe"
+    },
+    {
+      "step": "query",
+      "operation": "execution.inspect",
+      "payload": {
+        "execution": "e-a"
+      },
+      "expect": {
+        "ok": {
+          "runtime": "exited",
+          "runtime_detail": {
+            "$absent": true
+          },
+          "actions": [
+            {
+              "action_id": "act-1",
+              "state": "answered",
+              "response_effect": "e-a.response-1"
+            }
+          ]
+        }
+      },
+      "capture": {
+        "ra2": "/result/revision"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "execution.respond_action",
+      "command_id": "respond_action-e-a-again",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "e-a"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "e-a"
+          },
+          "revision": {
+            "$var": "ra2"
+          }
+        }
+      ],
+      "payload": {
+        "action_id": "act-1",
+        "response": {
+          "digest": "sha256:cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+          "media_type": "text/plain"
+        }
+      },
+      "expect": {
+        "error": "not_found"
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core.effects.get",
+      "payload": {
+        "effect": "e-a.response-1"
+      },
+      "expect": {
+        "ok": {
+          "effect": {
+            "kind": "execution.action_response",
+            "target": {
+              "kind": "execution.execution",
+              "id": "e-a"
+            }
+          },
+          "status": "succeeded"
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core.events.read",
+      "payload": {
+        "from": "start",
+        "limit": 100,
+        "kinds": [
+          "execution.execution"
+        ]
+      },
+      "expect": {
+        "ok": {
+          "items": {
+            "$contains": {
+              "event": {
+                "type": "execution.runtime.changed",
+                "subject": {
+                  "kind": "execution.execution",
+                  "id": "e-a"
+                },
+                "payload": {
+                  "runtime": "requires_action",
+                  "action_id": "act-1",
+                  "owner": "user"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

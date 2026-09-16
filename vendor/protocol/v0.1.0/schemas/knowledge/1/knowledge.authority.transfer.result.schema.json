@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Combraton/protocol/schemas/knowledge/1/knowledge.authority.transfer.result.schema.json",
+  "title": "knowledge.authority.transfer result",
+  "type": "object",
+  "required": [
+    "acknowledgment",
+    "outcome",
+    "replay"
+  ],
+  "properties": {
+    "acknowledgment": {
+      "$ref": "../../core/1/common.schema.json#/$defs/acknowledgment"
+    },
+    "replay": {
+      "type": "boolean"
+    },
+    "outcome": {
+      "type": "object",
+      "required": [
+        "scope",
+        "authority",
+        "epoch"
+      ],
+      "properties": {
+        "scope": {
+          "$ref": "../../core/1/common.schema.json#/$defs/identifier"
+        },
+        "authority": {
+          "$ref": "../../core/1/common.schema.json#/$defs/principal"
+        },
+        "epoch": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "unevaluatedProperties": false
+    }
+  },
+  "unevaluatedProperties": false
+}

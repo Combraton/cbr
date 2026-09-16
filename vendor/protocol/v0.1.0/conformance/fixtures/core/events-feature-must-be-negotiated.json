@@ -1,0 +1,60 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "core.events.feature-must-be-negotiated",
+  "version": 1,
+  "title": "Event operations require the core.events feature",
+  "requirements": [
+    "CORE-3",
+    "CORE-4"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/CORE.md#16-events-and-subscriptions"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "core-test",
+      "major": 1
+    }
+  ],
+  "features": [
+    "core.events"
+  ],
+  "polarity": "negative",
+  "kills": [
+    "ignore-requires"
+  ],
+  "steps": [
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ]
+      }
+    },
+    {
+      "step": "negotiate"
+    },
+    {
+      "step": "query",
+      "operation": "core.events.read",
+      "payload": {
+        "limit": 100,
+        "from": "start"
+      },
+      "expect": {
+        "error": "unsupported_required_feature",
+        "details": {
+          "features": [
+            "core.events"
+          ]
+        }
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

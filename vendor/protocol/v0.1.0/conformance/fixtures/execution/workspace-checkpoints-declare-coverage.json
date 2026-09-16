@@ -1,0 +1,422 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "execution.workspace-checkpoints-declare-coverage",
+  "version": 1,
+  "title": "A workspace lease is recorded at admission; a checkpoint reports only the state the executor probed, declares incomplete coverage, and keeps agent-reported commits as annotations",
+  "requirements": [
+    "EXE-15"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/EXECUTION.md#11-optional-features"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "execution",
+      "major": 1
+    }
+  ],
+  "features": [
+    "core.events",
+    "core.capabilities",
+    "core.effects",
+    "execution.workspaces"
+  ],
+  "requires_controls": [
+    "executor.script"
+  ],
+  "polarity": "negative",
+  "kills": [
+    "incomplete-checkpoint-complete",
+    "agent-commit-as-receipt"
+  ],
+  "kill_expectations": {
+    "incomplete-checkpoint-complete": {
+      "step": 5,
+      "reason_contains": "outcome/complete"
+    },
+    "agent-commit-as-receipt": {
+      "step": 5,
+      "reason_contains": "outcome/head"
+    }
+  },
+  "steps": [
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ],
+        "executor": {
+          "scripts": {
+            "e-part": [
+              {
+                "deliver": "provider_ack_id"
+              },
+              {
+                "workspace": {
+                  "head": "1111aaaa",
+                  "dirty_paths": [
+                    "src/lib.rs"
+                  ],
+                  "probes": [
+                    "tracked",
+                    "dirty"
+                  ]
+                }
+              },
+              {
+                "agent_reports_commit": "2222bbbb"
+              },
+              {
+                "stall": true
+              }
+            ],
+            "e-full": [
+              {
+                "deliver": "provider_ack_id"
+              },
+              {
+                "workspace": {
+                  "head": "3333cccc",
+                  "dirty_paths": [],
+                  "untracked_paths": [
+                    "notes.txt"
+                  ],
+                  "probes": [
+                    "tracked",
+                    "dirty",
+                    "untracked"
+                  ]
+                }
+              },
+              {
+                "stall": true
+              }
+            ],
+            "e-none": [
+              {
+                "deliver": "provider_ack_id"
+              },
+              {
+                "stall": true
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.capabilities",
+              "core.effects"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "execution",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "execution.workspaces"
+            ],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "execution.submit",
+      "command_id": "submit-e-part",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "e-part"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "e-part"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "brief": {
+          "digest": "sha256:abababababababababababababababababababababababababababababababab",
+          "media_type": "text/plain"
+        },
+        "workspace": {
+          "repository": "example-repository",
+          "base": "main",
+          "permitted_paths": [
+            "src/"
+          ],
+          "permitted_effects": [],
+          "cleanup": "retain"
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "execution.submit",
+      "command_id": "submit-e-full",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "e-full"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "e-full"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "brief": {
+          "digest": "sha256:abababababababababababababababababababababababababababababababab",
+          "media_type": "text/plain"
+        },
+        "workspace": {
+          "repository": "example-repository",
+          "base": "main",
+          "permitted_paths": [
+            "src/"
+          ],
+          "permitted_effects": [],
+          "cleanup": "retain"
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "execution.inspect",
+      "payload": {
+        "execution": "e-part"
+      },
+      "expect": {
+        "ok": {
+          "workspace": {
+            "lease": {
+              "lease_id": "e-part.workspace",
+              "repository": "example-repository",
+              "base": "main",
+              "writer": "owner",
+              "lease_epoch": 1,
+              "cleanup": "retain"
+            },
+            "checkpoints": []
+          }
+        }
+      },
+      "capture": {
+        "rp": "/result/revision"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "execution.workspace.checkpoint",
+      "command_id": "checkpoint-e-part",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "e-part"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "e-part"
+          },
+          "revision": {
+            "$var": "rp"
+          }
+        }
+      ],
+      "payload": {},
+      "expect": {
+        "ok": {
+          "outcome": {
+            "checkpoint_id": "e-part.checkpoint-1",
+            "lease_epoch": 1,
+            "complete": false,
+            "head": "1111aaaa",
+            "coverage": {
+              "tracked": "probed",
+              "dirty": "probed",
+              "untracked": "not_probed"
+            },
+            "dirty_paths": [
+              "src/lib.rs"
+            ],
+            "untracked_paths": {
+              "$absent": true
+            },
+            "annotations": [
+              {
+                "kind": "agent_reported_commit",
+                "value": "2222bbbb",
+                "basis": "agent_report"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "execution.inspect",
+      "payload": {
+        "execution": "e-full"
+      },
+      "expect": {
+        "ok": {}
+      },
+      "capture": {
+        "rf": "/result/revision"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "execution.workspace.checkpoint",
+      "command_id": "checkpoint-e-full",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "e-full"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "e-full"
+          },
+          "revision": {
+            "$var": "rf"
+          }
+        }
+      ],
+      "payload": {},
+      "expect": {
+        "ok": {
+          "outcome": {
+            "complete": true,
+            "head": "3333cccc",
+            "untracked_paths": [
+              "notes.txt"
+            ],
+            "annotations": []
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "execution.submit",
+      "command_id": "submit-e-none",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "e-none"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "e-none"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "brief": {
+          "digest": "sha256:abababababababababababababababababababababababababababababababab",
+          "media_type": "text/plain"
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "execution.inspect",
+      "payload": {
+        "execution": "e-none"
+      },
+      "expect": {
+        "ok": {
+          "workspace": {
+            "$absent": true
+          }
+        }
+      },
+      "capture": {
+        "rn": "/result/revision"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "execution.workspace.checkpoint",
+      "command_id": "checkpoint-e-none",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "e-none"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "e-none"
+          },
+          "revision": {
+            "$var": "rn"
+          }
+        }
+      ],
+      "payload": {},
+      "expect": {
+        "error": "not_found"
+      }
+    },
+    {
+      "step": "query",
+      "operation": "execution.inspect",
+      "payload": {
+        "execution": "e-part"
+      },
+      "expect": {
+        "ok": {
+          "workspace": {
+            "checkpoints": [
+              {
+                "checkpoint_id": "e-part.checkpoint-1",
+                "complete": false
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

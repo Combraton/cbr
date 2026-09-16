@@ -1,0 +1,417 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "knowledge.applicability-checks-snapshots-and-environments",
+  "version": 1,
+  "title": "Dirty-snapshot and environment-digest conditions are checked against the target's snapshot digest and environment: a different snapshot or environment is invalid_for_target, and a target without the snapshot or environment is unknown, never a match",
+  "requirements": [
+    "KNW-7"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/KNOWLEDGE.md#8-applicability-knw-7-m5-q4"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "knowledge",
+      "major": 1
+    }
+  ],
+  "features": [
+    "core.events",
+    "core.grants"
+  ],
+  "polarity": "negative",
+  "kills": [
+    "dirty-snapshot-as-tree"
+  ],
+  "steps": [
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ]
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.grants"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "knowledge",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.claim.propose",
+      "command_id": "claim-propose-c-local",
+      "subject": {
+        "kind": "knowledge.claim",
+        "id": "c-local"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.claim",
+            "id": "c-local"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "plane": "observed",
+        "statement": {
+          "subject": {
+            "kind": "app.service",
+            "id": "billing"
+          },
+          "predicate": "local_patch_applies",
+          "value": true,
+          "cardinality": "single"
+        },
+        "scope": {
+          "id": "svc",
+          "qualifiers": {}
+        },
+        "support": [],
+        "derivation": {
+          "kind": "deterministic",
+          "inputs": []
+        },
+        "conditions": [
+          {
+            "condition_id": "k-dirty",
+            "kind": "dirty_snapshot",
+            "repository": "repo-a",
+            "expected": "sha256:79c6d61344be00e74b64db50b5b9639bbfd2d845d2d686ec380526eb898a9d8a"
+          },
+          {
+            "condition_id": "k-env",
+            "kind": "environment_digest",
+            "expected": "env-1"
+          }
+        ]
+      },
+      "capture": {
+        "d_c-local": "/result/outcome/reference/digest"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.applicability.evaluate",
+      "command_id": "applicability-evaluate-ev-ok",
+      "subject": {
+        "kind": "knowledge.evaluation",
+        "id": "ev-ok"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.evaluation",
+            "id": "ev-ok"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "claim": {
+          "provider": "conformance-provider",
+          "claim": "c-local",
+          "revision": 1,
+          "digest": {
+            "$var": "d_c-local"
+          }
+        },
+        "target": {
+          "repositories": [
+            {
+              "id": "repo-a",
+              "tree": "t1",
+              "dirty": {
+                "snapshot_digest": "sha256:79c6d61344be00e74b64db50b5b9639bbfd2d845d2d686ec380526eb898a9d8a"
+              }
+            }
+          ],
+          "completeness": "complete",
+          "environment": "env-1"
+        }
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "result": "applicable",
+            "findings": [
+              {
+                "condition_id": "k-dirty",
+                "finding": "match"
+              },
+              {
+                "condition_id": "k-env",
+                "finding": "match"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.applicability.evaluate",
+      "command_id": "applicability-evaluate-ev-other-snapshot",
+      "subject": {
+        "kind": "knowledge.evaluation",
+        "id": "ev-other-snapshot"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.evaluation",
+            "id": "ev-other-snapshot"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "claim": {
+          "provider": "conformance-provider",
+          "claim": "c-local",
+          "revision": 1,
+          "digest": {
+            "$var": "d_c-local"
+          }
+        },
+        "target": {
+          "repositories": [
+            {
+              "id": "repo-a",
+              "tree": "t1",
+              "dirty": {
+                "snapshot_digest": "sha256:1303575f6f144a4c65bea20994202cce34ef994afdb2755c9311ebbda248f86d"
+              }
+            }
+          ],
+          "completeness": "complete",
+          "environment": "env-1"
+        }
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "result": "invalid_for_target",
+            "findings": [
+              {
+                "condition_id": "k-dirty",
+                "finding": "mismatch"
+              },
+              {
+                "condition_id": "k-env",
+                "finding": "match"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.applicability.evaluate",
+      "command_id": "applicability-evaluate-ev-clean",
+      "subject": {
+        "kind": "knowledge.evaluation",
+        "id": "ev-clean"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.evaluation",
+            "id": "ev-clean"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "claim": {
+          "provider": "conformance-provider",
+          "claim": "c-local",
+          "revision": 1,
+          "digest": {
+            "$var": "d_c-local"
+          }
+        },
+        "target": {
+          "repositories": [
+            {
+              "id": "repo-a",
+              "tree": "t1"
+            }
+          ],
+          "completeness": "complete",
+          "environment": "env-1"
+        }
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "result": "unknown",
+            "findings": [
+              {
+                "condition_id": "k-dirty",
+                "finding": "missing_anchor"
+              },
+              {
+                "condition_id": "k-env",
+                "finding": "match"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.applicability.evaluate",
+      "command_id": "applicability-evaluate-ev-other-env",
+      "subject": {
+        "kind": "knowledge.evaluation",
+        "id": "ev-other-env"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.evaluation",
+            "id": "ev-other-env"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "claim": {
+          "provider": "conformance-provider",
+          "claim": "c-local",
+          "revision": 1,
+          "digest": {
+            "$var": "d_c-local"
+          }
+        },
+        "target": {
+          "repositories": [
+            {
+              "id": "repo-a",
+              "tree": "t1",
+              "dirty": {
+                "snapshot_digest": "sha256:79c6d61344be00e74b64db50b5b9639bbfd2d845d2d686ec380526eb898a9d8a"
+              }
+            }
+          ],
+          "completeness": "complete",
+          "environment": "env-2"
+        }
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "result": "invalid_for_target",
+            "findings": [
+              {
+                "condition_id": "k-dirty",
+                "finding": "match"
+              },
+              {
+                "condition_id": "k-env",
+                "finding": "mismatch"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.applicability.evaluate",
+      "command_id": "applicability-evaluate-ev-no-env",
+      "subject": {
+        "kind": "knowledge.evaluation",
+        "id": "ev-no-env"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.evaluation",
+            "id": "ev-no-env"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "claim": {
+          "provider": "conformance-provider",
+          "claim": "c-local",
+          "revision": 1,
+          "digest": {
+            "$var": "d_c-local"
+          }
+        },
+        "target": {
+          "repositories": [
+            {
+              "id": "repo-a",
+              "tree": "t1",
+              "dirty": {
+                "snapshot_digest": "sha256:79c6d61344be00e74b64db50b5b9639bbfd2d845d2d686ec380526eb898a9d8a"
+              }
+            }
+          ],
+          "completeness": "complete"
+        }
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "result": "unknown",
+            "findings": [
+              {
+                "condition_id": "k-dirty",
+                "finding": "match"
+              },
+              {
+                "condition_id": "k-env",
+                "finding": "missing_anchor"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

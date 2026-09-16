@@ -1,0 +1,266 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "core.events.unread-ending-notice-does-not-hold-the-connection",
+  "version": 2,
+  "title": "When the slow consumer also leaves its ending notices unread, the provider waits for room once, attempts every subscription's notice within one shared budget, and closes the connection within twice the declared bound",
+  "requirements": [
+    "TRN-4"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/CORE.md#165-subscriptions",
+    "docs/spec/profiles/EXECUTION.md#14-output-telemetry-and-backpressure",
+    "docs/decisions/007-execution-test-controls.md"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "execution",
+      "major": 1
+    }
+  ],
+  "features": [
+    "core.events",
+    "core.capabilities",
+    "core.effects",
+    "core.events.backpressure",
+    "execution.output"
+  ],
+  "requires_controls": [
+    "executor.script"
+  ],
+  "requires_barriers": [
+    "backpressure.connection.closed",
+    "backpressure.limit.reached",
+    "backpressure.stall.started"
+  ],
+  "polarity": "negative",
+  "kills": [
+    "notice-waits-indefinitely",
+    "unbounded-pending-output",
+    "notice-budget-per-subscription",
+    "room-wait-unbounded"
+  ],
+  "kill_expectations": {
+    "notice-waits-indefinitely": {
+      "step": 8,
+      "reason_contains": "no signal"
+    },
+    "unbounded-pending-output": {
+      "step": 8,
+      "reason_contains": "no signal"
+    },
+    "notice-budget-per-subscription": {
+      "step": 10,
+      "reason_contains": "above the bound"
+    },
+    "room-wait-unbounded": {
+      "step": 8,
+      "reason_contains": "no signal"
+    }
+  },
+  "steps": [
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ],
+        "executor": {
+          "output_spool_bytes": 1024,
+          "scripts": {
+            "e-1": [
+              {
+                "deliver": "provider_ack_id"
+              },
+              {
+                "output": {
+                  "repeat": "x",
+                  "bytes": 4096
+                }
+              },
+              {
+                "runtime_burst": 4000
+              }
+            ]
+          }
+        },
+        "events": {
+          "max_pending_notification_bytes": 65536,
+          "backpressure_notice_ms": 1500
+        }
+      },
+      "barriers": []
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.capabilities",
+              "core.effects",
+              "core.events.backpressure"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "execution",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "execution.output"
+            ],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core.events.read",
+      "payload": {
+        "from": "now",
+        "limit": 1
+      },
+      "expect": {
+        "ok": {
+          "items": []
+        }
+      },
+      "capture": {
+        "cursor": "/result/next_cursor"
+      },
+      "note": "the consumer's last durably processed cursor before subscribing"
+    },
+    {
+      "step": "query",
+      "operation": "core.events.subscribe",
+      "payload": {
+        "cursor": {
+          "$var": "cursor"
+        }
+      },
+      "capture": {
+        "sub": "/result/subscription"
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core.events.subscribe",
+      "payload": {
+        "cursor": {
+          "$var": "cursor"
+        },
+        "kinds": [
+          "execution.execution"
+        ]
+      },
+      "expect": {
+        "ok": {}
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core.events.subscribe",
+      "payload": {
+        "cursor": {
+          "$var": "cursor"
+        },
+        "kinds": [
+          "core.effect"
+        ]
+      },
+      "expect": {
+        "ok": {}
+      }
+    },
+    {
+      "step": "pause_reading",
+      "note": "the consumer stops reading all three subscriptions"
+    },
+    {
+      "step": "command",
+      "operation": "execution.submit",
+      "command_id": "submit-e-1",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "e-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "e-1"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "brief": {
+          "digest": "sha256:abababababababababababababababababababababababababababababababab",
+          "media_type": "text/plain"
+        }
+      },
+      "await": false,
+      "name": "burst"
+    },
+    {
+      "step": "await_any",
+      "signals": [
+        "backpressure.connection.closed"
+      ],
+      "within_ms": 20000,
+      "note": "the consumer is still not reading; the notices cannot be written"
+    },
+    {
+      "step": "expect_signal_gap",
+      "from": "backpressure.stall.started",
+      "to": "backpressure.limit.reached",
+      "min_ms": 1450,
+      "max_ms": 2250,
+      "note": "room deadline"
+    },
+    {
+      "step": "expect_signal_gap",
+      "from": "backpressure.limit.reached",
+      "to": "backpressure.connection.closed",
+      "min_ms": 1450,
+      "max_ms": 2250,
+      "note": "one notice budget for all three subscriptions"
+    },
+    {
+      "step": "expect_signal_gap",
+      "from": "backpressure.stall.started",
+      "to": "backpressure.connection.closed",
+      "max_ms": 3750,
+      "note": "maximum time to closure: twice backpressure_notice_ms"
+    },
+    {
+      "step": "resume_reading"
+    },
+    {
+      "step": "collect_until_close",
+      "subscription": {
+        "$var": "sub"
+      },
+      "within_ms": 10000,
+      "forbid_ended": true
+    }
+  ]
+}

@@ -1,0 +1,1575 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Combraton/protocol/conformance/schemas/fixture.schema.json",
+  "title": "Conformance fixture file (combraton-conformance-fixture/1)",
+  "type": "object",
+  "required": [
+    "format",
+    "id",
+    "version",
+    "title",
+    "requirements",
+    "spec_refs",
+    "role",
+    "profiles",
+    "polarity",
+    "kills",
+    "steps"
+  ],
+  "properties": {
+    "format": {
+      "const": "combraton-conformance-fixture/1"
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9-]+(\\.[a-z0-9-]+)+$"
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "description": {
+      "type": "string"
+    },
+    "requirements": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string"
+      }
+    },
+    "spec_refs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string"
+      }
+    },
+    "role": {
+      "const": "provider"
+    },
+    "profiles": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "major"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "major": {
+            "type": "integer"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "features": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "polarity": {
+      "enum": [
+        "positive",
+        "negative"
+      ]
+    },
+    "kills": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string"
+      }
+    },
+    "config": {
+      "type": "object"
+    },
+    "steps": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "step"
+            ],
+            "properties": {
+              "step": {
+                "const": "start"
+              },
+              "within_ms": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "expect": {
+                "$ref": "#/$defs/expect"
+              },
+              "capture": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "note": {
+                "type": "string"
+              },
+              "config": {
+                "type": "object"
+              },
+              "session": {
+                "type": "string",
+                "pattern": "^[a-z0-9-]{1,32}$"
+              },
+              "auto_authenticate": {
+                "type": "boolean"
+              },
+              "credential_principals": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "revoked_principals": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "fresh_data_directory": {
+                "type": "boolean"
+              },
+              "barriers": {
+                "type": "array",
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+                }
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "step"
+            ],
+            "properties": {
+              "step": {
+                "const": "stop"
+              },
+              "within_ms": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "expect": {
+                "$ref": "#/$defs/expect"
+              },
+              "capture": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "note": {
+                "type": "string"
+              },
+              "session": {
+                "type": "string",
+                "pattern": "^[a-z0-9-]{1,32}$"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "step"
+            ],
+            "properties": {
+              "step": {
+                "const": "describe"
+              },
+              "within_ms": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "expect": {
+                "$ref": "#/$defs/expect"
+              },
+              "capture": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "note": {
+                "type": "string"
+              },
+              "session": {
+                "type": "string",
+                "pattern": "^[a-z0-9-]{1,32}$"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "step"
+            ],
+            "properties": {
+              "step": {
+                "const": "negotiate"
+              },
+              "within_ms": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "expect": {
+                "$ref": "#/$defs/expect"
+              },
+              "capture": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "note": {
+                "type": "string"
+              },
+              "payload": {},
+              "session": {
+                "type": "string",
+                "pattern": "^[a-z0-9-]{1,32}$"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "step",
+              "method",
+              "params"
+            ],
+            "properties": {
+              "step": {
+                "const": "request"
+              },
+              "within_ms": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "expect": {
+                "$ref": "#/$defs/expect"
+              },
+              "capture": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "note": {
+                "type": "string"
+              },
+              "method": {
+                "type": "string"
+              },
+              "params": {},
+              "id": {},
+              "session": {
+                "type": "string",
+                "pattern": "^[a-z0-9-]{1,32}$"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "step",
+              "operation",
+              "command_id",
+              "subject",
+              "preconditions",
+              "payload"
+            ],
+            "properties": {
+              "step": {
+                "const": "command"
+              },
+              "within_ms": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "expect": {
+                "$ref": "#/$defs/expect"
+              },
+              "capture": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "note": {
+                "type": "string"
+              },
+              "operation": {
+                "type": "string"
+              },
+              "command_id": {},
+              "subject": {},
+              "preconditions": {},
+              "authority_epoch": {},
+              "requires": {},
+              "extensions": {},
+              "payload": {},
+              "dedupe_generation": {},
+              "method": {
+                "type": "string"
+              },
+              "id": {},
+              "set": {
+                "type": "object"
+              },
+              "remove": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "digest": {
+                "type": [
+                  "string",
+                  "boolean"
+                ]
+              },
+              "session": {
+                "type": "string",
+                "pattern": "^[a-z0-9-]{1,32}$"
+              },
+              "await": {
+                "type": "boolean",
+                "description": "false sends without waiting; check the response later with expect_response"
+              },
+              "name": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "step",
+              "operation",
+              "payload"
+            ],
+            "properties": {
+              "step": {
+                "const": "query"
+              },
+              "within_ms": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "expect": {
+                "$ref": "#/$defs/expect"
+              },
+              "capture": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "note": {
+                "type": "string"
+              },
+              "operation": {
+                "type": "string"
+              },
+              "payload": {},
+              "method": {
+                "type": "string"
+              },
+              "id": {},
+              "set": {
+                "type": "object"
+              },
+              "remove": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "session": {
+                "type": "string",
+                "pattern": "^[a-z0-9-]{1,32}$"
+              },
+              "await": {
+                "type": "boolean",
+                "description": "false sends without waiting; check the response later with expect_response"
+              },
+              "name": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+              },
+              "eventually_ms": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 60000,
+                "description": "Repeat the query until its expectation holds, within this real-time bound (asynchronous compositions)."
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "step",
+              "command"
+            ],
+            "properties": {
+              "step": {
+                "const": "notify"
+              },
+              "within_ms": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "expect": {
+                "$ref": "#/$defs/expect"
+              },
+              "capture": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "note": {
+                "type": "string"
+              },
+              "command": {
+                "type": "object",
+                "required": [
+                  "operation",
+                  "command_id",
+                  "subject",
+                  "preconditions",
+                  "payload"
+                ],
+                "properties": {
+                  "operation": {
+                    "type": "string"
+                  },
+                  "command_id": {},
+                  "subject": {},
+                  "preconditions": {},
+                  "authority_epoch": {},
+                  "requires": {},
+                  "extensions": {},
+                  "payload": {},
+                  "dedupe_generation": {},
+                  "method": {
+                    "type": "string"
+                  },
+                  "id": {},
+                  "set": {
+                    "type": "object"
+                  },
+                  "remove": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "digest": {
+                    "type": [
+                      "string",
+                      "boolean"
+                    ]
+                  }
+                },
+                "additionalProperties": false
+              },
+              "session": {
+                "type": "string",
+                "pattern": "^[a-z0-9-]{1,32}$"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "step"
+            ],
+            "properties": {
+              "step": {
+                "const": "raw"
+              },
+              "within_ms": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "expect": {
+                "$ref": "#/$defs/expect"
+              },
+              "capture": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "note": {
+                "type": "string"
+              },
+              "text": {
+                "type": "string"
+              },
+              "hex": {
+                "type": "string"
+              },
+              "command": {
+                "type": "object",
+                "required": [
+                  "operation",
+                  "command_id",
+                  "subject",
+                  "preconditions",
+                  "payload"
+                ],
+                "properties": {
+                  "operation": {
+                    "type": "string"
+                  },
+                  "command_id": {},
+                  "subject": {},
+                  "preconditions": {},
+                  "authority_epoch": {},
+                  "requires": {},
+                  "extensions": {},
+                  "payload": {},
+                  "dedupe_generation": {},
+                  "method": {
+                    "type": "string"
+                  },
+                  "id": {},
+                  "set": {
+                    "type": "object"
+                  },
+                  "remove": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "digest": {
+                    "type": [
+                      "string",
+                      "boolean"
+                    ]
+                  }
+                },
+                "additionalProperties": false
+              },
+              "padded": {
+                "type": "object",
+                "required": [
+                  "message",
+                  "frame_bytes"
+                ]
+              },
+              "terminate": {
+                "type": "boolean"
+              },
+              "session": {
+                "type": "string",
+                "pattern": "^[a-z0-9-]{1,32}$"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "step",
+              "expect"
+            ],
+            "properties": {
+              "step": {
+                "const": "expect_frame"
+              },
+              "within_ms": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "expect": {
+                "$ref": "#/$defs/expect"
+              },
+              "capture": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "note": {
+                "type": "string"
+              },
+              "session": {
+                "type": "string",
+                "pattern": "^[a-z0-9-]{1,32}$"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "step"
+            ],
+            "properties": {
+              "step": {
+                "const": "expect_close"
+              },
+              "within_ms": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "expect": {
+                "$ref": "#/$defs/expect"
+              },
+              "capture": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "note": {
+                "type": "string"
+              },
+              "session": {
+                "type": "string",
+                "pattern": "^[a-z0-9-]{1,32}$"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "step"
+            ],
+            "properties": {
+              "step": {
+                "const": "close_input"
+              },
+              "within_ms": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "expect": {
+                "$ref": "#/$defs/expect"
+              },
+              "capture": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "note": {
+                "type": "string"
+              },
+              "session": {
+                "type": "string",
+                "pattern": "^[a-z0-9-]{1,32}$"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "step",
+              "expect"
+            ],
+            "properties": {
+              "step": {
+                "const": "expect_notification"
+              },
+              "within_ms": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "expect": {
+                "$ref": "#/$defs/expect"
+              },
+              "capture": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "note": {
+                "type": "string"
+              },
+              "session": {
+                "type": "string",
+                "pattern": "^[a-z0-9-]{1,32}$"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "step"
+            ],
+            "properties": {
+              "step": {
+                "const": "expect_no_notification"
+              },
+              "within_ms": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "expect": {
+                "$ref": "#/$defs/expect"
+              },
+              "capture": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "note": {
+                "type": "string"
+              },
+              "session": {
+                "type": "string",
+                "pattern": "^[a-z0-9-]{1,32}$"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "step",
+              "session"
+            ],
+            "properties": {
+              "step": {
+                "const": "connect"
+              },
+              "auto_authenticate": {
+                "type": "boolean"
+              },
+              "within_ms": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "expect": {
+                "$ref": "#/$defs/expect"
+              },
+              "capture": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "note": {
+                "type": "string"
+              },
+              "session": {
+                "type": "string",
+                "pattern": "^[a-z0-9-]{1,32}$"
+              },
+              "principal": {
+                "type": "string"
+              },
+              "participant": {
+                "type": "string",
+                "pattern": "^[a-z0-9-]{1,32}$"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "step",
+              "session"
+            ],
+            "properties": {
+              "step": {
+                "const": "disconnect"
+              },
+              "within_ms": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "expect": {
+                "$ref": "#/$defs/expect"
+              },
+              "capture": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "note": {
+                "type": "string"
+              },
+              "session": {
+                "type": "string",
+                "pattern": "^[a-z0-9-]{1,32}$"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "step"
+            ],
+            "properties": {
+              "step": {
+                "const": "expect_start_failure"
+              },
+              "config": {
+                "type": "object"
+              },
+              "unsafe_socket_directory": {
+                "type": "boolean"
+              },
+              "within_ms": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "expect": {
+                "$ref": "#/$defs/expect"
+              },
+              "capture": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "note": {
+                "type": "string"
+              },
+              "session": {
+                "type": "string",
+                "pattern": "^[a-z0-9-]{1,32}$"
+              },
+              "credential_principals": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "revoked_principals": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "step"
+            ],
+            "properties": {
+              "step": {
+                "const": "set_clock"
+              },
+              "within_ms": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "expect": {
+                "$ref": "#/$defs/expect"
+              },
+              "capture": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "note": {
+                "type": "string"
+              },
+              "session": {
+                "type": "string",
+                "pattern": "^[a-z0-9-]{1,32}$"
+              },
+              "instant": {
+                "type": "string",
+                "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+              },
+              "raw": {
+                "type": "string"
+              },
+              "allow_backward": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "step"
+            ],
+            "properties": {
+              "step": {
+                "const": "kill"
+              },
+              "within_ms": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "expect": {
+                "$ref": "#/$defs/expect"
+              },
+              "capture": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "note": {
+                "type": "string"
+              },
+              "session": {
+                "type": "string",
+                "pattern": "^[a-z0-9-]{1,32}$"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "step",
+              "name"
+            ],
+            "properties": {
+              "step": {
+                "const": "expect_response"
+              },
+              "within_ms": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "expect": {
+                "$ref": "#/$defs/expect"
+              },
+              "capture": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "note": {
+                "type": "string"
+              },
+              "session": {
+                "type": "string",
+                "pattern": "^[a-z0-9-]{1,32}$"
+              },
+              "name": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "step",
+              "name"
+            ],
+            "properties": {
+              "step": {
+                "const": "await_barrier"
+              },
+              "within_ms": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "expect": {
+                "$ref": "#/$defs/expect"
+              },
+              "capture": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "note": {
+                "type": "string"
+              },
+              "session": {
+                "type": "string",
+                "pattern": "^[a-z0-9-]{1,32}$"
+              },
+              "name": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "step",
+              "name"
+            ],
+            "properties": {
+              "step": {
+                "const": "release_barrier"
+              },
+              "within_ms": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "expect": {
+                "$ref": "#/$defs/expect"
+              },
+              "capture": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "note": {
+                "type": "string"
+              },
+              "session": {
+                "type": "string",
+                "pattern": "^[a-z0-9-]{1,32}$"
+              },
+              "name": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "step"
+            ],
+            "properties": {
+              "step": {
+                "const": "await_any"
+              },
+              "within_ms": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "expect": {
+                "$ref": "#/$defs/expect"
+              },
+              "capture": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "note": {
+                "type": "string"
+              },
+              "session": {
+                "type": "string",
+                "pattern": "^[a-z0-9-]{1,32}$"
+              },
+              "signals": {
+                "type": "array",
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+                }
+              },
+              "responses": {
+                "type": "array",
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+                }
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "step"
+            ],
+            "properties": {
+              "step": {
+                "const": "pause_reading"
+              },
+              "note": {
+                "type": "string"
+              },
+              "session": {
+                "type": "string",
+                "pattern": "^[a-z0-9-]{1,32}$"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "step"
+            ],
+            "properties": {
+              "step": {
+                "const": "resume_reading"
+              },
+              "note": {
+                "type": "string"
+              },
+              "session": {
+                "type": "string",
+                "pattern": "^[a-z0-9-]{1,32}$"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "step",
+              "subscription"
+            ],
+            "properties": {
+              "step": {
+                "const": "collect_until_close"
+              },
+              "note": {
+                "type": "string"
+              },
+              "session": {
+                "type": "string",
+                "pattern": "^[a-z0-9-]{1,32}$"
+              },
+              "within_ms": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "subscription": {
+                "description": "Subscription ID or a $var template."
+              },
+              "expect_last": {
+                "description": "Pattern for the params of the subscription's last notification before close."
+              },
+              "capture_cursor": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_]{0,31}$"
+              },
+              "capture_next_sequence": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_]{0,31}$"
+              },
+              "forbid_ended": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "step",
+              "from",
+              "to"
+            ],
+            "properties": {
+              "step": {
+                "const": "expect_signal_gap"
+              },
+              "note": {
+                "type": "string"
+              },
+              "session": {
+                "type": "string",
+                "pattern": "^[a-z0-9-]{1,32}$"
+              },
+              "from": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+              },
+              "to": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+              },
+              "min_ms": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "max_ms": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "step",
+              "name",
+              "config"
+            ],
+            "properties": {
+              "step": {
+                "const": "start_participant"
+              },
+              "name": {
+                "type": "string",
+                "pattern": "^[a-z0-9-]{1,32}$"
+              },
+              "config": {
+                "type": "object"
+              },
+              "credential_principals": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "within_ms": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "expect": {
+                "$ref": "#/$defs/expect"
+              },
+              "capture": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "note": {
+                "type": "string"
+              },
+              "session": {
+                "type": "string",
+                "pattern": "^[a-z0-9-]{1,32}$"
+              }
+            },
+            "additionalProperties": false,
+            "description": "Launch a named participant as its own process with its own data directory, configuration and socket (unix binding). Its socket path is variable socket.<name>."
+          },
+          {
+            "type": "object",
+            "required": [
+              "step",
+              "name"
+            ],
+            "properties": {
+              "step": {
+                "const": "stop_participant"
+              },
+              "name": {
+                "type": "string",
+                "pattern": "^[a-z0-9-]{1,32}$"
+              },
+              "within_ms": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "expect": {
+                "$ref": "#/$defs/expect"
+              },
+              "capture": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "note": {
+                "type": "string"
+              },
+              "session": {
+                "type": "string",
+                "pattern": "^[a-z0-9-]{1,32}$"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "step",
+              "name"
+            ],
+            "properties": {
+              "step": {
+                "const": "kill_participant"
+              },
+              "name": {
+                "type": "string",
+                "pattern": "^[a-z0-9-]{1,32}$"
+              },
+              "within_ms": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "expect": {
+                "$ref": "#/$defs/expect"
+              },
+              "capture": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "note": {
+                "type": "string"
+              },
+              "session": {
+                "type": "string",
+                "pattern": "^[a-z0-9-]{1,32}$"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "step",
+              "name",
+              "implementation",
+              "config"
+            ],
+            "properties": {
+              "step": {
+                "const": "start_client"
+              },
+              "name": {
+                "type": "string",
+                "pattern": "^[a-z0-9-]{1,32}$"
+              },
+              "implementation": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+              },
+              "config": {
+                "type": "object"
+              },
+              "within_ms": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "note": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "step",
+              "name"
+            ],
+            "properties": {
+              "step": {
+                "const": "stop_client"
+              },
+              "name": {
+                "type": "string",
+                "pattern": "^[a-z0-9-]{1,32}$"
+              },
+              "exit_code": {
+                "type": "integer"
+              },
+              "within_ms": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "note": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "step",
+              "name"
+            ],
+            "properties": {
+              "step": {
+                "const": "await_client_exit"
+              },
+              "name": {
+                "type": "string",
+                "pattern": "^[a-z0-9-]{1,32}$"
+              },
+              "exit_code": {
+                "type": "integer"
+              },
+              "within_ms": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "note": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        ]
+      }
+    },
+    "binding": {
+      "enum": [
+        "stdio",
+        "unix"
+      ],
+      "description": "Restrict the fixture to one binding; absent means any."
+    },
+    "requires_pinned": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9.-]{0,63}$",
+      "description": "Run only against a participant descriptor whose `pinned` names this older release build (compatibility fixtures); every other participant skips it."
+    },
+    "requires_controls": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "clock.file",
+          "context.script",
+          "evidence.store",
+          "executor.script",
+          "knowledge.store",
+          "store.faults",
+          "verifier.script"
+        ]
+      },
+      "description": "Portable test controls the participant must declare under claims.test_controls; otherwise the fixture is unsupported (a coverage limit)."
+    },
+    "requires_barriers": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+      },
+      "description": "Implementation-specific barriers the participant must declare under claims.test_barriers; otherwise the fixture is unsupported (a coverage limit)."
+    },
+    "kill_expectations": {
+      "type": "object",
+      "description": "For a declared mutant: the step index where it must fail and a substring of the failure reason.",
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "step",
+          "reason_contains"
+        ],
+        "properties": {
+          "step": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "reason_contains": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "client_kills": {
+      "type": "array",
+      "uniqueItems": true,
+      "description": "Mutants of client-only implementations (conformance/thirdparty/<implementation>/participant.json) that this composition fixture must fail; check-mutants runs each with --client-mutant.",
+      "items": {
+        "type": "object",
+        "required": [
+          "implementation",
+          "mutant"
+        ],
+        "properties": {
+          "implementation": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+          },
+          "mutant": {
+            "type": "string"
+          },
+          "step": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "reason_contains": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "expect": {
+      "type": "object",
+      "properties": {
+        "ok": {},
+        "error": {
+          "type": "string"
+        },
+        "details": {},
+        "frame": {},
+        "id_null": {
+          "type": "boolean"
+        },
+        "params": {},
+        "frame_text_excludes": {
+          "type": "array",
+          "items": {}
+        },
+        "any_of": {
+          "type": "array",
+          "minItems": 2,
+          "items": {
+            "$ref": "#/$defs/expect"
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

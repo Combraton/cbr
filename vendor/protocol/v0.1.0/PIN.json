@@ -1,0 +1,37 @@
+{
+  "format": "cbr-protocol-pin/1",
+  "protocol_release": "0.1",
+  "tag": "v0.1.0",
+  "commit": "cbf8e4df9df2ca8a9b50264df6acace6e4c3a0fc",
+  "tree": "ad57cc4ef067834c20d868dbcc844f70b8ef223f",
+  "tested_head": "f7e67975dc712bb810d4e14aa0819d980b06dbe3",
+  "inventory_listing_sha256": "80b39377b10685c29bb5823e69ee539ef91bb1eace5b049f2894b603ce08b41d",
+  "inventory_files": 420,
+  "bundle_asset": "combraton-protocol-0.1.0-source.tar.gz",
+  "bundle_sha256": "bde7892404bcc6fcf45f4cddb95026517e92a6bdf352ce20f959941596a3511d",
+  "release_manifest_sha256": "af6ce6526c3761f2f75466cf203fb57fcd48c159221462e8f943329655c45358",
+  "rust_toolchain": "1.97.1",
+  "source": "Extracted from the published release archive and verified before vendoring. Never copied from a sibling protocol checkout.",
+  "vendored_from_archive": [
+    "LICENSE",
+    "RELEASE-SOURCE.json",
+    "BUNDLE-SHA256SUMS",
+    "docs/release/0.1/inventory.json",
+    "docs/spec/",
+    "schemas/",
+    "conformance/schemas/",
+    "conformance/fixtures/",
+    "conformance/vectors/",
+    "conformance/runner/"
+  ],
+  "authored_by_cbr_not_the_archive": [
+    "PIN.json",
+    "README.md"
+  ],
+  "deliberately_not_vendored": {
+    "conformance/reference/": "The protocol's reference provider. CBR writes its own implementation and its own test controls; the reference is not a library to depend on.",
+    "conformance/independent/": "The protocol's independent Python provider, for the same reason.",
+    "conformance/thirdparty/": "Client-only third-party consumers; vendored only if a composition fixture CBR runs needs them.",
+    "conformance/participants/": "Descriptors for the protocol's own participants. CBR writes its own descriptor."
+  }
+}

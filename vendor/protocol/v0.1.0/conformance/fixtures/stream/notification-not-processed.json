@@ -1,0 +1,73 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "stream.notification-not-processed",
+  "version": 1,
+  "title": "A command sent as a notification is neither processed nor answered",
+  "requirements": [
+    "TRN-1"
+  ],
+  "spec_refs": [
+    "docs/spec/bindings/STREAM.md#3-json-rpc-mapping"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "core-test",
+      "major": 1
+    }
+  ],
+  "polarity": "negative",
+  "kills": [
+    "process-notifications"
+  ],
+  "steps": [
+    {
+      "step": "start"
+    },
+    {
+      "step": "negotiate"
+    },
+    {
+      "step": "notify",
+      "command": {
+        "operation": "core-test.subject.put",
+        "command_id": "cmd-1",
+        "subject": {
+          "kind": "core-test.subject",
+          "id": "s-1"
+        },
+        "preconditions": [
+          {
+            "subject": {
+              "kind": "core-test.subject",
+              "id": "s-1"
+            },
+            "revision": 0
+          }
+        ],
+        "authority_epoch": 0,
+        "payload": {
+          "value": "v"
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core-test.subject.applied_count",
+      "payload": {
+        "subject": {
+          "kind": "core-test.subject",
+          "id": "s-1"
+        }
+      },
+      "expect": {
+        "ok": {
+          "applied_count": 0
+        }
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

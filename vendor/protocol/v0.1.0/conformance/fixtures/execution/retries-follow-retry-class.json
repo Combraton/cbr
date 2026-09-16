@@ -1,0 +1,367 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "execution.retries-follow-retry-class",
+  "version": 1,
+  "title": "After attempts with unknown outcomes, a non-repeatable submission is never retried, an idempotent cancellation is retried only with the same key, and a read probe is retried",
+  "requirements": [
+    "EFF-3",
+    "EXE-3"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/CORE.md#193-retry-classes"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "execution",
+      "major": 1
+    }
+  ],
+  "features": [
+    "core.events",
+    "core.capabilities",
+    "core.effects"
+  ],
+  "requires_controls": [
+    "executor.script"
+  ],
+  "polarity": "negative",
+  "kills": [
+    "non-repeatable-retried",
+    "idempotent-retry-new-key",
+    "read-never-retried"
+  ],
+  "kill_expectations": {
+    "non-repeatable-retried": {
+      "step": 8,
+      "reason_contains": "result/"
+    },
+    "idempotent-retry-new-key": {
+      "step": 10,
+      "reason_contains": "attempts/1/idempotency_key"
+    },
+    "read-never-retried": {
+      "step": 12,
+      "reason_contains": "result/"
+    }
+  },
+  "steps": [
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ],
+        "executor": {
+          "scripts": {
+            "e-nr": [
+              {
+                "transport_errors": 1
+              },
+              {
+                "deliver": "provider_ack_id"
+              }
+            ],
+            "e-key": [
+              {
+                "deliver": "provider_ack_id"
+              },
+              {
+                "transport_errors": 1
+              },
+              {
+                "on_cancel": "cancelled"
+              }
+            ],
+            "e-read": [
+              {
+                "deliver": "provider_ack_id"
+              },
+              {
+                "transport_errors": 2
+              },
+              {
+                "probe_status": true
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.capabilities",
+              "core.effects"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "execution",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "execution.submit",
+      "command_id": "submit-e-nr",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "e-nr"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "e-nr"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "brief": {
+          "digest": "sha256:abababababababababababababababababababababababababababababababab",
+          "media_type": "text/plain"
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "execution.submit",
+      "command_id": "submit-e-key",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "e-key"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "e-key"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "brief": {
+          "digest": "sha256:abababababababababababababababababababababababababababababababab",
+          "media_type": "text/plain"
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "execution.submit",
+      "command_id": "submit-e-read",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "e-read"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "e-read"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "brief": {
+          "digest": "sha256:abababababababababababababababababababababababababababababababab",
+          "media_type": "text/plain"
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "execution.inspect",
+      "payload": {
+        "execution": "e-key"
+      },
+      "expect": {
+        "ok": {
+          "delivery": "acknowledged"
+        }
+      },
+      "capture": {
+        "rk": "/result/revision"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "execution.cancel",
+      "command_id": "cancel-e-key",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "e-key"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "e-key"
+          },
+          "revision": {
+            "$var": "rk"
+          }
+        }
+      ],
+      "payload": {},
+      "expect": {
+        "ok": {
+          "acknowledgment": {
+            "effect_refs": [
+              "e-key.cancel-1"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "step": "describe"
+    },
+    {
+      "step": "query",
+      "operation": "core.effects.get",
+      "payload": {
+        "effect": "e-nr.delivery-1"
+      },
+      "expect": {
+        "ok": {
+          "effect": {
+            "retry_class": "non_repeatable"
+          },
+          "status": "unknown",
+          "attempts": [
+            {
+              "attempt": 1,
+              "outcome": "unknown"
+            }
+          ],
+          "obligations": [
+            {
+              "state": "open"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "execution.inspect",
+      "payload": {
+        "execution": "e-nr"
+      },
+      "expect": {
+        "ok": {
+          "delivery": "ambiguous",
+          "deliveries": [
+            {
+              "evidence": {
+                "class": "transport_error"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core.effects.get",
+      "payload": {
+        "effect": "e-key.cancel-1"
+      },
+      "expect": {
+        "ok": {
+          "effect": {
+            "kind": "execution.cancel_forwarding",
+            "retry_class": "idempotent_key",
+            "idempotency_key": "e-key.cancel-1"
+          },
+          "status": "succeeded",
+          "attempts": [
+            {
+              "attempt": 1,
+              "idempotency_key": "e-key.cancel-1",
+              "outcome": "unknown"
+            },
+            {
+              "attempt": 2,
+              "idempotency_key": "e-key.cancel-1",
+              "outcome": "completed"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "execution.inspect",
+      "payload": {
+        "execution": "e-key"
+      },
+      "expect": {
+        "ok": {
+          "cancellation": {
+            "outcome": "cancelled"
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core.effects.get",
+      "payload": {
+        "effect": "e-read.probe-1"
+      },
+      "expect": {
+        "ok": {
+          "effect": {
+            "kind": "execution.status_probe",
+            "retry_class": "read"
+          },
+          "status": "succeeded",
+          "attempts": [
+            {
+              "outcome": "unknown"
+            },
+            {
+              "outcome": "unknown"
+            },
+            {
+              "outcome": "completed"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

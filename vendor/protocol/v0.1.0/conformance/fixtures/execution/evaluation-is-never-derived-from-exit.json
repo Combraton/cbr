@@ -1,0 +1,220 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "execution.evaluation-is-never-derived-from-exit",
+  "version": 2,
+  "title": "Exit status zero does not produce an evaluation",
+  "requirements": [
+    "EXE-5"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/EXECUTION.md#3-status-axes"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "execution",
+      "major": 1
+    }
+  ],
+  "features": [
+    "core.events",
+    "core.capabilities",
+    "core.effects"
+  ],
+  "requires_controls": [
+    "executor.script"
+  ],
+  "polarity": "negative",
+  "kills": [
+    "evaluation-from-exit"
+  ],
+  "kill_expectations": {
+    "evaluation-from-exit": {
+      "step": 4,
+      "reason_contains": "result/evaluation"
+    }
+  },
+  "steps": [
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ],
+        "executor": {
+          "scripts": {
+            "e-1": [
+              {
+                "deliver": "provider_ack_id"
+              },
+              {
+                "exit": {
+                  "code": 0
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.capabilities",
+              "core.effects"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "execution",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "execution.submit",
+      "command_id": "submit-e-1",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "e-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "e-1"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "brief": {
+          "digest": "sha256:abababababababababababababababababababababababababababababababab",
+          "media_type": "text/plain"
+        }
+      }
+    },
+    {
+      "step": "describe"
+    },
+    {
+      "step": "query",
+      "operation": "execution.inspect",
+      "payload": {
+        "execution": "e-1"
+      },
+      "expect": {
+        "ok": {
+          "exit": {
+            "code": 0
+          },
+          "runtime": "exited",
+          "evaluation": "not_requested"
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core.events.read",
+      "payload": {
+        "from": "start",
+        "limit": 100,
+        "kinds": [
+          "execution.execution"
+        ]
+      },
+      "expect": {
+        "any_of": [
+          {
+            "ok": {
+              "items": [
+                {
+                  "event": {
+                    "type": "execution.admission.changed"
+                  }
+                },
+                {
+                  "event": {
+                    "type": "execution.delivery.observed"
+                  }
+                },
+                {
+                  "event": {
+                    "type": "execution.exit.observed",
+                    "payload": {
+                      "exit": {
+                        "code": 0
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "ok": {
+              "items": [
+                {
+                  "event": {
+                    "type": "execution.admission.changed"
+                  }
+                },
+                {
+                  "event": {
+                    "type": "execution.delivery.observed"
+                  }
+                },
+                {
+                  "event": {
+                    "type": "execution.exit.observed",
+                    "payload": {
+                      "exit": {
+                        "code": 0
+                      }
+                    }
+                  }
+                },
+                {
+                  "event": {
+                    "type": "execution.runtime.changed",
+                    "payload": {
+                      "runtime": "exited"
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "note": "the exit observation precedes any runtime change it causes (EXECUTION 9)"
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

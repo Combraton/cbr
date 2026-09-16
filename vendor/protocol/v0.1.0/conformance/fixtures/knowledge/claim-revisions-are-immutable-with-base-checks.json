@@ -1,0 +1,898 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "knowledge.claim-revisions-are-immutable-with-base-checks",
+  "version": 2,
+  "title": "Claim revisions are immutable and carry a digest any reader can recompute; revise checks its base revision and digest; the producer is the session principal; invalid planes, health, ancestry and validity are refused",
+  "requirements": [
+    "KNW-1",
+    "KNW-2"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/KNOWLEDGE.md#3-claim-revisions-m5-q1"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "knowledge",
+      "major": 1
+    }
+  ],
+  "features": [
+    "core.events",
+    "core.grants"
+  ],
+  "polarity": "negative",
+  "kills": [
+    "claim-revision-overwritten",
+    "revise-base-unchecked",
+    "empty-roots-accepted"
+  ],
+  "steps": [
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ]
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.grants"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "knowledge",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.claim.propose",
+      "command_id": "claim-propose-c1",
+      "subject": {
+        "kind": "knowledge.claim",
+        "id": "c1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.claim",
+            "id": "c1"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "plane": "observed",
+        "statement": {
+          "subject": {
+            "kind": "app.service",
+            "id": "billing"
+          },
+          "predicate": "queue",
+          "value": "v1",
+          "cardinality": "single"
+        },
+        "scope": {
+          "id": "svc",
+          "qualifiers": {}
+        },
+        "support": [],
+        "derivation": {
+          "kind": "deterministic",
+          "inputs": []
+        },
+        "validity": {
+          "from": "2030-01-01T00:00:00Z"
+        }
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "reference": {
+              "provider": "conformance-provider",
+              "claim": "c1",
+              "revision": 1
+            }
+          },
+          "acknowledgment": {
+            "revision": 1
+          }
+        }
+      },
+      "capture": {
+        "d_c1": "/result/outcome/reference/digest"
+      }
+    },
+    {
+      "step": "query",
+      "operation": "knowledge.claim.inspect",
+      "payload": {
+        "claim": "c1"
+      },
+      "expect": {
+        "ok": {
+          "reference": {
+            "provider": "conformance-provider",
+            "claim": "c1",
+            "revision": 1,
+            "digest": {
+              "$var": "d_c1"
+            }
+          },
+          "record": {
+            "$canonical_sha256": {
+              "$var": "d_c1"
+            }
+          },
+          "current_revision": 1
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "knowledge.claim.inspect",
+      "payload": {
+        "claim": "c1"
+      },
+      "expect": {
+        "ok": {
+          "record": {
+            "format": "combraton-knowledge-claim/1",
+            "claim": "c1",
+            "revision": 1,
+            "producer": "owner",
+            "plane": "observed",
+            "statement": {
+              "subject": {
+                "kind": "app.service",
+                "id": "billing"
+              },
+              "predicate": "queue",
+              "value": "v1",
+              "cardinality": "single"
+            },
+            "scope": {
+              "id": "svc",
+              "qualifiers": {}
+            },
+            "validity": {
+              "from": "2030-01-01T00:00:00Z"
+            },
+            "basis": null,
+            "support": [],
+            "dependencies": [],
+            "conditions": [],
+            "health": "not_applicable",
+            "supersedes": null
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.claim.revise",
+      "command_id": "revise-c1-2",
+      "subject": {
+        "kind": "knowledge.claim",
+        "id": "c1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.claim",
+            "id": "c1"
+          },
+          "revision": 1
+        }
+      ],
+      "payload": {
+        "plane": "observed",
+        "statement": {
+          "subject": {
+            "kind": "app.service",
+            "id": "billing"
+          },
+          "predicate": "queue",
+          "value": "v2",
+          "cardinality": "single"
+        },
+        "scope": {
+          "id": "svc",
+          "qualifiers": {}
+        },
+        "support": [],
+        "derivation": {
+          "kind": "deterministic",
+          "inputs": []
+        },
+        "validity": {
+          "from": "2030-01-02T00:00:00Z"
+        },
+        "supersedes": {
+          "revision": 1,
+          "digest": {
+            "$var": "d_c1"
+          }
+        }
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "reference": {
+              "claim": "c1",
+              "revision": 2
+            }
+          },
+          "acknowledgment": {
+            "revision": 2
+          }
+        }
+      },
+      "capture": {
+        "d_c1_2": "/result/outcome/reference/digest"
+      }
+    },
+    {
+      "step": "query",
+      "operation": "knowledge.claim.inspect",
+      "payload": {
+        "claim": "c1",
+        "revision": 1
+      },
+      "expect": {
+        "ok": {
+          "reference": {
+            "provider": "conformance-provider",
+            "claim": "c1",
+            "revision": 1,
+            "digest": {
+              "$var": "d_c1"
+            }
+          },
+          "record": {
+            "statement": {
+              "value": "v1"
+            }
+          },
+          "current_revision": 2
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "knowledge.claim.inspect",
+      "payload": {
+        "claim": "c1",
+        "revision": 1
+      },
+      "expect": {
+        "ok": {
+          "record": {
+            "$canonical_sha256": {
+              "$var": "d_c1"
+            }
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "knowledge.claim.inspect",
+      "payload": {
+        "claim": "c1"
+      },
+      "expect": {
+        "ok": {
+          "reference": {
+            "provider": "conformance-provider",
+            "claim": "c1",
+            "revision": 2,
+            "digest": {
+              "$var": "d_c1_2"
+            }
+          },
+          "record": {
+            "statement": {
+              "value": "v2"
+            },
+            "supersedes": {
+              "revision": 1,
+              "digest": {
+                "$var": "d_c1"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.claim.revise",
+      "command_id": "revise-c1-stale",
+      "subject": {
+        "kind": "knowledge.claim",
+        "id": "c1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.claim",
+            "id": "c1"
+          },
+          "revision": 1
+        }
+      ],
+      "payload": {
+        "plane": "observed",
+        "statement": {
+          "subject": {
+            "kind": "app.service",
+            "id": "billing"
+          },
+          "predicate": "queue",
+          "value": "v2",
+          "cardinality": "single"
+        },
+        "scope": {
+          "id": "svc",
+          "qualifiers": {}
+        },
+        "support": [],
+        "derivation": {
+          "kind": "deterministic",
+          "inputs": []
+        },
+        "validity": {
+          "from": "2030-01-02T00:00:00Z"
+        },
+        "supersedes": {
+          "revision": 1,
+          "digest": {
+            "$var": "d_c1"
+          }
+        }
+      },
+      "expect": {
+        "error": "precondition_failed"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.claim.revise",
+      "command_id": "revise-c1-old-base",
+      "subject": {
+        "kind": "knowledge.claim",
+        "id": "c1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.claim",
+            "id": "c1"
+          },
+          "revision": 2
+        }
+      ],
+      "payload": {
+        "plane": "observed",
+        "statement": {
+          "subject": {
+            "kind": "app.service",
+            "id": "billing"
+          },
+          "predicate": "queue",
+          "value": "v3",
+          "cardinality": "single"
+        },
+        "scope": {
+          "id": "svc",
+          "qualifiers": {}
+        },
+        "support": [],
+        "derivation": {
+          "kind": "deterministic",
+          "inputs": []
+        },
+        "supersedes": {
+          "revision": 1,
+          "digest": {
+            "$var": "d_c1"
+          }
+        }
+      },
+      "expect": {
+        "error": "invalid_envelope",
+        "details": {
+          "path": "/payload/supersedes/revision"
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.claim.revise",
+      "command_id": "revise-c1-wrong-digest",
+      "subject": {
+        "kind": "knowledge.claim",
+        "id": "c1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.claim",
+            "id": "c1"
+          },
+          "revision": 2
+        }
+      ],
+      "payload": {
+        "plane": "observed",
+        "statement": {
+          "subject": {
+            "kind": "app.service",
+            "id": "billing"
+          },
+          "predicate": "queue",
+          "value": "v3",
+          "cardinality": "single"
+        },
+        "scope": {
+          "id": "svc",
+          "qualifiers": {}
+        },
+        "support": [],
+        "derivation": {
+          "kind": "deterministic",
+          "inputs": []
+        },
+        "supersedes": {
+          "revision": 2,
+          "digest": {
+            "$var": "d_c1"
+          }
+        }
+      },
+      "expect": {
+        "error": "invalid_envelope",
+        "details": {
+          "path": "/payload/supersedes/digest"
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.claim.propose",
+      "command_id": "claim-propose-c-health",
+      "subject": {
+        "kind": "knowledge.claim",
+        "id": "c-health"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.claim",
+            "id": "c-health"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "plane": "normative",
+        "statement": {
+          "subject": {
+            "kind": "app.service",
+            "id": "billing"
+          },
+          "predicate": "queue",
+          "value": "v1",
+          "cardinality": "single"
+        },
+        "scope": {
+          "id": "svc",
+          "qualifiers": {}
+        },
+        "support": [],
+        "derivation": {
+          "kind": "deterministic",
+          "inputs": []
+        },
+        "health": "failing"
+      },
+      "expect": {
+        "error": "invalid_envelope",
+        "details": {
+          "path": "/payload/health"
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.claim.propose",
+      "command_id": "claim-propose-c-plane",
+      "subject": {
+        "kind": "knowledge.claim",
+        "id": "c-plane"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.claim",
+            "id": "c-plane"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "plane": "rumour",
+        "statement": {
+          "subject": {
+            "kind": "app.service",
+            "id": "billing"
+          },
+          "predicate": "queue",
+          "value": "v1",
+          "cardinality": "single"
+        },
+        "scope": {
+          "id": "svc",
+          "qualifiers": {}
+        },
+        "support": [],
+        "derivation": {
+          "kind": "deterministic",
+          "inputs": []
+        }
+      },
+      "expect": {
+        "error": "invalid_envelope"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.claim.propose",
+      "command_id": "claim-propose-c-ancestry",
+      "subject": {
+        "kind": "knowledge.claim",
+        "id": "c-ancestry"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.claim",
+            "id": "c-ancestry"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "plane": "observed",
+        "statement": {
+          "subject": {
+            "kind": "app.service",
+            "id": "billing"
+          },
+          "predicate": "queue",
+          "value": "v1",
+          "cardinality": "single"
+        },
+        "scope": {
+          "id": "svc",
+          "qualifiers": {}
+        },
+        "support": [
+          {
+            "support_id": "s1",
+            "evidence": {
+              "provider": "conformance-provider",
+              "artifact": {
+                "kind": "evidence.artifact",
+                "id": "a1"
+              },
+              "digest": "sha256:f55ff16f66f43360266b95db6f8fec01d76031054306ae4a4b380598f6cfd114"
+            },
+            "ancestry": {
+              "completeness": "unknown",
+              "roots": [
+                {
+                  "kind": "evidence",
+                  "provider": "conformance-provider",
+                  "artifact": {
+                    "kind": "evidence.artifact",
+                    "id": "a0"
+                  },
+                  "digest": "sha256:4e1195df020de59e0d65a33a4279f1183e7ae4e5d980e309f8b55adff2e61c3e"
+                }
+              ]
+            }
+          }
+        ],
+        "derivation": {
+          "kind": "deterministic",
+          "inputs": []
+        }
+      },
+      "expect": {
+        "error": "invalid_envelope",
+        "details": {
+          "path": "/payload/support/0/ancestry/roots"
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.claim.propose",
+      "command_id": "claim-propose-c-validity",
+      "subject": {
+        "kind": "knowledge.claim",
+        "id": "c-validity"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.claim",
+            "id": "c-validity"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "plane": "observed",
+        "statement": {
+          "subject": {
+            "kind": "app.service",
+            "id": "billing"
+          },
+          "predicate": "queue",
+          "value": "v1",
+          "cardinality": "single"
+        },
+        "scope": {
+          "id": "svc",
+          "qualifiers": {}
+        },
+        "support": [],
+        "derivation": {
+          "kind": "deterministic",
+          "inputs": []
+        },
+        "validity": {
+          "from": "2030-01-02T00:00:00Z",
+          "until": "2030-01-01T00:00:00Z"
+        }
+      },
+      "expect": {
+        "error": "invalid_envelope",
+        "details": {
+          "path": "/payload/validity"
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.claim.propose",
+      "command_id": "claim-propose-c-empty-interval",
+      "subject": {
+        "kind": "knowledge.claim",
+        "id": "c-empty-interval"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.claim",
+            "id": "c-empty-interval"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "plane": "observed",
+        "statement": {
+          "subject": {
+            "kind": "app.service",
+            "id": "billing"
+          },
+          "predicate": "queue",
+          "value": "v1",
+          "cardinality": "single"
+        },
+        "scope": {
+          "id": "svc",
+          "qualifiers": {}
+        },
+        "support": [],
+        "derivation": {
+          "kind": "deterministic",
+          "inputs": []
+        },
+        "validity": {
+          "from": "2030-01-01T00:00:00Z",
+          "until": "2030-01-01T00:00:00Z"
+        }
+      },
+      "expect": {
+        "error": "invalid_envelope",
+        "details": {
+          "path": "/payload/validity"
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.claim.propose",
+      "command_id": "claim-propose-c-rootless",
+      "subject": {
+        "kind": "knowledge.claim",
+        "id": "c-rootless"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.claim",
+            "id": "c-rootless"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "plane": "observed",
+        "statement": {
+          "subject": {
+            "kind": "app.service",
+            "id": "billing"
+          },
+          "predicate": "queue",
+          "value": "v1",
+          "cardinality": "single"
+        },
+        "scope": {
+          "id": "svc",
+          "qualifiers": {}
+        },
+        "support": [
+          {
+            "support_id": "s1",
+            "evidence": {
+              "provider": "conformance-provider",
+              "artifact": {
+                "kind": "evidence.artifact",
+                "id": "a1"
+              },
+              "digest": "sha256:f55ff16f66f43360266b95db6f8fec01d76031054306ae4a4b380598f6cfd114"
+            },
+            "ancestry": {
+              "completeness": "complete",
+              "roots": []
+            }
+          }
+        ],
+        "derivation": {
+          "kind": "deterministic",
+          "inputs": []
+        }
+      },
+      "expect": {
+        "error": "invalid_envelope",
+        "details": {
+          "path": "/payload/support/0/ancestry/roots"
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "knowledge.claim.propose",
+      "command_id": "claim-propose-c-dup-support",
+      "subject": {
+        "kind": "knowledge.claim",
+        "id": "c-dup-support"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "knowledge.claim",
+            "id": "c-dup-support"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "plane": "observed",
+        "statement": {
+          "subject": {
+            "kind": "app.service",
+            "id": "billing"
+          },
+          "predicate": "queue",
+          "value": "v1",
+          "cardinality": "single"
+        },
+        "scope": {
+          "id": "svc",
+          "qualifiers": {}
+        },
+        "support": [
+          {
+            "support_id": "s1",
+            "evidence": {
+              "provider": "conformance-provider",
+              "artifact": {
+                "kind": "evidence.artifact",
+                "id": "a1"
+              },
+              "digest": "sha256:f55ff16f66f43360266b95db6f8fec01d76031054306ae4a4b380598f6cfd114"
+            },
+            "ancestry": {
+              "completeness": "unknown",
+              "roots": []
+            }
+          },
+          {
+            "support_id": "s1",
+            "evidence": {
+              "provider": "conformance-provider",
+              "artifact": {
+                "kind": "evidence.artifact",
+                "id": "a2"
+              },
+              "digest": "sha256:2c3a4249d77070058649dbd822dcaf7957586fce428cfb2ca88b94741eda8b07"
+            },
+            "ancestry": {
+              "completeness": "unknown",
+              "roots": []
+            }
+          }
+        ],
+        "derivation": {
+          "kind": "deterministic",
+          "inputs": []
+        }
+      },
+      "expect": {
+        "error": "invalid_envelope",
+        "details": {
+          "path": "/payload/support"
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "knowledge.claim.inspect",
+      "payload": {
+        "claim": "c1",
+        "revision": 3
+      },
+      "expect": {
+        "error": "not_found"
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

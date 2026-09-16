@@ -1,0 +1,134 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "socket.events-delivered-across-sessions",
+  "version": 1,
+  "title": "A subscription receives events committed by another session",
+  "requirements": [
+    "TRN-3",
+    "OBS-2"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/CORE.md#165-subscriptions",
+    "docs/spec/bindings/STREAM.md#6-unix-domain-socket-form"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "core-test",
+      "major": 1
+    }
+  ],
+  "features": [
+    "core.events"
+  ],
+  "binding": "unix",
+  "polarity": "negative",
+  "kills": [
+    "no-cross-session-delivery"
+  ],
+  "steps": [
+    {
+      "step": "start"
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "core-test",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core.events.subscribe",
+      "payload": {
+        "from": "now"
+      },
+      "capture": {
+        "sub": "/result/subscription"
+      }
+    },
+    {
+      "step": "connect",
+      "session": "b"
+    },
+    {
+      "step": "negotiate",
+      "session": "b"
+    },
+    {
+      "step": "command",
+      "operation": "core-test.subject.put",
+      "command_id": "cmd-1",
+      "subject": {
+        "kind": "core-test.subject",
+        "id": "s-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core-test.subject",
+            "id": "s-1"
+          },
+          "revision": 0
+        }
+      ],
+      "authority_epoch": 0,
+      "payload": {
+        "value": "a"
+      },
+      "session": "b"
+    },
+    {
+      "step": "expect_notification",
+      "within_ms": 3000,
+      "expect": {
+        "params": {
+          "subscription": {
+            "$var": "sub"
+          },
+          "items": [
+            {
+              "event": {
+                "command_id": "cmd-1",
+                "subject": {
+                  "kind": "core-test.subject",
+                  "id": "s-1"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

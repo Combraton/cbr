@@ -1,0 +1,53 @@
+{
+  "type": "object",
+  "required": [
+    "items",
+    "filtered"
+  ],
+  "properties": {
+    "items": {
+      "type": "array",
+      "maxItems": 1000,
+      "items": {
+        "type": "object",
+        "required": [
+          "artifact",
+          "digest",
+          "state",
+          "availability"
+        ],
+        "properties": {
+          "artifact": {
+            "$ref": "common.schema.json#/$defs/artifact_subject"
+          },
+          "digest": {
+            "$ref": "../../core/1/common.schema.json#/$defs/digest"
+          },
+          "state": {
+            "enum": [
+              "staged",
+              "sealed",
+              "abandoned"
+            ]
+          },
+          "availability": {
+            "$ref": "common.schema.json#/$defs/availability"
+          }
+        },
+        "unevaluatedProperties": false
+      }
+    },
+    "filtered": {
+      "type": "boolean"
+    },
+    "next_cursor": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512
+    }
+  },
+  "unevaluatedProperties": false,
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Combraton/protocol/schemas/evidence/1/evidence.query.result.schema.json",
+  "title": "evidence.query result"
+}

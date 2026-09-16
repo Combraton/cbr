@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Combraton/protocol/schemas/verification/1/verification.receipt.inspect.result.schema.json",
+  "title": "verification.receipt.inspect result",
+  "type": "object",
+  "required": [
+    "reference",
+    "content"
+  ],
+  "properties": {
+    "reference": {
+      "$ref": "common.schema.json#/$defs/receipt_reference"
+    },
+    "content": {
+      "$ref": "common.schema.json#/$defs/receipt_content"
+    }
+  },
+  "unevaluatedProperties": false
+}

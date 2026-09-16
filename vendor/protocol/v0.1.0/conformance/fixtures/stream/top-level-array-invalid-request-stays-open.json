@@ -1,0 +1,45 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "stream.top-level-array-invalid-request-stays-open",
+  "version": 1,
+  "title": "A top-level array gets invalid_request and the connection stays open",
+  "requirements": [
+    "TRN-1"
+  ],
+  "spec_refs": [
+    "docs/spec/bindings/STREAM.md#3-json-rpc-mapping"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "core",
+      "major": 1
+    }
+  ],
+  "polarity": "negative",
+  "kills": [
+    "close-on-invalid-request"
+  ],
+  "steps": [
+    {
+      "step": "start"
+    },
+    {
+      "step": "raw",
+      "text": "[]"
+    },
+    {
+      "step": "expect_frame",
+      "expect": {
+        "error": "invalid_request",
+        "id_null": true
+      }
+    },
+    {
+      "step": "describe"
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

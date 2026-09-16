@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Combraton/protocol/schemas/context/1/context.request.submit.result.schema.json",
+  "title": "context.request.submit result",
+  "type": "object",
+  "required": [
+    "acknowledgment",
+    "outcome",
+    "replay"
+  ],
+  "properties": {
+    "acknowledgment": {
+      "$ref": "../../core/1/common.schema.json#/$defs/acknowledgment"
+    },
+    "replay": {
+      "type": "boolean"
+    },
+    "outcome": {
+      "type": "object",
+      "required": [
+        "request",
+        "state"
+      ],
+      "properties": {
+        "request": {
+          "$ref": "common.schema.json#/$defs/request_subject"
+        },
+        "state": {
+          "enum": [
+            "preparing",
+            "refused"
+          ]
+        },
+        "job": {
+          "$ref": "common.schema.json#/$defs/job_subject"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "needed": {
+          "type": "object",
+          "required": [
+            "units",
+            "amount"
+          ],
+          "properties": {
+            "units": {
+              "const": "bytes"
+            },
+            "amount": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          "unevaluatedProperties": false
+        }
+      },
+      "unevaluatedProperties": false
+    }
+  },
+  "unevaluatedProperties": false
+}

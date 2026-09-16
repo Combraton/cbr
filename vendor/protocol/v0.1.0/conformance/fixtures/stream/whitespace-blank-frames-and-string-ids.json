@@ -1,0 +1,56 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "stream.whitespace-blank-frames-and-string-ids",
+  "version": 1,
+  "title": "Blank frames are ignored, insignificant whitespace is accepted and string request ids are echoed",
+  "requirements": [
+    "TRN-1",
+    "TRN-2"
+  ],
+  "spec_refs": [
+    "docs/spec/bindings/STREAM.md#1-frames",
+    "docs/spec/bindings/STREAM.md#3-json-rpc-mapping"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "core",
+      "major": 1
+    }
+  ],
+  "polarity": "positive",
+  "kills": [],
+  "steps": [
+    {
+      "step": "start"
+    },
+    {
+      "step": "raw",
+      "text": "   \t"
+    },
+    {
+      "step": "raw",
+      "text": ""
+    },
+    {
+      "step": "raw",
+      "text": " {\"jsonrpc\":\"2.0\", \"id\" : \"req-α\", \"method\":\"core.describe\", \"params\":{\"operation\":\"core.describe\", \"message_id\":\"msg-describe\", \"payload\":{}}} \r"
+    },
+    {
+      "step": "expect_frame",
+      "expect": {
+        "frame": {
+          "id": "req-α",
+          "result": {
+            "provider": {
+              "$any": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

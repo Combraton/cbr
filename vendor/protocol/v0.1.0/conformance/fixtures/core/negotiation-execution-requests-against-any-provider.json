@@ -1,0 +1,175 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "core.negotiation.execution-requests-against-any-provider",
+  "version": 1,
+  "title": "An optional execution/1 request is selected by providers that support it and reported unknown by older ones; a required request is refused by older providers",
+  "requirements": [
+    "CMP-7"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/CORE.md#42-corenegotiate-query",
+    "docs/spec/profiles/EXECUTION.md#1-dependencies-and-negotiation"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "core-test",
+      "major": 1
+    }
+  ],
+  "polarity": "positive",
+  "kills": [],
+  "steps": [
+    {
+      "step": "start"
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": [
+              "core.events",
+              "core.capabilities",
+              "core.effects"
+            ]
+          },
+          {
+            "name": "core-test",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          },
+          {
+            "name": "execution",
+            "majors": [
+              1
+            ],
+            "required": false,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      },
+      "expect": {
+        "any_of": [
+          {
+            "ok": {
+              "selected": {
+                "$contains": {
+                  "name": "execution",
+                  "major": 1
+                }
+              }
+            }
+          },
+          {
+            "ok": {
+              "unselected": {
+                "$contains": {
+                  "profile": "execution",
+                  "reason": "unknown_profile"
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "step": "stop"
+    },
+    {
+      "step": "start"
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": [
+              "core.events",
+              "core.capabilities",
+              "core.effects"
+            ]
+          },
+          {
+            "name": "core-test",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          },
+          {
+            "name": "execution",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      },
+      "expect": {
+        "any_of": [
+          {
+            "ok": {
+              "selected": {
+                "$contains": {
+                  "name": "execution",
+                  "major": 1
+                }
+              }
+            }
+          },
+          {
+            "error": "unsupported_profile",
+            "details": {
+              "unsatisfied": {
+                "$contains": {
+                  "profile": "execution",
+                  "reason": "unknown_profile"
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

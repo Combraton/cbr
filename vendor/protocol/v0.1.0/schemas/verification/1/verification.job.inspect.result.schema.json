@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Combraton/protocol/schemas/verification/1/verification.job.inspect.result.schema.json",
+  "title": "verification.job.inspect result",
+  "type": "object",
+  "required": [
+    "job",
+    "state",
+    "contract",
+    "subjects",
+    "evaluator",
+    "recorded"
+  ],
+  "properties": {
+    "job": {
+      "$ref": "common.schema.json#/$defs/job_subject"
+    },
+    "state": {
+      "enum": [
+        "queued",
+        "running",
+        "completed"
+      ]
+    },
+    "contract": {
+      "$ref": "common.schema.json#/$defs/evidence_reference"
+    },
+    "subjects": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 32,
+      "items": {
+        "$ref": "common.schema.json#/$defs/subject_entry"
+      }
+    },
+    "evaluator": {
+      "$ref": "common.schema.json#/$defs/evaluator"
+    },
+    "recorded": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "property_id",
+          "result"
+        ],
+        "properties": {
+          "property_id": {
+            "$ref": "../../core/1/common.schema.json#/$defs/identifier"
+          },
+          "result": {
+            "$ref": "common.schema.json#/$defs/result"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "unevaluatedProperties": false
+      }
+    },
+    "receipt": {
+      "$ref": "common.schema.json#/$defs/receipt_reference"
+    }
+  },
+  "unevaluatedProperties": false
+}

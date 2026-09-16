@@ -1,0 +1,388 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "evidence.expired-hold-stops-protecting",
+  "version": 1,
+  "title": "A hold must expire in the future; once its expiry passes it is reported expired, no longer blocks a purge, and cannot be released",
+  "requirements": [
+    "EVD-6"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/EVIDENCE.md#9-availability-and-retention-owner-decision-m4-q6"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "evidence",
+      "major": 1
+    }
+  ],
+  "features": [
+    "core.events",
+    "evidence.retention_control"
+  ],
+  "requires_controls": [
+    "clock.file"
+  ],
+  "polarity": "negative",
+  "kills": [
+    "hold-expiry-ignored"
+  ],
+  "steps": [
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ],
+        "clock": {
+          "controlled": "2030-01-01T00:00:00Z"
+        }
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "evidence",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": [
+              "evidence.manifests",
+              "evidence.retention_control"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.upload.prepare",
+      "command_id": "prepare-x-1",
+      "subject": {
+        "kind": "evidence.artifact",
+        "id": "x-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.artifact",
+            "id": "x-1"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "digest": "sha256:62c8c7b283cf9c38f110d3769c04654730c0b6dc12659c4d0212e0510fb6edb0",
+        "size": 27,
+        "media_type": "text/plain",
+        "producer": {
+          "producer_id": "fixture-producer"
+        },
+        "source": {
+          "kind": "test_report",
+          "id": "run-1"
+        },
+        "scope": "project-a",
+        "capture": {
+          "captured_at": "2030-01-01T00:00:00Z",
+          "uncertainty": {
+            "not_before": "2029-12-31T23:59:58Z",
+            "not_after": "2030-01-01T00:00:00Z"
+          },
+          "anchors": [
+            {
+              "kind": "code_tree",
+              "id": "tree-1"
+            }
+          ]
+        },
+        "coverage": {
+          "completeness": "complete"
+        },
+        "retention_class": "standard"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.upload.append",
+      "command_id": "append-x-1-0",
+      "subject": {
+        "kind": "evidence.artifact",
+        "id": "x-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.artifact",
+            "id": "x-1"
+          },
+          "revision": 1
+        }
+      ],
+      "payload": {
+        "offset": 0,
+        "data_base64": "YXJ0aWZhY3Qgd2hvc2UgaG9sZCBleHBpcmVz"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.seal",
+      "command_id": "seal-x-1",
+      "subject": {
+        "kind": "evidence.artifact",
+        "id": "x-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.artifact",
+            "id": "x-1"
+          },
+          "revision": 2
+        }
+      ],
+      "payload": {},
+      "expect": {
+        "ok": {
+          "outcome": {
+            "state": "sealed",
+            "digest": "sha256:62c8c7b283cf9c38f110d3769c04654730c0b6dc12659c4d0212e0510fb6edb0"
+          },
+          "acknowledgment": {
+            "revision": 3
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.hold",
+      "command_id": "hold-h-past",
+      "subject": {
+        "kind": "evidence.hold",
+        "id": "h-past"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.hold",
+            "id": "h-past"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "artifact": {
+          "kind": "evidence.artifact",
+          "id": "x-1"
+        },
+        "holder_ref": {
+          "kind": "fixture.case",
+          "id": "h-past"
+        },
+        "reason": "audit",
+        "expires_at": "2030-01-01T00:00:00Z"
+      },
+      "expect": {
+        "error": "invalid_envelope",
+        "details": {
+          "path": "/payload/expires_at"
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.hold",
+      "command_id": "hold-h-x",
+      "subject": {
+        "kind": "evidence.hold",
+        "id": "h-x"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.hold",
+            "id": "h-x"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "artifact": {
+          "kind": "evidence.artifact",
+          "id": "x-1"
+        },
+        "holder_ref": {
+          "kind": "fixture.case",
+          "id": "h-x"
+        },
+        "reason": "audit",
+        "expires_at": "2030-01-01T00:00:30Z"
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "state": "active"
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.purge",
+      "command_id": "purge-x-1-early",
+      "subject": {
+        "kind": "evidence.artifact",
+        "id": "x-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.artifact",
+            "id": "x-1"
+          },
+          "revision": 3
+        }
+      ],
+      "payload": {},
+      "expect": {
+        "error": "hold_active",
+        "details": {
+          "holds": [
+            "h-x"
+          ]
+        }
+      }
+    },
+    {
+      "step": "set_clock",
+      "instant": "2030-01-01T00:00:30Z"
+    },
+    {
+      "step": "query",
+      "operation": "evidence.inspect",
+      "payload": {
+        "artifact": {
+          "kind": "evidence.artifact",
+          "id": "x-1"
+        }
+      },
+      "expect": {
+        "ok": {
+          "holds": [
+            {
+              "hold": {
+                "kind": "evidence.hold",
+                "id": "h-x"
+              },
+              "state": "expired",
+              "revision": 2
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core.events.read",
+      "payload": {
+        "from": "start",
+        "limit": 100,
+        "kinds": [
+          "evidence.hold"
+        ]
+      },
+      "expect": {
+        "ok": {
+          "items": {
+            "$contains": {
+              "event": {
+                "type": "evidence.hold.expired",
+                "subject": {
+                  "kind": "evidence.hold",
+                  "id": "h-x"
+                },
+                "origin": "provider",
+                "revision": 2
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.purge",
+      "command_id": "purge-x-1",
+      "subject": {
+        "kind": "evidence.artifact",
+        "id": "x-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.artifact",
+            "id": "x-1"
+          },
+          "revision": 3
+        }
+      ],
+      "payload": {},
+      "expect": {
+        "ok": {
+          "outcome": {
+            "availability": "purged"
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "evidence.release",
+      "command_id": "release-h-x",
+      "subject": {
+        "kind": "evidence.hold",
+        "id": "h-x"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "evidence.hold",
+            "id": "h-x"
+          },
+          "revision": 2
+        }
+      ],
+      "payload": {},
+      "expect": {
+        "error": "not_found"
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

@@ -1,0 +1,60 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "stream.control-methods-not-served",
+  "version": 2,
+  "title": "Unknown operations get method_not_found before and after negotiation",
+  "requirements": [
+    "CORE-14",
+    "TRN-1"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/CORE.md#10-command-processing-order",
+    "docs/spec/profiles/CORE.md#131-test-control-is-environment-only"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "core-test",
+      "major": 1
+    }
+  ],
+  "polarity": "negative",
+  "kills": [
+    "unknown-method-negotiation-required"
+  ],
+  "steps": [
+    {
+      "step": "start"
+    },
+    {
+      "step": "request",
+      "method": "control.restart",
+      "params": {
+        "operation": "control.restart",
+        "message_id": "m-1",
+        "payload": {}
+      },
+      "expect": {
+        "error": "method_not_found"
+      }
+    },
+    {
+      "step": "negotiate"
+    },
+    {
+      "step": "request",
+      "method": "control.restart",
+      "params": {
+        "operation": "control.restart",
+        "message_id": "m-2",
+        "payload": {}
+      },
+      "expect": {
+        "error": "method_not_found"
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

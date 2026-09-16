@@ -1,0 +1,146 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "core.events.event-record-carries-causation",
+  "version": 1,
+  "title": "An event records its command, causation, origin, revision and normalized payload",
+  "requirements": [
+    "CORE-2",
+    "OBS-1"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/CORE.md#16-events-and-subscriptions"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "core-test",
+      "major": 1
+    }
+  ],
+  "features": [
+    "core.events"
+  ],
+  "polarity": "positive",
+  "kills": [],
+  "steps": [
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ]
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "core-test",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "core-test.subject.put",
+      "command_id": "cmd-1",
+      "subject": {
+        "kind": "core-test.subject",
+        "id": "s-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core-test.subject",
+            "id": "s-1"
+          },
+          "revision": 0
+        }
+      ],
+      "authority_epoch": 0,
+      "payload": {
+        "value": "a"
+      },
+      "set": {
+        "caused_by": [
+          "decision-7",
+          "ticket-9"
+        ]
+      },
+      "capture": {
+        "op": "/result/acknowledgment/operation_ref"
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core.events.read",
+      "payload": {
+        "limit": 100,
+        "from": "start"
+      },
+      "expect": {
+        "ok": {
+          "items": [
+            {
+              "event": {
+                "origin": "command",
+                "type": "core-test.subject.changed",
+                "subject": {
+                  "kind": "core-test.subject",
+                  "id": "s-1"
+                },
+                "revision": 1,
+                "operation_ref": {
+                  "$var": "op"
+                },
+                "command_id": "cmd-1",
+                "caused_by": [
+                  "decision-7",
+                  "ticket-9"
+                ],
+                "recorded_at": {
+                  "$type": "string"
+                },
+                "stream": {
+                  "$type": "string"
+                },
+                "payload": {
+                  "value": "a"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

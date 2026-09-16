@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Combraton/protocol/schemas/verification/1/verification.receipt.assess.params.schema.json",
+  "title": "verification.receipt.assess params",
+  "allOf": [
+    {
+      "$ref": "../../core/1/query.schema.json"
+    }
+  ],
+  "properties": {
+    "operation": {
+      "const": "verification.receipt.assess"
+    },
+    "payload": {
+      "type": "object",
+      "required": [
+        "receipt",
+        "contract",
+        "subjects"
+      ],
+      "properties": {
+        "receipt": {
+          "$ref": "common.schema.json#/$defs/receipt_reference"
+        },
+        "contract": {
+          "$ref": "common.schema.json#/$defs/evidence_reference"
+        },
+        "subjects": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "items": {
+            "$ref": "common.schema.json#/$defs/subject_digest"
+          }
+        },
+        "environment": {
+          "$ref": "common.schema.json#/$defs/environment"
+        },
+        "at": {
+          "$ref": "../../core/1/common.schema.json#/$defs/instant"
+        }
+      },
+      "unevaluatedProperties": false
+    }
+  },
+  "unevaluatedProperties": false
+}

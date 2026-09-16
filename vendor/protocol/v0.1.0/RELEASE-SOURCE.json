@@ -1,0 +1,8 @@
+{
+  "format": "combraton-release-source/1",
+  "name": "combraton-protocol-0.1.0",
+  "version": "0.1.0",
+  "commit": "cbf8e4df9df2ca8a9b50264df6acace6e4c3a0fc",
+  "tree": "ad57cc4ef067834c20d868dbcc844f70b8ef223f",
+  "note": "Exported with git archive from this commit; BUNDLE-SHA256SUMS lists every other file of the bundle."
+}

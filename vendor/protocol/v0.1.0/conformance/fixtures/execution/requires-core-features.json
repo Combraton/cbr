@@ -1,0 +1,141 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "execution.requires-core-features",
+  "version": 2,
+  "title": "A required execution/1 request is refused, naming every missing Core feature, unless core.events, core.capabilities and core.effects are negotiated",
+  "requirements": [
+    "EXE-1",
+    "CORE-3",
+    "CMP-5"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/EXECUTION.md#1-dependencies-and-negotiation"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "execution",
+      "major": 1
+    }
+  ],
+  "features": [
+    "core.events",
+    "core.capabilities",
+    "core.effects"
+  ],
+  "requires_controls": [
+    "executor.script"
+  ],
+  "polarity": "negative",
+  "kills": [
+    "execution-dependency-unchecked"
+  ],
+  "kill_expectations": {
+    "execution-dependency-unchecked": {
+      "step": 1,
+      "reason_contains": "expected error"
+    }
+  },
+  "steps": [
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ],
+        "executor": {}
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "execution",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      },
+      "expect": {
+        "error": "unsupported_profile",
+        "details": {
+          "unsatisfied": [
+            {
+              "profile": "execution",
+              "feature": "core.capabilities",
+              "reason": "dependency_not_selected"
+            },
+            {
+              "profile": "execution",
+              "feature": "core.effects",
+              "reason": "dependency_not_selected"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.capabilities",
+              "core.effects"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "execution",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

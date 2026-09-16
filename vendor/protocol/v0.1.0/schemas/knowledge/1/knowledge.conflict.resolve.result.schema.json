@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Combraton/protocol/schemas/knowledge/1/knowledge.conflict.resolve.result.schema.json",
+  "title": "knowledge.conflict.resolve result",
+  "type": "object",
+  "required": [
+    "acknowledgment",
+    "outcome",
+    "replay"
+  ],
+  "properties": {
+    "acknowledgment": {
+      "$ref": "../../core/1/common.schema.json#/$defs/acknowledgment"
+    },
+    "replay": {
+      "type": "boolean"
+    },
+    "outcome": {
+      "type": "object",
+      "required": [
+        "conflict",
+        "state",
+        "resolution"
+      ],
+      "properties": {
+        "conflict": {
+          "$ref": "common.schema.json#/$defs/conflict_subject"
+        },
+        "state": {
+          "const": "resolved"
+        },
+        "resolution": {
+          "$ref": "common.schema.json#/$defs/resolution"
+        }
+      },
+      "unevaluatedProperties": false
+    }
+  },
+  "unevaluatedProperties": false
+}

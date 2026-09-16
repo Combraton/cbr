@@ -1,0 +1,12 @@
+[package]
+name = "cbr-encoding"
+description = "Canonical JSON encoding, digests and command intent for Combraton Protocol encoding/1."
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+sha2.workspace = true
+
+[dev-dependencies]

@@ -1,0 +1,238 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "compat.feature-dependencies-older-provider-falls-back",
+  "version": 2,
+  "title": "An older provider (the accepted M5 build) answers core.feature_dependencies with method_not_found and stays unnegotiated; the consumer falls back to the pinned documented requirements, still requests them, and negotiation enforces and selects them as before",
+  "requirements": [
+    "CMP-5",
+    "CMP-2",
+    "CMP-1"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/CORE.md#43-corefeature_dependencies-query-m6-q1",
+    "docs/spec/profiles/EXECUTION.md#1-dependencies-and-negotiation"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "execution",
+      "major": 1
+    }
+  ],
+  "features": [
+    "core.events",
+    "core.capabilities",
+    "core.effects",
+    "execution.context"
+  ],
+  "requires_controls": [
+    "executor.script"
+  ],
+  "polarity": "positive",
+  "kills": [],
+  "requires_pinned": "0.1-m5",
+  "steps": [
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ],
+        "executor": {}
+      }
+    },
+    {
+      "step": "describe"
+    },
+    {
+      "step": "query",
+      "operation": "core.feature_dependencies",
+      "payload": {},
+      "expect": {
+        "error": "method_not_found",
+        "details": {
+          "operation": "core.feature_dependencies"
+        }
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          },
+          {
+            "name": "execution",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      },
+      "expect": {
+        "error": "unsupported_profile",
+        "details": {
+          "unsatisfied": [
+            {
+              "profile": "execution",
+              "feature": "core.events",
+              "reason": "dependency_not_selected"
+            },
+            {
+              "profile": "execution",
+              "feature": "core.capabilities",
+              "reason": "dependency_not_selected"
+            },
+            {
+              "profile": "execution",
+              "feature": "core.effects",
+              "reason": "dependency_not_selected"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.capabilities",
+              "core.effects"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "execution",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "execution.context",
+              "execution.future_feature"
+            ],
+            "optional_features": []
+          }
+        ]
+      },
+      "expect": {
+        "error": "unsupported_required_feature",
+        "details": {
+          "unsatisfied": [
+            {
+              "profile": "execution",
+              "feature": "execution.future_feature",
+              "reason": "unknown_feature"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core.capabilities",
+      "payload": {},
+      "expect": {
+        "error": "negotiation_required"
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.capabilities",
+              "core.effects"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "execution",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "execution.context"
+            ],
+            "optional_features": []
+          }
+        ]
+      },
+      "expect": {
+        "ok": {
+          "selected": {
+            "$contains": {
+              "name": "execution",
+              "features": [
+                "execution.context"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core.capabilities",
+      "payload": {},
+      "expect": {
+        "ok": {
+          "revision": {
+            "$type": "integer"
+          }
+        }
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

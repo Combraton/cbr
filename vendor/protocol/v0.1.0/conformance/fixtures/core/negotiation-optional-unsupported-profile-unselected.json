@@ -1,0 +1,65 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "core.negotiation.optional-unsupported-profile-unselected",
+  "version": 1,
+  "title": "An optional unsupported profile is reported unselected",
+  "requirements": [
+    "REL-9",
+    "CORE-3"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/CORE.md#42-corenegotiate-query"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "core",
+      "major": 1
+    }
+  ],
+  "polarity": "positive",
+  "kills": [
+    "accept-unsupported-profile"
+  ],
+  "steps": [
+    {
+      "step": "start"
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "remote-trust",
+            "majors": [
+              1
+            ],
+            "required": false,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      },
+      "expect": {
+        "ok": {
+          "unselected": {
+            "$contains": {
+              "profile": "remote-trust",
+              "reason": "declared_unsupported"
+            }
+          }
+        }
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

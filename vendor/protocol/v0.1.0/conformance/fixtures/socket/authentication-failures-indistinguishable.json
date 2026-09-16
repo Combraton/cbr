@@ -1,0 +1,113 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "socket.authentication-failures-indistinguishable",
+  "version": 1,
+  "title": "Unknown, malformed and revoked credentials fail identically and are never echoed",
+  "requirements": [
+    "TRN-3",
+    "CORE-15",
+    "CORE-12"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/CORE.md#18-principal-credentials-on-shared-connections"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "core-test",
+      "major": 1
+    }
+  ],
+  "features": [],
+  "binding": "unix",
+  "polarity": "negative",
+  "kills": [
+    "distinguishable-auth-failure",
+    "revoked-credential-accepted",
+    "echo-credential"
+  ],
+  "steps": [
+    {
+      "step": "start",
+      "auto_authenticate": false,
+      "revoked_principals": [
+        "mallory"
+      ]
+    },
+    {
+      "step": "query",
+      "operation": "core.authenticate",
+      "payload": {
+        "credential": "ccred1.conformance-caller.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+      },
+      "expect": {
+        "error": "authentication_failed",
+        "details": {
+          "$exact": {}
+        },
+        "frame_text_excludes": [
+          "ccred1.conformance-caller.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+        ]
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core.authenticate",
+      "payload": {
+        "credential": "not-a-credential"
+      },
+      "expect": {
+        "error": "authentication_failed",
+        "details": {
+          "$exact": {}
+        },
+        "frame_text_excludes": [
+          "not-a-credential"
+        ]
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core.authenticate",
+      "payload": {
+        "credential": {
+          "$var": "credential.mallory"
+        }
+      },
+      "expect": {
+        "error": "authentication_failed",
+        "details": {
+          "$exact": {}
+        },
+        "frame_text_excludes": [
+          {
+            "$var": "credential.mallory"
+          }
+        ]
+      }
+    },
+    {
+      "step": "negotiate",
+      "expect": {
+        "error": "authentication_required"
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core.authenticate",
+      "payload": {
+        "credential": {
+          "$var": "credential.conformance-caller"
+        }
+      },
+      "expect": {
+        "ok": {
+          "principal": "conformance-caller"
+        }
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

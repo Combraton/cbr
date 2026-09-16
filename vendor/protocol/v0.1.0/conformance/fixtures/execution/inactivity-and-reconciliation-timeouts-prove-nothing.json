@@ -1,0 +1,303 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "execution.inactivity-and-reconciliation-timeouts-prove-nothing",
+  "version": 1,
+  "title": "Inactivity and reconciliation timeouts pass with their own events; neither ends the execution nor resolves an ambiguous delivery",
+  "requirements": [
+    "EXE-19",
+    "EFF-4"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/EXECUTION.md#8-timeouts"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "execution",
+      "major": 1
+    }
+  ],
+  "features": [
+    "core.events",
+    "core.capabilities",
+    "core.effects"
+  ],
+  "requires_controls": [
+    "executor.script",
+    "clock.file"
+  ],
+  "polarity": "negative",
+  "kills": [
+    "inactivity-marks-exited",
+    "reconciliation-timeout-resolves",
+    "timeouts-collapsed"
+  ],
+  "kill_expectations": {
+    "inactivity-marks-exited": {
+      "step": 7,
+      "reason_contains": "result/exit"
+    },
+    "reconciliation-timeout-resolves": {
+      "step": 8,
+      "reason_contains": "result/delivery"
+    },
+    "timeouts-collapsed": {
+      "step": 10,
+      "reason_contains": "no element matches"
+    }
+  },
+  "steps": [
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ],
+        "executor": {
+          "scripts": {
+            "e-idle": [
+              {
+                "deliver": "provider_ack_id"
+              },
+              {
+                "runtime": "active"
+              },
+              {
+                "stall": true
+              }
+            ],
+            "e-amb": [
+              {
+                "transport_errors": 1
+              },
+              {
+                "deliver": "provider_ack_id"
+              }
+            ]
+          }
+        },
+        "clock": {
+          "controlled": "2030-01-01T00:00:00Z"
+        }
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.capabilities",
+              "core.effects"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "execution",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "execution.submit",
+      "command_id": "submit-e-idle",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "e-idle"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "e-idle"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "brief": {
+          "digest": "sha256:abababababababababababababababababababababababababababababababab",
+          "media_type": "text/plain"
+        },
+        "timeouts": {
+          "inactivity": 60
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "execution.submit",
+      "command_id": "submit-e-amb",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "e-amb"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "e-amb"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "brief": {
+          "digest": "sha256:abababababababababababababababababababababababababababababababab",
+          "media_type": "text/plain"
+        },
+        "timeouts": {
+          "reconciliation": 60
+        }
+      }
+    },
+    {
+      "step": "describe"
+    },
+    {
+      "step": "query",
+      "operation": "execution.inspect",
+      "payload": {
+        "execution": "e-amb"
+      },
+      "expect": {
+        "ok": {
+          "delivery": "ambiguous",
+          "obligations": [
+            {
+              "state": "open"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "set_clock",
+      "instant": "2030-01-01T00:01:00Z"
+    },
+    {
+      "step": "query",
+      "operation": "execution.inspect",
+      "payload": {
+        "execution": "e-idle"
+      },
+      "expect": {
+        "ok": {
+          "runtime": "active",
+          "exit": "unavailable"
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "execution.inspect",
+      "payload": {
+        "execution": "e-amb"
+      },
+      "expect": {
+        "ok": {
+          "delivery": "ambiguous",
+          "obligations": [
+            {
+              "state": "overdue"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core.effects.get",
+      "payload": {
+        "effect": "e-amb.delivery-1"
+      },
+      "expect": {
+        "ok": {
+          "status": "unknown"
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core.events.read",
+      "payload": {
+        "from": "start",
+        "limit": 100,
+        "kinds": [
+          "execution.execution"
+        ]
+      },
+      "expect": {
+        "ok": {
+          "items": {
+            "$contains": {
+              "event": {
+                "type": "execution.timeout.passed",
+                "subject": {
+                  "kind": "execution.execution",
+                  "id": "e-idle"
+                },
+                "payload": {
+                  "timeout": "inactivity"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core.events.read",
+      "payload": {
+        "from": "start",
+        "limit": 100,
+        "kinds": [
+          "execution.execution"
+        ]
+      },
+      "expect": {
+        "ok": {
+          "items": {
+            "$contains": {
+              "event": {
+                "type": "execution.timeout.passed",
+                "subject": {
+                  "kind": "execution.execution",
+                  "id": "e-amb"
+                },
+                "payload": {
+                  "timeout": "reconciliation"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

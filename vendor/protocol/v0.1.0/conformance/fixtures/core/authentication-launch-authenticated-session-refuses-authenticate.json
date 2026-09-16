@@ -1,0 +1,104 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "core.authentication.launch-authenticated-session-refuses-authenticate",
+  "version": 1,
+  "title": "A session authenticated by its launch or earlier authentication refuses core.authenticate, before and after negotiation",
+  "requirements": [
+    "CORE-15"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/CORE.md#18-principal-credentials-on-shared-connections"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "core-test",
+      "major": 1
+    }
+  ],
+  "polarity": "negative",
+  "kills": [
+    "stdio-authenticate-accepted"
+  ],
+  "steps": [
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ]
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core.authenticate",
+      "payload": {
+        "credential": "ccred1.someone.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+      },
+      "expect": {
+        "error": "already_authenticated"
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          },
+          {
+            "name": "core-test",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core.authenticate",
+      "payload": {
+        "credential": "not-a-credential"
+      },
+      "expect": {
+        "error": "already_authenticated"
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core-test.subject.applied_count",
+      "payload": {
+        "subject": {
+          "kind": "core-test.subject",
+          "id": "s-1"
+        }
+      },
+      "expect": {
+        "ok": {
+          "applied_count": 0
+        }
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

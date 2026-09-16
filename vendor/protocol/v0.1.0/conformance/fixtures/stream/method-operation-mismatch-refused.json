@@ -1,0 +1,76 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "stream.method-operation-mismatch-refused",
+  "version": 1,
+  "title": "The envelope operation must equal the JSON-RPC method",
+  "requirements": [
+    "TRN-1"
+  ],
+  "spec_refs": [
+    "docs/spec/bindings/STREAM.md#3-json-rpc-mapping",
+    "docs/spec/profiles/CORE.md#5-envelopes"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "core-test",
+      "major": 1
+    }
+  ],
+  "polarity": "negative",
+  "kills": [
+    "route-by-operation"
+  ],
+  "steps": [
+    {
+      "step": "start"
+    },
+    {
+      "step": "negotiate"
+    },
+    {
+      "step": "command",
+      "operation": "core-test.subject.put",
+      "command_id": "cmd-1",
+      "subject": {
+        "kind": "core-test.subject",
+        "id": "s-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core-test.subject",
+            "id": "s-1"
+          },
+          "revision": 0
+        }
+      ],
+      "authority_epoch": 0,
+      "payload": {
+        "value": "v"
+      },
+      "method": "core-test.subject.get",
+      "expect": {
+        "error": "invalid_envelope"
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core-test.subject.applied_count",
+      "payload": {
+        "subject": {
+          "kind": "core-test.subject",
+          "id": "s-1"
+        }
+      },
+      "expect": {
+        "ok": {
+          "applied_count": 0
+        }
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

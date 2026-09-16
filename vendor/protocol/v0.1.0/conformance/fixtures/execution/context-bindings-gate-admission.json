@@ -1,0 +1,423 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "execution.context-bindings-gate-admission",
+  "version": 3,
+  "title": "An unsatisfied required-before-start binding, including a held packet with another digest, is queued rather than admitted as ready; an advisory gap stays visible; the queue timeout ends the wait",
+  "requirements": [
+    "EXE-17",
+    "EXE-19",
+    "EXE-2"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/EXECUTION.md#11-optional-features",
+    "docs/spec/profiles/EXECUTION.md#13-context-bindings-and-delivery-observations"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "execution",
+      "major": 1
+    }
+  ],
+  "features": [
+    "core.events",
+    "core.capabilities",
+    "core.effects",
+    "execution.context"
+  ],
+  "requires_controls": [
+    "executor.script",
+    "clock.file"
+  ],
+  "polarity": "negative",
+  "kills": [
+    "required-binding-admitted",
+    "digest-mismatch-satisfies"
+  ],
+  "kill_expectations": {
+    "required-binding-admitted": {
+      "step": 2,
+      "reason_contains": "acknowledgment/effect_refs"
+    },
+    "digest-mismatch-satisfies": {
+      "step": 3,
+      "reason_contains": "outcome/admission"
+    }
+  },
+  "steps": [
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ],
+        "executor": {
+          "context_packets": [
+            {
+              "ref": "pkt-1",
+              "digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+            }
+          ],
+          "default_script": [
+            {
+              "deliver": "provider_ack_id"
+            }
+          ]
+        },
+        "clock": {
+          "controlled": "2030-01-01T00:00:00Z"
+        }
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.capabilities",
+              "core.effects"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "execution",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "execution.context"
+            ],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "execution.submit",
+      "command_id": "submit-e-req",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "e-req"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "e-req"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "brief": {
+          "digest": "sha256:abababababababababababababababababababababababababababababababab",
+          "media_type": "text/plain"
+        },
+        "context_bindings": [
+          {
+            "binding_id": "b-1",
+            "packet": {
+              "ref": "pkt-2",
+              "digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+            },
+            "obligation": "required_before_start",
+            "selected_by": "owner"
+          }
+        ],
+        "timeouts": {
+          "queue": 60
+        }
+      },
+      "expect": {
+        "ok": {
+          "acknowledgment": {
+            "effect_refs": {
+              "$exact": []
+            }
+          },
+          "outcome": {
+            "admission": "queued",
+            "queue_reason": "context_binding_unsatisfied",
+            "delivery_id": {
+              "$absent": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "execution.submit",
+      "command_id": "submit-e-digest",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "e-digest"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "e-digest"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "brief": {
+          "digest": "sha256:abababababababababababababababababababababababababababababababab",
+          "media_type": "text/plain"
+        },
+        "context_bindings": [
+          {
+            "binding_id": "b-1",
+            "packet": {
+              "ref": "pkt-1",
+              "digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+            },
+            "obligation": "required_before_start",
+            "selected_by": "owner"
+          }
+        ]
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "admission": "queued",
+            "queue_reason": "context_binding_unsatisfied"
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "execution.submit",
+      "command_id": "submit-e-adv",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "e-adv"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "e-adv"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "brief": {
+          "digest": "sha256:abababababababababababababababababababababababababababababababab",
+          "media_type": "text/plain"
+        },
+        "context_bindings": [
+          {
+            "binding_id": "b-1",
+            "packet": {
+              "ref": "pkt-2",
+              "digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+            },
+            "obligation": "advisory",
+            "selected_by": "owner"
+          }
+        ]
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "admission": "admitted"
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "execution.submit",
+      "command_id": "submit-e-ok",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "e-ok"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "e-ok"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "brief": {
+          "digest": "sha256:abababababababababababababababababababababababababababababababab",
+          "media_type": "text/plain"
+        },
+        "context_bindings": [
+          {
+            "binding_id": "b-1",
+            "packet": {
+              "ref": "pkt-1",
+              "digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+            },
+            "obligation": "required_before_start",
+            "selected_by": "owner"
+          }
+        ]
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "admission": "admitted"
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "execution.inspect",
+      "payload": {
+        "execution": "e-adv"
+      },
+      "expect": {
+        "ok": {
+          "admission": "admitted",
+          "context": {
+            "bindings": [
+              {
+                "binding_id": "b-1",
+                "obligation": "advisory",
+                "state": "gap"
+              }
+            ],
+            "deliveries": []
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "execution.inspect",
+      "payload": {
+        "execution": "e-req"
+      },
+      "expect": {
+        "ok": {
+          "admission": "queued",
+          "queue_reason": "context_binding_unsatisfied",
+          "runtime": "not_started",
+          "deliveries": [],
+          "effects": [],
+          "context": {
+            "bindings": [
+              {
+                "state": "unsatisfied"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "step": "set_clock",
+      "instant": "2030-01-01T00:01:00Z"
+    },
+    {
+      "step": "query",
+      "operation": "execution.inspect",
+      "payload": {
+        "execution": "e-req"
+      },
+      "expect": {
+        "ok": {
+          "admission": "refused",
+          "reason": "queue_timeout",
+          "queue_reason": {
+            "$absent": true
+          },
+          "delivery": "failed_before_delivery",
+          "runtime": "not_started"
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core.events.read",
+      "payload": {
+        "from": "start",
+        "limit": 100,
+        "kinds": [
+          "execution.execution"
+        ]
+      },
+      "expect": {
+        "ok": {
+          "items": {
+            "$contains": {
+              "event": {
+                "type": "execution.timeout.passed",
+                "subject": {
+                  "kind": "execution.execution",
+                  "id": "e-req"
+                },
+                "payload": {
+                  "timeout": "queue"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "execution.inspect",
+      "payload": {
+        "execution": "e-ok"
+      },
+      "expect": {
+        "ok": {
+          "delivery": "acknowledged",
+          "context": {
+            "bindings": [
+              {
+                "state": "satisfied"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "execution.inspect",
+      "payload": {
+        "execution": "e-digest"
+      },
+      "expect": {
+        "ok": {
+          "admission": "queued"
+        }
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

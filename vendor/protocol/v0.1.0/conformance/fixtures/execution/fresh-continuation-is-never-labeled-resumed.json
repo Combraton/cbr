@@ -1,0 +1,329 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "execution.fresh-continuation-is-never-labeled-resumed",
+  "version": 1,
+  "title": "Without native resume a continuation is labeled fresh_continuation, never resumed; with native support it is resumed",
+  "requirements": [
+    "EXE-23",
+    "EXE-1"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/EXECUTION.md#11-optional-features"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "execution",
+      "major": 1
+    }
+  ],
+  "features": [
+    "core.events",
+    "core.capabilities",
+    "core.effects",
+    "execution.continuation"
+  ],
+  "requires_controls": [
+    "executor.script"
+  ],
+  "polarity": "negative",
+  "kills": [
+    "fresh-labeled-resumed"
+  ],
+  "kill_expectations": {
+    "fresh-labeled-resumed": {
+      "step": 3,
+      "reason_contains": "continuation/label"
+    }
+  },
+  "steps": [
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ],
+        "executor": {
+          "adapter": {
+            "predicates": [
+              {
+                "name": "adapter.resume",
+                "status": "unsupported"
+              }
+            ]
+          },
+          "default_script": [
+            {
+              "deliver": "provider_ack_id"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.capabilities",
+              "core.effects"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "execution",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "execution.continuation"
+            ],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "execution.submit",
+      "command_id": "submit-e-1",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "e-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "e-1"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "brief": {
+          "digest": "sha256:abababababababababababababababababababababababababababababababab",
+          "media_type": "text/plain"
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "execution.submit",
+      "command_id": "submit-e-2",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "e-2"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "e-2"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "brief": {
+          "digest": "sha256:abababababababababababababababababababababababababababababababab",
+          "media_type": "text/plain"
+        },
+        "predecessor": "e-1",
+        "continuation": {
+          "of": "e-1",
+          "mode": "resume"
+        }
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "admission": "admitted",
+            "continuation": {
+              "of": "e-1",
+              "requested": "resume",
+              "label": "fresh_continuation"
+            }
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "execution.submit",
+      "command_id": "submit-e-3",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "e-3"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "e-3"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "brief": {
+          "digest": "sha256:abababababababababababababababababababababababababababababababab",
+          "media_type": "text/plain"
+        },
+        "predecessor": "e-1",
+        "continuation": {
+          "of": "e-1",
+          "mode": "fork"
+        }
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "continuation": {
+              "requested": "fork",
+              "label": "fresh_continuation"
+            }
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "execution.inspect",
+      "payload": {
+        "execution": "e-2"
+      },
+      "expect": {
+        "ok": {
+          "predecessor": "e-1",
+          "continuation": {
+            "label": "fresh_continuation"
+          }
+        }
+      }
+    },
+    {
+      "step": "stop"
+    },
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ],
+        "executor": {
+          "adapter": {
+            "predicates": [
+              {
+                "name": "adapter.resume",
+                "status": "supported"
+              }
+            ]
+          },
+          "default_script": [
+            {
+              "deliver": "provider_ack_id"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.capabilities",
+              "core.effects"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "execution",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "execution.continuation"
+            ],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "execution.submit",
+      "command_id": "submit-e-4",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "e-4"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "e-4"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "brief": {
+          "digest": "sha256:abababababababababababababababababababababababababababababababab",
+          "media_type": "text/plain"
+        },
+        "predecessor": "e-1",
+        "continuation": {
+          "of": "e-1",
+          "mode": "resume"
+        }
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "continuation": {
+              "requested": "resume",
+              "label": "resumed"
+            }
+          }
+        }
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

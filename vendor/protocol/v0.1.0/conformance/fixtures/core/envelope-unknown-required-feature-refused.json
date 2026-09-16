@@ -1,0 +1,82 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "core.envelope.unknown-required-feature-refused",
+  "version": 1,
+  "title": "A required feature that was not negotiated is refused",
+  "requirements": [
+    "CORE-4"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/CORE.md#51-closed-objects-requires-and-extensions"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "core-test",
+      "major": 1
+    }
+  ],
+  "polarity": "negative",
+  "kills": [
+    "ignore-requires"
+  ],
+  "steps": [
+    {
+      "step": "start"
+    },
+    {
+      "step": "negotiate"
+    },
+    {
+      "step": "command",
+      "operation": "core-test.subject.put",
+      "command_id": "cmd-1",
+      "subject": {
+        "kind": "core-test.subject",
+        "id": "s-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core-test.subject",
+            "id": "s-1"
+          },
+          "revision": 0
+        }
+      ],
+      "authority_epoch": 0,
+      "payload": {
+        "value": "v"
+      },
+      "requires": [
+        "core-test.no-such-feature"
+      ],
+      "expect": {
+        "error": "unsupported_required_feature",
+        "details": {
+          "features": [
+            "core-test.no-such-feature"
+          ]
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core-test.subject.applied_count",
+      "payload": {
+        "subject": {
+          "kind": "core-test.subject",
+          "id": "s-1"
+        }
+      },
+      "expect": {
+        "ok": {
+          "applied_count": 0
+        }
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

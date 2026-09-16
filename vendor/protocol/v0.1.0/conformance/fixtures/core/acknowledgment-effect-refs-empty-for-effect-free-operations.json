@@ -1,0 +1,131 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "core.acknowledgment.effect-refs-empty-for-effect-free-operations",
+  "version": 1,
+  "title": "Commands that record no effects keep returning an empty effect_refs, including on replay",
+  "requirements": [
+    "CMP-6"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/CORE.md#11-acknowledgment-and-outcome"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "core-test",
+      "major": 1
+    }
+  ],
+  "polarity": "negative",
+  "kills": [
+    "effect-refs-on-core-operations"
+  ],
+  "kill_expectations": {
+    "effect-refs-on-core-operations": {
+      "step": 2,
+      "reason_contains": "effect_refs"
+    }
+  },
+  "steps": [
+    {
+      "step": "start"
+    },
+    {
+      "step": "negotiate"
+    },
+    {
+      "step": "command",
+      "operation": "core-test.subject.put",
+      "command_id": "put-1",
+      "subject": {
+        "kind": "core-test.subject",
+        "id": "s-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core-test.subject",
+            "id": "s-1"
+          },
+          "revision": 0
+        }
+      ],
+      "authority_epoch": 0,
+      "payload": {
+        "value": "a"
+      },
+      "expect": {
+        "ok": {
+          "acknowledgment": {
+            "effect_refs": {
+              "$exact": []
+            }
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "core-test.subject.put",
+      "command_id": "put-1",
+      "subject": {
+        "kind": "core-test.subject",
+        "id": "s-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core-test.subject",
+            "id": "s-1"
+          },
+          "revision": 0
+        }
+      ],
+      "authority_epoch": 0,
+      "payload": {
+        "value": "a"
+      },
+      "expect": {
+        "ok": {
+          "replay": true,
+          "acknowledgment": {
+            "effect_refs": {
+              "$exact": []
+            }
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "core-test.authority.claim",
+      "command_id": "claim-1",
+      "subject": {
+        "kind": "core-test.authority",
+        "id": "core-test"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core-test.authority",
+            "id": "core-test"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {},
+      "expect": {
+        "ok": {
+          "acknowledgment": {
+            "effect_refs": {
+              "$exact": []
+            }
+          }
+        }
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

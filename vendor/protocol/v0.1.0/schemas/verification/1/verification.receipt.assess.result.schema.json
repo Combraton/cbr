@@ -1,0 +1,263 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Combraton/protocol/schemas/verification/1/verification.receipt.assess.result.schema.json",
+  "title": "verification.receipt.assess result",
+  "type": "object",
+  "required": [
+    "assessed_at",
+    "time_basis",
+    "present_validity",
+    "basis",
+    "checks",
+    "properties",
+    "overall",
+    "reasons"
+  ],
+  "properties": {
+    "assessed_at": {
+      "$ref": "../../core/1/common.schema.json#/$defs/instant"
+    },
+    "time_basis": {
+      "enum": [
+        "provider_clock",
+        "caller_selected"
+      ]
+    },
+    "present_validity": {
+      "enum": [
+        "established",
+        "not_established"
+      ]
+    },
+    "basis": {
+      "type": "object",
+      "required": [
+        "subjects",
+        "environment"
+      ],
+      "properties": {
+        "subjects": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/subject_digest"
+          }
+        },
+        "environment": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "common.schema.json#/$defs/environment"
+            }
+          ]
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "checks": {
+      "type": "object",
+      "required": [
+        "receipt",
+        "contract",
+        "subjects",
+        "environment",
+        "evaluator",
+        "time"
+      ],
+      "properties": {
+        "receipt": {
+          "type": "object",
+          "required": [
+            "status",
+            "reasons"
+          ],
+          "properties": {
+            "status": {
+              "enum": [
+                "passed",
+                "failed",
+                "unverifiable"
+              ]
+            },
+            "reasons": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "unevaluatedProperties": false
+        },
+        "contract": {
+          "type": "object",
+          "required": [
+            "status",
+            "reasons"
+          ],
+          "properties": {
+            "status": {
+              "enum": [
+                "passed",
+                "failed",
+                "unverifiable"
+              ]
+            },
+            "reasons": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "unevaluatedProperties": false
+        },
+        "subjects": {
+          "type": "object",
+          "required": [
+            "status",
+            "reasons"
+          ],
+          "properties": {
+            "status": {
+              "enum": [
+                "passed",
+                "failed",
+                "unverifiable"
+              ]
+            },
+            "reasons": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "unevaluatedProperties": false
+        },
+        "environment": {
+          "type": "object",
+          "required": [
+            "status",
+            "reasons"
+          ],
+          "properties": {
+            "status": {
+              "enum": [
+                "passed",
+                "failed",
+                "unverifiable"
+              ]
+            },
+            "reasons": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "unevaluatedProperties": false
+        },
+        "evaluator": {
+          "type": "object",
+          "required": [
+            "status",
+            "reasons"
+          ],
+          "properties": {
+            "status": {
+              "enum": [
+                "passed",
+                "failed",
+                "unverifiable"
+              ]
+            },
+            "reasons": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "unevaluatedProperties": false
+        },
+        "time": {
+          "type": "object",
+          "required": [
+            "status",
+            "reasons"
+          ],
+          "properties": {
+            "status": {
+              "enum": [
+                "passed",
+                "failed",
+                "unverifiable"
+              ]
+            },
+            "reasons": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "unevaluatedProperties": false
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "properties": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "property_id",
+          "required",
+          "result",
+          "status",
+          "reasons"
+        ],
+        "properties": {
+          "property_id": {
+            "$ref": "../../core/1/common.schema.json#/$defs/identifier"
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "result": {
+            "$ref": "common.schema.json#/$defs/result"
+          },
+          "status": {
+            "enum": [
+              "satisfied",
+              "failed",
+              "not_satisfied"
+            ]
+          },
+          "reasons": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "unevaluatedProperties": false
+      }
+    },
+    "overall": {
+      "enum": [
+        "satisfied",
+        "failed",
+        "not_satisfied"
+      ]
+    },
+    "reasons": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "unevaluatedProperties": false
+}

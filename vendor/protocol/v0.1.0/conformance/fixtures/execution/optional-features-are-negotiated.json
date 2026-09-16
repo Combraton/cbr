@@ -1,0 +1,256 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "execution.optional-features-are-negotiated",
+  "version": 1,
+  "title": "Operations and submit fields of optional features are refused unless the feature was negotiated",
+  "requirements": [
+    "EXE-9",
+    "EXE-12",
+    "EXE-13",
+    "EXE-16",
+    "CORE-3"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/EXECUTION.md#11-optional-features",
+    "docs/spec/profiles/CORE.md#51-requires"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "execution",
+      "major": 1
+    }
+  ],
+  "features": [
+    "core.events",
+    "core.capabilities",
+    "core.effects"
+  ],
+  "requires_controls": [
+    "executor.script"
+  ],
+  "polarity": "negative",
+  "kills": [
+    "feature-fields-accepted",
+    "feature-operations-ungated"
+  ],
+  "kill_expectations": {
+    "feature-fields-accepted": {
+      "step": 2,
+      "reason_contains": "expected error invalid_envelope"
+    },
+    "feature-operations-ungated": {
+      "step": 5,
+      "reason_contains": "expected error unsupported_required_feature"
+    }
+  },
+  "steps": [
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ],
+        "executor": {
+          "default_script": [
+            {
+              "deliver": "provider_ack_id"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.capabilities",
+              "core.effects"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "execution",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "execution.submit",
+      "command_id": "submit-e-1",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "e-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "e-1"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "brief": {
+          "digest": "sha256:abababababababababababababababababababababababababababababababab",
+          "media_type": "text/plain"
+        },
+        "budget": {
+          "pool": "b-1",
+          "ceiling": "soft"
+        }
+      },
+      "expect": {
+        "error": "invalid_envelope",
+        "details": {
+          "path": "/payload/budget"
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "execution.submit",
+      "command_id": "submit-e-1-plain",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "e-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "e-1"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "brief": {
+          "digest": "sha256:abababababababababababababababababababababababababababababababab",
+          "media_type": "text/plain"
+        }
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "admission": "admitted"
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "execution.inspect",
+      "payload": {
+        "execution": "e-1"
+      },
+      "expect": {
+        "ok": {}
+      },
+      "capture": {
+        "r": "/result/revision"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "execution.steer",
+      "command_id": "steer-e-1",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "e-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "e-1"
+          },
+          "revision": {
+            "$var": "r"
+          }
+        }
+      ],
+      "payload": {
+        "message": {
+          "digest": "sha256:cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+          "media_type": "text/plain"
+        }
+      },
+      "expect": {
+        "error": "unsupported_required_feature",
+        "details": {
+          "features": [
+            "execution.steering"
+          ]
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "execution.discovery.list",
+      "payload": {},
+      "expect": {
+        "error": "unsupported_required_feature",
+        "details": {
+          "features": [
+            "execution.discovery"
+          ]
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "execution.controller.claim",
+      "command_id": "claim-1",
+      "subject": {
+        "kind": "execution.controller",
+        "id": "scripted-host"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.controller",
+            "id": "scripted-host"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {},
+      "expect": {
+        "error": "unsupported_required_feature",
+        "details": {
+          "features": [
+            "execution.controller"
+          ]
+        }
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

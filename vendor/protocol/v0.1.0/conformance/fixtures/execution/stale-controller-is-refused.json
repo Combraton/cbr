@@ -1,0 +1,503 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "execution.stale-controller-is-refused",
+  "version": 1,
+  "title": "A controller lease advances the host's controller epoch; mutating commands from a superseded controller are refused while observers still read",
+  "requirements": [
+    "EXE-13"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/EXECUTION.md#11-optional-features",
+    "docs/spec/profiles/CORE.md#8-authority-epochs"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "execution",
+      "major": 1
+    }
+  ],
+  "features": [
+    "core.events",
+    "core.capabilities",
+    "core.effects",
+    "execution.controller"
+  ],
+  "requires_controls": [
+    "executor.script"
+  ],
+  "polarity": "negative",
+  "kills": [
+    "stale-controller-accepted"
+  ],
+  "kill_expectations": {
+    "stale-controller-accepted": {
+      "step": 4,
+      "reason_contains": "expected error stale_authority_epoch"
+    }
+  },
+  "steps": [
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ],
+        "executor": {
+          "scripts": {
+            "e-1": [
+              {
+                "deliver": "provider_ack_id"
+              },
+              {
+                "wait_for": "cancel"
+              },
+              {
+                "on_cancel": "cancelled"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.capabilities",
+              "core.effects"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "execution",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "execution.controller"
+            ],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "execution.controller.claim",
+      "command_id": "claim-1",
+      "subject": {
+        "kind": "execution.controller",
+        "id": "scripted-host"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.controller",
+            "id": "scripted-host"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {},
+      "expect": {
+        "ok": {
+          "outcome": {
+            "epoch": 1
+          },
+          "acknowledgment": {
+            "subject": {
+              "kind": "execution.controller",
+              "id": "scripted-host"
+            },
+            "revision": 1
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "execution.submit",
+      "command_id": "submit-e-1",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "e-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "e-1"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "brief": {
+          "digest": "sha256:abababababababababababababababababababababababababababababababab",
+          "media_type": "text/plain"
+        }
+      },
+      "expect": {
+        "ok": {
+          "outcome": {
+            "admission": "admitted"
+          }
+        }
+      },
+      "authority_epoch": 1
+    },
+    {
+      "step": "command",
+      "operation": "execution.submit",
+      "command_id": "submit-e-0",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "e-0"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "e-0"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "brief": {
+          "digest": "sha256:abababababababababababababababababababababababababababababababab",
+          "media_type": "text/plain"
+        }
+      },
+      "expect": {
+        "error": "stale_authority_epoch",
+        "details": {
+          "current_epoch": 1
+        }
+      }
+    },
+    {
+      "step": "stop"
+    },
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ],
+        "executor": {
+          "scripts": {
+            "e-1": [
+              {
+                "deliver": "provider_ack_id"
+              },
+              {
+                "wait_for": "cancel"
+              },
+              {
+                "on_cancel": "cancelled"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.capabilities",
+              "core.effects"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "execution",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "execution.controller"
+            ],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "execution.controller.claim",
+      "command_id": "claim-2",
+      "subject": {
+        "kind": "execution.controller",
+        "id": "scripted-host"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.controller",
+            "id": "scripted-host"
+          },
+          "revision": 1
+        }
+      ],
+      "payload": {},
+      "expect": {
+        "ok": {
+          "outcome": {
+            "epoch": 2
+          }
+        }
+      }
+    },
+    {
+      "step": "stop"
+    },
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ],
+        "executor": {
+          "scripts": {
+            "e-1": [
+              {
+                "deliver": "provider_ack_id"
+              },
+              {
+                "wait_for": "cancel"
+              },
+              {
+                "on_cancel": "cancelled"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.capabilities",
+              "core.effects"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "execution",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "execution.controller"
+            ],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "query",
+      "operation": "execution.inspect",
+      "payload": {
+        "execution": "e-1"
+      },
+      "expect": {
+        "ok": {
+          "delivery": "acknowledged",
+          "cancellation": {
+            "$absent": true
+          }
+        }
+      },
+      "capture": {
+        "r": "/result/revision"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "execution.cancel",
+      "command_id": "cancel-e-1",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "e-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "e-1"
+          },
+          "revision": {
+            "$var": "r"
+          }
+        }
+      ],
+      "payload": {},
+      "authority_epoch": 1,
+      "expect": {
+        "error": "stale_authority_epoch",
+        "details": {
+          "current_epoch": 2
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "execution.cancel",
+      "command_id": "cancel-e-1-unknown-epoch",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "e-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "e-1"
+          },
+          "revision": {
+            "$var": "r"
+          }
+        }
+      ],
+      "payload": {},
+      "authority_epoch": 3,
+      "expect": {
+        "error": "unknown_authority_epoch"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "execution.cancel",
+      "command_id": "cancel-e-1-current",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "e-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "e-1"
+          },
+          "revision": {
+            "$var": "r"
+          }
+        }
+      ],
+      "payload": {},
+      "authority_epoch": 2,
+      "expect": {
+        "ok": {
+          "outcome": {
+            "receipt": {
+              "state": "cancel_requested"
+            }
+          }
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core.events.read",
+      "payload": {
+        "from": "start",
+        "limit": 100,
+        "kinds": [
+          "execution.controller"
+        ]
+      },
+      "expect": {
+        "ok": {
+          "items": [
+            {
+              "event": {
+                "type": "execution.controller.claimed",
+                "subject": {
+                  "kind": "execution.controller",
+                  "id": "scripted-host"
+                },
+                "revision": 1,
+                "payload": {
+                  "epoch": 1,
+                  "controller": "owner"
+                }
+              }
+            },
+            {
+              "event": {
+                "type": "execution.controller.claimed",
+                "subject": {
+                  "kind": "execution.controller",
+                  "id": "scripted-host"
+                },
+                "revision": 2,
+                "payload": {
+                  "epoch": 2
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

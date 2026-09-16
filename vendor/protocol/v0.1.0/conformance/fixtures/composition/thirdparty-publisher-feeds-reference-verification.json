@@ -1,0 +1,460 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "composition.thirdparty-publisher-feeds-reference-verification",
+  "version": 1,
+  "title": "An independently written Evidence publisher uploads and seals a verification contract and a subject artifact at the reference Evidence provider, checking the digests of the bytes it sent and fetched back; the reference Verification provider then consumes the contract by exact reference and digest; a publisher whose bytes differ from its declared digest is refused at seal and fails",
+  "requirements": [
+    "CMP-9",
+    "VER-1"
+  ],
+  "spec_refs": [
+    "conformance/thirdparty/README.md",
+    "docs/spec/profiles/EVIDENCE.md#4-upload-and-seal-owner-decision-m4-q1",
+    "docs/spec/profiles/VERIFICATION.md#2-identities-m5-q5"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "evidence",
+      "major": 1
+    },
+    {
+      "name": "verification",
+      "major": 1
+    }
+  ],
+  "features": [
+    "core.events",
+    "core.grants",
+    "core.capabilities",
+    "verification.record"
+  ],
+  "binding": "unix",
+  "requires_controls": [
+    "clock.file"
+  ],
+  "kills": [],
+  "polarity": "negative",
+  "client_kills": [
+    {
+      "implementation": "minimal-publisher",
+      "mutant": "uploads-bytes-differing-from-digest"
+    }
+  ],
+  "steps": [
+    {
+      "step": "start_participant",
+      "name": "evd",
+      "config": {
+        "provider_id": "evidence-1",
+        "authority_principals": [
+          "owner"
+        ],
+        "clock": {
+          "controlled": "2030-01-01T00:00:00Z"
+        }
+      },
+      "credential_principals": [
+        "publisher"
+      ]
+    },
+    {
+      "step": "connect",
+      "session": "owner",
+      "participant": "evd",
+      "principal": "owner"
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.grants",
+              "core.capabilities"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "evidence",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          },
+          {
+            "name": "verification",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": [
+              "verification.record"
+            ]
+          }
+        ]
+      },
+      "session": "owner"
+    },
+    {
+      "step": "command",
+      "operation": "core.grant.issue",
+      "command_id": "grant-issue-g-publish",
+      "subject": {
+        "kind": "core.grant",
+        "id": "g-publish"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core.grant",
+            "id": "g-publish"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "holder": "publisher",
+        "audience": "evidence-1",
+        "rights": [
+          "evidence.publish",
+          "evidence.read"
+        ],
+        "resources": [
+          {
+            "kind": "evidence.artifact",
+            "id_prefix": "tp-"
+          }
+        ],
+        "delegation": {
+          "allowed": false,
+          "max_depth": 0
+        }
+      },
+      "session": "owner"
+    },
+    {
+      "step": "start_client",
+      "name": "publisher",
+      "implementation": "minimal-publisher",
+      "config": {
+        "format": "combraton-thirdparty-publisher-config/1",
+        "principal": "publisher",
+        "clock_file": {
+          "$var": "clock_file"
+        },
+        "providers": {
+          "evidence-1": {
+            "socket": {
+              "$var": "socket.evd"
+            },
+            "credential": {
+              "$var": "credential.publisher"
+            }
+          }
+        },
+        "evidence": {
+          "provider": "evidence-1",
+          "grant": "g-publish"
+        },
+        "artifacts": [
+          {
+            "id": "tp-contract",
+            "media_type": "application/vnd.combraton.verification-contract+json",
+            "content_base64": "eyJlbnZpcm9ubWVudCI6eyJyZXF1aXJlZF9hbmNob3JzIjpbXX0sImV2YWx1YXRvcnMiOm51bGwsImZvcm1hdCI6ImNvbWJyYXRvbi12ZXJpZmljYXRpb24tY29udHJhY3QvMSIsImZyZXNobmVzcyI6bnVsbCwib3V0Y29tZSI6InRoZSBleHBvcnRlZCByZXBvcnQgaXMgY29tcGxldGUiLCJwcm9wZXJ0aWVzIjpbeyJsYXllciI6ImNvbXBvbmVudCIsInByb3BlcnR5X2lkIjoicmVwb3J0LmNvbXBsZXRlIiwicmVxdWlyZWQiOnRydWUsInN0YXRlbWVudCI6ImV2ZXJ5IHNlY3Rpb24gaXMgcHJlc2VudCJ9XSwic3ViamVjdHMiOlt7ImtpbmQiOiJldmlkZW5jZS5hcnRpZmFjdCIsInJvbGUiOiJvdXRwdXQifV19",
+            "chunk_bytes": 64
+          },
+          {
+            "id": "tp-output",
+            "media_type": "text/plain",
+            "content_base64": "cmVwb3J0OiBzZWN0aW9ucyAxLTQgcHJlc2VudApyZXBvcnQ6IHNlY3Rpb25zIDEtNCBwcmVzZW50CnJlcG9ydDogc2VjdGlvbnMgMS00IHByZXNlbnQK",
+            "chunk_bytes": 16
+          }
+        ]
+      }
+    },
+    {
+      "step": "await_client_exit",
+      "name": "publisher",
+      "exit_code": 0,
+      "within_ms": 20000
+    },
+    {
+      "step": "query",
+      "operation": "evidence.inspect",
+      "payload": {
+        "artifact": {
+          "kind": "evidence.artifact",
+          "id": "tp-contract"
+        }
+      },
+      "expect": {
+        "ok": {
+          "state": "sealed",
+          "descriptor": {
+            "digest": "sha256:1d47e2f6772aae19deb3dee17610241b15167ea0f4c7be9e04ce9e8357d05331",
+            "size": 345,
+            "producer": {
+              "principal": "publisher"
+            }
+          }
+        }
+      },
+      "session": "owner"
+    },
+    {
+      "step": "query",
+      "operation": "evidence.fetch",
+      "payload": {
+        "artifact": {
+          "kind": "evidence.artifact",
+          "id": "tp-contract"
+        },
+        "digest": "sha256:1d47e2f6772aae19deb3dee17610241b15167ea0f4c7be9e04ce9e8357d05331"
+      },
+      "expect": {
+        "ok": {
+          "data_base64": {
+            "$sha256_base64": "sha256:1d47e2f6772aae19deb3dee17610241b15167ea0f4c7be9e04ce9e8357d05331"
+          }
+        }
+      },
+      "session": "owner"
+    },
+    {
+      "step": "query",
+      "operation": "evidence.inspect",
+      "payload": {
+        "artifact": {
+          "kind": "evidence.artifact",
+          "id": "tp-output"
+        }
+      },
+      "expect": {
+        "ok": {
+          "state": "sealed",
+          "descriptor": {
+            "digest": "sha256:7783679dcaa6e6c67af7cb27f739d716ae2af3371a1a5196522556c05d32ae98",
+            "size": 87,
+            "producer": {
+              "principal": "publisher"
+            }
+          }
+        }
+      },
+      "session": "owner"
+    },
+    {
+      "step": "query",
+      "operation": "evidence.fetch",
+      "payload": {
+        "artifact": {
+          "kind": "evidence.artifact",
+          "id": "tp-output"
+        },
+        "digest": "sha256:7783679dcaa6e6c67af7cb27f739d716ae2af3371a1a5196522556c05d32ae98"
+      },
+      "expect": {
+        "ok": {
+          "data_base64": {
+            "$sha256_base64": "sha256:7783679dcaa6e6c67af7cb27f739d716ae2af3371a1a5196522556c05d32ae98"
+          }
+        }
+      },
+      "session": "owner"
+    },
+    {
+      "step": "command",
+      "operation": "verification.receipt.record",
+      "command_id": "receipt-record-r-tp",
+      "subject": {
+        "kind": "verification.receipt",
+        "id": "r-tp"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "verification.receipt",
+            "id": "r-tp"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "subjects": [
+          {
+            "role": "output",
+            "digest": "sha256:7783679dcaa6e6c67af7cb27f739d716ae2af3371a1a5196522556c05d32ae98"
+          }
+        ],
+        "contract": {
+          "provider": "evidence-1",
+          "artifact": {
+            "kind": "evidence.artifact",
+            "id": "tp-contract"
+          },
+          "digest": "sha256:1d47e2f6772aae19deb3dee17610241b15167ea0f4c7be9e04ce9e8357d05331"
+        },
+        "evaluator": {
+          "id": "reviewer",
+          "version": "1"
+        },
+        "environment": {
+          "anchors": {}
+        },
+        "inputs": [],
+        "properties": [
+          {
+            "property_id": "report.complete",
+            "result": "pass",
+            "evidence": [
+              {
+                "provider": "evidence-1",
+                "artifact": {
+                  "kind": "evidence.artifact",
+                  "id": "tp-output"
+                },
+                "digest": "sha256:7783679dcaa6e6c67af7cb27f739d716ae2af3371a1a5196522556c05d32ae98"
+              }
+            ]
+          }
+        ],
+        "observed_from": "2030-01-01T00:00:00Z",
+        "observed_until": "2030-01-01T00:00:00Z",
+        "valid_until": null,
+        "scope": "exported report",
+        "provenance": []
+      },
+      "capture": {
+        "ra": "/result/outcome/reference/artifact/digest"
+      },
+      "session": "owner"
+    },
+    {
+      "step": "query",
+      "operation": "verification.receipt.assess",
+      "payload": {
+        "receipt": {
+          "provider": "evidence-1",
+          "receipt": "r-tp",
+          "artifact": {
+            "provider": "evidence-1",
+            "artifact": {
+              "kind": "evidence.artifact",
+              "id": "receipt.r-tp"
+            },
+            "digest": {
+              "$var": "ra"
+            }
+          }
+        },
+        "contract": {
+          "provider": "evidence-1",
+          "artifact": {
+            "kind": "evidence.artifact",
+            "id": "tp-contract"
+          },
+          "digest": "sha256:1d47e2f6772aae19deb3dee17610241b15167ea0f4c7be9e04ce9e8357d05331"
+        },
+        "subjects": [
+          {
+            "role": "output",
+            "digest": "sha256:7783679dcaa6e6c67af7cb27f739d716ae2af3371a1a5196522556c05d32ae98"
+          }
+        ]
+      },
+      "expect": {
+        "ok": {
+          "checks": {
+            "contract": {
+              "status": "passed"
+            },
+            "subjects": {
+              "status": "passed"
+            }
+          },
+          "overall": "satisfied"
+        }
+      },
+      "session": "owner"
+    },
+    {
+      "step": "command",
+      "operation": "verification.receipt.record",
+      "command_id": "receipt-record-r-tp-wrong",
+      "subject": {
+        "kind": "verification.receipt",
+        "id": "r-tp-wrong"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "verification.receipt",
+            "id": "r-tp-wrong"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "subjects": [
+          {
+            "role": "output",
+            "digest": "sha256:7783679dcaa6e6c67af7cb27f739d716ae2af3371a1a5196522556c05d32ae98"
+          }
+        ],
+        "contract": {
+          "provider": "evidence-1",
+          "artifact": {
+            "kind": "evidence.artifact",
+            "id": "tp-contract"
+          },
+          "digest": "sha256:7783679dcaa6e6c67af7cb27f739d716ae2af3371a1a5196522556c05d32ae98"
+        },
+        "evaluator": {
+          "id": "reviewer",
+          "version": "1"
+        },
+        "environment": {
+          "anchors": {}
+        },
+        "inputs": [],
+        "properties": [
+          {
+            "property_id": "report.complete",
+            "result": "pass",
+            "evidence": []
+          }
+        ],
+        "observed_from": "2030-01-01T00:00:00Z",
+        "observed_until": "2030-01-01T00:00:00Z",
+        "valid_until": null,
+        "scope": "exported report",
+        "provenance": []
+      },
+      "expect": {
+        "error": "artifact_digest_mismatch"
+      },
+      "session": "owner"
+    },
+    {
+      "step": "stop_participant",
+      "name": "evd"
+    }
+  ]
+}

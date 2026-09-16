@@ -1,0 +1,157 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "core.authority.current-epoch-accepted",
+  "version": 1,
+  "title": "Commands under the current epoch are accepted across successive takeovers",
+  "requirements": [
+    "CORE-10"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/CORE.md#8-authority-epochs"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "core-test",
+      "major": 1
+    }
+  ],
+  "polarity": "positive",
+  "kills": [],
+  "steps": [
+    {
+      "step": "start"
+    },
+    {
+      "step": "negotiate"
+    },
+    {
+      "step": "command",
+      "operation": "core-test.subject.put",
+      "command_id": "cmd-1",
+      "subject": {
+        "kind": "core-test.subject",
+        "id": "s-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core-test.subject",
+            "id": "s-1"
+          },
+          "revision": 0
+        }
+      ],
+      "authority_epoch": 0,
+      "payload": {
+        "value": "a"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "core-test.authority.claim",
+      "command_id": "claim-1",
+      "subject": {
+        "kind": "core-test.authority",
+        "id": "core-test"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core-test.authority",
+            "id": "core-test"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {},
+      "expect": {
+        "ok": {
+          "outcome": {
+            "epoch": 1
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "core-test.subject.put",
+      "command_id": "cmd-2",
+      "subject": {
+        "kind": "core-test.subject",
+        "id": "s-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core-test.subject",
+            "id": "s-1"
+          },
+          "revision": 1
+        }
+      ],
+      "authority_epoch": 1,
+      "payload": {
+        "value": "b"
+      }
+    },
+    {
+      "step": "command",
+      "operation": "core-test.authority.claim",
+      "command_id": "claim-2",
+      "subject": {
+        "kind": "core-test.authority",
+        "id": "core-test"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core-test.authority",
+            "id": "core-test"
+          },
+          "revision": 1
+        }
+      ],
+      "payload": {},
+      "expect": {
+        "ok": {
+          "outcome": {
+            "epoch": 2
+          }
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "core-test.subject.put",
+      "command_id": "cmd-3",
+      "subject": {
+        "kind": "core-test.subject",
+        "id": "s-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core-test.subject",
+            "id": "s-1"
+          },
+          "revision": 2
+        }
+      ],
+      "authority_epoch": 2,
+      "payload": {
+        "value": "c"
+      },
+      "expect": {
+        "ok": {
+          "acknowledgment": {
+            "revision": 3
+          }
+        }
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

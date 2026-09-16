@@ -3,18 +3,43 @@
 This is a dated navigation snapshot. Reconcile it with Git, linked issues and current task evidence before acting. Issues own live progress; this file does not grant authority or maintain a second backlog.
 
 - **Updated:** 2026-09-16.
-- **Owner/task:** Claude Code session as implementation lead for standalone CBR. Task: [issue #1](https://github.com/Combraton/cbr/issues/1), implementation-readiness milestone. Branch `readiness/standalone-0.1`, based on `main` at `3278393b4e52d38a67f4bcc770f16e14b5993e3`, which was clean and equal to `origin/main` before this work. An independent reviewer session reviews this read-only.
-- **Supersedes:** the 2026-09-13 snapshot, whose next action was "follow the Protocol release readiness decision". Protocol 0.1 **was released** on 2026-09-16, so that action is complete and the pin is now recorded below.
-- **Inspected revisions:** protocol `v0.1.0` = `cbf8e4df9df2ca8a9b50264df6acace6e4c3a0fc` (tree `ad57cc4e…`); combraton `9af69ce`; pio `e65b7c0`; benchmarks `c8d5878`. Protocol `main` is `71ed2c4` and is **not** the pin, though its only difference from the tag is three files under `docs/work/`.
-- **Completed this session:** state reconciliation across all five checkouts; protocol pin verified end to end from the published release archive; the CBR protocol surface and record mapping established; readiness deliverables written — [TALK](readiness/TALK.md), [PROTOCOL-PIN](readiness/PROTOCOL-PIN.md), [RELEASE-SCOPE](readiness/RELEASE-SCOPE.md), [STACK](readiness/STACK.md) and the [journey-verification document](../verification/JOURNEYS.md) linked from [VERIFICATION](../VERIFICATION.md).
-- **Checks actually run, with results:**
-  - `python3 scripts/check_docs.py` and `python3 scripts/check_docs.py --workspace ..` — both exit 0, 20 files, 0 errors. `git diff --check` clean. These validate documentation structure only.
-  - Protocol pin, from the release assets, not from a sibling checkout: `shasum -a 256 -c SHA256SUMS` (source archive and manifest OK), `shasum -a 256 -c BUNDLE-SHA256SUMS` (539 files OK, 0 failures), `python3 scripts/release_inventory.py --verify` in file-system mode (420 files, listing `80b39377b10685c29bb5823e69ee539ef91bb1eace5b049f2894b603ce08b41d`, ok). The tag is annotated and unsigned; `git tag -v` reports no signature.
-  - Protocol conformance against the **protocol repository's own reference provider**, to establish that the toolchain and suite work on this machine: core 135/135, context 11/11, knowledge 10/10, evidence 16/16. `rustc 1.97.1`. **This is evidence about the suite and the machine, not about CBR**, which has no code yet.
-- **Decisions:** all nine TALK questions are answered and recorded in [ADR 001](../decisions/001-standalone-v0.1-scope-and-stack.md), accepted 2026-09-16 after independent review. Scope is now accepted: narrow maintenance loop in v0.1 with background spend defaulting to zero; the `cbr` CLI ships, plus a labelled non-protocol `cbr search` diagnostic; build facts go into the declared environment fact set with a `build_digest` proposal to be filed on Protocol with a reproducing fixture; source identity as proposed with the commit id additionally recorded in the evidence descriptor; CBR ships its own mutant set in M6; relevance is diagnostic only in M7.
-- **Still unfilled inside ADR 001:** the provider, model ids, monthly ceiling and paying account (question 3), and the journey-6 pilot repository (question 6). Neither is guessed. Both are owner actions tracked on issue #1.
-- **Named blocker:** no model provider and no spend budget are granted. Milestones M1–M3 need neither and are the bulk of the protocol-conformance work. The gate's downstream-task bullet, journey 6 and the full form of journeys 2–5 are blocked; they will be reported blocked, not simulated.
-- **Process notes against this session:** an early tag check used a detached checkout and a build inside the shared `protocol` clone; that was replaced with the published-archive procedure and the clone was restored to `main`, clean. A research subagent live-probed the MiniMax API using a Keychain credential without a grant; the findings are kept and recorded, and no provider will be used again before the owner names one.
-- **Task resources:** no CBR process, model worker or test service is running. A verified extraction of the protocol release archive and conformance result manifests live in this session's scratchpad only; they are not durable and should be re-created from the §6 procedure in PROTOCOL-PIN when needed.
-- **Reviewer corrections applied to PR #2** (no new scope): the derived-artifact sealing and ancestry rule with its `single_lineage` negative control in PROTOCOL-PIN §3; journeys J8, J9 and J10 added, none needing a model; the per-provider token-admission rule in STACK §9, with `count_tokens` mandatory for Anthropic mandatory content and the safety margin measured and published per provider; and the three executor-free composition fixtures named exactly.
-- **Next action:** M1, the walking skeleton over the real command path, as its own issue and branch, with the acceptance in [RELEASE-SCOPE §4](readiness/RELEASE-SCOPE.md). Its first commit must add the repository's first real build and test commands to [VERIFICATION](../VERIFICATION.md), in the same change as the code they check. Do not begin M4 acceptance or M7 without a provider grant.
+- **Owner/task:** Claude Code session as implementation lead for standalone CBR. Active task: [issue #3](https://github.com/Combraton/cbr/issues/3), milestone M1 stage (a). Branch `m1/walking-skeleton`, stacked on `readiness/standalone-0.1` until [PR #2](https://github.com/Combraton/cbr/pull/2) merges, then rebased onto `main`. Parent: [issue #1](https://github.com/Combraton/cbr/issues/1). An independent reviewer session reviews this read-only.
+- **Readiness milestone:** complete and reviewed. PR #2 at `877139f` is acceptable to the reviewer, pinned for merge at that commit; merging is the owner's action and has not happened. All nine decisions are recorded in [ADR 001](../decisions/001-standalone-v0.1-scope-and-stack.md).
+- **Inspected revisions:** protocol `v0.1.0` = `cbf8e4df9df2ca8a9b50264df6acace6e4c3a0fc`; combraton `9af69ce`; pio `e65b7c0`; benchmarks `c8d5878`.
+
+## This change — M1 stage (a)
+
+Vendored the pinned Protocol material and implemented `encoding/1`: a strict reader for the JSON value domain, canonical form, digests, and command intent.
+
+- **Vendored** 430 files at `vendor/protocol/v0.1.0/`, copied from the verified release archive and **not** from the sibling `protocol` checkout: `docs/spec/`, `schemas/`, `conformance/{fixtures,vectors,schemas,runner}/`, the normative `inventory.json`, `BUNDLE-SHA256SUMS`, `LICENSE` and `RELEASE-SOURCE.json`. The reference provider, the independent Python provider and Protocol's own participant descriptors are deliberately absent; CBR writes its own implementation and its own test controls.
+- **`scripts/verify_pin.py`** checks the vendored material against three anchors CBR does not control, so a fresh session can re-verify without trusting this repository.
+- **`crates/cbr-encoding`** implements the domain by hand rather than over a general JSON parser, because the rules that matter are the ones a permissive parser discards: duplicate members collapse, `1.0` and `1` compare equal, and large integers round — any of which would let two different commands produce one digest.
+- **`scripts/check_docs.py`** now skips `vendor/`, whose Markdown belongs to another repository and is checked by `verify_pin.py` instead.
+
+## Checks actually run, with exit status
+
+On this machine, `rustc 1.97.1`, macOS 25.3.0 arm64, at the committed revision. Every command in [VERIFICATION](../VERIFICATION.md):
+
+| Command | Exit | Result |
+|---|---|---|
+| `python3 scripts/check_docs.py` | 0 | 21 files, 104 links, 0 errors |
+| `python3 scripts/verify_pin.py` | 0 | 429 files match `BUNDLE-SHA256SUMS`, 420 match the normative inventory, listing sha256 `80b39377b1…` |
+| `cargo fmt --all -- --check` | 0 | — |
+| `cargo clippy --workspace --all-targets -- -D warnings` | 0 | — |
+| `cargo build --workspace --locked` | 0 | — |
+| `cargo test --workspace --locked` | 0 | 17 tests: 4 vector tests covering all 31 pinned cases, 13 property tests |
+| `git diff --check` | 0 | — |
+
+**Mutation evidence, so the suite is known to discriminate rather than merely be green.** Two guards were removed and the tests rerun:
+
+| Mutant | Killed by | At |
+|---|---|---|
+| Sort object members by code point instead of UTF-16 code units | `canonical_cases_round_trip_to_exact_bytes_and_digests` (the pinned `key-order-utf16-rfc8785` vector) **and** `member_order_is_utf16_not_code_point` | both, independently |
+| Let extensions not named in `requires` into the command intent | `command_intent_matches_the_pinned_vector` | the pinned intent vector |
+
+Both guards were restored and the suite returned to 17 passing.
+
+- **Coverage limits, stated rather than implied:** no CBR provider, participant descriptor, store, packet or model call exists. **No conformance fixture suite has been run against CBR** — the Core 135, stream 24, socket 13 and Evidence 16 suites are M1's acceptance and are run in the stages that introduce the code they exercise. The conformance runner is vendored but not yet built or wired.
+- **Awaiting the owner**, none of which blocks M1: the project licence; the two ADR 001 blanks (provider/model/ceiling/account, and the journey-6 pilot repository); and authorization to file the `build_digest` proposal on the protocol repository. Raised on issue #1.
+- **Task resources:** no CBR process or service is running. A verified extraction of the release archive lives in this session's scratchpad only; re-create it from [PROTOCOL-PIN §6](readiness/PROTOCOL-PIN.md) if needed — the vendored copy plus `verify_pin.py` is the durable record.
+- **Next action:** M1 stage (b), the stream binding against the 24 `stream` fixtures. That stage wires the vendored conformance runner into the build and adds CBR's participant descriptor, and it is the first stage whose results directory carries a runner `manifest.json`.

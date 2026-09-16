@@ -1,0 +1,54 @@
+name: Checks
+
+# Runs exactly the commands in docs/VERIFICATION.md, on both supported
+# platforms. Each command is its own step so a failure names itself, and no
+# step pipes a command into another process, which would replace the producing
+# command's exit status with the consumer's.
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4, pinned at setup
+        with:
+          persist-credentials: false
+
+      # rust-toolchain.toml pins the version; this installs it and nothing else.
+      - name: Record toolchain
+        run: |
+          rustc --version
+          cargo --version
+          python3 --version
+
+      - name: Documentation structure
+        run: python3 scripts/check_docs.py
+
+      - name: Protocol pin
+        run: python3 scripts/verify_pin.py
+
+      - name: Formatting
+        run: cargo fmt --all -- --check
+
+      - name: Lints
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Build
+        run: cargo build --workspace --locked
+
+      - name: Tests
+        run: cargo test --workspace --locked
+
+      - name: Whitespace
+        run: git diff --check

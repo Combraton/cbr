@@ -1,0 +1,298 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "execution.delivery-proof-classes-stay-distinct",
+  "version": 2,
+  "title": "A correlated acknowledgment establishes acknowledgment; an echo only when the adapter says so; transport acceptance and terminal writes leave delivery awaiting evidence",
+  "requirements": [
+    "EXE-3"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/EXECUTION.md#3-status-axes"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "execution",
+      "major": 1
+    }
+  ],
+  "features": [
+    "core.events",
+    "core.capabilities",
+    "core.effects"
+  ],
+  "requires_controls": [
+    "executor.script"
+  ],
+  "polarity": "negative",
+  "kills": [
+    "bytes-written-acknowledged",
+    "echo-always-acknowledged"
+  ],
+  "kill_expectations": {
+    "bytes-written-acknowledged": {
+      "step": 10,
+      "reason_contains": "result/delivery"
+    },
+    "echo-always-acknowledged": {
+      "step": 8,
+      "reason_contains": "result/delivery"
+    }
+  },
+  "steps": [
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ],
+        "executor": {
+          "adapter": {
+            "echo_proves_delivery": false
+          },
+          "scripts": {
+            "e-ack": [
+              {
+                "deliver": "provider_ack_id"
+              }
+            ],
+            "e-echo": [
+              {
+                "deliver": "echo"
+              }
+            ],
+            "e-transport": [
+              {
+                "deliver": "transport_only"
+              }
+            ],
+            "e-bytes": [
+              {
+                "deliver": "bytes_written"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.capabilities",
+              "core.effects"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "execution",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "execution.submit",
+      "command_id": "submit-e-ack",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "e-ack"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "e-ack"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "brief": {
+          "digest": "sha256:abababababababababababababababababababababababababababababababab",
+          "media_type": "text/plain"
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "execution.submit",
+      "command_id": "submit-e-echo",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "e-echo"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "e-echo"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "brief": {
+          "digest": "sha256:abababababababababababababababababababababababababababababababab",
+          "media_type": "text/plain"
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "execution.submit",
+      "command_id": "submit-e-transport",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "e-transport"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "e-transport"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "brief": {
+          "digest": "sha256:abababababababababababababababababababababababababababababababab",
+          "media_type": "text/plain"
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "execution.submit",
+      "command_id": "submit-e-bytes",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "e-bytes"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "e-bytes"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "brief": {
+          "digest": "sha256:abababababababababababababababababababababababababababababababab",
+          "media_type": "text/plain"
+        }
+      }
+    },
+    {
+      "step": "describe"
+    },
+    {
+      "step": "query",
+      "operation": "execution.inspect",
+      "payload": {
+        "execution": "e-ack"
+      },
+      "expect": {
+        "ok": {
+          "delivery": "acknowledged",
+          "deliveries": [
+            {
+              "proof_class": "provider_ack_id"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "execution.inspect",
+      "payload": {
+        "execution": "e-echo"
+      },
+      "expect": {
+        "ok": {
+          "delivery": "pending",
+          "deliveries": [
+            {
+              "proof_class": "echo"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "execution.inspect",
+      "payload": {
+        "execution": "e-transport"
+      },
+      "expect": {
+        "ok": {
+          "delivery": "pending",
+          "deliveries": [
+            {
+              "proof_class": "transport_only"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "execution.inspect",
+      "payload": {
+        "execution": "e-bytes"
+      },
+      "expect": {
+        "ok": {
+          "delivery": "pending",
+          "deliveries": [
+            {
+              "proof_class": "bytes_written"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core.effects.get",
+      "payload": {
+        "effect": "e-bytes.delivery-1"
+      },
+      "expect": {
+        "ok": {
+          "status": "pending"
+        }
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

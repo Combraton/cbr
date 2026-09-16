@@ -1,0 +1,728 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "execution.recovery-revalidates-before-dispatch",
+  "version": 2,
+  "title": "Before resuming undispatched work after a restart, recovery revalidates cancellation, authorization and deadlines and records each decision",
+  "requirements": [
+    "EXE-24",
+    "EXE-8",
+    "CORE-11"
+  ],
+  "spec_refs": [
+    "docs/spec/profiles/EXECUTION.md#71-restart-recovery"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "execution",
+      "major": 1
+    }
+  ],
+  "features": [
+    "core.events",
+    "core.capabilities",
+    "core.effects",
+    "core.grants"
+  ],
+  "requires_controls": [
+    "executor.script",
+    "clock.file"
+  ],
+  "polarity": "negative",
+  "kills": [
+    "recovery-ignores-cancellation",
+    "recovery-ignores-revocation",
+    "recovery-ignores-deadline"
+  ],
+  "kill_expectations": {
+    "recovery-ignores-cancellation": {
+      "step": 18,
+      "reason_contains": "result/"
+    },
+    "recovery-ignores-revocation": {
+      "step": 19,
+      "reason_contains": "result/"
+    },
+    "recovery-ignores-deadline": {
+      "step": 20,
+      "reason_contains": "result/"
+    }
+  },
+  "steps": [
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ],
+        "executor": {
+          "scripts": {
+            "a1-grant": [
+              {
+                "wait_until": "2030-01-01T00:05:00Z"
+              },
+              {
+                "deliver": "provider_ack_id"
+              }
+            ],
+            "e-cancel": [
+              {
+                "wait_until": "2030-01-01T00:05:00Z"
+              },
+              {
+                "deliver": "provider_ack_id"
+              }
+            ],
+            "e-deadline": [
+              {
+                "wait_until": "2030-01-01T00:05:00Z"
+              },
+              {
+                "deliver": "provider_ack_id"
+              }
+            ],
+            "e-ok": [
+              {
+                "wait_until": "2030-01-01T00:05:00Z"
+              },
+              {
+                "deliver": "provider_ack_id"
+              }
+            ]
+          }
+        },
+        "clock": {
+          "controlled": "2030-01-01T00:00:00Z"
+        }
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.capabilities",
+              "core.effects",
+              "core.grants"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "execution",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "core.grant.issue",
+      "command_id": "issue-g-1",
+      "subject": {
+        "kind": "core.grant",
+        "id": "g-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core.grant",
+            "id": "g-1"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "holder": "agent-1",
+        "audience": "conformance-provider",
+        "rights": [
+          "execution.submit",
+          "execution.read"
+        ],
+        "resources": [
+          {
+            "kind": "execution.execution",
+            "id_prefix": "a1-"
+          }
+        ],
+        "delegation": {
+          "allowed": false,
+          "max_depth": 0
+        }
+      }
+    },
+    {
+      "step": "stop"
+    },
+    {
+      "step": "start",
+      "config": {
+        "principal": "agent-1",
+        "authority_principals": [
+          "owner"
+        ],
+        "executor": {
+          "scripts": {
+            "a1-grant": [
+              {
+                "wait_until": "2030-01-01T00:05:00Z"
+              },
+              {
+                "deliver": "provider_ack_id"
+              }
+            ],
+            "e-cancel": [
+              {
+                "wait_until": "2030-01-01T00:05:00Z"
+              },
+              {
+                "deliver": "provider_ack_id"
+              }
+            ],
+            "e-deadline": [
+              {
+                "wait_until": "2030-01-01T00:05:00Z"
+              },
+              {
+                "deliver": "provider_ack_id"
+              }
+            ],
+            "e-ok": [
+              {
+                "wait_until": "2030-01-01T00:05:00Z"
+              },
+              {
+                "deliver": "provider_ack_id"
+              }
+            ]
+          }
+        },
+        "clock": {
+          "controlled": "2030-01-01T00:00:00Z"
+        }
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.capabilities",
+              "core.effects",
+              "core.grants"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "execution",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "execution.submit",
+      "command_id": "submit-a1-grant",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "a1-grant"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "a1-grant"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "brief": {
+          "digest": "sha256:abababababababababababababababababababababababababababababababab",
+          "media_type": "text/plain"
+        }
+      },
+      "set": {
+        "grant": "g-1"
+      }
+    },
+    {
+      "step": "stop"
+    },
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ],
+        "executor": {
+          "scripts": {
+            "a1-grant": [
+              {
+                "wait_until": "2030-01-01T00:05:00Z"
+              },
+              {
+                "deliver": "provider_ack_id"
+              }
+            ],
+            "e-cancel": [
+              {
+                "wait_until": "2030-01-01T00:05:00Z"
+              },
+              {
+                "deliver": "provider_ack_id"
+              }
+            ],
+            "e-deadline": [
+              {
+                "wait_until": "2030-01-01T00:05:00Z"
+              },
+              {
+                "deliver": "provider_ack_id"
+              }
+            ],
+            "e-ok": [
+              {
+                "wait_until": "2030-01-01T00:05:00Z"
+              },
+              {
+                "deliver": "provider_ack_id"
+              }
+            ]
+          }
+        },
+        "clock": {
+          "controlled": "2030-01-01T00:00:00Z"
+        }
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.capabilities",
+              "core.effects",
+              "core.grants"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "execution",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "command",
+      "operation": "execution.submit",
+      "command_id": "submit-e-cancel",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "e-cancel"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "e-cancel"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "brief": {
+          "digest": "sha256:abababababababababababababababababababababababababababababababab",
+          "media_type": "text/plain"
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "execution.cancel",
+      "command_id": "cancel-e-cancel",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "e-cancel"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "e-cancel"
+          },
+          "revision": 1
+        }
+      ],
+      "payload": {}
+    },
+    {
+      "step": "command",
+      "operation": "execution.submit",
+      "command_id": "submit-e-deadline",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "e-deadline"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "e-deadline"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "brief": {
+          "digest": "sha256:abababababababababababababababababababababababababababababababab",
+          "media_type": "text/plain"
+        },
+        "timeouts": {
+          "delivery": 60
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "execution.submit",
+      "command_id": "submit-e-ok",
+      "subject": {
+        "kind": "execution.execution",
+        "id": "e-ok"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "execution.execution",
+            "id": "e-ok"
+          },
+          "revision": 0
+        }
+      ],
+      "payload": {
+        "brief": {
+          "digest": "sha256:abababababababababababababababababababababababababababababababab",
+          "media_type": "text/plain"
+        }
+      }
+    },
+    {
+      "step": "command",
+      "operation": "core.grant.revoke",
+      "command_id": "revoke-g-1",
+      "subject": {
+        "kind": "core.grant",
+        "id": "g-1"
+      },
+      "preconditions": [
+        {
+          "subject": {
+            "kind": "core.grant",
+            "id": "g-1"
+          },
+          "revision": 1
+        }
+      ],
+      "payload": {}
+    },
+    {
+      "step": "kill"
+    },
+    {
+      "step": "start",
+      "config": {
+        "principal": "owner",
+        "authority_principals": [
+          "owner"
+        ],
+        "executor": {
+          "scripts": {
+            "a1-grant": [
+              {
+                "wait_until": "2030-01-01T00:05:00Z"
+              },
+              {
+                "deliver": "provider_ack_id"
+              }
+            ],
+            "e-cancel": [
+              {
+                "wait_until": "2030-01-01T00:05:00Z"
+              },
+              {
+                "deliver": "provider_ack_id"
+              }
+            ],
+            "e-deadline": [
+              {
+                "wait_until": "2030-01-01T00:05:00Z"
+              },
+              {
+                "deliver": "provider_ack_id"
+              }
+            ],
+            "e-ok": [
+              {
+                "wait_until": "2030-01-01T00:05:00Z"
+              },
+              {
+                "deliver": "provider_ack_id"
+              }
+            ]
+          }
+        },
+        "clock": {
+          "controlled": "2030-01-01T00:02:00Z"
+        }
+      }
+    },
+    {
+      "step": "negotiate",
+      "payload": {
+        "caller": {
+          "name": "fixture",
+          "version": "1"
+        },
+        "receive_limits": {
+          "max_frame_bytes": 1048576
+        },
+        "profiles": [
+          {
+            "name": "core",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [
+              "core.events",
+              "core.capabilities",
+              "core.effects",
+              "core.grants"
+            ],
+            "optional_features": []
+          },
+          {
+            "name": "execution",
+            "majors": [
+              1
+            ],
+            "required": true,
+            "required_features": [],
+            "optional_features": []
+          }
+        ]
+      }
+    },
+    {
+      "step": "query",
+      "operation": "execution.inspect",
+      "payload": {
+        "execution": "e-cancel"
+      },
+      "expect": {
+        "ok": {
+          "delivery": "failed_before_delivery",
+          "recovery": [
+            {
+              "decision": "failed_before_delivery",
+              "reason": "cancelled"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "execution.inspect",
+      "payload": {
+        "execution": "a1-grant"
+      },
+      "expect": {
+        "ok": {
+          "delivery": "failed_before_delivery",
+          "recovery": [
+            {
+              "decision": "dispatch_resumed",
+              "reason": "provably_not_dispatched",
+              "recorded_at": "2030-01-01T00:00:00Z"
+            },
+            {
+              "decision": "failed_before_delivery",
+              "reason": "authorization_lost",
+              "recorded_at": "2030-01-01T00:02:00Z"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "execution.inspect",
+      "payload": {
+        "execution": "e-deadline"
+      },
+      "expect": {
+        "ok": {
+          "delivery": "failed_before_delivery",
+          "recovery": [
+            {
+              "decision": "failed_before_delivery",
+              "reason": "deadline_passed"
+            }
+          ],
+          "obligations": [
+            {
+              "id": "e-deadline.delivery-1.evidence",
+              "state": "overdue"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "execution.inspect",
+      "payload": {
+        "execution": "e-ok"
+      },
+      "expect": {
+        "ok": {
+          "delivery": "pending",
+          "recovery": [
+            {
+              "decision": "dispatch_resumed"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "set_clock",
+      "instant": "2030-01-01T00:05:00Z"
+    },
+    {
+      "step": "query",
+      "operation": "execution.inspect",
+      "payload": {
+        "execution": "e-ok"
+      },
+      "expect": {
+        "ok": {
+          "delivery": "acknowledged"
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "execution.inspect",
+      "payload": {
+        "execution": "e-cancel"
+      },
+      "expect": {
+        "ok": {
+          "delivery": "failed_before_delivery"
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core.effects.get",
+      "payload": {
+        "effect": "e-cancel.delivery-1"
+      },
+      "expect": {
+        "ok": {
+          "status": "failed",
+          "obligations": [
+            {
+              "id": "e-cancel.delivery-1.evidence",
+              "state": "satisfied"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "query",
+      "operation": "core.effects.get",
+      "payload": {
+        "effect": "e-deadline.delivery-1"
+      },
+      "expect": {
+        "ok": {
+          "status": "failed",
+          "obligations": [
+            {
+              "id": "e-deadline.delivery-1.evidence",
+              "state": "overdue"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}

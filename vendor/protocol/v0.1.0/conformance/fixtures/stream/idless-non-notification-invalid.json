@@ -1,0 +1,46 @@
+{
+  "format": "combraton-conformance-fixture/1",
+  "id": "stream.idless-non-notification-invalid",
+  "version": 1,
+  "title": "An id-less object that is not a notification is invalid_request",
+  "requirements": [
+    "TRN-1"
+  ],
+  "spec_refs": [
+    "docs/spec/bindings/STREAM.md#3-json-rpc-mapping"
+  ],
+  "role": "provider",
+  "profiles": [
+    {
+      "name": "core",
+      "major": 1
+    }
+  ],
+  "polarity": "negative",
+  "kills": [
+    "ignore-idless-garbage"
+  ],
+  "steps": [
+    {
+      "step": "start"
+    },
+    {
+      "step": "raw",
+      "text": "{\"jsonrpc\":\"2.0\",\"params\":{}}"
+    },
+    {
+      "step": "expect_frame",
+      "expect": {
+        "error": "invalid_request",
+        "details": {},
+        "id_null": true
+      }
+    },
+    {
+      "step": "describe"
+    },
+    {
+      "step": "stop"
+    }
+  ]
+}
