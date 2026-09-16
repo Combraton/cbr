@@ -112,7 +112,7 @@ So the maximum attainable on the `core` suite is **130 of 135**, with exactly th
 
 **A claim revision is immutable in the database, not only in the code.** Revisions live in an insert-only table whose triggers refuse `UPDATE` and `DELETE`, and each revision commits in the same transaction as the claim subject it numbers. A store test shows both refusals.
 
-32 mutants each fail a knowledge fixture at a named step. Two of them are recorded under CBR's own names rather than claimed as the fixture's narrower mutant.
+33 mutants each fail a knowledge fixture at a named step. Two of them are recorded under CBR's own names rather than claimed as the fixture's narrower mutant.
 
 **Source identity** (`crates/cbr-identity`, PROTOCOL-PIN §5):
 

@@ -95,6 +95,8 @@ All observed, all restored. Each fixture step is the runner's numbering.
 | `cbr evaluate` target tree is the commit | `revise_evaluate_and_history_follow_a_real_repository` | the `applicable` assertion |
 
 **Named honestly.**
+
+- **The fixture batch was 33 mutants.** The `m2(2/4)` commit message says 32; that was a miscount of the batch log, corrected here.
 - Two fixture mutants are recorded under their own names rather than claimed as the fixture's narrower mutant: "a revision read returns the latest" stands in for `claim-revision-overwritten`, and "absent validity recorded as `{}`" for `validity-filled-from-recorded`.
 - "Decision epoch optional" failed with `stale_authority_epoch` rather than a success, because an absent epoch reaches the binding check as 0. It is killed at the fixture's step, for a reason other than committing.
 
