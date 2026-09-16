@@ -49,12 +49,12 @@ A journey is the *journey* layer of the shared evidence ladder. Lower layers —
 
 ### Journeys currently blocked
 
-J6 and J7 cannot run today, for different reasons, and neither will be simulated.
+J7 cannot run today and will not be simulated. **J6 was unblocked on 2026-09-16** and is now a scheduling question rather than a permission one.
 
-- **J6** needs a granted model provider and a permitted spend, plus pre-agreed thresholds derived from pilot variance. None exists. See [RELEASE-SCOPE §5](../work/readiness/RELEASE-SCOPE.md).
+- **J6** needed a granted model provider and a permitted spend. Both now exist — MiniMax on the owner's subscription quota, with a bounded envelope debited before every call ([RELEASE-SCOPE §5](../work/readiness/RELEASE-SCOPE.md)). What J6 still needs is **pre-agreed thresholds derived from pilot variance**, and those must be fixed *before* the confirmatory run. A threshold chosen after seeing the result is not a threshold, so J6 stays unrun until the M3 pilot has produced the variance it is derived from.
 - **J7** needs a PIO standalone service. PIO is being built in parallel and has no release. CBR must not depend on its unreleased work.
 
-J8, J9 and J10 need no model at all and are reachable inside the milestones that introduce them. J2, J3, J4 and J5 each need a model for their full form. Their fault-injection halves can run against a labelled fake model, and doing so is useful, but the row stays `simulated` until a live run replaces it.
+J8, J9 and J10 need no model at all and are reachable inside the milestones that introduce them. J2, J3, J4 and J5 each need a model for their full form; with the grant in place that is now reachable at M4 and M5. Their fault-injection halves still run against a **labelled fake model**, which remains the right tool for fault injection and the wrong one for acceptance — the row stays `simulated` until a live run replaces it, and the existence of a budget does not change that.
 
 ## 4. Oracle independence
 

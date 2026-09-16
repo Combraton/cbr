@@ -19,6 +19,7 @@
 | Model transport | `reqwest` + `serde_json` behind a CBR-owned `Provider` trait; two dialects | medium-high | §8 |
 | Tool loop | CBR-owned | high | §8 |
 | Token admission | BPE over the serialized body as an upper bound, plus provider count endpoints where they exist | medium | §9 |
+| **Model provider** | **MiniMax** on the owner's subscription quota, both dialects at one provider | **decided** | ADR 001 q3; §8.1 |
 
 ## 1. SQLite driver
 
@@ -135,17 +136,53 @@ Two dialects cover every provider likely to be granted. MiniMax speaks both, and
 
 **Two hard exclusions.** `llm_adapter` / `llm_runtime` are **AGPL-3.0-only** despite healthy download counts and will surface in any search — a blocker under the no-copyleft constraint. `anthropic-rs` declares `MIT AND Apache-2.0`, conjunctive rather than a choice, and is dead besides. `langchain-rust` last saw a commit on `main` in April 2025.
 
-**If MiniMax is the granted provider, two behaviours must be designed for, not discovered.** It silently ignores `response_format` / `json_schema` — a live probe returned HTTP 200 with free-form prose — so schema-constrained output is unavailable and CBR must validate and repair rather than trust. And `tool_choice: "required"` is silently ignored while `"none"` is honoured, so a loop assuming a forced tool call will misbehave with no error. Also: M3 embeds `<think>…</think>` in `message.content` unless `reasoning_split` is set, and there is no `data: [DONE]` streaming sentinel, so a parser waiting for one will hang.
+### 8.1 The granted provider
+
+Decided 2026-09-16 (ADR 001, question 3). This is no longer a contingency: it is what M4 is built against.
+
+| | |
+|---|---|
+| **Provider** | **MiniMax**, on the owner's **subscription quota** — 100M tokens per 5-hour window, ~1.7B per month, shared across text, image and speech **and with the owner's other tools** |
+| **Primary wire** | OpenAI-compatible `https://api.minimax.io/v1` |
+| **Second dialect** | Anthropic-compatible `https://api.minimax.io/anthropic` |
+| **Models** | `MiniMax-M2.7-highspeed` — extraction and large-result projection; `MiniMax-M2.7` — ordinary derivation; `MiniMax-M3` — synthesis, request-time investigation, and any image input |
+| **Admission count** | `POST /v1/responses/input_tokens` |
+| **CBR's envelope** | 20M per 5-hour window, 300M per month, **provisional** (ADR 001, [Unresolved](../../decisions/001-standalone-v0.1-scope-and-stack.md#unresolved)). Background spend is **zero** until explicitly enabled. |
+| **Credential** | macOS Keychain service `minimax_api_key`, read **at process start only**, never logged, never in the repository. **No other credential is ever read.** |
+
+**One grant exercises both dialects, at no additional cost.** That is the reason section 8 recommends owning the wire and writing two dialects rather than one, and it is now testable without a second provider. It is worth being exact about what it proves and what it does not: it proves CBR's **serializer and parser** for both wire shapes against a real server that will reject malformed bodies. It does **not** prove Anthropic-specific behaviour — prompt caching, `prompt_tokens_details` / `completion_tokens_details`, cached-token accounting — because those are Anthropic's, and Anthropic is not a granted provider. A later claim that "the Anthropic dialect is verified" must say *verified against MiniMax's compatibility surface*, or it is overstating the evidence.
+
+**The dialect is not the provider, and section 9 must be read that way.** Speaking the Anthropic *dialect* to `api.minimax.io/anthropic` does not make Anthropic's rules apply. In particular, section 9's "`POST /v1/messages/count_tokens` is mandatory" is a row about **Anthropic the provider**, and it is not reachable for CBR in v0.1. Admission for both dialects goes to **MiniMax's own** `POST /v1/responses/input_tokens`. Whether MiniMax's compatibility surface exposes a `count_tokens` route at all is **unverified**; CBR does not assume it does, and does not need it to.
+
+**The shared quota changes the shape of the budget code, not just its constants.** Two facts follow directly, and neither is a preference:
+
+- An overspend does not merely cost money, it **degrades the owner's own working environment**. That makes debit-before-call load-bearing rather than tidy, and it is why exhaustion is a typed `budget_exhausted` result and never a retry loop. A retry loop against a shared quota is a denial-of-service against its owner.
+- A 5-hour window and a monthly ceiling are **two counters with different reset semantics**, and admission must check both. The month can be almost untouched while the window is exhausted. A single monthly counter would let CBR pass admission and still starve the owner's next session — which is the exact failure the envelope exists to prevent.
+
+**Four provider behaviours to design for, not discover.**
+
+1. `response_format` / `json_schema` is **silently ignored** — HTTP 200 with free-form prose. Schema-constrained output is unavailable; CBR must **validate and repair**, never trust.
+2. `tool_choice: "required"` is **silently ignored** while `"none"` is honoured. A loop that assumes a forced tool call misbehaves with no error. So a text response where a tool call was demanded is an **ordinary outcome to repair**, not a transport error — and repair attempts spend real tokens, so the repair budget is bounded and debited from the same envelope as everything else.
+3. `MiniMax-M3` embeds `<think>…</think>` inside `message.content` unless `reasoning_split` is set. Reasoning text reaching a sealed derivation record as if it were output would be a correctness problem, not a cosmetic one.
+4. There is **no `data: [DONE]` streaming sentinel**. A parser waiting for one hangs.
+
+Points 1 and 2 were first observed in a live probe run **without a grant**, which is recorded as a process failure in `docs/work/STATE.md`. They no longer rest on it: the owner states both independently, so the finding has support that does not depend on the ungranted call.
+
+**A recommendation that follows from point 4: M4 does not stream.** The absence of a termination sentinel means a streaming reader must terminate on connection close or a usage frame plus a timeout — inference about the end of a message rather than a statement of it. Against that, streaming buys CBR nothing it needs: a derivation is sealed whole, and partial output is not something CBR can record, cite or act on. The one real counter-argument is cancellation latency, since [MODEL-RUNTIME §4](../../spec/MODEL-RUNTIME.md) requires prompt cancellation — but a non-streaming request is still cancelled by dropping it, and what is lost is a partial response that would have been discarded anyway. **Proposed: whole responses in v0.1, revisited only if measured cancellation latency is a real problem rather than an assumed one.**
+
+**Capacity is not the working-set design.** The large context window these models advertise is headroom, not a plan. Normal calls stay bounded per [MODEL-RUNTIME §2](../../spec/MODEL-RUNTIME.md), and the usable headroom per model is **measured and recorded in M4**, never asserted here. A budget that quietly widens to fill the window is the failure mode the whole admission design exists to prevent.
 
 ## 9. Token admission before sending
 
 This is the one place where the specification's wording and reality need reconciling carefully, so it is worth being precise.
 
+**Read the two tables below as a provider matrix of which only one row is live.** The granted provider is MiniMax (section 8.1), so **`POST /v1/responses/input_tokens` is CBR's admission method in v0.1, for both dialects**. The other rows are kept because they are researched and because a second grant should not require redoing the work — not because CBR builds against them. In particular the Anthropic row describes **Anthropic the provider**, which is not granted; speaking the Anthropic dialect to MiniMax does not put CBR on that row.
+
 | Provider family | Exact local count | Server-side count endpoint |
 |---|---|---|
 | OpenAI-family | `tiktoken-rs 0.12.0` BPE, exact for OpenAI's own models | none found |
 | Anthropic | **None exists.** Anthropic publishes no tokenizer. | `POST /v1/messages/count_tokens` — free, independent rate limit, accepts the full request including `tools` |
-| MiniMax | `tokenizer.json` published on Hugging Face for M3/M2 | `POST /v1/responses/input_tokens` |
+| **MiniMax (granted)** | `tokenizer.json` published on Hugging Face for M3/M2 | **`POST /v1/responses/input_tokens`** |
 | Gemini | — | `models/{model}:countTokens`, counts system instructions and tools |
 | Groq, DeepSeek, OpenRouter | wrong tokenizer at best | none documented |
 
@@ -155,8 +192,8 @@ This is the one place where the specification's wording and reality need reconci
 
 | Provider | Admission of mandatory content | Local BPE |
 |---|---|---|
-| **Anthropic** | **`POST /v1/messages/count_tokens` is mandatory.** There is no local tokenizer at all — Anthropic publishes none — so nothing else can bound the request. The endpoint is free, accepts the full serialized request including `tools`, and has a rate limit independent of Messages quota, so there is no cost argument against calling it. | **Pre-filter only.** A local estimate may reject an obviously oversized request before spending a round trip. It may never *admit* mandatory content on its own. |
-| **MiniMax** | `POST /v1/responses/input_tokens`, or the published `tokenizer.json` for M3/M2 through `tokenizers` or `fastokens` | Exact for the model's own BPE; still bounded by the margin below |
+| **Anthropic** *(not a granted provider; kept for a future grant)* | **`POST /v1/messages/count_tokens` is mandatory.** There is no local tokenizer at all — Anthropic publishes none — so nothing else can bound the request. The endpoint is free, accepts the full serialized request including `tools`, and has a rate limit independent of Messages quota, so there is no cost argument against calling it. | **Pre-filter only.** A local estimate may reject an obviously oversized request before spending a round trip. It may never *admit* mandatory content on its own. |
+| **MiniMax — the granted provider, so this is the live row** | **`POST /v1/responses/input_tokens` for mandatory content**, for requests in either dialect. The published `tokenizer.json` for M3/M2 through `tokenizers` or `fastokens` is a local alternative, but a server count is preferred wherever it is affordable: it is the only number that comes from the component that will actually enforce the limit. | Exact for the model's own BPE; still bounded by the measured margin below. Note that the count endpoint itself is not free of the quota question — whether it debits the shared quota is **unverified**, and M4 measures it before relying on it per call. |
 | **Gemini** | `models/{model}:countTokens`, which counts system instructions and tools | as above |
 | **OpenAI-family, Groq, DeepSeek, OpenRouter** | No count endpoint exists. BPE over the serialized body is the only method. | `tiktoken-rs 0.12.0`, exact only for OpenAI's own models; for the others it is the wrong tokenizer and is an unvalidated proxy, which must be recorded as such. |
 
@@ -168,4 +205,6 @@ The honest consequence: the guarantee CBR can make is *"we will never knowingly 
 
 ## 10. What is deliberately not decided here
 
-Embedding models and vector indexes (deferred by [INTERNALS §4](../../spec/INTERNALS.md) until evaluation shows a miss simpler methods cannot address); any generated-program or sandboxed-worker backend (deferred by BASELINE §3 until after core memory proof); and the supported model matrix and numerical budget defaults, which need a provider grant and measurement. The project licence **is** now decided: MIT (ADR 001, question 10).
+Embedding models and vector indexes (deferred by [INTERNALS §4](../../spec/INTERNALS.md) until evaluation shows a miss simpler methods cannot address); and any generated-program or sandboxed-worker backend (deferred by BASELINE §3 until after core memory proof).
+
+The project licence **is** now decided: MIT (ADR 001, question 10). So is the **model provider**: MiniMax, with its endpoints, models and credential source in §8.1 (ADR 001, question 3). What still waits is **measurement, not permission** — the per-model usable capacity, the estimator's signed error distribution against reported usage, and therefore the safety margin of §9. Those are M4 outputs and are not guessed here.
