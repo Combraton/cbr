@@ -151,7 +151,18 @@ This is the one place where the specification's wording and reality need reconci
 
 **One trap worth naming.** `tiktoken-rs`'s `num_tokens_from_messages` **never counts the `tools` array** — it walks `role`, `content`, `name`, `function_call` and `tool_calls`, adds framing constants adapted from the OpenAI cookbook, and stops. Tool schemas are often the single largest fixed cost in an agentic request. That function must not be used for admission.
 
-**Proposed method.** Run the model's own BPE over the **serialized JSON body about to be sent** — which does include tool schemas and framing punctuation — and treat the result as a conservative *upper bound* for admission, using the provider count endpoint where one exists and an exact answer is worth a round trip.
+**Proposed method, stated per provider rather than as one rule.** Admission of **mandatory content** is the case where a wrong number silently drops a constraint, so it gets the strongest available answer; advisory content can ride on a cheaper estimate.
+
+| Provider | Admission of mandatory content | Local BPE |
+|---|---|---|
+| **Anthropic** | **`POST /v1/messages/count_tokens` is mandatory.** There is no local tokenizer at all — Anthropic publishes none — so nothing else can bound the request. The endpoint is free, accepts the full serialized request including `tools`, and has a rate limit independent of Messages quota, so there is no cost argument against calling it. | **Pre-filter only.** A local estimate may reject an obviously oversized request before spending a round trip. It may never *admit* mandatory content on its own. |
+| **MiniMax** | `POST /v1/responses/input_tokens`, or the published `tokenizer.json` for M3/M2 through `tokenizers` or `fastokens` | Exact for the model's own BPE; still bounded by the margin below |
+| **Gemini** | `models/{model}:countTokens`, which counts system instructions and tools | as above |
+| **OpenAI-family, Groq, DeepSeek, OpenRouter** | No count endpoint exists. BPE over the serialized body is the only method. | `tiktoken-rs 0.12.0`, exact only for OpenAI's own models; for the others it is the wrong tokenizer and is an unvalidated proxy, which must be recorded as such. |
+
+In every case the local method is the same: run the model's BPE over the **serialized JSON body about to be sent** — which does include tool schemas and framing punctuation — and treat the result as a conservative upper bound, never `num_tokens_from_messages`.
+
+**The safety margin is a measured number, not a constant.** [MODEL-RUNTIME §2](../../spec/MODEL-RUNTIME.md)'s illustrative table shows a safety margin without claiming a value, and there is no universal safe utilization percentage. So CBR measures its estimator against the usage each provider actually reports, per provider and per model, and derives the margin from the observed error distribution rather than picking a round number. The estimator's accuracy — signed error distribution, worst observed under-estimate, and sample size — is published alongside the supported model capacities, and the margin is re-derived when a provider or model is added. An estimator whose worst under-estimate has not been measured does not get to admit mandatory content.
 
 The honest consequence: the guarantee CBR can make is *"we will never knowingly exceed the budget"*, not *"we will never exceed it"*. MODEL-RUNTIME §2 already anticipates exactly this — a provider overflow caused by a bad estimate triggers a bounded repack and retry with a recorded failure, not unlimited re-investigation. So the specification is satisfiable as written, provided the estimate is a documented upper bound rather than an unvalidated heuristic, and provided the recorded-failure path is real. The estimator's accuracy against actual reported usage should itself be measured and published, per provider and model.
 

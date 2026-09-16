@@ -54,6 +54,8 @@ The strongest argument against me, which I want on the record: `rig-agent`'s `Ag
 
 ## 5. What I want from you
 
+> **Answered 2026-09-16.** All nine now have decisions, recorded in [ADR 001](../../decisions/001-standalone-v0.1-scope-and-stack.md). Two lines within them are still unfilled — the provider and spend budget (question 3) and the pilot repository (question 6) — and are tracked as unresolved there. The questions are kept below as written so the reasoning behind each answer stays readable.
+
 Questions, roughly in the order they block me. Only 3 actually blocks work.
 
 1. **Release scope.** [RELEASE-SCOPE](RELEASE-SCOPE.md) proposes: conformant store + deterministic retrieval + packet compiler + bounded model runtime + request-time investigation + a *narrow* background maintenance loop, with five named derivation families. Is the background maintenance loop in v0.1, or is it the first thing to cut if we're running long?

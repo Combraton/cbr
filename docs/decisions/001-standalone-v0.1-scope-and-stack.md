@@ -1,0 +1,66 @@
+# ADR 001: standalone CBR v0.1 scope, stack and evaluation posture
+
+- **Status:** accepted, with two named items unresolved (see [Unresolved](#unresolved)).
+- **Date:** 2026-09-16.
+- **Authority:** the owner, answering the nine questions in [TALK §5](../work/readiness/TALK.md), after independent review of [PR #2](https://github.com/Combraton/cbr/pull/2) at head `b8ba7f3` against base `3278393`. The reviewer independently reproduced the protocol pin facts, the condition-vocabulary gap, the reference provider's synchronous design, the fixture counts and the crate licences.
+- **Scope:** CBR-local implementation choices. Wire and compatibility decisions belong to Protocol; cross-system authority belongs to Combraton. This record selects nothing outside this repository.
+
+## Problem
+
+The readiness milestone produced proposals for release scope, stack, milestones and journey acceptance, and returned nine decisions requiring owner judgment. Without them, implementation could not start without either guessing or silently narrowing the agreed product.
+
+## Affected contracts
+
+Nothing on the wire. CBR remains pinned to Protocol `v0.1.0` (`cbf8e4df9df2ca8a9b50264df6acace6e4c3a0fc`), serving `core/1`, `knowledge/1`, `context/1` with `context.claims`, and `evidence/1` for its own packet and support bytes, plus `core-test/1` behind the conformance launch configuration. It calls `execution/1` and `verification/1` as a client only.
+
+## Selected choices
+
+| # | Question | Decision |
+|---|---|---|
+| 1 | Is background maintenance in v0.1? | **In, and narrow.** Coalesced triggers; background spend defaults to **zero** until explicitly enabled; foreground context requests take priority. It is not the first thing to cut. |
+| 2 | Does CBR ship a CLI? | **Yes**, the `cbr` CLI as proposed in [RELEASE-SCOPE §2](../work/readiness/RELEASE-SCOPE.md), speaking the public protocol over the socket and doubling as the headless evaluation client. No privileged internal shortcut. |
+| 3 | Provider and spend budget | **Unresolved — see [Unresolved](#unresolved).** The mechanism is decided: the persisted budget envelope is debited **before** every call, not reconciled after. Until a provider is named, M4 uses a labelled fake model only. |
+| 4 | The build-condition gap (G1) | Define CBR's declared **environment fact set to include build facts**, so build identity is covered by `environment_digest`, and **say so in the packet** rather than leaving it implicit. Separately, file a `build_digest` condition-kind proposal on the Protocol repository **with a reproducing fixture**. No private field, no locally widened schema. |
+| 5 | No public memory search | **Intended for v0.1.** Context is the retrieval surface. A local `cbr search` diagnostic is permitted provided it is **labelled non-protocol** and is never presented as a protocol operation or used by the evaluation client as a scored path. |
+| 6 | The early journey-6 pilot at M3 | **Yes**, on a repository still to be named (see [Unresolved](#unresolved)). Labelled **pilot**: it is a steer, not evidence, and may not be cited as downstream-task evidence for the gate. |
+| 7 | CBR's own mutant set | **Yes.** One mutant per named negative control in [JOURNEYS](../verification/JOURNEYS.md), built in **M6**, with `WRONG-REASON` reported when a mutant fails at the wrong step or for the wrong reason — the pattern the Protocol repository already runs at scale. |
+| 8 | Source identity | **As proposed** in [PROTOCOL-PIN §5](../work/readiness/PROTOCOL-PIN.md): `tree` is the git root tree object id, not the commit. **Additionally, record the commit id in the evidence descriptor**, which removes the cost noted in that section — content identity governs applicability while the commit remains recoverable from evidence. |
+| 9 | Relevance measurement | **Diagnostic only, in the M7 pilot.** Prefer **counting downstream re-investigation of content the packet already contained** over self-reported prediction, which is weaker and gameable. Never a gate criterion. |
+
+Two design statements accepted alongside them, both now recorded in [PROTOCOL-PIN §3](../work/readiness/PROTOCOL-PIN.md):
+
+- Derived artifacts are sealed under a CBR-specific derivation source kind with CBR as producer, never a captured-observation kind.
+- A derived artifact cited as claim support declares ancestry roots naming the **captured evidence it was derived from**, never itself. Negative control: a claim supported only by two derived artifacts sharing one captured root must report `single_lineage`.
+
+## Unresolved
+
+Two lines of the owner's answer were left to be filled in and are **not** decided. Neither is guessed, and neither blocks the work that does not depend on it.
+
+| Item | What is missing | What happens until it arrives |
+|---|---|---|
+| **Provider and spend budget** (question 3) | The provider, the model ids, the monthly ceiling and the paying account | No provider credential is used. M4 is built and fault-tested against a **labelled fake model** only, and its acceptance is explicitly withheld. M7 does not start. Journey 6 and the full form of journeys 2–5 stay blocked. The budget-envelope mechanism — debit before the call, never reconcile after — is already decided and is implemented regardless. |
+| **Journey-6 pilot repository** (question 6) | Which repository the M3 pilot runs against | The pilot is designed and scheduled into M3 but not run. M3's other acceptance, including journey 1 with no model, is unaffected. |
+
+Filling either line is an owner action recorded on [issue #1](https://github.com/Combraton/cbr/issues/1); it does not need a new decision record.
+
+## Alternatives considered and rejected
+
+Cutting the maintenance loop to a later release was available and refused: the CBR gate names maintenance as a substantive capability, and deferring it would have been a scope reduction requiring its own explicit decision. Adopting `rig-agent`'s loop was the strongest library alternative and is rejected for now on churn and serialization-stability grounds, revisitable at rig 1.0 — the full argument, including the case against this decision, is in [STACK §8](../work/readiness/STACK.md). Tokio was rejected on direct evidence from the protocol reference provider rather than preference ([STACK §2](../work/readiness/STACK.md)). Adding a public search operation was rejected as a protocol change CBR does not need in v0.1.
+
+## Primary evidence
+
+Protocol pin verified from the published release archive: `BUNDLE-SHA256SUMS` 539/539 files, `release_inventory.py --verify` reporting 420 files and listing sha256 `80b39377b1…`, matching the annotated tag message and `release-manifest.json`. Toolchain and suite exercised against the Protocol repository's own reference provider on `rustc 1.97.1`: core 135/135, context 11/11, knowledge 10/10, evidence 16/16 — evidence about the suite and the machine, not about CBR. Stack evidence and its counter-arguments are recorded per area in [STACK](../work/readiness/STACK.md), each from primary sources observed 2026-09-16.
+
+## Consequences
+
+Milestones M1 through M3 proceed immediately and need no model provider. M4 is buildable and fault-testable against a labelled fake model but **cannot be accepted on that evidence**; M7 cannot start. The gate's downstream-task bullet, journey 6 and the full form of journeys 2 through 5 remain blocked and will be reported blocked rather than simulated.
+
+The `cbr search` diagnostic and the mutant set are additions to the proposed scope, not reductions. The commit-id addition to the evidence descriptor is a small widening of CBR's own descriptor use, not a protocol change.
+
+## Verification
+
+Documentation structure only, at this revision: `python3 scripts/check_docs.py` and `python3 scripts/check_docs.py --workspace ..` both exit 0 with 0 errors; `git diff --check` clean. **No runtime check exists yet.** Each decision above acquires real verification in the milestone that implements it, with the acceptance stated in [RELEASE-SCOPE §4](../work/readiness/RELEASE-SCOPE.md); M1 must introduce the repository's first reproducible build and test commands into [VERIFICATION](../VERIFICATION.md) in the same change that introduces the code they check.
+
+## Superseded
+
+Nothing. This is the first CBR-local decision record. It does not alter [ADR 001 in Combraton](https://github.com/Combraton/combraton/blob/main/docs/decisions/001-standalone-first-and-evaluation.md), which retains the standalone-first sequencing.
