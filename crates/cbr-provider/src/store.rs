@@ -50,8 +50,6 @@ pub struct Store {
     subjects: HashMap<SubjectKey, SubjectState>,
     /// Keyed by the deduplication scope — the principal — and the command id.
     commands: HashMap<(String, String), CommandRecord>,
-    /// Current authority epoch per scope. A scope with no entry is at 0.
-    epochs: HashMap<String, i64>,
 }
 
 impl Store {
@@ -63,11 +61,22 @@ impl Store {
         self.subjects.get(key)
     }
 
+    /// The authority subject for a scope. Its revision **is** the scope's
+    /// current epoch: each claim raises both together, so they cannot diverge
+    /// and a precondition on the subject is a precondition on the epoch.
+    pub fn authority_key(scope: &str) -> SubjectKey {
+        SubjectKey {
+            kind: "core-test.authority".to_string(),
+            id: scope.to_string(),
+        }
+    }
+
     /// Claim the next authority epoch for a scope, returning it.
     pub fn claim_epoch(&mut self, scope: &str) -> i64 {
-        let epoch = self.epochs.entry(scope.to_string()).or_insert(0);
-        *epoch += 1;
-        *epoch
+        let state = self.subjects.entry(Self::authority_key(scope)).or_default();
+        state.revision += 1;
+        state.applied_count += 1;
+        state.revision
     }
 
     pub fn revision(&self, key: &SubjectKey) -> i64 {
@@ -100,6 +109,6 @@ impl Store {
     }
 
     pub fn epoch(&self, scope: &str) -> i64 {
-        self.epochs.get(scope).copied().unwrap_or(0)
+        self.revision(&Self::authority_key(scope))
     }
 }

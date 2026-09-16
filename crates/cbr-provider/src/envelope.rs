@@ -297,6 +297,53 @@ fn check_requires(envelope: &Value) -> Result<Vec<String>, ProtocolError> {
     Ok(seen)
 }
 
+/// The payload members each operation defines. Payload objects are closed
+/// exactly as envelopes are (CORE section 5.1): a member the operation does not
+/// define makes the message invalid, because an unknown field cannot be
+/// classified as safe to ignore.
+fn payload_members(operation: &str) -> Option<(&'static [&'static str], &'static [&'static str])> {
+    // (allowed, required)
+    Some(match operation {
+        "core.describe" | "core.feature_dependencies" => (&[], &[]),
+        "core.authenticate" => (&["credential"], &["credential"]),
+        "core.negotiate" => (
+            &["caller", "receive_limits", "profiles"],
+            &["caller", "receive_limits", "profiles"],
+        ),
+        "core-test.subject.put" => (&["value", "labels"], &["value"]),
+        "core-test.subject.get" | "core-test.subject.applied_count" => (&["subject"], &["subject"]),
+        "core-test.authority.claim" => (&[], &[]),
+        _ => return None,
+    })
+}
+
+/// Check a payload against its operation's closed member set.
+pub fn check_payload(operation: &str, payload: &Value) -> Result<(), ProtocolError> {
+    let Some((allowed, required)) = payload_members(operation) else {
+        return Ok(());
+    };
+    let Value::Object(members) = payload else {
+        return Err(ProtocolError::invalid_envelope("/payload", "not an object"));
+    };
+    for (name, _) in members {
+        if !allowed.contains(&name.as_str()) {
+            return Err(ProtocolError::invalid_envelope(
+                &format!("/payload/{name}"),
+                "unknown field",
+            ));
+        }
+    }
+    for name in required {
+        if payload.get(name).is_none() {
+            return Err(ProtocolError::invalid_envelope(
+                &format!("/payload/{name}"),
+                "required field absent",
+            ));
+        }
+    }
+    Ok(())
+}
+
 pub struct Command {
     pub operation: String,
     pub command_id: String,
@@ -430,6 +477,7 @@ pub fn parse_command(envelope: &Value) -> Result<Command, ProtocolError> {
         return Err(ProtocolError::invalid_envelope("/payload", "not an object"));
     }
 
+    check_payload(&operation, &payload)?;
     Ok(Command {
         operation,
         command_id: envelope
@@ -476,6 +524,7 @@ pub fn parse_query(envelope: &Value) -> Result<Query, ProtocolError> {
     if !payload.is_object() {
         return Err(ProtocolError::invalid_envelope("/payload", "not an object"));
     }
+    check_payload(&operation, &payload)?;
     Ok(Query {
         operation,
         requires,

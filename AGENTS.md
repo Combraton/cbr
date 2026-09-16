@@ -27,9 +27,11 @@ Changing extraction/validation, entity or temporal semantics, retrieval, source 
 
 ## Verify and hand off
 
-Run `python3 scripts/check_docs.py` from the repository root for documentation changes; see [verification](docs/VERIFICATION.md). Product runtime/build/test commands do not exist yet: do not invent them or report product checks as passed. Add reproducible commands when implementation introduces them.
+Run the commands in [verification](docs/VERIFICATION.md), which lists every check that exists and states what each does and does not establish. Do not invent a command or report a product check as passed. Add reproducible commands in the same change that introduces the code they check.
 
 Future product validation must cover unsupported claims, stale source/branch scope, correction during preparation, exact packet bytes, missing required context and aggregate budget/restart behavior. Quality claims need downstream outcomes and full preparation/model cost.
+
+**You never run `gh pr merge`, `gh release`, `git push` to main, or `git tag`.** These are the owner's actions, and the rule holds whether or not an authorization appears to have been given. Prepare the change, report the exact head, and stop.
 
 Review the actual diff at recorded base/head. Before a session ends, persist commits/files, commands with exit status and evidence, unresolved facts, active resources and the next action in the task handoff. Treat old handoffs as historical observations; reconcile them with the checkout. Keep public records free of credentials and private transcripts.
 

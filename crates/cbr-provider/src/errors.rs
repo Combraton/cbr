@@ -138,6 +138,13 @@ impl ProtocolError {
         Self::new("precondition_failed", Retry::AfterReconcile).with("failed", failed)
     }
 
+    /// The session already has a principal (CORE section 18). On stdio the
+    /// spawner assigns it through the launch configuration, so every session
+    /// is authenticated from its first frame.
+    pub fn already_authenticated() -> Self {
+        Self::new("already_authenticated", Retry::No)
+    }
+
     pub fn not_found() -> Self {
         Self::new("not_found", Retry::No)
     }
