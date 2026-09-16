@@ -131,6 +131,38 @@ pub struct Config {
     pub test_barriers: Option<(std::path::PathBuf, Vec<String>)>,
     /// The `evidence.store` test control (EVIDENCE section 14).
     pub evidence_store: EvidenceStore,
+    /// The applicability evaluator pinned in evaluations, and the
+    /// `knowledge.store` test control (KNOWLEDGE section 13).
+    pub knowledge: KnowledgeStore,
+}
+
+/// The evaluator identity and the knowledge test control.
+#[derive(Debug, Clone)]
+pub struct KnowledgeStore {
+    pub evaluator_id: String,
+    pub evaluator_version: String,
+    /// The condition kinds the evaluator implements; any other is
+    /// `unsupported`, never guessed.
+    pub condition_kinds: Vec<String>,
+    /// Claims whose inspected record is altered while the reference and
+    /// digest stay the same, so readers are tested on recomputing digests.
+    pub serve_altered_claims: Vec<String>,
+}
+
+impl KnowledgeStore {
+    /// CBR's own evaluator. A conformance launch starts from the control's
+    /// documented default instead (below).
+    fn production() -> Self {
+        Self {
+            evaluator_id: "cbr-conditions".into(),
+            evaluator_version: "1".into(),
+            condition_kinds: crate::knowledge::CONDITION_KINDS
+                .iter()
+                .map(|k| k.to_string())
+                .collect(),
+            serve_altered_claims: Vec::new(),
+        }
+    }
 }
 
 /// Scripted store behaviour for evidence conformance. Every member is empty
@@ -177,6 +209,7 @@ impl Default for Config {
             credentials: Vec::new(),
             test_barriers: None,
             evidence_store: EvidenceStore::default(),
+            knowledge: KnowledgeStore::production(),
         }
     }
 }
@@ -237,6 +270,35 @@ impl Config {
 
         if let Some(principal) = text(value.get("principal")) {
             config.principal = principal;
+        }
+        if config.mode == Mode::Conformance {
+            // The conformance README documents the control's default: the
+            // `reference-conditions` evaluator, version 1, all three kinds.
+            config.knowledge.evaluator_id = "reference-conditions".into();
+        }
+        if let Some(knowledge) = value.get("knowledge") {
+            if let Some(evaluator) = knowledge.get("evaluator") {
+                if let Some(id) = text(evaluator.get("id")) {
+                    config.knowledge.evaluator_id = id;
+                }
+                if let Some(version) = text(evaluator.get("version")) {
+                    config.knowledge.evaluator_version = version;
+                }
+                if let Some(Value::Array(kinds)) = evaluator.get("condition_kinds") {
+                    config.knowledge.condition_kinds = kinds
+                        .iter()
+                        .filter_map(Value::as_str)
+                        .map(str::to_string)
+                        .collect();
+                }
+            }
+            if let Some(Value::Array(claims)) = knowledge.get("serve_altered_claims") {
+                config.knowledge.serve_altered_claims = claims
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .map(str::to_string)
+                    .collect();
+            }
         }
         if let Some(Value::Array(items)) = value.get("authority_principals") {
             config.authority_principals = items

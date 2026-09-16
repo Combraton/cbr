@@ -12,6 +12,7 @@ use crate::config::Config;
 use crate::effects;
 
 mod evidence_ops;
+mod knowledge_ops;
 use crate::envelope::{self, Command, Query};
 use crate::errors::ProtocolError;
 use crate::grants::{self, Grant};
@@ -55,6 +56,10 @@ const SERVED: &[Served] = &[
         ],
         &[("core", &["core.events"])],
     ),
+    // KNOWLEDGE section 1: `knowledge/1` depends on `core/1` with
+    // `core.events`. It depends on `evidence/1` only as a protocol dependency,
+    // so negotiating it does not require evidence in the same session.
+    ("knowledge", 1, &[], &[("core", &["core.events"])]),
 ];
 
 /// Profiles this provider *declares* unsupported, which is a narrower thing
@@ -107,7 +112,7 @@ const UNPROTECTED: [&str; 6] = [
 /// Every operation that is a command rather than a query. A command carries a
 /// command identity, so its step 6 runs after deduplication; a query has none,
 /// so its step 6 runs first.
-const COMMANDS: [&str; 12] = [
+const COMMANDS: [&str; 20] = [
     "core-test.subject.put",
     "core-test.authority.claim",
     "core.grant.issue",
@@ -120,7 +125,27 @@ const COMMANDS: [&str; 12] = [
     "evidence.hold",
     "evidence.release",
     "evidence.purge",
+    "knowledge.claim.propose",
+    "knowledge.claim.revise",
+    "knowledge.authority.bind",
+    "knowledge.authority.transfer",
+    "knowledge.decision.record",
+    "knowledge.conflict.open",
+    "knowledge.conflict.resolve",
+    "knowledge.applicability.evaluate",
 ];
+
+/// Which authority epoch a command is checked against at step 7, before its
+/// preconditions (CORE sections 8 and 10).
+enum Epoch {
+    /// The operation acts under no authority that can be taken over.
+    Unchecked,
+    /// A Core authority scope, whose epoch is required on the command.
+    Scope(&'static str),
+    /// A knowledge authority binding, when the scope is bound. Presence of the
+    /// epoch is a step 2 rule of the operations that use this.
+    Binding(SubjectKey),
+}
 
 /// What step 6 means for one command (CORE section 10).
 enum Step6 {
@@ -146,6 +171,10 @@ enum Step6 {
         artifact: String,
         holds: Vec<String>,
     },
+    /// `knowledge.authority.bind` and `.transfer`: only a provider authority
+    /// principal acting without a grant. A grant restricts even an authority
+    /// principal, and no right covers binding (KNOWLEDGE section 6).
+    Bind,
 }
 
 /// A subject key from an envelope's subject object.
@@ -518,6 +547,17 @@ impl Provider {
                 | "core-test.subject.get"
                 | "core-test.subject.applied_count"
                 | "core-test.authority.claim"
+                | "knowledge.claim.propose"
+                | "knowledge.claim.revise"
+                | "knowledge.claim.inspect"
+                | "knowledge.claim.history"
+                | "knowledge.authority.bind"
+                | "knowledge.authority.transfer"
+                | "knowledge.authority.get"
+                | "knowledge.decision.record"
+                | "knowledge.conflict.open"
+                | "knowledge.conflict.resolve"
+                | "knowledge.applicability.evaluate"
         )
     }
 
@@ -993,6 +1033,14 @@ impl Provider {
                 "evidence.hold" => self.evidence_hold(params, command),
                 "evidence.release" => self.evidence_release(params, command),
                 "evidence.purge" => self.evidence_purge(params, command),
+                "knowledge.claim.propose" => self.knowledge_claim(params, command, false),
+                "knowledge.claim.revise" => self.knowledge_claim(params, command, true),
+                "knowledge.authority.bind" => self.knowledge_authority(params, command, false),
+                "knowledge.authority.transfer" => self.knowledge_authority(params, command, true),
+                "knowledge.decision.record" => self.knowledge_decision(params, command),
+                "knowledge.conflict.open" => self.knowledge_conflict_open(params, command),
+                "knowledge.conflict.resolve" => self.knowledge_conflict_resolve(params, command),
+                "knowledge.applicability.evaluate" => self.knowledge_evaluate(params, command),
                 _ => Err(ProtocolError::method_not_found(method)),
             };
         }
@@ -1036,6 +1084,9 @@ impl Provider {
             "evidence.inspect" => self.evidence_inspect(&query.payload, in_force.as_ref()),
             "evidence.query" => self.evidence_query(&query.payload, in_force.as_ref()),
             "evidence.fetch" => self.evidence_fetch(&query.payload),
+            "knowledge.claim.inspect" => self.knowledge_inspect(&query.payload),
+            "knowledge.claim.history" => self.knowledge_history(&query.payload),
+            "knowledge.authority.get" => self.knowledge_authority_get(&query.payload),
             _ => Err(ProtocolError::method_not_found(method)),
         }
     }
@@ -1194,6 +1245,8 @@ impl Provider {
                 .ok()
                 .flatten()
                 .is_some_and(|(_, hold)| self.hold_visible(Some(grant), &hold)),
+            // KNOWLEDGE section 10: the read right over the subject.
+            kind if kind.starts_with("knowledge.") => grant.may_read(key, "knowledge.read"),
             // A kind no profile defines is never readable under a grant.
             _ => false,
         }
@@ -1217,6 +1270,29 @@ impl Provider {
                 )),
             )],
             "evidence.query" => vec![("evidence.read", None)],
+            // KNOWLEDGE section 10. The payload is validated here, at step 2,
+            // because the subject it names is what step 6 authorizes.
+            "knowledge.claim.inspect" => {
+                let (claim, _) = crate::knowledge::check_inspect_payload(&query.payload)?;
+                vec![(
+                    "knowledge.read",
+                    Some(crate::knowledge::key(crate::knowledge::CLAIM, &claim)),
+                )]
+            }
+            "knowledge.claim.history" => {
+                let claim = crate::knowledge::check_history_payload(&query.payload)?;
+                vec![(
+                    "knowledge.read",
+                    Some(crate::knowledge::key(crate::knowledge::CLAIM, &claim)),
+                )]
+            }
+            "knowledge.authority.get" => {
+                let scope = crate::knowledge::check_authority_get_payload(&query.payload)?;
+                vec![(
+                    "knowledge.read",
+                    Some(crate::knowledge::key(crate::knowledge::AUTHORITY, &scope)),
+                )]
+            }
             _ => Vec::new(),
         })
     }
@@ -1366,8 +1442,7 @@ impl Provider {
         if let Some(stored) = self.admit_command(
             params,
             &command,
-            "core-test",
-            false,
+            Epoch::Unchecked,
             Step6::Issue(Box::new(grant.clone())),
         )? {
             return Ok(stored);
@@ -1402,6 +1477,7 @@ impl Provider {
                     caused_by: command.caused_by.clone(),
                     payload: Box::new(move |_| Value::Object(vec![("grant".into(), event_record)])),
                 }),
+                claim_revision: None,
             },
             |revision, operation_ref| {
                 accepted(
@@ -1420,7 +1496,7 @@ impl Provider {
     fn grant_revoke(&mut self, params: &Value, command: Command) -> Result<Value, ProtocolError> {
         let id = self.grant_subject(&command, 1)?;
         if let Some(stored) =
-            self.admit_command(params, &command, "core-test", false, Step6::Revoke)?
+            self.admit_command(params, &command, Epoch::Unchecked, Step6::Revoke)?
         {
             return Ok(stored);
         }
@@ -1473,6 +1549,7 @@ impl Provider {
                 chunks: crate::store::Chunks::None,
                 grant: command.grant.as_deref(),
                 event: Some(revoked_event(&command.caused_by)),
+                claim_revision: None,
             },
             |revision, operation_ref| {
                 accepted(
@@ -1619,7 +1696,7 @@ impl Provider {
             }
         };
         if let Some(stored) =
-            self.admit_command(params, &command, "core-test", false, Step6::Abort)?
+            self.admit_command(params, &command, Epoch::Unchecked, Step6::Abort)?
         {
             return Ok(stored);
         }
@@ -1669,6 +1746,7 @@ impl Provider {
                     caused_by: command.caused_by.clone(),
                     payload: Box::new(move |_| payload),
                 }),
+                claim_revision: None,
             },
             |revision, operation_ref| {
                 accepted(
@@ -2316,8 +2394,7 @@ impl Provider {
         &mut self,
         params: &Value,
         command: &Command,
-        scope: &str,
-        epoch_checked: bool,
+        epoch: Epoch,
         step6: Step6,
     ) -> Result<Option<Value>, ProtocolError> {
         // Step 4: digest algorithm, then the recomputed digest.
@@ -2396,6 +2473,12 @@ impl Provider {
             Step6::Purge { artifact, holds } => {
                 self.authorize_purge(command.grant.as_deref(), &artifact, &holds)?
             }
+            Step6::Bind => {
+                if command.grant.is_some() || !self.config.is_authority(&self.config.principal) {
+                    return Err(ProtocolError::permission_denied("not_authority"));
+                }
+                None
+            }
         };
 
         // Step 7: capabilities, then the authority epoch, then preconditions.
@@ -2430,19 +2513,35 @@ impl Provider {
         // something a profile must state, and `core-test` does not. No fixture
         // exercises the absent case either way, so this is the specification's
         // default rather than a measured behaviour.
-        if epoch_checked {
-            let current_epoch = self.store.epoch(scope)?;
-            let Some(epoch) = command.authority_epoch else {
-                return Err(ProtocolError::invalid_envelope(
-                    "/authority_epoch",
-                    "required by this operation",
-                ));
+        let checked = match epoch {
+            Epoch::Unchecked => None,
+            Epoch::Scope(scope) => {
+                Some((self.store.epoch(scope)?, Store::authority_key(scope), true))
+            }
+            // A knowledge binding's epoch is its subject's revision, and it is
+            // compared only when the scope is bound (KNOWLEDGE section 6).
+            Epoch::Binding(key) => {
+                let current = self.store.revision(&key)?;
+                (current > 0).then_some((current, key, false))
+            }
+        };
+        if let Some((current_epoch, key, absent_is_invalid)) = checked {
+            let epoch = match command.authority_epoch {
+                Some(epoch) => epoch,
+                None if absent_is_invalid => {
+                    return Err(ProtocolError::invalid_envelope(
+                        "/authority_epoch",
+                        "required by this operation",
+                    ));
+                }
+                // Refused at step 2 by the operations that bind this check.
+                None => 0,
             };
             if epoch < current_epoch {
                 // The current epoch is disclosed only to a principal that
                 // could read the authority subject anyway; to anyone else the
                 // refusal names no number (CORE section 15.5).
-                let readable = self.may_read(in_force.as_ref(), &Store::authority_key(scope));
+                let readable = self.may_read(in_force.as_ref(), &key);
                 return Err(ProtocolError::new_stale_epoch(
                     readable.then_some(current_epoch),
                 ));
@@ -2501,8 +2600,7 @@ impl Provider {
         if let Some(stored) = self.admit_command(
             params,
             &command,
-            "core-test",
-            false,
+            Epoch::Unchecked,
             Step6::Rights(Self::command_needs(&command)),
         )? {
             return Ok(stored);
@@ -2539,6 +2637,7 @@ impl Provider {
                     }),
                     caused_by: caused_by.clone(),
                 }),
+                claim_revision: None,
             },
             |epoch, operation_ref| {
                 accepted(
@@ -2558,8 +2657,7 @@ impl Provider {
         if let Some(stored) = self.admit_command(
             params,
             &command,
-            "core-test",
-            true,
+            Epoch::Scope("core-test"),
             Step6::Rights(Self::command_needs(&command)),
         )? {
             return Ok(stored);
@@ -2603,6 +2701,7 @@ impl Provider {
                         Value::Object(vec![("value".into(), Value::String(event_value))])
                     }),
                 }),
+                claim_revision: None,
             },
             |revision, operation_ref| {
                 accepted(
@@ -2828,6 +2927,7 @@ mod tests {
                     }],
                     grant: None,
                     recorded_at: &recorded_at,
+                    claim_revision: None,
                 },
                 |_, operation_ref| Value::String(effects::effect_id(operation_ref, 0)),
             )

@@ -17,6 +17,7 @@ mod evidence;
 mod frames;
 mod grants;
 mod jsonrpc;
+mod knowledge;
 mod outbox;
 mod provider;
 mod session;
