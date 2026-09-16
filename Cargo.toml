@@ -15,8 +15,7 @@ edition = "2024"
 version = "0.1.0"
 publish = false
 rust-version = "1.97"
-# No `license` key: the project licence is not selected yet (see README.md).
-# Every crate here sets `publish = false`, so Cargo does not require one.
+license = "MIT"
 
 [workspace.dependencies]
 sha2 = "0.11.0"

@@ -103,7 +103,7 @@ Two hazards to plan around. **ABI:** tree-sitter 0.27.0 accepts language ABI 13�
 
 Precise resolution has no good option. `stack-graphs 0.14.1` is the only serious language-agnostic attempt and is effectively dormant — last release December 2024, last commit September 2025. LSP-based indexing gives correct answers but means supervising a per-language server process, contradicting the single-local-process shape. SCIP is a serialisation format, not an indexer.
 
-**A licensing finding that needs an explicit ruling.** `git2 0.21.0` and `libgit2-sys` declare `MIT OR Apache-2.0` on crates.io, **but the vendored libgit2 C library is GPLv2 with a linking exception.** The exception permits linking into a distributed binary, so this is probably fine — but if "no copyleft" is a hard policy it needs deciding rather than assuming. `gix 0.87.1` is `MIT OR Apache-2.0` all the way down with no GPL C library and is actively maintained (2026-08-24). **Proposed: use `gix`** and sidestep the question entirely.
+**A licensing finding that needs an explicit ruling.** `git2 0.21.0` and `libgit2-sys` declare `MIT OR Apache-2.0` on crates.io, **but the vendored libgit2 C library is GPLv2 with a linking exception.** The exception permits linking into a distributed binary, and CBR is now MIT (ADR 001, question 10), so linking would be permitted — but taking a GPL C library into an MIT project is a choice worth not making by accident. `gix 0.87.1` is `MIT OR Apache-2.0` all the way down with no GPL C library and is actively maintained (2026-08-24). **Proposed: use `gix`** and sidestep the question entirely.
 
 ## 7. Invalidation and the dependency evaluator
 
@@ -168,4 +168,4 @@ The honest consequence: the guarantee CBR can make is *"we will never knowingly 
 
 ## 10. What is deliberately not decided here
 
-Embedding models and vector indexes (deferred by [INTERNALS §4](../../spec/INTERNALS.md) until evaluation shows a miss simpler methods cannot address); any generated-program or sandboxed-worker backend (deferred by BASELINE §3 until after core memory proof); the supported model matrix and numerical budget defaults, which need a provider grant and measurement; and the project license, which is the owner's.
+Embedding models and vector indexes (deferred by [INTERNALS §4](../../spec/INTERNALS.md) until evaluation shows a miss simpler methods cannot address); any generated-program or sandboxed-worker backend (deferred by BASELINE §3 until after core memory proof); and the supported model matrix and numerical budget defaults, which need a provider grant and measurement. The project licence **is** now decided: MIT (ADR 001, question 10).
