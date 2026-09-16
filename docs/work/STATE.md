@@ -3,12 +3,27 @@
 This is a dated navigation snapshot. Reconcile it with Git, linked issues and current task evidence before acting. Issues own live progress; this file does not grant authority or maintain a second backlog.
 
 - **Updated:** 2026-09-16.
-- **Owner/task:** Claude Code session as implementation lead for standalone CBR. Active task: [issue #3](https://github.com/Combraton/cbr/issues/3), milestone M1 stage (c3), on branch `m1c3/core-grants`. Parent: [issue #1](https://github.com/Combraton/cbr/issues/1). An independent reviewer session reviews this read-only.
-- **Merged:** PR #2 as `d68e9d6`, pinned to `877139f`; PR #4 as `a939446`, pinned to `630011c`; PR #5 (c1) as `8b75129`; **PR #6 (c2) pinned to `b00ec49`, confirmed from `merged: true` and `merged_at: 2026-09-16T14:26:34Z`**, the draft marked ready first and the head re-read unchanged before merging. All ten decisions and both formerly open owner lines are in [ADR 001](../decisions/001-standalone-v0.1-scope-and-stack.md).
+- **Owner/task:** Claude Code session as implementation lead for standalone CBR. Active task: [issue #3](https://github.com/Combraton/cbr/issues/3), milestone M1; this change is the owner follow-ups on branch `owner/ceiling-builddigest-transcripts`, and stage (c4) is stacked on it. Parent: [issue #1](https://github.com/Combraton/cbr/issues/1). An independent reviewer session reviews this read-only.
+- **Merged:** PR #2 as `d68e9d6`, pinned to `877139f`; PR #4 as `a939446`, pinned to `630011c`; PR #5 (c1) as `8b75129`; PR #6 (c2) as `da1e650`, pinned to `b00ec49`; **PR #7 (c3) as `8ba2594`, pinned to `5b98a9f`, confirmed from `merged: true` and `merged_at: 2026-09-16T15:31:51Z`**. Earlier: PR #6 pinned to `b00ec49`, confirmed from `merged: true` and `merged_at: 2026-09-16T14:26:34Z`**, the draft marked ready first and the head re-read unchanged before merging. Every owner decision, including the ceiling, is in [ADR 001](../decisions/001-standalone-v0.1-scope-and-stack.md).
 - **Merge rule, 2026-09-16, superseded the same day.** This session ran `gh pr merge` on PR #2 after the owner replied "you can merge PR 2" in-session, having first reported the contradicting claim with evidence and waited. It landed the exact reviewed head `877139f` and is kept. A stricter rule was then recorded, and the owner then **granted merge authority under four conditions**, now in [AGENTS.md](../../AGENTS.md): pin with `--match-head-commit`; the head's CI is green; the reviewer has seen that head; no squash. Confirm from `merged` and `merged_at` afterwards, **never `merge_commit_sha`** — GitHub populates that on an open pull request with the test-merge candidate. Tags and releases remain the owner's alone.
 - **Inspected revisions:** protocol `v0.1.0` = `cbf8e4df9df2ca8a9b50264df6acace6e4c3a0fc`; combraton `9af69ce`; pio `e65b7c0`; benchmarks `c8d5878`.
 
-## This change — M1 stage (c3)
+## This change — owner follow-ups
+
+Three owner decisions from 2026-09-16, one commit each.
+
+| Command | Exit | Result |
+|---|---|---|
+| `check_docs.py` | 0 | 21 files, 0 errors |
+| `result_paths.py conformance/results/*/` | 0 | m1b, m1c2, m1c3: no machine paths |
+| `check_results.py` on `m1b` / `m1c2` / `m1c3` | 0 / 0 / 0 | 24 · 80 + 55 · 122 + 13 — unchanged by the sanitisation |
+| `git diff --check` | 0 | — |
+
+- **Ceiling confirmed: 20M tokens per 5-hour window, 200M per month** (`285e579`), in ADR 001, STACK §8.1 and RELEASE-SCOPE §5. The confirmed monthly figure is lower than the `[e.g. 300M]` example. **Correction:** ADR 001 had said the numbers were "written in one place (the envelope configuration)"; no envelope configuration exists yet. M4 introduces it, seeded from STACK §8.1, which is the single source until then.
+- **`build_digest` filed as [Combraton/protocol#11](https://github.com/Combraton/protocol/issues/11)** (`63322a8`), an issue for a future minor, recorded in PROTOCOL-PIN §4 G1. Nothing else in the protocol repository was touched. The reproducer fixture **passes against the v0.1.0 reference provider**, which is the evidence: a claim for `build-1` is `applicable` on `build-2`, the kind is `invalid_envelope` at `/payload/conditions/0`, and the environment-folding workaround works while conflating build with environment. The proposed-behaviour fixture fails at propose today. Both ran from a scratch copy of the verified release extraction, with the reference provider built there from the release `Cargo.lock`.
+- **The 104 older transcripts sanitised in place** (`d4700eb`), no history rewrite: 24 in `m1b`, 80 in `m1c2`. Each `cbr-run.json` now says they were sanitised after the fact and that the original bytes remain at `b00ec49`. `scripts/result_paths.py` holds the one substitution and the one check; `run_fixtures.py` uses it when recording, it verified all three directories afterwards, and CI now runs it over every committed results directory.
+
+## Earlier — M1 stage (c3)
 
 `core.grants`: grant records, issue, inspect and revoke, delegation, expiry against a controlled clock, cascading revocation, and step-6 authorization with the existence-hiding rule. Three commits: the owner's decisions recorded, then issue/inspect/revoke, then delegation and expiry.
 
