@@ -28,6 +28,7 @@ name = "cbr-cli"
 version = "0.1.0"
 dependencies = [
  "cbr-encoding",
+ "cbr-identity",
  "tempfile",
 ]
 
@@ -36,6 +37,14 @@ name = "cbr-encoding"
 version = "0.1.0"
 dependencies = [
  "sha2",
+]
+
+[[package]]
+name = "cbr-identity"
+version = "0.1.0"
+dependencies = [
+ "cbr-encoding",
+ "tempfile",
 ]
 
 [[package]]

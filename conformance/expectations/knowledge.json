@@ -1,0 +1,9 @@
+{
+  "note": "M2 claims knowledge/1 over the stdio descriptor, with the knowledge.store test control. Derived from each fixture's declarations before implementing: all 10 declare knowledge/1 with core.events and core.grants; knowledge.reliance-applicability-health-and-availability-are-independent also declares evidence/1 with evidence.retention_control, served since M1; knowledge.applicability-follows-precedence requires the knowledge.store control; none declares a barrier or the execution profile. So all 10 are reachable and none is permanently unsupported. Measured against M1's binary with an uncommitted scratch descriptor: with knowledge/1 and knowledge.store declared, 0 pass, 10 fail, 0 unsupported; with knowledge/1 declared and knowledge.store not, 0 pass, 9 fail, 1 unsupported (knowledge.applicability-follows-precedence). A lower bound, as c3 showed: a fixture can depend on recording its declarations do not name.",
+  "suite": "knowledge.",
+  "total": 10,
+  "pass": 10,
+  "runner_exit_status": 0,
+  "permanently_unsupported": 0,
+  "unsupported": []
+}

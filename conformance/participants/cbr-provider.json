@@ -2,7 +2,7 @@
   "format": "combraton-conformance-participant/1",
   "name": "cbr-provider",
   "version": "0.1.0",
-  "description": "CBR's protocol provider. Claims only what it implements: core/1 with core.events, core.grants, core.capabilities, core.events.backpressure and core.effects, evidence/1 with evidence.manifests, evidence.retention_control and evidence.work_binding, and the conformance-only core-test/1, over stdio, with the clock.file and evidence.store test controls. Run with --repo pointing at vendor/protocol/v0.1.0, which holds the pinned schemas and fixtures; the launch path is relative to that so this descriptor carries no machine-specific path. Build the binary first: cargo build --workspace.",
+  "description": "CBR's protocol provider. Claims only what it implements: core/1 with core.events, core.grants, core.capabilities, core.events.backpressure and core.effects, evidence/1 with evidence.manifests, evidence.retention_control and evidence.work_binding, knowledge/1, and the conformance-only core-test/1, over stdio, with the clock.file, evidence.store and knowledge.store test controls. Run with --repo pointing at vendor/protocol/v0.1.0, which holds the pinned schemas and fixtures; the launch path is relative to that so this descriptor carries no machine-specific path. Build the binary first: cargo build --workspace.",
   "role": "provider",
   "binding": "stdio",
   "claims": {
@@ -18,6 +18,10 @@
       {
         "name": "evidence",
         "major": 1
+      },
+      {
+        "name": "knowledge",
+        "major": 1
       }
     ],
     "features": [
@@ -32,7 +36,8 @@
     ],
     "test_controls": [
       "clock.file",
-      "evidence.store"
+      "evidence.store",
+      "knowledge.store"
     ]
   },
   "launch": {

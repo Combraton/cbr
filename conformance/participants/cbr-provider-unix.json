@@ -18,6 +18,10 @@
       {
         "name": "evidence",
         "major": 1
+      },
+      {
+        "name": "knowledge",
+        "major": 1
       }
     ],
     "features": [
@@ -32,7 +36,8 @@
     ],
     "test_controls": [
       "clock.file",
-      "evidence.store"
+      "evidence.store",
+      "knowledge.store"
     ],
     "test_barriers": [
       "subscription.recheck.after_authorization"

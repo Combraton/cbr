@@ -1,19 +1,14 @@
 [package]
-name = "cbr-cli"
-description = "The cbr command: a client of CBR's public protocol over its Unix socket."
+name = "cbr-identity"
+description = "Source identity for CBR: git tree ids, dirty-snapshot digests and the declared environment fact set."
 edition.workspace = true
 version.workspace = true
 publish.workspace = true
 rust-version.workspace = true
 license.workspace = true
 
-[[bin]]
-name = "cbr"
-path = "src/main.rs"
-
 [dependencies]
 cbr-encoding = { path = "../cbr-encoding" }
-cbr-identity = { path = "../cbr-identity" }
 
 [dev-dependencies]
 tempfile = "3.27.0"

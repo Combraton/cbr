@@ -17,6 +17,7 @@ mod evidence;
 mod frames;
 mod grants;
 mod jsonrpc;
+mod knowledge;
 mod outbox;
 mod provider;
 mod session;
@@ -37,6 +38,10 @@ struct Args {
     rotate_credential: bool,
     /// Administration: revoke every credential of this principal and exit.
     revoke_credential: Option<String>,
+    /// Administration: issue a credential for another principal — a second
+    /// person, or a model producer that will act under a grant — revoking any
+    /// it held, write its handoff file, and exit.
+    issue_credential: Option<String>,
 }
 
 fn parse_args() -> Result<Args, String> {
@@ -46,6 +51,7 @@ fn parse_args() -> Result<Args, String> {
         socket: None,
         rotate_credential: false,
         revoke_credential: None,
+        issue_credential: None,
     };
     let mut argv = std::env::args().skip(1);
     while let Some(flag) = argv.next() {
@@ -65,6 +71,10 @@ fn parse_args() -> Result<Args, String> {
             "--revoke-credential" => {
                 args.revoke_credential =
                     Some(argv.next().ok_or("--revoke-credential needs a principal")?);
+            }
+            "--issue-credential" => {
+                args.issue_credential =
+                    Some(argv.next().ok_or("--issue-credential needs a principal")?);
             }
             "--schemas" => {
                 // Accepted and ignored: this provider validates against its own
@@ -86,7 +96,8 @@ fn run() -> Result<(), String> {
     let clock = clock::Clock::open(config.clock.clone())?;
     // Credential administration touches only the store and the handoff file,
     // then exits: it serves nothing.
-    if args.rotate_credential || args.revoke_credential.is_some() {
+    if args.rotate_credential || args.revoke_credential.is_some() || args.issue_credential.is_some()
+    {
         let mut store = store::Store::open(&data_dir)
             .map_err(|error| format!("opening the store at {}: {error}", data_dir.display()))?;
         if let Some(principal) = &args.revoke_credential {
@@ -95,11 +106,14 @@ fn run() -> Result<(), String> {
                 .map_err(|e| e.to_string())?;
             eprintln!("cbr-provider: revoked {revoked} credential(s) of {principal}");
         }
-        if args.rotate_credential {
-            let path = credentials::issue(&mut store, &data_dir, &config.principal)?;
+        let issue_for = args
+            .issue_credential
+            .clone()
+            .or_else(|| args.rotate_credential.then(|| config.principal.clone()));
+        if let Some(principal) = issue_for {
+            let path = credentials::issue(&mut store, &data_dir, &principal)?;
             eprintln!(
-                "cbr-provider: issued a credential for {}; handoff file {}",
-                config.principal,
+                "cbr-provider: issued a credential for {principal}; handoff file {}",
                 path.display()
             );
         }

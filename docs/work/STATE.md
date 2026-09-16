@@ -2,13 +2,114 @@
 
 This is a dated navigation snapshot. Reconcile it with Git, linked issues and current task evidence before acting. Issues own live progress; this file does not grant authority or maintain a second backlog.
 
-- **Updated:** 2026-09-16.
-- **Owner/task:** Claude Code session as implementation lead for standalone CBR. **M1 is complete**: [issue #3](https://github.com/Combraton/cbr/issues/3) is closed, and its closing record is committed as [m1/CLOSEOUT.md](m1/CLOSEOUT.md). Active task: **M2, Knowledge, [issue #12](https://github.com/Combraton/cbr/issues/12)**. This change, the M1 close-out and README, is on branch `m1/closeout-and-readme`; M2 is stacked on it. Parent: [issue #1](https://github.com/Combraton/cbr/issues/1). An independent reviewer session reviews this read-only.
+- **Updated:** 2026-09-17.
+- **Owner/task:** Claude Code session as implementation lead for standalone CBR. **M1 is complete**: [issue #3](https://github.com/Combraton/cbr/issues/3) is closed, and its closing record is committed as [m1/CLOSEOUT.md](m1/CLOSEOUT.md). Active task: **M2, Knowledge, [issue #12](https://github.com/Combraton/cbr/issues/12)**, on branch `m2/knowledge`, stacked on the M1 close-out and README change (branch `m1/closeout-and-readme`, PR #13, not yet merged). Parent: [issue #1](https://github.com/Combraton/cbr/issues/1). An independent reviewer session reviews this read-only.
 - **Merged:** PR #2 as `d68e9d6`, pinned to `877139f`; PR #4 as `a939446`, pinned to `630011c`; PR #5 (c1) as `8b75129`; PR #6 (c2) as `da1e650`, pinned to `b00ec49`; **PR #7 (c3) as `8ba2594`, pinned to `5b98a9f`, confirmed from `merged: true` and `merged_at: 2026-09-16T15:31:51Z`**. Earlier: PR #6 pinned to `b00ec49`, confirmed from `merged: true` and `merged_at: 2026-09-16T14:26:34Z`**, the draft marked ready first and the head re-read unchanged before merging. Every owner decision, including the ceiling, is in [ADR 001](../decisions/001-standalone-v0.1-scope-and-stack.md). **PR #8 (owner follow-ups) as `f00faaf`, pinned to `40cb30b`, `merged_at: 2026-09-16T16:57:29Z`; PR #9 (c4) as `9a7b8f5`, pinned to `5db9d7c`, `merged_at: 2026-09-16T16:57:53Z`**, in that order, each confirmed from `merged` and `merged_at`. **PR #10 (d) as `96a33f2`, pinned to `a1048e6`, `merged_at: 2026-09-16T18:17:38Z`; then PR #11 (e) as `6c63d91`, pinned to `c2a262d`, `merged_at: 2026-09-16T18:17:56Z`**. PR #11 was stacked on #10's branch, so it was retargeted to `main` after #10 merged and before its own merge; retargeting leaves the head unchanged, and `c2a262d` was re-read before merging.
 - **Merge rule, 2026-09-16, superseded the same day.** This session ran `gh pr merge` on PR #2 after the owner replied "you can merge PR 2" in-session, having first reported the contradicting claim with evidence and waited. It landed the exact reviewed head `877139f` and is kept. A stricter rule was then recorded, and the owner then **granted merge authority under four conditions**, now in [AGENTS.md](../../AGENTS.md): pin with `--match-head-commit`; the head's CI is green; the reviewer has seen that head; no squash. Confirm from `merged` and `merged_at` afterwards, **never `merge_commit_sha`** — GitHub populates that on an open pull request with the test-merge candidate. Tags and releases remain the owner's alone.
 - **Inspected revisions:** protocol `v0.1.0` = `cbf8e4df9df2ca8a9b50264df6acace6e4c3a0fc`; combraton `9af69ce`; pio `e65b7c0`; benchmarks `c8d5878`.
 
-## This change — M1 close-out and README
+## This change — M2, Knowledge
+
+One pull request, four commits:
+1. the expectation, derived before implementing (`b6c0188`);
+2. the profile (`7b7c115`);
+3. source identity, the ancestry control, J9 and a claim surviving `SIGKILL` (`732ff6f`);
+4. the `cbr` knowledge verbs, results, CI and documentation.
+
+| Command | Exit | Result |
+|---|---|---|
+| `check_docs.py` / `verify_pin.py` | 0 / 0 | 22 files, 0 errors; 429 and 420 files match their anchors |
+| `cargo fmt --all -- --check` | 0 | — |
+| `cargo clippy --workspace --all-targets --locked -- -D warnings` | 0 | — |
+| `cargo build --workspace --locked` | 0 | — |
+| `cargo test --workspace --locked` | 0 | **92 tests**: 20 encoding, 4 identity, 46 provider unit, 17 against the real provider, 5 running `cbr` against it |
+| `git diff --check` | 0 | — |
+| `run_fixtures.py --filter knowledge.` + `check_results.py` | 0 | **10 pass, 0 unsupported, 0 fail**, stable over three runs |
+| `stream` / `core` / `socket` (Unix descriptor) / `evidence` + `check_results.py` | 0 | 24/24 · 130/5/0 · 11/2/0 · 16/0/0, unchanged |
+| `result_paths.py conformance/results/*/` | 0 | no machine paths, m1b to m2 |
+
+**Expected versus measured.**
+- **Derived before implementing** (`knowledge.json`): 10 / 0 / 0, with `knowledge.store`.
+- **The unimplemented run**, against M1's binary with an uncommitted scratch descriptor: 0 / 10 fail / 0 with the control declared, and 0 / 9 fail / 1 unsupported without it, the one being `knowledge.applicability-follows-precedence`.
+- **Measured**: 10 / 0 / 0 on the first complete run. A first-run pass proves nothing by itself, which is why every guard below has a mutant.
+
+### What changed
+
+- **`knowledge.rs`**, pure rules:
+  - step-2 validation of every payload as closed objects;
+  - the record and its digest;
+  - support classes;
+  - structural comparison;
+  - condition findings and result precedence.
+- **`provider/knowledge_ops.rs`**: all eleven operations.
+  - The base check is by number and digest.
+  - A decision is checked in section 6's order: epoch, then preconditions, then existence, authority, digest and the latest decision.
+  - Dependencies resolve only as exact local references, and the claims they name need read rights.
+- **The store**: an insert-only `knowledge_revisions` table with `UPDATE` and `DELETE` triggers. The revision row commits with its claim subject; the store refuses a row out of step with it.
+- **`admit_command` takes an `Epoch`**: unchecked, a `core-test` scope, or a knowledge binding compared only when the scope is bound. `Step6::Bind` lets only an authority principal without a grant bind or transfer.
+- **The `knowledge.store` control**: the evaluator pin and `serve_altered_claims`, refused in production and declared in both descriptors. Production pins `cbr-conditions` v1; conformance defaults to the documented `reference-conditions` v1.
+- **`crates/cbr-identity`**: git root trees, dirty snapshots and the environment fact set, through `git` plumbing with fixed arguments and no shell.
+- **`cbr`**:
+  - the knowledge verbs and the local `basis`;
+  - `ingest --source-kind` and `--repo` (tree and commit anchors);
+  - a `--grant` option on every verb;
+  - the session split into modules.
+- **`cbr-provider --issue-credential PRINCIPAL`**.
+- **CI** gates the knowledge suite. Results are committed under `conformance/results/m2`.
+
+### Mutants
+
+All observed, all restored. Each fixture step is the runner's numbering.
+
+| Mutant | Killed by | At |
+|---|---|---|
+| A revision read returns the lineage's latest | `claim-revisions-are-immutable-with-base-checks` · `dependencies-resolve-only-exact-references` · `history-keeps-every-record-with-links` | 6 · 20 · 6 |
+| Revise base unchecked | `claim-revisions-are-immutable-with-base-checks` | 10 |
+| Empty roots accepted | same | 17 |
+| History drops superseded revisions | `history-keeps-every-record-with-links` | 12 |
+| Absent validity recorded as `{}` | same | 13 |
+| Any principal is the bound authority | `only-the-bound-authority-decides` 15 · `conflict-resolution-needs-the-bound-authority` 11 · `a_model_labelled_producer_cannot_accept_its_own_claim…` | "the model must not accept its own claim" |
+| Self-adoption unrecorded | `only-the-bound-authority-decides` 24 · `history` 12 · `reliance-applicability…` 8 | — |
+| Transfer resets reliance | `only-the-bound-authority-decides` 46 · J9 | reliance after the transfer |
+| Decision epoch optional | `only-the-bound-authority-decides` | 21, `stale_authority_epoch` instead of `invalid_envelope` |
+| Decision supersession unchecked | same | 50 |
+| Bind by grant · authority binds under grant | same | 7 · 7 |
+| Decision epoch unchecked | `only-the-bound-authority-decides` 47 · J9 | A's stale decision |
+| Epoch after preconditions | `only-the-bound-authority-decides` | 48, `precondition_failed` instead of `stale_authority_epoch` |
+| Decision claim read unchecked | same | 22 |
+| Resolve without authority | `conflict-resolution-needs-the-bound-authority` | 11 |
+| Drift as conflict · qualifiers disjoint unchecked | `conflicts-are-structural…` | 4 · 11 |
+| Potential reported demonstrated | `conflicts-are-structural…` 4 · `conflict-resolution…` 10 · `history` 12 | — |
+| Dependency digest ignored · provider ignored · missing satisfied | `dependencies-resolve-only-exact-references` | 8 · 10 · 8 |
+| Reference provider unchecked · dependency read unauthorized · self reference before provider | same | 30 · 36 · 24 |
+| Unknown outranks mismatch | `applicability-follows-precedence` | 3 |
+| Incomplete coverage applicable | `applicability-checks-snapshots…` 5 · `applicability-follows-precedence` 6 | — |
+| Dirty snapshot as tree | `applicability-checks-snapshots…` | 4 |
+| Support entries as origins · equal-digest roots disjoint · overlap as multiple | `support-classes-follow-declared-ancestry` | 15 · 19 · 9 |
+| Single status field · normative implies binding | `reliance-applicability-health-and-availability-are-independent` | 11 · 13 |
+| Derivation is its own root | `two_derivations_over_one_captured_log_are_one_lineage` | "two derivations over one captured root are one lineage" |
+| Claim revisions in a TEMP table | `a_claim_and_its_decision_survive_sigkill_at_their_positions` | "survive at the same positions" |
+| Update trigger inert | `a_claim_revision_can_be_neither_updated_nor_deleted` | "an update is refused by the database" |
+| Tree is the commit · snapshot hashes mtime · deletions dropped · mode ignored · build facts ignored | the identity tests | the tree check · "modification time alone is not identity" · "a deletion is identity" · "a mode change is identity" · the build-fact assertion |
+| `cbr decide` names no latest decision | `a_model_labelled_producer…` | `precondition_failed {"latest_decision":"adopt"}` |
+| `cbr evaluate` target tree is the commit | `revise_evaluate_and_history_follow_a_real_repository` | the `applicable` assertion |
+
+**Named honestly.**
+
+- **The fixture batch was 33 mutants.** The `m2(2/4)` commit message says 32; that was a miscount of the batch log, corrected here.
+- Two fixture mutants are recorded under their own names rather than claimed as the fixture's narrower mutant: "a revision read returns the latest" stands in for `claim-revision-overwritten`, and "absent validity recorded as `{}`" for `validity-filled-from-recorded`.
+- "Decision epoch optional" failed with `stale_authority_epoch` rather than a success, because an absent epoch reaches the binding check as 0. It is killed at the fixture's step, for a reason other than committing.
+
+### Coverage limits
+
+- **No fixture runs knowledge over the socket.** The CLI tests do, in production mode.
+- **Untested controls and paths.** `serve_altered_claims` is implemented and has no test. Event visibility of knowledge subjects has no dedicated test.
+- **Source identity** has no non-git tree, no `workspace` determination under a lock, and no submodule contents. It needs the `git` binary.
+- **Read cost.** `inspect` and `history` scan every record of a kind.
+- **CLI coverage.** `cbr` has no verb for conflicts, transfers or grants. A grant in the CLI test is issued over a raw socket session.
+- **No model call.** The model producer is a labelled principal.
+
+## Earlier — M1 close-out and README
 
 Three things the reviewer asked for immediately after the merges, done in that order:
 

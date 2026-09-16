@@ -10,7 +10,7 @@ Read [repository scope](../README.md), then [memory spec](spec/SPEC.md), [memory
 - [Task work](work/README.md) — durable plans and handoffs.
 - [ADR 001](decisions/001-standalone-v0.1-scope-and-stack.md) — the accepted scope, stack and evaluation posture for standalone v0.1. Every owner decision is recorded there.
 - [Implementation readiness](work/readiness/TALK.md) — the discussion ADR 001 settled, with its [protocol pin](work/readiness/PROTOCOL-PIN.md), [release scope and milestones](work/readiness/RELEASE-SCOPE.md) and [stack evidence](work/readiness/STACK.md).
-- [Journey verification](verification/JOURNEYS.md) — the journey acceptance matrix and evidence records. No journey has been run.
+- [Journey verification](verification/JOURNEYS.md) — the journey acceptance matrix and evidence records. J9 has been run, with no model; no other journey has.
 - [Shared baseline](https://github.com/Combraton/combraton/blob/main/docs/architecture/BASELINE.md) — product ownership and invariants.
 - [Publication provenance](https://github.com/Combraton/combraton/blob/main/docs/architecture/PUBLICATION.md) — source import and historical material boundary.
 

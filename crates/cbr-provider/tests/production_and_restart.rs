@@ -801,3 +801,93 @@ fn two_socket_sessions_one_mid_subscription_survive_sigkill() {
     drop(provider.stdin.take());
     provider.wait().expect("exits when its input ends");
 }
+
+/// A claim revision and the decision that accepts it survive `SIGKILL` at
+/// their positions: the same stream positions in history, the same record
+/// whose digest any reader recomputes, the same reliance, and the proposing
+/// command still bound, so a retransmission replays rather than proposing
+/// revision 2.
+#[test]
+fn a_claim_and_its_decision_survive_sigkill_at_their_positions() {
+    let directory = tempfile::tempdir().expect("temp dir");
+    let config = conformance_config(directory.path());
+    const KNOWLEDGE: &str = r#"{"name":"core","majors":[1],"required":true,"required_features":["core.events"],"optional_features":[]},{"name":"knowledge","majors":[1],"required":true,"required_features":[],"optional_features":[]}"#;
+    let parse = |text: &str| cbr_encoding::parse(text.trim_end().as_bytes()).expect("response");
+    let field = |value: &cbr_encoding::Value, path: &[&str]| {
+        let mut current = value.clone();
+        for name in path {
+            current = current
+                .get(name)
+                .cloned()
+                .unwrap_or(cbr_encoding::Value::Null);
+        }
+        current
+    };
+
+    let mut provider = Provider::start(directory.path(), Some(&config));
+    provider.negotiate(KNOWLEDGE);
+    let bind = command(
+        10,
+        r#"{"operation":"knowledge.authority.bind","message_id":"m-b","command_id":"bind-svc","dedupe_generation":1,"subject":{"kind":"knowledge.authority","id":"svc"},"preconditions":[{"subject":{"kind":"knowledge.authority","id":"svc"},"revision":0}],"requires":[],"payload":{"authority":"owner"}}"#,
+    );
+    assert!(provider.call(&bind).contains("\"epoch\":1"));
+    let propose = command(
+        11,
+        r#"{"operation":"knowledge.claim.propose","message_id":"m-p","command_id":"propose-c","dedupe_generation":1,"subject":{"kind":"knowledge.claim","id":"c"},"preconditions":[{"subject":{"kind":"knowledge.claim","id":"c"},"revision":0}],"requires":[],"payload":{"plane":"normative","statement":{"subject":{"kind":"app.service","id":"billing"},"predicate":"queue","value":"v2","cardinality":"single"},"scope":{"id":"svc","qualifiers":{}},"support":[],"derivation":{"kind":"human","inputs":[]}}}"#,
+    );
+    let proposed = parse(&provider.call(&propose));
+    let reference = field(&proposed, &["result", "outcome", "reference"]);
+    let reference_text = String::from_utf8(cbr_encoding::to_canonical(&reference)).unwrap();
+    let decide = command(
+        12,
+        &format!(
+            r#"{{"operation":"knowledge.decision.record","message_id":"m-d","command_id":"decide-d1","dedupe_generation":1,"subject":{{"kind":"knowledge.decision","id":"d1"}},"preconditions":[{{"subject":{{"kind":"knowledge.decision","id":"d1"}},"revision":0}}],"requires":[],"authority_epoch":1,"payload":{{"claim":{reference_text},"decision":"accepted_for_use","permitted_use":"binding","validation_basis":{{"evidence":[],"receipts":[]}},"rationale":"adopt"}}}}"#
+        ),
+    );
+    let decided = parse(&provider.call(&decide));
+    assert_eq!(
+        field(&decided, &["result", "outcome", "author_is_decider"]),
+        cbr_encoding::Value::Bool(true)
+    );
+    let history = r#"{"jsonrpc":"2.0","id":13,"method":"knowledge.claim.history","params":{"operation":"knowledge.claim.history","message_id":"m-h","payload":{"claim":"c"}}}"#;
+    let before = field(&parse(&provider.call(history)), &["result"]);
+    assert!(
+        field(&before, &["revisions"]).as_array().unwrap()[0]
+            .get("position")
+            .is_some_and(|p| p.is_object()),
+        "positions are recorded: {before:?}"
+    );
+
+    // No clean shutdown: the process dies where it stands.
+    provider.kill();
+
+    let mut provider = Provider::start(directory.path(), Some(&config));
+    provider.negotiate(KNOWLEDGE);
+    let after = field(&parse(&provider.call(history)), &["result"]);
+    assert_eq!(
+        cbr_encoding::to_canonical(&after),
+        cbr_encoding::to_canonical(&before),
+        "the revision and the decision survive at the same positions"
+    );
+    let inspect = r#"{"jsonrpc":"2.0","id":14,"method":"knowledge.claim.inspect","params":{"operation":"knowledge.claim.inspect","message_id":"m-i","payload":{"claim":"c"}}}"#;
+    let inspected = field(&parse(&provider.call(inspect)), &["result"]);
+    assert_eq!(
+        field(&inspected, &["reliance", "decision"]),
+        cbr_encoding::Value::String("d1".into())
+    );
+    assert_eq!(
+        cbr_encoding::Value::String(cbr_encoding::digest_canonical(&field(
+            &inspected,
+            &["record"]
+        ))),
+        field(&reference, &["digest"]),
+        "the record read back is the record the digest names"
+    );
+    let replayed = parse(&provider.call(&propose));
+    assert_eq!(
+        field(&replayed, &["result", "replay"]),
+        cbr_encoding::Value::Bool(true),
+        "the proposing command is still bound: {replayed:?}"
+    );
+    provider.stop();
+}

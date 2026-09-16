@@ -15,7 +15,7 @@
 
 use cbr_encoding::Value;
 
-use super::{Provider, Step6, accepted, key_of};
+use super::{Epoch, Provider, Step6, accepted, key_of};
 use crate::errors::ProtocolError;
 use crate::evidence::{self, Child};
 use crate::grants::{self, Grant};
@@ -134,7 +134,7 @@ impl Provider {
 
     /// Availability as observed now, including an integrity check of the
     /// stored bytes: a read reports a failure, it never records one.
-    fn availability_of(&self, id: &str, record: &Value) -> Result<Value, ProtocolError> {
+    pub(super) fn availability_of(&self, id: &str, record: &Value) -> Result<Value, ProtocolError> {
         let state = text(record, "state").unwrap_or_default();
         if state == "abandoned" {
             let reason = text(record, "abandoned_reason");
@@ -295,6 +295,7 @@ impl Provider {
                 more_events: more,
                 chunks,
                 event: first,
+                claim_revision: None,
             },
             |revision, operation_ref| {
                 accepted(
@@ -356,8 +357,7 @@ impl Provider {
         if let Some(stored) = self.admit_command(
             params,
             &command,
-            "core-test",
-            false,
+            Epoch::Unchecked,
             Step6::Publish {
                 artifact: key.id.clone(),
                 work: descriptor.get("work").cloned(),
@@ -453,8 +453,7 @@ impl Provider {
         if let Some(stored) = self.admit_command(
             params,
             &command,
-            "core-test",
-            false,
+            Epoch::Unchecked,
             Step6::Publish {
                 artifact: key.id.clone(),
                 work,
@@ -535,8 +534,7 @@ impl Provider {
         if let Some(stored) = self.admit_command(
             params,
             &command,
-            "core-test",
-            false,
+            Epoch::Unchecked,
             Step6::Publish {
                 artifact: key.id.clone(),
                 work,
@@ -660,8 +658,7 @@ impl Provider {
         if let Some(stored) = self.admit_command(
             params,
             &command,
-            "core-test",
-            false,
+            Epoch::Unchecked,
             Step6::Publish {
                 artifact: key.id.clone(),
                 work,
@@ -1168,8 +1165,7 @@ impl Provider {
         if let Some(stored) = self.admit_command(
             params,
             &command,
-            "core-test",
-            false,
+            Epoch::Unchecked,
             Step6::Rights(vec![(
                 "evidence.hold",
                 Some(evidence::artifact_key(&artifact)),
@@ -1246,8 +1242,7 @@ impl Provider {
         if let Some(stored) = self.admit_command(
             params,
             &command,
-            "core-test",
-            false,
+            Epoch::Unchecked,
             Step6::Release {
                 hold: key.id.clone(),
             },
@@ -1340,8 +1335,7 @@ impl Provider {
         if let Some(stored) = self.admit_command(
             params,
             &command,
-            "core-test",
-            false,
+            Epoch::Unchecked,
             Step6::Purge {
                 artifact: key.id.clone(),
                 holds: release_holds.clone(),

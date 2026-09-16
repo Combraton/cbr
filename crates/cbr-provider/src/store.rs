@@ -83,6 +83,19 @@ pub fn lock_data_dir(data_dir: &Path) -> Result<fs::File, String> {
     }
 }
 
+fn claim_revision_row(
+    (revision, digest, record, recorded_at): (i64, String, String, String),
+) -> Result<ClaimRevisionRow, StoreError> {
+    let record = cbr_encoding::parse(record.as_bytes())
+        .map_err(|_| StoreError::Corrupt("a claim revision record does not parse"))?;
+    Ok(ClaimRevisionRow {
+        revision,
+        digest,
+        record,
+        recorded_at,
+    })
+}
+
 /// What the object directory holds, as the collection pass sees it.
 #[derive(Debug, Default)]
 pub struct Inventory {
@@ -285,6 +298,28 @@ pub struct Commit<'a> {
     /// read here, so `recorded_at` follows a controlled clock like every other
     /// protocol-visible time, and so one command records one instant.
     pub recorded_at: &'a str,
+    /// A knowledge claim revision this command records, appended beside the
+    /// claim subject it numbers.
+    pub claim_revision: Option<ClaimRevision<'a>>,
+}
+
+/// A new claim revision: its number, digest and canonical record. The number
+/// must be the claim subject's new revision, which the store checks inside the
+/// transaction, so a revision row can never disagree with its subject.
+pub struct ClaimRevision<'a> {
+    pub claim: &'a str,
+    pub revision: i64,
+    pub digest: &'a str,
+    pub record: &'a str,
+}
+
+/// A stored claim revision.
+#[derive(Debug, Clone)]
+pub struct ClaimRevisionRow {
+    pub revision: i64,
+    pub digest: String,
+    pub record: Value,
+    pub recorded_at: String,
 }
 
 /// Staged evidence bytes a command changes.
@@ -445,6 +480,24 @@ impl Store {
                  principal TEXT    NOT NULL,
                  revoked   INTEGER NOT NULL
              );
+             -- Knowledge claim revisions (KNOWLEDGE section 3). Insert-only: a
+             -- revision's record never changes once proposed, and the two
+             -- triggers make that a property of the database rather than of
+             -- the code that happens to write it.
+             CREATE TABLE IF NOT EXISTS knowledge_revisions (
+                 claim       TEXT    NOT NULL,
+                 revision    INTEGER NOT NULL,
+                 digest      TEXT    NOT NULL,
+                 record      TEXT    NOT NULL,
+                 recorded_at TEXT    NOT NULL,
+                 PRIMARY KEY (claim, revision)
+             );
+             CREATE TRIGGER IF NOT EXISTS knowledge_revisions_never_updated
+                 BEFORE UPDATE ON knowledge_revisions
+                 BEGIN SELECT RAISE(ABORT, 'claim revisions are immutable'); END;
+             CREATE TRIGGER IF NOT EXISTS knowledge_revisions_never_deleted
+                 BEFORE DELETE ON knowledge_revisions
+                 BEGIN SELECT RAISE(ABORT, 'claim revisions are immutable'); END;
              CREATE TABLE IF NOT EXISTS commands (
                  principal  TEXT    NOT NULL,
                  command_id TEXT    NOT NULL,
@@ -1062,6 +1115,81 @@ impl Store {
     /// caller over this rather than indexed here. A scan is proportionate to
     /// v0.1's grant counts; an index belongs here only when a measurement says
     /// so.
+    /// One claim revision, if this provider holds it.
+    pub fn claim_revision(
+        &self,
+        claim: &str,
+        revision: i64,
+    ) -> Result<Option<ClaimRevisionRow>, StoreError> {
+        let row: Option<(i64, String, String, String)> = self
+            .connection
+            .query_row(
+                "SELECT revision, digest, record, recorded_at FROM knowledge_revisions
+                 WHERE claim = ?1 AND revision = ?2",
+                params![claim, revision],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .optional()?;
+        row.map(claim_revision_row).transpose()
+    }
+
+    /// Every revision of a claim lineage, oldest first.
+    pub fn claim_revisions(&self, claim: &str) -> Result<Vec<ClaimRevisionRow>, StoreError> {
+        let mut statement = self.connection.prepare(
+            "SELECT revision, digest, record, recorded_at FROM knowledge_revisions
+             WHERE claim = ?1 ORDER BY revision",
+        )?;
+        let rows = statement.query_map(params![claim], |row| {
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+        })?;
+        let mut out = Vec::new();
+        for row in rows {
+            out.push(claim_revision_row(row?)?);
+        }
+        Ok(out)
+    }
+
+    /// Subjects of one kind in the order they were first recorded, with their
+    /// revisions and values. A subject row keeps its SQLite row id when it is
+    /// updated, so row id order is creation order.
+    pub fn subjects_in_recorded_order(
+        &self,
+        kind: &str,
+    ) -> Result<Vec<(String, i64, String)>, StoreError> {
+        let mut statement = self
+            .connection
+            .prepare("SELECT id, revision, value FROM subjects WHERE kind = ?1 ORDER BY rowid")?;
+        let rows = statement.query_map(params![kind], |row| {
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+        })?;
+        Ok(rows.collect::<Result<_, _>>()?)
+    }
+
+    /// The position of the event of this type that recorded this revision of
+    /// this subject, or `None` when that event is no longer retained.
+    pub fn event_position(
+        &self,
+        event_type: &str,
+        key: &SubjectKey,
+        revision: i64,
+    ) -> Result<Option<Position>, StoreError> {
+        Ok(self
+            .connection
+            .query_row(
+                "SELECT epoch, sequence FROM events
+                 WHERE type = ?1 AND subject_kind = ?2 AND subject_id = ?3 AND revision = ?4
+                 ORDER BY epoch, sequence LIMIT 1",
+                params![event_type, key.kind, key.id, revision],
+                |row| {
+                    Ok(Position {
+                        epoch: row.get(0)?,
+                        sequence: row.get(1)?,
+                    })
+                },
+            )
+            .optional()?)
+    }
+
     pub fn subjects_of_kind(&self, kind: &str) -> Result<Vec<(String, String)>, StoreError> {
         let mut statement = self
             .connection
@@ -1217,6 +1345,24 @@ impl Store {
         }
         for event in commit.more_events {
             append(&transaction, commit.key, revision, event)?;
+        }
+        if let Some(row) = &commit.claim_revision {
+            if row.revision != revision || row.claim != commit.key.id {
+                return Err(StoreError::Corrupt(
+                    "a claim revision out of step with its claim subject",
+                ));
+            }
+            transaction.execute(
+                "INSERT INTO knowledge_revisions (claim, revision, digest, record, recorded_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![
+                    row.claim,
+                    row.revision,
+                    row.digest,
+                    row.record,
+                    commit.recorded_at
+                ],
+            )?;
         }
         match commit.chunks {
             Chunks::None => {}
@@ -1777,6 +1923,33 @@ mod tests {
     }
 
     #[test]
+    fn a_claim_revision_can_be_neither_updated_nor_deleted() {
+        let (_directory, store) = store();
+        store
+            .connection
+            .execute(
+                "INSERT INTO knowledge_revisions (claim, revision, digest, record, recorded_at)
+                 VALUES ('c', 1, 'sha256:00', '{}', '2030-01-01T00:00:00Z')",
+                [],
+            )
+            .expect("a revision is inserted");
+        let updated = store.connection.execute(
+            "UPDATE knowledge_revisions SET record = '{\"edited\":true}' WHERE claim = 'c'",
+            [],
+        );
+        assert!(updated.is_err(), "an update is refused by the database");
+        let deleted = store
+            .connection
+            .execute("DELETE FROM knowledge_revisions WHERE claim = 'c'", []);
+        assert!(deleted.is_err(), "a delete is refused by the database");
+        let row = store
+            .claim_revision("c", 1)
+            .expect("reads")
+            .expect("still there");
+        assert_eq!(row.record, Value::Object(vec![]), "and unchanged");
+    }
+
+    #[test]
     fn state_and_command_records_survive_reopening() {
         let directory = tempfile::tempdir().expect("temp dir");
         let key = SubjectKey {
@@ -1802,6 +1975,7 @@ mod tests {
                         more_events: Vec::new(),
                         chunks: Chunks::None,
                         recorded_at: "2030-01-01T00:00:00Z",
+                        claim_revision: None,
                     },
                     |revision, _| Value::Object(vec![("revision".into(), Value::Int(revision))]),
                 )
@@ -1895,6 +2069,7 @@ mod tests {
                         more_events: Vec::new(),
                         chunks: Chunks::None,
                         recorded_at: "2030-01-01T00:00:00Z",
+                        claim_revision: None,
                     },
                     |_, _| Value::Object(vec![]),
                 )
