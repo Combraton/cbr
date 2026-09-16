@@ -1,0 +1,23 @@
+{
+  "note": "Stage c3 claims core/1 with core.events and core.grants, plus core-test/1, and declares the clock.file test control. Computed from each fixture's declared features before implementing: the 122 supported are every fixture whose features are a subset of {core.events, core.grants}. The 13 unsupported all need core.capabilities, which arrives in c4; five of them declare the execution profile and are permanently out of reach. Two of the 44 fixtures naming core.grants need clock.file: core.grants.test-clock-never-moves-backward and core.events.subscription-ends-at-grant-expiry.",
+  "suite": "core.",
+  "total": 135,
+  "pass": 122,
+  "runner_exit_status": 0,
+  "permanently_unsupported": 5,
+  "unsupported": [
+    "core.capabilities.change-raises-revision-and-event",
+    "core.capabilities.checked-after-authorization-before-preconditions",
+    "core.capabilities.claim-does-not-depend-on-writes",
+    "core.capabilities.loss-refuses-new-but-replays-bound",
+    "core.capabilities.restored-capability-admits-commands",
+    "core.capabilities.snapshot-reports-evidenced-predicates",
+    "core.capabilities.unknown-is-not-supported",
+    "core.events.older-consumer-is-closed-without-notice",
+    "core.events.slow-consumer-is-closed-with-notice-and-resumes",
+    "core.events.slow-consumer-recovery-reports-retention-gap",
+    "core.events.unread-ending-notice-does-not-hold-the-connection",
+    "core.feature-dependencies-match-negotiation",
+    "core.grants.unprotected-operations"
+  ]
+}

@@ -805,7 +805,12 @@ impl Store {
     }
 
     /// Every visible subject and its current state, for a retention snapshot.
-    fn snapshot_subjects(&self) -> Result<Vec<Value>, StoreError> {
+    /// The visible subjects for a retention snapshot, and whether any were
+    /// hidden.
+    fn snapshot_subjects(
+        &self,
+        visible: &dyn Fn(&SubjectKey) -> bool,
+    ) -> Result<(Vec<Value>, bool), StoreError> {
         let mut statement = self
             .connection
             .prepare("SELECT kind, id, revision, value FROM subjects ORDER BY kind, id")?;
@@ -817,8 +822,17 @@ impl Store {
             Ok((kind, id, revision, value))
         })?;
         let mut out = Vec::new();
+        let mut hidden = false;
         for row in rows {
             let (kind, id, revision, value) = row?;
+            let key = SubjectKey {
+                kind: kind.clone(),
+                id: id.clone(),
+            };
+            if !visible(&key) {
+                hidden = true;
+                continue;
+            }
             // Each subject kind declares its own snapshot state (CORE section
             // 16.4). The authority subject's state is its epoch, which is its
             // revision, so the two cannot disagree here either.
@@ -826,6 +840,10 @@ impl Store {
                 "core-test.authority" => {
                     Value::Object(vec![("epoch".into(), Value::Int(revision))])
                 }
+                "core.grant" => Value::Object(vec![(
+                    "grant".into(),
+                    cbr_encoding::parse(value.as_bytes()).unwrap_or(Value::Null),
+                )]),
                 _ => Value::Object(vec![("value".into(), Value::String(value))]),
             };
             out.push(Value::Object(vec![
@@ -840,7 +858,7 @@ impl Store {
                 ("state".into(), state),
             ]));
         }
-        Ok(out)
+        Ok((out, hidden))
     }
 
     /// The earliest position a reader may ask for.
@@ -868,6 +886,7 @@ impl Store {
         limit: i64,
         kinds: &[String],
         budget: usize,
+        visible: &dyn Fn(&SubjectKey) -> bool,
     ) -> Result<ReadEvents, StoreError> {
         let stream = self.stream_id()?;
         let current = self.current_epoch()?;
@@ -923,7 +942,10 @@ impl Store {
                 && missing_here
                 && (at.epoch, at.sequence) <= (discarded.epoch, discarded.sequence)
             {
-                let subjects = self.snapshot_subjects()?;
+                let (subjects, hidden) = self.snapshot_subjects(visible)?;
+                // A snapshot subject hidden by authorization makes the result
+                // filtered exactly as a hidden event does (CORE section 16.4).
+                filtered |= hidden;
                 let item = Value::Object(vec![(
                     "gap".into(),
                     Value::Object(vec![
@@ -960,7 +982,14 @@ impl Store {
                     epoch: event.position.epoch,
                     sequence: event.position.sequence + 1,
                 };
-                if !kinds.is_empty() && !kinds.contains(&event.subject.kind) {
+                // CORE section 16.6: an event is included only if the
+                // reader could read its subject directly, so `core.events.read`
+                // alone reveals nothing a principal could not already read.
+                // `kinds` is the caller's own narrowing; both count as
+                // filtering, and neither leaves a gap.
+                if !visible(&event.subject)
+                    || (!kinds.is_empty() && !kinds.contains(&event.subject.kind))
+                {
                     filtered = true;
                     continue;
                 }

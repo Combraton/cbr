@@ -13,6 +13,7 @@ mod config;
 mod envelope;
 mod errors;
 mod frames;
+mod grants;
 mod jsonrpc;
 mod outbox;
 mod provider;

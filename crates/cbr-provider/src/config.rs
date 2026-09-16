@@ -193,6 +193,15 @@ impl Config {
                 .map(str::to_string)
                 .collect();
         }
+        // A grant's `audience` must equal the issuing provider's own id (CORE
+        // section 15.2), so this is what every fixture's grant is addressed to.
+        // Single-participant fixtures never set it and always issue to
+        // `conformance-provider`, so that is the conformance default; the
+        // composition fixtures, which run several providers at once, set it
+        // explicitly. A production launch keeps CBR's own id.
+        if config.mode == Mode::Conformance {
+            config.provider_id = "conformance-provider".into();
+        }
         if let Some(id) = text(value.get("provider_id")) {
             config.provider_id = id;
         }
