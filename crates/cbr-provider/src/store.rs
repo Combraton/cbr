@@ -50,6 +50,46 @@ pub struct CommandRecord {
     pub result: Value,
 }
 
+/// Hold a data directory for one serving process, for that process's
+/// lifetime. A second provider over the same directory refuses to start.
+///
+/// Two would be unsafe, not just untidy: the start-time collection pass
+/// deletes every object no committed row names, and an object another process
+/// has published but not yet named is exactly such an object. The lock is an
+/// advisory `flock` on `provider.lock`, which the kernel releases when the
+/// process dies however it dies, so a `SIGKILL` never leaves the directory
+/// held. Credential administration does not take it: it touches rows, never
+/// objects, and runs beside a serving provider by design.
+pub fn lock_data_dir(data_dir: &Path) -> Result<fs::File, String> {
+    use std::os::unix::io::AsRawFd;
+    fs::create_dir_all(data_dir)
+        .map_err(|error| format!("data directory {}: {error}", data_dir.display()))?;
+    let path = data_dir.join("provider.lock");
+    let file = fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(&path)
+        .map_err(|error| format!("{}: {error}", path.display()))?;
+    // SAFETY: flock takes a valid open descriptor and two flag bits.
+    let status = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) };
+    if status == 0 {
+        Ok(file)
+    } else {
+        Err(format!(
+            "another provider is serving the data directory {}",
+            data_dir.display()
+        ))
+    }
+}
+
+/// What the object directory holds, as the collection pass sees it.
+#[derive(Debug, Default)]
+pub struct Inventory {
+    pub objects: Vec<String>,
+    pub staging: Vec<PathBuf>,
+}
+
 #[derive(Debug)]
 pub enum StoreError {
     Sqlite(rusqlite::Error),
@@ -916,6 +956,60 @@ impl Store {
                 }
                 Ok(())
             }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(error.into()),
+        }
+    }
+
+    /// Every published object's digest, and every staging file a publication
+    /// interrupted by a crash left behind, for the start-time collection pass.
+    /// Anything else under `objects/` is not this store's and is left alone.
+    pub fn object_inventory(&self) -> Result<Inventory, StoreError> {
+        let mut inventory = Inventory::default();
+        let root = self.objects.join("sha256");
+        let hex = |name: &str, length: usize| {
+            name.len() == length && name.bytes().all(|b| b.is_ascii_hexdigit())
+        };
+        let Ok(first) = fs::read_dir(&root) else {
+            return Ok(inventory);
+        };
+        for a in first {
+            let a = a?;
+            let a_name = a.file_name().to_string_lossy().into_owned();
+            if !hex(&a_name, 2) || !a.file_type()?.is_dir() {
+                continue;
+            }
+            for b in fs::read_dir(a.path())? {
+                let b = b?;
+                let b_name = b.file_name().to_string_lossy().into_owned();
+                if !hex(&b_name, 2) || !b.file_type()?.is_dir() {
+                    continue;
+                }
+                for object in fs::read_dir(b.path())? {
+                    let object = object?;
+                    let name = object.file_name().to_string_lossy().into_owned();
+                    if !object.file_type()?.is_file() {
+                        continue;
+                    }
+                    if name.starts_with(".staging-") {
+                        inventory.staging.push(object.path());
+                    } else if hex(&name, 60) {
+                        inventory
+                            .objects
+                            .push(format!("sha256:{a_name}{b_name}{name}"));
+                    }
+                }
+            }
+        }
+        inventory.objects.sort();
+        inventory.staging.sort();
+        Ok(inventory)
+    }
+
+    /// Remove a staging file left by an interrupted publication.
+    pub fn discard_staging(&self, path: &Path) -> Result<(), StoreError> {
+        match fs::remove_file(path) {
+            Ok(()) => Ok(()),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
             Err(error) => Err(error.into()),
         }

@@ -113,6 +113,8 @@ fn run() -> Result<(), String> {
     if let Some((directory, enabled)) = &config.test_barriers {
         barriers::init(directory, enabled);
     }
+    // One serving process per data directory, held until this process ends.
+    let _held = store::lock_data_dir(&data_dir)?;
     // Start-time effects — epoch, retention, capabilities, the generation —
     // happen once, here, whichever binding follows.
     let mut provider = Provider::open(config.clone(), clock, &data_dir)

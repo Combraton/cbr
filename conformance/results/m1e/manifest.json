@@ -1,0 +1,262 @@
+{
+  "coverage_limits": [],
+  "environment": {
+    "arch": "aarch64",
+    "os": "macos"
+  },
+  "format": "combraton-conformance-result/1",
+  "participant": {
+    "claimed_profiles": [
+      {
+        "major": 1,
+        "name": "core"
+      },
+      {
+        "major": 1,
+        "name": "core-test"
+      },
+      {
+        "major": 1,
+        "name": "evidence"
+      }
+    ],
+    "client_mutant": null,
+    "descriptor_digest": "sha256:6e8d22b7985e9c9d16cafc37fe58e1be682800333e77a438595f11ec8b6ef6aa",
+    "mutant": null,
+    "name": "cbr-provider",
+    "version": "0.1.0"
+  },
+  "results": [
+    {
+      "failed_step": null,
+      "fixture": "evidence.access-reveals-no-existence",
+      "fixture_digest": "sha256:e0c78d8f2a5d4cd120f61a40453206a5a77484b9f6c6ead87a8c0ce43f5df84d",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "EVD-5",
+        "CORE-12"
+      ],
+      "transcript": "transcripts/evidence.access-reveals-no-existence.jsonl",
+      "version": 2
+    },
+    {
+      "failed_step": null,
+      "fixture": "evidence.chunk-limit-accounts-for-encoding-overhead",
+      "fixture_digest": "sha256:7ce42eebbc684a1605ad2b5830a2dd7d9ff2fa263e5e6f11c9b1d963118767c2",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "EVD-2"
+      ],
+      "transcript": "transcripts/evidence.chunk-limit-accounts-for-encoding-overhead.jsonl",
+      "version": 2
+    },
+    {
+      "failed_step": null,
+      "fixture": "evidence.chunk-retransmission-and-conflicts",
+      "fixture_digest": "sha256:1aee9bc1489b9df79ad3a8baa55cec794b9b70f72983ebc3bed19358c969084c",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "EVD-2"
+      ],
+      "transcript": "transcripts/evidence.chunk-retransmission-and-conflicts.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "evidence.descriptor-provenance-coverage-and-locator-rules",
+      "fixture_digest": "sha256:a44873edf9af7ff2c4b5a4e6adc316323f441dd3d7e4e5db5e620710a8d76148",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "EVD-1",
+        "EVD-4",
+        "EVD-7"
+      ],
+      "transcript": "transcripts/evidence.descriptor-provenance-coverage-and-locator-rules.jsonl",
+      "version": 2
+    },
+    {
+      "failed_step": null,
+      "fixture": "evidence.expired-hold-stops-protecting",
+      "fixture_digest": "sha256:f6bd438e85cd1182b514624b6bef47e2ae2ef8d5b3f828a9a8058c475625f72e",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "EVD-6"
+      ],
+      "transcript": "transcripts/evidence.expired-hold-stops-protecting.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "evidence.hold-release-needs-ownership-or-delegated-authority",
+      "fixture_digest": "sha256:4308bf519adeb9beae1c12244e8eb17bb7cdc8149a5c147b95032f950a86a51b",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "EVD-6"
+      ],
+      "transcript": "transcripts/evidence.hold-release-needs-ownership-or-delegated-authority.jsonl",
+      "version": 2
+    },
+    {
+      "failed_step": null,
+      "fixture": "evidence.integrity-failure-is-never-served",
+      "fixture_digest": "sha256:f0c1866d314cd7f57dbb80b946b6d8feb56fed1ef8bbff8d718911fb44f455a8",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "EVD-6"
+      ],
+      "transcript": "transcripts/evidence.integrity-failure-is-never-served.jsonl",
+      "version": 2
+    },
+    {
+      "failed_step": null,
+      "fixture": "evidence.manifest-completeness-respects-authorization",
+      "fixture_digest": "sha256:3649e660540a22bb74ddaea49bc8bd0bcd87bd6cf50ceb09b997b9c3c013b6e0",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "EVD-3",
+        "EVD-5"
+      ],
+      "transcript": "transcripts/evidence.manifest-completeness-respects-authorization.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "evidence.partial-upload-then-append-then-seal",
+      "fixture_digest": "sha256:b5bad25eb56a117d28dd372f7c29ce81f494e056834c59c03232d1c7780183f3",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "EVD-2"
+      ],
+      "transcript": "transcripts/evidence.partial-upload-then-append-then-seal.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "evidence.publish-grant-bound-to-work",
+      "fixture_digest": "sha256:974d17bfdd348b4f71fd968654049299d3ba99ce4e5ba46b04b61ed19528d2cf",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "EVD-8"
+      ],
+      "transcript": "transcripts/evidence.publish-grant-bound-to-work.jsonl",
+      "version": 2
+    },
+    {
+      "failed_step": null,
+      "fixture": "evidence.purge-appends-the-artifact-events-first",
+      "fixture_digest": "sha256:51dfeee6c6ff031388319548dc3e646e02825d8cf735d0950798a2b64e561336",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "EVD-6",
+        "CORE-12"
+      ],
+      "transcript": "transcripts/evidence.purge-appends-the-artifact-events-first.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "evidence.purge-requires-release-authority-for-holds",
+      "fixture_digest": "sha256:cfb348ae32822da397aea4c3526d1075c0cb4a2595cf5a540af58a10004e0a1a",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "EVD-6",
+        "CORE-12"
+      ],
+      "transcript": "transcripts/evidence.purge-requires-release-authority-for-holds.jsonl",
+      "version": 2
+    },
+    {
+      "failed_step": null,
+      "fixture": "evidence.requires-core-events-and-gates-retention-control",
+      "fixture_digest": "sha256:7756114b902c3f6ea483905bcaccba859f91a226532f85e63dd00f56a9165a5d",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "EVD-6",
+        "CORE-3",
+        "CMP-5"
+      ],
+      "transcript": "transcripts/evidence.requires-core-events-and-gates-retention-control.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "evidence.seal-refuses-digest-mismatch-and-is-idempotent",
+      "fixture_digest": "sha256:18f3628952b88a589f29055ddd2848f8bff110649d262c0130ca0e20d68cd10c",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "EVD-2"
+      ],
+      "transcript": "transcripts/evidence.seal-refuses-digest-mismatch-and-is-idempotent.jsonl",
+      "version": 3
+    },
+    {
+      "failed_step": null,
+      "fixture": "evidence.staging-timeout-reports-abandoned",
+      "fixture_digest": "sha256:05c373c390aa29e26f45a701217264759809b6152e38399f3fbcb22d3c311741",
+      "outcome": "pass",
+      "polarity": "positive",
+      "reason": null,
+      "requirements": [
+        "EVD-2"
+      ],
+      "transcript": "transcripts/evidence.staging-timeout-reports-abandoned.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "evidence.upload-seal-and-fetch-exact-bytes",
+      "fixture_digest": "sha256:f2ead56f88c39e95bfda0151093096cfd99898a08cf0272c6aac2c83c3f9c9e5",
+      "outcome": "pass",
+      "polarity": "positive",
+      "reason": null,
+      "requirements": [
+        "EVD-1",
+        "EVD-2",
+        "EVD-4"
+      ],
+      "transcript": "transcripts/evidence.upload-seal-and-fetch-exact-bytes.jsonl",
+      "version": 1
+    }
+  ],
+  "runner": {
+    "name": "combraton-conformance",
+    "version": "0.1.0"
+  },
+  "status_note": "Protocol 0.1 conformance suite. A result is a conformance claim only for the fixtures it lists as passing, run from the v0.1.0 release inventory; skipped and unsupported outcomes are coverage limits, not passes.",
+  "suite": {
+    "fixtures": 16,
+    "fixtures_digest": "sha256:83d8d0cce2691fe06de54bebc71aa2727c918e4e45702998a9199dae49c38819",
+    "protocol_commit": "56fe7eea9f6ae5f3a4508cc351a91ae444fd4600"
+  },
+  "summary": {
+    "pass": 16
+  }
+}

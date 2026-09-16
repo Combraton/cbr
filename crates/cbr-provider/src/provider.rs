@@ -341,7 +341,7 @@ impl Provider {
             config.dedupe_advance_on_start,
             config.dedupe_retain_generations,
         )?;
-        Ok(Self {
+        let provider = Self {
             config,
             clock: std::sync::Arc::new(clock),
             store,
@@ -353,7 +353,11 @@ impl Provider {
             caller_receive_limit: crate::frames::PRE_NEGOTIATION_LIMIT,
             subscriptions: Vec::new(),
             next_subscription: 0,
-        })
+        };
+        // Last, and before any session exists: objects a crash left without a
+        // root are collected (see `collect_unreferenced_objects`).
+        provider.collect_unreferenced_objects()?;
+        Ok(provider)
     }
 
     /// A further session over a store a started process has already opened:

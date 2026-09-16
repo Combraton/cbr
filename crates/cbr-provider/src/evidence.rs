@@ -383,6 +383,28 @@ pub fn parse_manifest(bytes: &[u8]) -> Option<Vec<Child>> {
     Some(children)
 }
 
+/// The object digest an artifact record keeps alive, if any: a sealed
+/// artifact whose purge, if requested, is not yet confirmed. Staged and
+/// abandoned artifacts keep their bytes in the chunk table, not the object
+/// store, and a confirmed purge has given its object up.
+///
+/// This is the one definition of a root, shared by deletion after a purge and
+/// by the start-time collection pass, so the two can never disagree about
+/// which bytes are still owed to a reader.
+pub fn object_root(record: &Value) -> Option<&str> {
+    let sealed = record.get("state").and_then(Value::as_str) == Some("sealed");
+    let confirmed = record
+        .get("purge")
+        .is_some_and(|purge| purge.get("confirmed_at").is_some());
+    if !sealed || confirmed {
+        return None;
+    }
+    record
+        .get("descriptor")
+        .and_then(|descriptor| descriptor.get("digest"))
+        .and_then(Value::as_str)
+}
+
 /// An availability object.
 pub fn availability(state: &str, reason: Option<&str>) -> Value {
     let mut members = vec![("state".into(), Value::String(state.into()))];

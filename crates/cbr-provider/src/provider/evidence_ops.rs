@@ -1488,20 +1488,55 @@ impl Provider {
     /// Equal bytes are one object, and another artifact's retention must not
     /// be ended by this one's purge.
     fn delete_if_unreferenced(&self, digest: &str) -> Result<(), ProtocolError> {
-        for (id, _) in self.store.subjects_of_kind(evidence::ARTIFACT)? {
-            if let Some((_, record)) = self.evidence_record(evidence::ARTIFACT, &id)?
-                && text(&record, "state").as_deref() == Some("sealed")
-                && member(&record, "descriptor")
-                    .and_then(|d| text(d, "digest"))
-                    .as_deref()
-                    == Some(digest)
-                && member(&record, "purge").is_none_or(|purge| purge.get("confirmed_at").is_none())
-            {
-                return Ok(());
-            }
+        if self.object_roots()?.contains(digest) {
+            return Ok(());
         }
         self.store.delete_object(digest)?;
         Ok(())
+    }
+
+    /// Every object digest some artifact still keeps alive.
+    fn object_roots(&self) -> Result<std::collections::BTreeSet<String>, crate::store::StoreError> {
+        let mut roots = std::collections::BTreeSet::new();
+        for (_, value) in self.store.subjects_of_kind(evidence::ARTIFACT)? {
+            let record = cbr_encoding::parse(value.as_bytes()).map_err(|_| {
+                crate::store::StoreError::Corrupt("an artifact record does not parse")
+            })?;
+            if let Some(digest) = evidence::object_root(&record) {
+                roots.insert(digest.to_string());
+            }
+        }
+        Ok(roots)
+    }
+
+    /// The start-time collection pass (STORAGE sections 2 and 5, "during
+    /// collection"): recheck the roots, then delete every published object no
+    /// root names and every staging file a crashed publication left behind.
+    ///
+    /// Two crashes leave such objects, and both orders are deliberate. A seal
+    /// killed after publishing its object and before committing the row that
+    /// names it leaves an orphan: the artifact is still staged with its bytes
+    /// in the chunk table, and a retried seal publishes again. A purge killed
+    /// after committing and before deleting leaves the object of an artifact
+    /// already recorded as purged: nothing serves it, and this pass finishes
+    /// the deletion. It runs once per process start, before any session
+    /// exists, so no reader can observe `purged` while those bytes remain.
+    ///
+    /// Only evidence artifacts own objects in M1. Anything that later
+    /// publishes into the object store must become a root here first.
+    pub(super) fn collect_unreferenced_objects(&self) -> Result<usize, crate::store::StoreError> {
+        let roots = self.object_roots()?;
+        let inventory = self.store.object_inventory()?;
+        let mut collected = 0;
+        for digest in inventory.objects.iter().filter(|d| !roots.contains(*d)) {
+            self.store.delete_object(digest)?;
+            collected += 1;
+        }
+        for staging in &inventory.staging {
+            self.store.discard_staging(staging)?;
+            collected += 1;
+        }
+        Ok(collected)
     }
 
     // ---- time-driven changes -----------------------------------------------
