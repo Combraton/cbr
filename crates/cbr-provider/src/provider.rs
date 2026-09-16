@@ -1,0 +1,854 @@
+//! The provider: negotiation and the Core command path.
+//!
+//! CORE section 10 fixes the order of checks, and the first failing step
+//! determines the error. That order is not an implementation detail: it is what
+//! stops an unauthorised caller learning whether a subject exists, and what
+//! lets a caller retransmit a command after its authority epoch changed. The
+//! steps below are numbered to match the specification.
+
+use cbr_encoding::Value;
+
+use crate::config::Config;
+use crate::envelope::{self, Command, Query};
+use crate::errors::ProtocolError;
+use crate::store::{CommandRecord, Store, SubjectKey};
+
+/// Profiles this build serves, with the majors and features it implements.
+/// A profile is listed here only when it is implemented: over-claiming would
+/// make negotiation succeed and then fail at the first operation.
+const SERVED: &[(&str, i64, &[&str], &[&str])] =
+    &[("core", 1, &[], &[]), ("core-test", 1, &[], &["core"])];
+
+/// Declared unsupported. `coordination` and `remote-trust` are out of the 0.1
+/// release; the rest are CBR's own profiles that later milestones implement.
+const UNSUPPORTED: &[(&str, &str)] = &[
+    ("coordination", "not_in_release"),
+    ("remote-trust", "not_in_release"),
+    ("evidence", "not_implemented"),
+    ("context", "not_implemented"),
+    ("knowledge", "not_implemented"),
+    ("verification", "not_implemented"),
+    ("execution", "not_implemented"),
+];
+
+/// Operations answerable before negotiation (CORE section 3).
+const PRE_NEGOTIATION: [&str; 3] = [
+    "core.describe",
+    "core.negotiate",
+    "core.feature_dependencies",
+];
+
+pub struct Provider {
+    pub config: Config,
+    store: Store,
+    negotiated: Option<Vec<(String, i64, Vec<String>)>>,
+    dedupe_current: i64,
+    operation_counter: u64,
+}
+
+impl Provider {
+    pub fn new(config: Config) -> Self {
+        let current = 1 + config.dedupe_advance_on_start;
+        Self {
+            config,
+            store: Store::new(),
+            negotiated: None,
+            dedupe_current: current,
+            operation_counter: 0,
+        }
+    }
+
+    /// The receive limit for the next frame. The binding's 1 MiB default holds
+    /// until negotiation completes; afterwards the provider's advertised value
+    /// applies (STREAM section 1.5).
+    pub fn frame_limit(&self) -> usize {
+        match self.negotiated {
+            None => crate::frames::PRE_NEGOTIATION_LIMIT,
+            Some(_) => self.config.limits.max_frame_bytes as usize,
+        }
+    }
+
+    fn dedupe_oldest(&self) -> i64 {
+        (self.dedupe_current - self.config.dedupe_retain_generations + 1).max(0)
+    }
+
+    fn dedupe_window(&self) -> Value {
+        Value::Object(vec![
+            ("oldest_retained".into(), Value::Int(self.dedupe_oldest())),
+            ("current".into(), Value::Int(self.dedupe_current)),
+        ])
+    }
+
+    fn selected_major(&self, profile: &str) -> Option<i64> {
+        self.negotiated
+            .as_ref()?
+            .iter()
+            .find(|(name, _, _)| name == profile)
+            .map(|(_, major, _)| *major)
+    }
+
+    fn known_operation(&self, operation: &str) -> bool {
+        matches!(
+            operation,
+            "core.describe"
+                | "core.negotiate"
+                | "core.feature_dependencies"
+                // The whole of core-test/1. Listing only the operations a
+                // fixture happens to call would make step 1 report
+                // `method_not_found` for a known operation, hiding the
+                // method/operation mismatch that step 2 owns.
+                | "core-test.subject.put"
+                | "core-test.subject.get"
+                | "core-test.subject.applied_count"
+                | "core-test.authority.claim"
+        )
+    }
+
+    fn profile_of(operation: &str) -> &str {
+        match operation.split_once('.') {
+            Some((head, _)) => head,
+            None => operation,
+        }
+    }
+
+    // ---- describe and negotiate -------------------------------------------
+
+    pub fn describe(&self) -> Value {
+        let profiles = SERVED
+            .iter()
+            .map(|(name, major, features, depends)| {
+                Value::Object(vec![
+                    ("name".into(), Value::String((*name).into())),
+                    ("majors".into(), Value::Array(vec![Value::Int(*major)])),
+                    (
+                        "features".into(),
+                        Value::Array(
+                            features
+                                .iter()
+                                .map(|f| Value::String((*f).into()))
+                                .collect(),
+                        ),
+                    ),
+                    (
+                        "depends_on".into(),
+                        Value::Array(depends.iter().map(|d| Value::String((*d).into())).collect()),
+                    ),
+                ])
+            })
+            .collect();
+        let unsupported = UNSUPPORTED
+            .iter()
+            .map(|(name, reason)| {
+                Value::Object(vec![
+                    ("name".into(), Value::String((*name).into())),
+                    ("reason".into(), Value::String((*reason).into())),
+                ])
+            })
+            .collect();
+        Value::Object(vec![
+            (
+                "provider".into(),
+                Value::Object(vec![
+                    ("name".into(), Value::String("cbr".into())),
+                    (
+                        "version".into(),
+                        Value::String(env!("CARGO_PKG_VERSION").into()),
+                    ),
+                ]),
+            ),
+            ("profiles".into(), Value::Array(profiles)),
+            ("unsupported_profiles".into(), Value::Array(unsupported)),
+            ("limits".into(), self.config.limits.to_value()),
+            ("dedupe_window".into(), self.dedupe_window()),
+            // Unknown extensions are preserved rather than dropped: discarding
+            // an extension a producer attached to stored content would lose
+            // provenance CBR cannot reconstruct.
+            (
+                "unknown_extensions".into(),
+                Value::String("preserve".into()),
+            ),
+        ])
+    }
+
+    /// In-session dependencies negotiation enforces (CORE section 4.3).
+    pub fn feature_dependencies(&self) -> Value {
+        let entries = SERVED
+            .iter()
+            .filter(|(name, _, _, _)| *name != "core")
+            .map(|(name, major, _, depends)| {
+                Value::Object(vec![
+                    ("profile".into(), Value::String((*name).into())),
+                    ("major".into(), Value::Int(*major)),
+                    (
+                        "trigger".into(),
+                        Value::Object(vec![("kind".into(), Value::String("profile".into()))]),
+                    ),
+                    (
+                        "requires".into(),
+                        Value::Array(
+                            depends
+                                .iter()
+                                .map(|d| {
+                                    Value::Object(vec![
+                                        ("profile".into(), Value::String((*d).into())),
+                                        ("major".into(), Value::Int(1)),
+                                        ("features".into(), Value::Array(vec![])),
+                                    ])
+                                })
+                                .collect(),
+                        ),
+                    ),
+                ])
+            })
+            .collect();
+        Value::Object(vec![("dependencies".into(), Value::Array(entries))])
+    }
+
+    fn negotiate(&mut self, payload: &Value) -> Result<Value, ProtocolError> {
+        if self.negotiated.is_some() {
+            return Err(ProtocolError::already_negotiated());
+        }
+        let requested = match payload.get("profiles") {
+            Some(Value::Array(items)) if !items.is_empty() => items.clone(),
+            _ => {
+                return Err(ProtocolError::invalid_envelope(
+                    "/payload/profiles",
+                    "not a non-empty array",
+                ));
+            }
+        };
+
+        let mut seen: Vec<String> = Vec::new();
+        let mut selected: Vec<(String, i64, Vec<String>)> = Vec::new();
+        let mut unselected: Vec<Value> = Vec::new();
+        let mut unsatisfied: Vec<(Value, u8)> = Vec::new();
+
+        for entry in &requested {
+            let name = entry
+                .get("name")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string();
+            if seen.contains(&name) {
+                return Err(ProtocolError::invalid_envelope(
+                    "/payload/profiles",
+                    "duplicate profile",
+                ));
+            }
+            seen.push(name.clone());
+
+            // A `core` entry is always treated as required, whatever its flag.
+            let required =
+                name == "core" || matches!(entry.get("required"), Some(Value::Bool(true)));
+            let majors: Vec<i64> = match entry.get("majors") {
+                Some(Value::Array(items)) => items
+                    .iter()
+                    .filter_map(|v| match v {
+                        Value::Int(n) => Some(*n),
+                        _ => None,
+                    })
+                    .collect(),
+                _ => Vec::new(),
+            };
+
+            let served = SERVED
+                .iter()
+                .find(|(served_name, _, _, _)| *served_name == name);
+            let declared_unsupported = UNSUPPORTED
+                .iter()
+                .find(|(unsupported_name, _)| *unsupported_name == name);
+
+            let Some((_, major, features, _)) = served else {
+                let reason = if declared_unsupported.is_some() {
+                    "declared_unsupported"
+                } else {
+                    "unknown_profile"
+                };
+                let item = Value::Object(vec![
+                    ("profile".into(), Value::String(name.clone())),
+                    ("reason".into(), Value::String(reason.into())),
+                ]);
+                if required {
+                    // unsupported_profile outranks the other refusal codes.
+                    unsatisfied.push((item, 0));
+                } else {
+                    unselected.push(item);
+                }
+                continue;
+            };
+
+            if !majors.contains(major) {
+                let item = Value::Object(vec![
+                    ("profile".into(), Value::String(name.clone())),
+                    ("reason".into(), Value::String("no_common_major".into())),
+                ]);
+                if required {
+                    unsatisfied.push((item, 1));
+                } else {
+                    unselected.push(item);
+                }
+                continue;
+            }
+
+            let wanted_required: Vec<String> = match entry.get("required_features") {
+                Some(Value::Array(items)) => items
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .map(str::to_string)
+                    .collect(),
+                _ => Vec::new(),
+            };
+            let wanted_optional: Vec<String> = match entry.get("optional_features") {
+                Some(Value::Array(items)) => items
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .map(str::to_string)
+                    .collect(),
+                _ => Vec::new(),
+            };
+
+            let mut missing_required = false;
+            for feature in &wanted_required {
+                if !features.contains(&feature.as_str()) {
+                    let item = Value::Object(vec![
+                        ("profile".into(), Value::String(name.clone())),
+                        ("feature".into(), Value::String(feature.clone())),
+                        ("reason".into(), Value::String("unknown_feature".into())),
+                    ]);
+                    if required {
+                        unsatisfied.push((item, 2));
+                    } else {
+                        unselected.push(item);
+                    }
+                    missing_required = true;
+                }
+            }
+            if missing_required {
+                // An optional profile whose required feature is missing is not
+                // selected; a required one has already refused the negotiation.
+                continue;
+            }
+
+            let mut chosen: Vec<String> = Vec::new();
+            for feature in &wanted_optional {
+                if features.contains(&feature.as_str()) {
+                    chosen.push(feature.clone());
+                } else {
+                    unselected.push(Value::Object(vec![
+                        ("profile".into(), Value::String(name.clone())),
+                        ("feature".into(), Value::String(feature.clone())),
+                        ("reason".into(), Value::String("unknown_feature".into())),
+                    ]));
+                }
+            }
+            chosen.extend(wanted_required.iter().cloned());
+            selected.push((name, *major, chosen));
+        }
+
+        if !unsatisfied.is_empty() {
+            let rank = unsatisfied.iter().map(|(_, rank)| *rank).min().unwrap_or(0);
+            let items: Vec<Value> = unsatisfied.into_iter().map(|(item, _)| item).collect();
+            let unsatisfied = Value::Array(items);
+            return Err(match rank {
+                0 => ProtocolError::unsupported_profile(unsatisfied),
+                1 => ProtocolError::unsupported_version(unsatisfied),
+                _ => ProtocolError::unsupported_required_feature_negotiation(unsatisfied),
+            });
+        }
+
+        // `core` is implicit and cannot be deselected.
+        if !selected.iter().any(|(name, _, _)| name == "core") {
+            selected.insert(0, ("core".into(), 1, Vec::new()));
+        }
+
+        // Profile-triggered dependencies, applied after selection.
+        let names: Vec<String> = selected.iter().map(|(name, _, _)| name.clone()).collect();
+        for (name, _, _, depends) in SERVED {
+            if !names.contains(&(*name).to_string()) {
+                continue;
+            }
+            for dependency in *depends {
+                if !names
+                    .iter()
+                    .any(|selected_name| selected_name == dependency)
+                {
+                    return Err(ProtocolError::unsupported_profile(Value::Array(vec![
+                        Value::Object(vec![
+                            ("profile".into(), Value::String((*name).into())),
+                            (
+                                "reason".into(),
+                                Value::String("dependency_not_selected".into()),
+                            ),
+                        ]),
+                    ])));
+                }
+            }
+        }
+
+        let result = Value::Object(vec![
+            (
+                "selected".into(),
+                Value::Array(
+                    selected
+                        .iter()
+                        .map(|(name, major, features)| {
+                            Value::Object(vec![
+                                ("name".into(), Value::String(name.clone())),
+                                ("major".into(), Value::Int(*major)),
+                                (
+                                    "features".into(),
+                                    Value::Array(
+                                        features.iter().map(|f| Value::String(f.clone())).collect(),
+                                    ),
+                                ),
+                            ])
+                        })
+                        .collect(),
+                ),
+            ),
+            ("unselected".into(), Value::Array(unselected)),
+            ("limits".into(), self.config.limits.to_value()),
+            ("dedupe_window".into(), self.dedupe_window()),
+        ]);
+        self.negotiated = Some(selected);
+        Ok(result)
+    }
+
+    // ---- dispatch ---------------------------------------------------------
+
+    /// Handle one request. `method` is the transport method, which the envelope
+    /// must agree with.
+    pub fn handle(&mut self, method: &str, params: &Value) -> Result<Value, ProtocolError> {
+        // Step 1: operation known, session negotiated, profile selected. These
+        // are decided from the transport method, before the envelope is read.
+        if !self.known_operation(method) {
+            return Err(ProtocolError::method_not_found(method));
+        }
+        let pre_negotiation = PRE_NEGOTIATION.contains(&method);
+        if self.negotiated.is_none() && !pre_negotiation {
+            return Err(ProtocolError::negotiation_required());
+        }
+        if !pre_negotiation {
+            let profile = Self::profile_of(method);
+            if self.selected_major(profile).is_none() {
+                return Err(ProtocolError::profile_not_negotiated(profile));
+            }
+        }
+
+        // Step 2: limits, then the method/operation agreement, then shape.
+        envelope::check_limits(params, &self.config.limits)?;
+
+        match method {
+            "core.describe" => {
+                let query = envelope::parse_query(params)?;
+                self.check_method_matches(method, &query.operation)?;
+                self.check_requires(&query.requires)?;
+                Ok(self.describe())
+            }
+            "core.feature_dependencies" => {
+                let query = envelope::parse_query(params)?;
+                self.check_method_matches(method, &query.operation)?;
+                self.check_requires(&query.requires)?;
+                Ok(self.feature_dependencies())
+            }
+            "core.negotiate" => {
+                let query = envelope::parse_query(params)?;
+                self.check_method_matches(method, &query.operation)?;
+                // `already_negotiated` is decided after steps 1 to 3.
+                self.check_requires(&query.requires)?;
+                self.negotiate(&query.payload)
+            }
+            "core-test.subject.applied_count" => {
+                let query = envelope::parse_query(params)?;
+                self.check_method_matches(method, &query.operation)?;
+                self.check_requires(&query.requires)?;
+                self.applied_count(&query)
+            }
+            "core-test.subject.get" => {
+                let query = envelope::parse_query(params)?;
+                self.check_method_matches(method, &query.operation)?;
+                self.check_requires(&query.requires)?;
+                self.subject_get(&query)
+            }
+            "core-test.subject.put" => {
+                let command = envelope::parse_command(params)?;
+                self.check_method_matches(method, &command.operation)?;
+                self.check_requires(&command.requires)?;
+                self.subject_put(params, command)
+            }
+            "core-test.authority.claim" => {
+                let command = envelope::parse_command(params)?;
+                self.check_method_matches(method, &command.operation)?;
+                self.check_requires(&command.requires)?;
+                self.authority_claim(params, command)
+            }
+            _ => Err(ProtocolError::method_not_found(method)),
+        }
+    }
+
+    fn check_method_matches(&self, method: &str, operation: &str) -> Result<(), ProtocolError> {
+        if method == operation {
+            Ok(())
+        } else {
+            Err(ProtocolError::invalid_envelope(
+                "/operation",
+                "operation does not equal the transport method",
+            ))
+        }
+    }
+
+    /// Step 3: every `requires` entry must be negotiated and understood.
+    fn check_requires(&self, requires: &[String]) -> Result<(), ProtocolError> {
+        let mut unknown = Vec::new();
+        for entry in requires {
+            let understood = if entry.contains('/') {
+                // An extension key. This build understands none, so naming one
+                // in `requires` is a refusal rather than a silent acceptance.
+                false
+            } else {
+                self.negotiated.as_ref().is_some_and(|selected| {
+                    selected
+                        .iter()
+                        .any(|(_, _, features)| features.iter().any(|f| f == entry))
+                })
+            };
+            if !understood {
+                unknown.push(Value::String(entry.clone()));
+            }
+        }
+        if unknown.is_empty() {
+            Ok(())
+        } else {
+            Err(ProtocolError::unsupported_required_feature_message(
+                Value::Array(unknown),
+            ))
+        }
+    }
+
+    // ---- core-test --------------------------------------------------------
+
+    fn applied_count(&self, query: &Query) -> Result<Value, ProtocolError> {
+        let subject = query
+            .payload
+            .get("subject")
+            .ok_or_else(|| ProtocolError::invalid_envelope("/payload/subject", "absent"))?;
+        let key = SubjectKey {
+            kind: subject
+                .get("kind")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .into(),
+            id: subject
+                .get("id")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .into(),
+        };
+        if key.kind != "core-test.subject" {
+            return Err(ProtocolError::invalid_envelope(
+                "/payload/subject/kind",
+                "not core-test.subject",
+            ));
+        }
+        Ok(Value::Object(vec![
+            ("subject".into(), subject.clone()),
+            (
+                "applied_count".into(),
+                Value::Int(self.store.applied_count(&key)),
+            ),
+        ]))
+    }
+
+    fn subject_get(&self, query: &Query) -> Result<Value, ProtocolError> {
+        let key = self.subject_key(&query.payload)?;
+        // The result requires a revision of at least 1, so a subject that does
+        // not exist is absent rather than a zero-revision reading.
+        match self.store.subject(&key) {
+            None => Err(ProtocolError::not_found()),
+            Some(state) => Ok(Value::Object(vec![
+                (
+                    "subject".into(),
+                    query.payload.get("subject").expect("checked").clone(),
+                ),
+                ("revision".into(), Value::Int(state.revision)),
+                ("value".into(), Value::String(state.value.clone())),
+            ])),
+        }
+    }
+
+    fn subject_key(&self, payload: &Value) -> Result<SubjectKey, ProtocolError> {
+        let subject = payload
+            .get("subject")
+            .ok_or_else(|| ProtocolError::invalid_envelope("/payload/subject", "absent"))?;
+        let key = SubjectKey {
+            kind: subject
+                .get("kind")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .into(),
+            id: subject
+                .get("id")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .into(),
+        };
+        if key.kind != "core-test.subject" {
+            return Err(ProtocolError::invalid_envelope(
+                "/payload/subject/kind",
+                "not core-test.subject",
+            ));
+        }
+        Ok(key)
+    }
+
+    /// Steps 4 to 7 of the command path, shared by every command so the order
+    /// cannot drift between operations. Returns the stored result when the
+    /// command was already bound.
+    fn admit_command(
+        &mut self,
+        params: &Value,
+        command: &Command,
+        scope: &str,
+    ) -> Result<Option<Value>, ProtocolError> {
+        // Step 4: digest algorithm, then the recomputed digest.
+        match cbr_encoding::parse_digest(&command.command_digest) {
+            Ok((cbr_encoding::Algorithm::Sha256, _)) => {}
+            // sha512 is available only when `core.digest-sha512` is negotiated,
+            // and this build offers no features.
+            Ok((cbr_encoding::Algorithm::Sha512, _)) => {
+                return Err(ProtocolError::unsupported_digest_algorithm(
+                    "sha512",
+                    vec!["sha256"],
+                ));
+            }
+            Err(cbr_encoding::DigestError::UnsupportedAlgorithm(algorithm)) => {
+                return Err(ProtocolError::unsupported_digest_algorithm(
+                    &algorithm,
+                    vec!["sha256"],
+                ));
+            }
+            Err(_) => {
+                return Err(ProtocolError::invalid_envelope(
+                    "/command_digest",
+                    "malformed digest",
+                ));
+            }
+        }
+        let expected = cbr_encoding::command_digest(params).map_err(|error| match error {
+            cbr_encoding::IntentError::RequiredExtensionMissing(key) => {
+                ProtocolError::invalid_envelope("/requires", &format!("extension {key} absent"))
+            }
+            cbr_encoding::IntentError::DuplicateRequires(_) => {
+                ProtocolError::invalid_envelope("/requires", "duplicate entry")
+            }
+            _ => ProtocolError::invalid_envelope("", "envelope cannot form a command intent"),
+        })?;
+        if expected != command.command_digest {
+            return Err(ProtocolError::digest_mismatch(&expected));
+        }
+
+        // Step 5: deduplication, before authorization, so a replay of a
+        // caller's own bound command still returns its stored result.
+        let principal = self.config.principal.clone();
+        if command.dedupe_generation > self.dedupe_current {
+            return Err(ProtocolError::invalid_envelope(
+                "/dedupe_generation",
+                "generation was never issued",
+            ));
+        }
+        if let Some(record) = self.store.command(&principal, &command.command_id) {
+            if record.digest == command.command_digest {
+                return Ok(Some(replayed(record.result.clone())));
+            }
+            return Err(ProtocolError::idempotency_conflict(&command.command_id));
+        }
+        if command.dedupe_generation < self.dedupe_oldest() {
+            return Err(ProtocolError::dedupe_history_unavailable(
+                self.dedupe_oldest(),
+            ));
+        }
+
+        // Step 6: authorization. This build has no grants, so only an authority
+        // principal may act.
+        if !self.config.is_authority(&principal) {
+            return Err(ProtocolError::permission_denied("grant_required"));
+        }
+
+        // Step 7: capabilities, then the authority epoch, then preconditions.
+        let current_epoch = self.store.epoch(scope);
+        let epoch = command.authority_epoch.unwrap_or(0);
+        if epoch < current_epoch {
+            return Err(ProtocolError::new_stale_epoch(current_epoch));
+        }
+        if epoch > current_epoch {
+            return Err(ProtocolError::new_unknown_epoch());
+        }
+
+        let mut failed = Vec::new();
+        for (subject, expected_revision) in &command.preconditions {
+            let key = SubjectKey {
+                kind: subject
+                    .get("kind")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .into(),
+                id: subject
+                    .get("id")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .into(),
+            };
+            let current = self.store.revision(&key);
+            if current != *expected_revision {
+                failed.push(Value::Object(vec![
+                    ("subject".into(), subject.clone()),
+                    ("expected".into(), Value::Int(*expected_revision)),
+                    ("current".into(), Value::Int(current)),
+                ]));
+            }
+        }
+        if !failed.is_empty() {
+            return Err(ProtocolError::precondition_failed(Value::Array(failed)));
+        }
+        Ok(None)
+    }
+
+    fn acknowledgment(&mut self, command: &Command, revision: i64) -> Value {
+        self.operation_counter += 1;
+        Value::Object(vec![
+            (
+                "command_id".into(),
+                Value::String(command.command_id.clone()),
+            ),
+            (
+                "command_digest".into(),
+                Value::String(command.command_digest.clone()),
+            ),
+            (
+                "operation_ref".into(),
+                Value::String(format!("op-{}", self.operation_counter)),
+            ),
+            ("subject".into(), command.subject.clone()),
+            ("revision".into(), Value::Int(revision)),
+            ("effect_refs".into(), Value::Array(vec![])),
+        ])
+    }
+
+    /// Claim the next authority epoch for the `core-test` scope.
+    ///
+    /// Implemented from the profile's schemas; **no fixture in the `stream`
+    /// suite exercises it**, so it is unverified until the Core suite runs.
+    fn authority_claim(
+        &mut self,
+        params: &Value,
+        command: Command,
+    ) -> Result<Value, ProtocolError> {
+        if let Some(stored) = self.admit_command(params, &command, "core-test")? {
+            return Ok(stored);
+        }
+        let epoch = self.store.claim_epoch("core-test");
+        let result = Value::Object(vec![
+            (
+                "acknowledgment".into(),
+                self.acknowledgment(&command, epoch),
+            ),
+            (
+                "outcome".into(),
+                Value::Object(vec![("epoch".into(), Value::Int(epoch))]),
+            ),
+            ("replay".into(), Value::Bool(false)),
+        ]);
+        let principal = self.config.principal.clone();
+        self.store.bind_command(
+            &principal,
+            &command.command_id,
+            CommandRecord {
+                digest: command.command_digest,
+                result: result.clone(),
+            },
+        );
+        Ok(result)
+    }
+
+    fn subject_put(&mut self, params: &Value, command: Command) -> Result<Value, ProtocolError> {
+        if let Some(stored) = self.admit_command(params, &command, "core-test")? {
+            return Ok(stored);
+        }
+
+        // Step 8: commit the command record, the state change and the result in
+        // one transaction.
+        let value = command
+            .payload
+            .get("value")
+            .and_then(Value::as_str)
+            .ok_or_else(|| ProtocolError::invalid_envelope("/payload/value", "not a string"))?
+            .to_string();
+        let key = SubjectKey {
+            kind: command
+                .subject
+                .get("kind")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .into(),
+            id: command
+                .subject
+                .get("id")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .into(),
+        };
+        let revision = self.store.put(key, value.clone());
+        let result = Value::Object(vec![
+            (
+                "acknowledgment".into(),
+                self.acknowledgment(&command, revision),
+            ),
+            (
+                "outcome".into(),
+                Value::Object(vec![("value".into(), Value::String(value))]),
+            ),
+            ("replay".into(), Value::Bool(false)),
+        ]);
+        let principal = self.config.principal.clone();
+        self.store.bind_command(
+            &principal,
+            &command.command_id,
+            CommandRecord {
+                digest: command.command_digest,
+                result: result.clone(),
+            },
+        );
+        Ok(result)
+    }
+}
+
+/// A replay returns the stored acknowledgment and outcome unchanged, with
+/// `replay` set to true.
+fn replayed(mut result: Value) -> Value {
+    if let Value::Object(members) = &mut result {
+        for (name, value) in members.iter_mut() {
+            if name == "replay" {
+                *value = Value::Bool(true);
+            }
+        }
+    }
+    result
+}
+
+impl ProtocolError {
+    fn new_stale_epoch(current: i64) -> Self {
+        Self {
+            code: "stale_authority_epoch",
+            retry: crate::errors::Retry::AfterReconcile,
+            details: vec![("current_epoch".into(), Value::Int(current))],
+        }
+    }
+
+    fn new_unknown_epoch() -> Self {
+        Self {
+            code: "unknown_authority_epoch",
+            retry: crate::errors::Retry::No,
+            details: Vec::new(),
+        }
+    }
+}

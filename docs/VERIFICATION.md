@@ -41,6 +41,15 @@ cargo test --workspace --locked
 git diff --check
 ```
 
+Conformance additionally needs the runner, which is **not** built from this workspace. The vendored runner's manifest inherits `license.workspace` and `edition.workspace` from the Protocol workspace, and the vendored subset carries no `Cargo.lock`, so building it here would need a licence CBR has not selected and could not use `--locked`. It is built from a fresh, checksum-verified extraction of the release archive instead, with the release's own lockfile:
+
+```sh
+python3 scripts/build_runner.py
+python3 scripts/run_fixtures.py --filter stream. --out conformance/results/m1b
+```
+
+`build_runner.py` downloads the archive once and reuses it afterwards; `--archive PATH` uses a copy you already have and `--offline` refuses to download. It verifies the archive against the pinned SHA-256, verifies every extracted file against the archive's own `BUNDLE-SHA256SUMS`, checks the archive's recorded commit against the pin, and records the runner identity that `run_fixtures.py` stamps into every results manifest.
+
 | Command | What it establishes | What it does not |
 |---|---|---|
 | `check_docs.py` | Documentation structure: entrypoints, the `CLAUDE.md` import, local link targets, balanced fences, no private machine paths | Nothing about the product |
@@ -48,9 +57,13 @@ git diff --check
 | `cargo fmt --all -- --check` | Formatting only | — |
 | `cargo clippy … -D warnings` | Lints clean; warnings fail | Correctness |
 | `cargo build --workspace --locked` | The workspace builds from the committed `Cargo.lock` with no dependency resolution | Runtime behaviour |
-| `cargo test --workspace --locked` | Every pinned encoding vector — 12 canonical, 18 rejected, 1 command intent — plus the property tests, 19 in all. A rejected vector must be refused **for the reason the vector states**, so a parser that refused everything would fail. | Any profile conformance. No provider exists yet, so no fixture suite has been run against CBR. |
+| `cargo test --workspace --locked` | Every pinned encoding vector — 12 canonical, 18 rejected, 1 command intent — plus the property tests, 19 in all. A rejected vector must be refused **for the reason the vector states**, so a parser that refused everything would fail. | Any profile conformance |
+| `build_runner.py` | The runner was built from the published release archive, with its own lockfile, and its identity is recorded | Anything about CBR |
+| `run_fixtures.py --filter stream.` | **The 24 `stream` fixtures pass against CBR's provider**, with no coverage limits. Only `pass` counts; `unsupported` and `skipped` are reported as coverage limits and never as passes. | Every other suite. `core`, `socket` and `evidence` have **not** been run against CBR. |
 
-**Not yet present, and not claimed:** no CBR provider, no participant descriptor, no conformance run, no store, no packet, no model call. The Core, stream, socket and Evidence fixture suites are M1's acceptance and are run in the pull requests that introduce the code they exercise, not before.
+**What is and is not established.** `stream` is the only suite run against CBR. The `core` (135), `socket` (13) and `evidence` (16) suites have not been run and no claim is made about them. The store is **in memory and not durable**; nothing here shows CBR survives a restart with state intact. No packet, model call, Knowledge or Context code exists.
+
+Committed results live under `conformance/results/`. Each manifest carries the runner's identity — the release archive SHA-256, the source commit and the release `Cargo.lock` SHA-256 — so a fixture outcome names the exact runner that produced it, plus a correction for the runner's own `suite.protocol_commit`, which records the Git checkout enclosing `--repo` and therefore names CBR rather than Protocol.
 
 When reporting a result, give the command, its exit status, the environment and the tested revision. Preserve the producing command's exit status when shortening output: piping a failing build into a successful `tail` or `grep` reports success, and a shortened log is not evidence that the command passed.
 

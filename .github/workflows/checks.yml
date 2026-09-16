@@ -52,3 +52,35 @@ jobs:
 
       - name: Whitespace
         run: git diff --check
+
+      # Conformance needs the runner, built from the published release archive
+      # rather than from this workspace. Results go to a scratch directory:
+      # the committed manifest under conformance/results/ is recorded evidence
+      # from a named run and must not be rewritten by CI.
+      - name: Build the conformance runner
+        run: python3 scripts/build_runner.py
+
+      - name: Stream fixtures
+        run: python3 scripts/run_fixtures.py --filter stream. --out target/ci-results/stream
+
+      - name: Every stream fixture passed, with no coverage limits
+        run: |
+          python3 - <<'CHECK'
+          import json, sys
+          m = json.load(open("target/ci-results/stream/manifest.json"))
+          outcomes = {}
+          for entry in m["results"]:
+              outcomes[entry["outcome"]] = outcomes.get(entry["outcome"], 0) + 1
+          limits = m.get("coverage_limits", [])
+          print("outcomes:", outcomes, "coverage_limits:", limits)
+          problems = []
+          if outcomes.get("pass", 0) != 24 or sum(outcomes.values()) != 24:
+              problems.append(f"expected 24 of 24 passing, got {outcomes}")
+          if limits:
+              problems.append(f"coverage limits are not passes: {limits}")
+          if m.get("cbr_runner_exit_status") != 0:
+              problems.append(f"runner exit status {m.get('cbr_runner_exit_status')}")
+          for problem in problems:
+              print(problem, file=sys.stderr)
+          sys.exit(1 if problems else 0)
+          CHECK
