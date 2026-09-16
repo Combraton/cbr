@@ -21,7 +21,12 @@ const SERVED: &[(&str, i64, &[&str], &[&str])] = &[
     (
         "core",
         1,
-        &["core.events", "core.grants", "core.capabilities"],
+        &[
+            "core.events",
+            "core.grants",
+            "core.capabilities",
+            "core.events.backpressure",
+        ],
         &[],
     ),
     ("core-test", 1, &[], &["core"]),
@@ -47,13 +52,6 @@ const UNSUPPORTED: &[(&str, &str)] = &[
     ("coordination", "not_in_release"),
     ("remote-trust", "not_in_release"),
 ];
-
-/// The per-connection bound on output produced but not yet written. The
-/// conformance launch configuration documents 8 MiB as the default for
-/// `max_pending_notification_bytes`, and `core.events.backpressure` is not
-/// negotiated here, so this bound is CBR's own discipline rather than a
-/// declared guarantee.
-const MAX_PENDING_NOTIFICATION_BYTES: usize = 8 * 1024 * 1024;
 
 /// Operations answerable before negotiation (CORE section 3).
 const PRE_NEGOTIATION: [&str; 4] = [
@@ -654,7 +652,25 @@ impl Provider {
                 ),
             ),
             ("unselected".into(), Value::Array(unselected)),
-            ("limits".into(), self.config.limits.to_value()),
+            ("limits".into(), {
+                // CORE section 16.5: negotiating backpressure adds its two
+                // bounds to `limits`; without the feature they are absent.
+                let mut limits = self.config.limits.to_value();
+                let backpressure = selected.iter().any(|(name, _, features)| {
+                    name == "core" && features.iter().any(|f| f == "core.events.backpressure")
+                });
+                if backpressure && let Value::Object(members) = &mut limits {
+                    members.push((
+                        "max_pending_notification_bytes".into(),
+                        Value::Int(self.config.events_max_pending_notification_bytes),
+                    ));
+                    members.push((
+                        "backpressure_notice_ms".into(),
+                        Value::Int(self.config.events_backpressure_notice_ms),
+                    ));
+                }
+                limits
+            }),
             ("dedupe_window".into(), self.dedupe_window()),
         ]);
         self.negotiated = Some(selected);
@@ -1403,13 +1419,39 @@ impl Provider {
     /// items stay undelivered and are produced on a later pass. They are never
     /// skipped, because a semantic event that vanishes is indistinguishable
     /// from one that never happened.
-    pub fn drain_subscriptions(&mut self, pending: usize) -> Vec<Value> {
-        if pending >= MAX_PENDING_NOTIFICATION_BYTES {
-            return Vec::new();
-        }
+    /// The per-connection bound on output produced but not yet written.
+    pub fn pending_output_bound(&self) -> usize {
+        self.config.events_max_pending_notification_bytes.max(1) as usize
+    }
+
+    /// The room deadline for a stalled consumer, and the one budget all its
+    /// ending notices share.
+    pub fn backpressure_notice(&self) -> std::time::Duration {
+        std::time::Duration::from_millis(self.config.events_backpressure_notice_ms.max(0) as u64)
+    }
+
+    /// Whether this session negotiated `core.events.backpressure`. A session
+    /// that did not is bounded and closed the same way, but is never sent the
+    /// `consumer_too_slow` reason it did not agree to understand.
+    pub fn backpressure_negotiated(&self) -> bool {
+        self.selected_feature("core.events.backpressure")
+    }
+
+    /// Produce the notifications owed to this connection's subscriptions,
+    /// without producing more than `room` bytes of item-carrying frames.
+    ///
+    /// `whole` lets the first notification exceed `room` when nothing else is
+    /// pending, so an item that fits the caller's frame limit is never withheld
+    /// forever by a bound smaller than itself. Returns the notifications and
+    /// whether one was withheld for lack of room. A withheld notification is
+    /// not produced and its subscription's cursor does not move, so its items
+    /// are produced again later: **withheld, never skipped** (CORE 16.5).
+    pub fn drain_subscriptions(&mut self, room: usize, whole: bool) -> (Vec<Value>, bool) {
         let mut frames = Vec::new();
+        let mut produced = 0usize;
+        let mut withheld = false;
         let budget = self.receive_budget();
-        for index in 0..self.subscriptions.len() {
+        'subscriptions: for index in 0..self.subscriptions.len() {
             loop {
                 let subscription = &self.subscriptions[index];
                 if subscription.ended {
@@ -1452,15 +1494,37 @@ impl Provider {
                 if read.items.is_empty() {
                     break;
                 }
-                self.subscriptions[index].cursor = read.next_cursor;
                 let Ok(next_cursor) = self.encode_cursor(read.next_cursor) else {
                     break;
                 };
-                frames.push(notification(&id, read.items, &next_cursor, None));
+                let frame = notification(&id, read.items, &next_cursor, None);
+                let size = crate::frames::encode(&frame).len();
+                if produced + size > room && !(produced == 0 && whole) {
+                    withheld = true;
+                    break 'subscriptions;
+                }
+                produced += size;
+                self.subscriptions[index].cursor = read.next_cursor;
+                frames.push(frame);
             }
         }
         self.subscriptions.retain(|s| !s.ended);
-        frames
+        (frames, withheld)
+    }
+
+    /// End every subscription on the connection, returning one ending notice
+    /// each, at the position delivery stopped. Used when the connection closes
+    /// for backpressure: every subscription on it ends whether or not a notice
+    /// is owed or written.
+    pub fn end_subscriptions(&mut self, reason: &str) -> Vec<Value> {
+        let subscriptions = std::mem::take(&mut self.subscriptions);
+        subscriptions
+            .iter()
+            .filter(|subscription| !subscription.ended)
+            .map(|subscription| {
+                self.ending_notification(&subscription.id, subscription.cursor, reason)
+            })
+            .collect()
     }
 
     fn ending_notification(&self, id: &str, cursor: crate::store::Position, reason: &str) -> Value {
@@ -2052,13 +2116,13 @@ mod tests {
         assert_eq!(provider.subscriptions.len(), 1);
 
         // Nothing to deliver yet, and the subscription survives.
-        assert!(provider.drain_subscriptions(0).is_empty());
+        assert!(provider.drain_subscriptions(usize::MAX, true).0.is_empty());
         assert_eq!(provider.subscriptions.len(), 1);
 
         // The principal stops being an authority. The next delivery ends the
         // subscription rather than continuing to serve it.
         provider.config.authority_principals = vec!["someone-else".into()];
-        let frames = provider.drain_subscriptions(0);
+        let (frames, _) = provider.drain_subscriptions(usize::MAX, true);
         assert_eq!(frames.len(), 1, "one ending notification: {frames:?}");
         let params = frames[0].get("params").expect("params");
         assert_eq!(

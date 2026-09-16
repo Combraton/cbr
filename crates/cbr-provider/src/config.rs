@@ -110,6 +110,13 @@ pub struct Config {
     pub events_unvouched_last: i64,
     /// Keep only this many events, discarding earlier ones with a watermark.
     pub events_retain_last: Option<i64>,
+    /// The per-connection bound on output produced but not yet written
+    /// (CORE section 16.5). The conformance launch configuration documents
+    /// 8 MiB as the default.
+    pub events_max_pending_notification_bytes: i64,
+    /// How long a stalled consumer has to drain everything pending, and the
+    /// one budget every ending notice on a connection shares. Default 1000.
+    pub events_backpressure_notice_ms: i64,
     /// Where protocol-visible time comes from. Always the system clock in
     /// production, because `clock` is a test control and is refused there.
     pub clock: crate::clock::Source,
@@ -130,6 +137,8 @@ impl Default for Config {
             events_new_epoch_on_start: false,
             events_unvouched_last: 0,
             events_retain_last: None,
+            events_max_pending_notification_bytes: 8 * 1024 * 1024,
+            events_backpressure_notice_ms: 1000,
             clock: crate::clock::Source::System,
             capabilities: Vec::new(),
         }
@@ -238,6 +247,12 @@ impl Config {
             }
             if let Some(v) = int(events.get("retain_last")) {
                 config.events_retain_last = Some(v);
+            }
+            if let Some(v) = int(events.get("max_pending_notification_bytes")) {
+                config.events_max_pending_notification_bytes = v.max(1);
+            }
+            if let Some(v) = int(events.get("backpressure_notice_ms")) {
+                config.events_backpressure_notice_ms = v.max(0);
             }
         }
         if let Some(Value::Object(members)) = value.get("capabilities") {

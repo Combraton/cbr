@@ -502,3 +502,81 @@ fn a_capability_change_and_its_event_survive_sigkill_at_their_positions() {
     );
     provider.stop();
 }
+
+/// Over the real stdio binding, a consumer that stops reading standard output
+/// ends the process — which is what closing the connection means there — and
+/// the ending is recorded on standard error with the bound it was held to.
+///
+/// The session tests measure the timing precisely against a writer they
+/// control. This one checks what they cannot: that the binary's wiring really
+/// exits rather than leaving a writer thread blocked on a full pipe forever.
+#[test]
+fn a_stdio_consumer_that_stops_reading_ends_the_process_and_records_the_bound() {
+    let directory = tempfile::tempdir().expect("temp dir");
+    let config = directory.path().join("bounded.json");
+    std::fs::write(
+        &config,
+        r#"{"format":"combraton-conformance-config/1","principal":"owner","authority_principals":["owner"],"events":{"max_pending_notification_bytes":4096,"backpressure_notice_ms":300}}"#,
+    )
+    .expect("writes config");
+
+    let mut child = Command::new(binary())
+        .arg("--data-dir")
+        .arg(directory.path())
+        .arg("--config")
+        .arg(&config)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("provider starts");
+    // Held open and never read: a stalled consumer, not a vanished one.
+    let _stdout = child.stdout.take().expect("stdout");
+    let mut stderr = child.stderr.take().expect("stderr");
+
+    // A pipelined client: far more output than the pipe buffer and the bound
+    // together, all requested without waiting for a response.
+    let mut input = format!(
+        "{}\n",
+        r#"{"jsonrpc":"2.0","id":0,"method":"core.negotiate","params":{"operation":"core.negotiate","message_id":"m-n","payload":{"caller":{"name":"t","version":"1"},"receive_limits":{"max_frame_bytes":1048576},"profiles":[{"name":"core","majors":[1],"required":true,"required_features":["core.events","core.events.backpressure"],"optional_features":[]},{"name":"core-test","majors":[1],"required":true,"required_features":[],"optional_features":[]}]}}}"#
+    );
+    input.push_str(r#"{"jsonrpc":"2.0","id":"s","method":"core.events.subscribe","params":{"operation":"core.events.subscribe","message_id":"m-s","payload":{"from":"now"}}}"#);
+    input.push('\n');
+    for n in 1..=400 {
+        input.push_str(&command(
+            n,
+            &format!(
+                r#"{{"operation":"core-test.subject.put","message_id":"m-{n}","command_id":"cmd-{n}","dedupe_generation":1,"subject":{{"kind":"core-test.subject","id":"s-{n}"}},"preconditions":[{{"subject":{{"kind":"core-test.subject","id":"s-{n}"}},"revision":0}}],"authority_epoch":0,"requires":[],"payload":{{"value":"{n}"}}}}"#
+            ),
+        ));
+        input.push('\n');
+    }
+    let mut stdin = child.stdin.take().expect("stdin");
+    // The provider stops reading input while it waits for room, so this may
+    // block, and it ends with a broken pipe once the provider exits.
+    std::thread::spawn(move || {
+        let _ = stdin.write_all(input.as_bytes());
+    });
+
+    let started = std::time::Instant::now();
+    let status = loop {
+        if let Some(status) = child.try_wait().expect("polls") {
+            break status;
+        }
+        if started.elapsed() > std::time::Duration::from_secs(20) {
+            child.kill().expect("kills");
+            panic!("the provider never closed a consumer that stopped reading");
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    };
+    let mut diagnostics = String::new();
+    std::io::Read::read_to_string(&mut stderr, &mut diagnostics).expect("reads stderr");
+    assert!(
+        status.success(),
+        "a closure is not a crash: {status}; {diagnostics}"
+    );
+    assert!(
+        diagnostics.contains("consumer too slow") && diagnostics.contains("a bound of 4096"),
+        "the ending is recorded with the bound it was held to: {diagnostics}"
+    );
+}
