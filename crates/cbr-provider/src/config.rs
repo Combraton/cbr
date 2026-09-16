@@ -103,6 +103,13 @@ pub struct Config {
     /// make it forget a command record without touching the protocol.
     pub dedupe_advance_on_start: i64,
     pub dedupe_retain_generations: i64,
+    /// Start a new stream epoch on this launch, as a provider does when it can
+    /// no longer vouch for continuity.
+    pub events_new_epoch_on_start: bool,
+    /// How many trailing events of the closing epoch are no longer vouched for.
+    pub events_unvouched_last: i64,
+    /// Keep only this many events, discarding earlier ones with a watermark.
+    pub events_retain_last: Option<i64>,
 }
 
 impl Default for Config {
@@ -115,6 +122,9 @@ impl Default for Config {
             limits: Limits::default(),
             dedupe_advance_on_start: 0,
             dedupe_retain_generations: 1,
+            events_new_epoch_on_start: false,
+            events_unvouched_last: 0,
+            events_retain_last: None,
         }
     }
 }
@@ -202,6 +212,16 @@ impl Config {
             }
             if let Some(v) = int(limits.get("max_depth")) {
                 current.max_depth = v;
+            }
+        }
+        if let Some(events) = value.get("events") {
+            config.events_new_epoch_on_start =
+                matches!(events.get("new_epoch_on_start"), Some(Value::Bool(true)));
+            if let Some(v) = int(events.get("unvouched_last")) {
+                config.events_unvouched_last = v;
+            }
+            if let Some(v) = int(events.get("retain_last")) {
+                config.events_retain_last = Some(v);
             }
         }
         if let Some(dedupe) = value.get("dedupe") {

@@ -354,6 +354,8 @@ pub struct Command {
     pub requires: Vec<String>,
     pub command_digest: String,
     pub payload: Value,
+    /// The envelope's `caused_by`, copied onto the events this command appends.
+    pub caused_by: Vec<String>,
 }
 
 /// Validate a command envelope's shape and semantics (CORE section 10 step 2).
@@ -492,6 +494,20 @@ pub fn parse_command(envelope: &Value) -> Result<Command, ProtocolError> {
         requires,
         command_digest,
         payload,
+        caused_by: match envelope.get("caused_by") {
+            None => Vec::new(),
+            Some(Value::Array(items)) => items
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::to_string)
+                .collect(),
+            Some(_) => {
+                return Err(ProtocolError::invalid_envelope(
+                    "/caused_by",
+                    "not an array",
+                ));
+            }
+        },
     })
 }
 

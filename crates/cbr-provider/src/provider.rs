@@ -16,8 +16,10 @@ use crate::store::{Store, SubjectKey};
 /// Profiles this build serves, with the majors and features it implements.
 /// A profile is listed here only when it is implemented: over-claiming would
 /// make negotiation succeed and then fail at the first operation.
-const SERVED: &[(&str, i64, &[&str], &[&str])] =
-    &[("core", 1, &[], &[]), ("core-test", 1, &[], &["core"])];
+const SERVED: &[(&str, i64, &[&str], &[&str])] = &[
+    ("core", 1, &["core.events"], &[]),
+    ("core-test", 1, &[], &["core"]),
+];
 
 /// Profiles this provider *declares* unsupported, which is a narrower thing
 /// than "does not serve".
@@ -65,7 +67,8 @@ pub struct Provider {
     negotiated: Option<Vec<(String, i64, Vec<String>)>>,
     dedupe_current: i64,
     dedupe_oldest: i64,
-    operation_counter: u64,
+    /// The largest frame this caller accepts, from its negotiation request.
+    caller_receive_limit: usize,
 }
 
 impl Provider {
@@ -76,6 +79,14 @@ impl Provider {
         data_dir: &std::path::Path,
     ) -> Result<Self, crate::store::StoreError> {
         let mut store = Store::open(data_dir)?;
+        // Epoch and retention changes belong to process start, before anything
+        // is read, so a consumer never sees the stream change under it mid-read.
+        if config.events_new_epoch_on_start {
+            store.start_new_epoch(config.events_unvouched_last)?;
+        }
+        if let Some(retain) = config.events_retain_last {
+            store.retain_last_events(retain)?;
+        }
         let (current, oldest) = store.start_generation(
             config.dedupe_advance_on_start,
             config.dedupe_retain_generations,
@@ -86,7 +97,7 @@ impl Provider {
             negotiated: None,
             dedupe_current: current,
             dedupe_oldest: oldest,
-            operation_counter: 0,
+            caller_receive_limit: crate::frames::PRE_NEGOTIATION_LIMIT,
         })
     }
 
@@ -133,6 +144,15 @@ impl Provider {
             .filter(move |(name, _, _, _)| conformance || *name != "core-test")
     }
 
+    /// Whether a feature was selected in this session.
+    fn selected_feature(&self, feature: &str) -> bool {
+        self.negotiated.as_ref().is_some_and(|selected| {
+            selected
+                .iter()
+                .any(|(_, _, features)| features.iter().any(|f| f == feature))
+        })
+    }
+
     fn selected_major(&self, profile: &str) -> Option<i64> {
         self.negotiated
             .as_ref()?
@@ -152,6 +172,7 @@ impl Provider {
                 // `method_not_found` for a known operation, hiding the
                 // method/operation mismatch that step 2 owns.
                 | "core.authenticate"
+                | "core.events.read"
                 | "core-test.subject.put"
                 | "core-test.subject.get"
                 | "core-test.subject.applied_count"
@@ -262,6 +283,12 @@ impl Provider {
     fn negotiate(&mut self, payload: &Value) -> Result<Value, ProtocolError> {
         if self.negotiated.is_some() {
             return Err(ProtocolError::already_negotiated());
+        }
+        if let Some(Value::Int(limit)) = payload
+            .get("receive_limits")
+            .and_then(|l| l.get("max_frame_bytes"))
+        {
+            self.caller_receive_limit = *limit as usize;
         }
         let requested = match payload.get("profiles") {
             Some(Value::Array(items)) if !items.is_empty() => items.clone(),
@@ -549,6 +576,12 @@ impl Provider {
                 self.check_requires(&query.requires)?;
                 self.applied_count(&query)
             }
+            "core.events.read" => {
+                let query = envelope::parse_query(params)?;
+                self.check_method_matches(method, &query.operation)?;
+                self.check_requires(&query.requires)?;
+                self.events_read(&query)
+            }
             "core-test.subject.get" => {
                 let query = envelope::parse_query(params)?;
                 self.check_method_matches(method, &query.operation)?;
@@ -642,6 +675,133 @@ impl Provider {
                 Value::Int(self.store.applied_count(&key)?),
             ),
         ]))
+    }
+
+    /// A cursor: opaque to callers, but it carries the stream it came from, so
+    /// a well-formed cursor minted by another store is refused rather than
+    /// silently read against this one.
+    fn encode_cursor(&self, position: crate::store::Position) -> Result<String, ProtocolError> {
+        let stream = self.store.stream_id()?;
+        Ok(format!(
+            "c1.{stream}.{}.{}",
+            position.epoch, position.sequence
+        ))
+    }
+
+    fn decode_cursor(&self, text: &str) -> Result<crate::store::Position, ProtocolError> {
+        let invalid = |reason: &str| ProtocolError::new_invalid_cursor(reason);
+        let rest = text
+            .strip_prefix("c1.")
+            .ok_or_else(|| invalid("malformed"))?;
+        let mut parts = rest.rsplitn(3, '.');
+        let sequence = parts.next().ok_or_else(|| invalid("malformed"))?;
+        let epoch = parts.next().ok_or_else(|| invalid("malformed"))?;
+        let stream = parts.next().ok_or_else(|| invalid("malformed"))?;
+        if stream != self.store.stream_id()? {
+            return Err(invalid("from another stream"));
+        }
+        let epoch: i64 = epoch.parse().map_err(|_| invalid("malformed"))?;
+        let sequence: i64 = sequence.parse().map_err(|_| invalid("malformed"))?;
+        let position = crate::store::Position { epoch, sequence };
+        // A cursor past the current epoch's head was never issued by this
+        // stream. A cursor into an earlier epoch is valid even past that
+        // epoch's end: that is exactly what epochs exist to report.
+        let current = self.store.current_epoch()?;
+        if position.epoch > current
+            || (position.epoch == current
+                && position.sequence > self.store.last_sequence(current)? + 1)
+        {
+            return Err(invalid("beyond the end of the stream"));
+        }
+        Ok(position)
+    }
+
+    fn events_read(&self, query: &Query) -> Result<Value, ProtocolError> {
+        if !self.selected_feature("core.events") {
+            return Err(ProtocolError::unsupported_required_feature_message(
+                Value::Array(vec![Value::String("core.events".into())]),
+            ));
+        }
+        let payload = &query.payload;
+        let limit = match payload.get("limit") {
+            Some(Value::Int(n)) if (1..=1000).contains(n) => *n,
+            _ => {
+                return Err(ProtocolError::invalid_envelope(
+                    "/payload/limit",
+                    "not an integer between 1 and 1000",
+                ));
+            }
+        };
+        // Exactly one of `cursor` or `from`.
+        let start = match (payload.get("cursor"), payload.get("from")) {
+            (Some(Value::String(cursor)), None) => self.decode_cursor(cursor)?,
+            (None, Some(Value::String(from))) => match from.as_str() {
+                "start" => self.store.stream_start()?,
+                "now" => {
+                    let epoch = self.store.current_epoch()?;
+                    crate::store::Position {
+                        epoch,
+                        sequence: self.store.last_sequence(epoch)? + 1,
+                    }
+                }
+                _ => {
+                    return Err(ProtocolError::invalid_envelope(
+                        "/payload/from",
+                        "unknown value",
+                    ));
+                }
+            },
+            _ => {
+                return Err(ProtocolError::invalid_envelope(
+                    "/payload",
+                    "exactly one of cursor or from is required",
+                ));
+            }
+        };
+        let kinds: Vec<String> = match payload.get("kinds") {
+            None => Vec::new(),
+            Some(Value::Array(items)) => items
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::to_string)
+                .collect(),
+            Some(_) => {
+                return Err(ProtocolError::invalid_envelope(
+                    "/payload/kinds",
+                    "not an array",
+                ));
+            }
+        };
+
+        let read = self
+            .store
+            .read_events(start, limit, &kinds, self.receive_budget())?;
+        if read.first_item_too_large {
+            // No honest partial answer exists: the caller cannot be handed a
+            // view that silently omits the item it asked for.
+            return Err(ProtocolError::new_internal_error());
+        }
+        Ok(Value::Object(vec![
+            (
+                "stream".into(),
+                Value::Object(vec![
+                    ("id".into(), Value::String(self.store.stream_id()?)),
+                    ("epoch".into(), Value::Int(read.stream_epoch)),
+                ]),
+            ),
+            ("items".into(), Value::Array(read.items)),
+            (
+                "next_cursor".into(),
+                Value::String(self.encode_cursor(read.next_cursor)?),
+            ),
+            ("filtered".into(), Value::Bool(read.filtered)),
+        ]))
+    }
+
+    /// How many bytes of items one response may carry, leaving room for the
+    /// envelope around them.
+    fn receive_budget(&self) -> usize {
+        self.caller_receive_limit.saturating_sub(4096)
     }
 
     fn subject_get(&self, query: &Query) -> Result<Value, ProtocolError> {
@@ -855,13 +1015,10 @@ impl Provider {
         // in one transaction.
         let principal = self.config.principal.clone();
         let key = Store::authority_key("core-test");
-        let counter = {
-            self.operation_counter += 1;
-            self.operation_counter
-        };
         let command_digest = command.command_digest.clone();
         let subject = command.subject.clone();
         let command_id = command.command_id.clone();
+        let caused_by = command.caused_by.clone();
         let result = self.store.commit_command(
             crate::store::Commit {
                 key: &key,
@@ -870,8 +1027,15 @@ impl Provider {
                 command_id: &command_id,
                 digest: &command_digest,
                 generation: command.dedupe_generation,
+                event: Some(crate::store::NewEvent {
+                    event_type: "core-test.authority.claimed".into(),
+                    payload: Box::new(|epoch| {
+                        Value::Object(vec![("epoch".into(), Value::Int(epoch))])
+                    }),
+                    caused_by: caused_by.clone(),
+                }),
             },
-            |epoch| {
+            |epoch, operation_ref| {
                 Value::Object(vec![
                     (
                         "acknowledgment".into(),
@@ -883,7 +1047,7 @@ impl Provider {
                             ),
                             (
                                 "operation_ref".into(),
-                                Value::String(format!("op-{counter}")),
+                                Value::String(operation_ref.to_string()),
                             ),
                             ("subject".into(), subject.clone()),
                             ("revision".into(), Value::Int(epoch)),
@@ -929,14 +1093,12 @@ impl Provider {
                 .into(),
         };
         let principal = self.config.principal.clone();
-        let counter = {
-            self.operation_counter += 1;
-            self.operation_counter
-        };
         let command_digest = command.command_digest.clone();
         let subject = command.subject.clone();
         let command_id = command.command_id.clone();
+        let caused_by = command.caused_by.clone();
         let stored_value = value.clone();
+        let event_value = value.clone();
         let result = self.store.commit_command(
             crate::store::Commit {
                 key: &key,
@@ -945,8 +1107,15 @@ impl Provider {
                 command_id: &command_id,
                 digest: &command_digest,
                 generation: command.dedupe_generation,
+                event: Some(crate::store::NewEvent {
+                    event_type: "core-test.subject.changed".into(),
+                    caused_by: caused_by.clone(),
+                    payload: Box::new(move |_| {
+                        Value::Object(vec![("value".into(), Value::String(event_value))])
+                    }),
+                }),
             },
-            |revision| {
+            |revision, operation_ref| {
                 Value::Object(vec![
                     (
                         "acknowledgment".into(),
@@ -958,7 +1127,7 @@ impl Provider {
                             ),
                             (
                                 "operation_ref".into(),
-                                Value::String(format!("op-{counter}")),
+                                Value::String(operation_ref.to_string()),
                             ),
                             ("subject".into(), subject.clone()),
                             ("revision".into(), Value::Int(revision)),
@@ -996,6 +1165,22 @@ impl ProtocolError {
             code: "stale_authority_epoch",
             retry: crate::errors::Retry::AfterReconcile,
             details: vec![("current_epoch".into(), Value::Int(current))],
+        }
+    }
+
+    fn new_invalid_cursor(reason: &str) -> Self {
+        Self {
+            code: "invalid_cursor",
+            retry: crate::errors::Retry::No,
+            details: vec![("reason".into(), Value::String(reason.to_string()))],
+        }
+    }
+
+    fn new_internal_error() -> Self {
+        Self {
+            code: "internal_error",
+            retry: crate::errors::Retry::AfterReconcile,
+            details: Vec::new(),
         }
     }
 

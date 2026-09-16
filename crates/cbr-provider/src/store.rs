@@ -23,6 +23,40 @@ use std::path::{Path, PathBuf};
 use cbr_encoding::Value;
 use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params};
 
+/// The provider clock, as event metadata. Never an ordering: positions order
+/// events, and `recorded_at` says nothing about causality (CORE section 16.1).
+fn now() -> String {
+    let seconds = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    // A plain UTC instant, computed without a date library: the civil-time
+    // arithmetic below is the whole of what is needed.
+    let days = seconds / 86_400;
+    let time = seconds % 86_400;
+    let (year, month, day) = civil_from_days(days as i64);
+    format!(
+        "{year:04}-{month:02}-{day:02}T{:02}:{:02}:{:02}Z",
+        time / 3600,
+        (time % 3600) / 60,
+        time % 60
+    )
+}
+
+/// Howard Hinnant's `civil_from_days`, for days since 1970-01-01.
+fn civil_from_days(days: i64) -> (i64, u32, u32) {
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = (doy - (153 * mp + 2) / 5 + 1) as u32;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 } as u32;
+    (if m <= 2 { y + 1 } else { y }, m, d)
+}
+
 /// A provider-owned object, named by kind and id.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct SubjectKey {
@@ -108,6 +142,107 @@ impl From<std::io::Error> for StoreError {
     }
 }
 
+/// One event a command appends. Committed in the same transaction as the
+/// state change that caused it (CORE section 16.3): if that transaction fails,
+/// neither exists.
+pub struct NewEvent {
+    pub event_type: String,
+    /// Built from the subject's new revision, which is only known inside the
+    /// transaction. The authority subject's event payload is its epoch, and
+    /// its epoch is its revision, so the two cannot disagree.
+    pub payload: Box<dyn FnOnce(i64) -> Value>,
+    /// Copied unchanged from the command envelope (CORE section 16.2).
+    pub caused_by: Vec<String>,
+}
+
+/// A position in the stream. Contiguous within an epoch, and meaningful only
+/// for this provider's stream.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Position {
+    pub epoch: i64,
+    pub sequence: i64,
+}
+
+impl Position {
+    pub fn to_value(self) -> Value {
+        Value::Object(vec![
+            ("epoch".into(), Value::Int(self.epoch)),
+            ("sequence".into(), Value::Int(self.sequence)),
+        ])
+    }
+}
+
+/// The outcome of one read.
+pub struct ReadEvents {
+    pub stream_epoch: i64,
+    pub items: Vec<Value>,
+    pub next_cursor: Position,
+    pub filtered: bool,
+    /// The first item alone exceeds the caller's receive limit, so there is no
+    /// honest partial answer: the caller is told rather than handed a view that
+    /// silently omits it.
+    pub first_item_too_large: bool,
+}
+
+fn epoch_change_item(from_epoch: i64, vouched_through: i64) -> Value {
+    Value::Object(vec![(
+        "epoch_change".into(),
+        Value::Object(vec![
+            ("from_epoch".into(), Value::Int(from_epoch)),
+            ("to_epoch".into(), Value::Int(from_epoch + 1)),
+            ("vouched_through".into(), Value::Int(vouched_through)),
+        ]),
+    )])
+}
+
+fn event_to_value(stream: &str, event: &EventRecord) -> Value {
+    let mut members = vec![
+        ("stream".into(), Value::String(stream.to_string())),
+        ("epoch".into(), Value::Int(event.position.epoch)),
+        ("sequence".into(), Value::Int(event.position.sequence)),
+        ("type".into(), Value::String(event.event_type.clone())),
+        (
+            "subject".into(),
+            Value::Object(vec![
+                ("kind".into(), Value::String(event.subject.kind.clone())),
+                ("id".into(), Value::String(event.subject.id.clone())),
+            ]),
+        ),
+        ("revision".into(), Value::Int(event.revision)),
+        ("origin".into(), Value::String(event.origin.clone())),
+    ];
+    // `operation_ref` and `command_id` are present exactly when the event was
+    // caused by an accepted command (CORE section 16.2).
+    if let Some(reference) = &event.operation_ref {
+        members.push(("operation_ref".into(), Value::String(reference.clone())));
+    }
+    if let Some(command_id) = &event.command_id {
+        members.push(("command_id".into(), Value::String(command_id.clone())));
+    }
+    members.push(("caused_by".into(), event.caused_by.clone()));
+    members.push((
+        "recorded_at".into(),
+        Value::String(event.recorded_at.clone()),
+    ));
+    members.push(("payload".into(), event.payload.clone()));
+    Value::Object(members)
+}
+
+/// A recorded event, as `core.events.read` returns it.
+#[derive(Debug, Clone)]
+pub struct EventRecord {
+    pub position: Position,
+    pub event_type: String,
+    pub subject: SubjectKey,
+    pub revision: i64,
+    pub origin: String,
+    pub operation_ref: Option<String>,
+    pub command_id: Option<String>,
+    pub caused_by: Value,
+    pub recorded_at: String,
+    pub payload: Value,
+}
+
 /// What one accepted command changes and binds.
 pub struct Commit<'a> {
     pub key: &'a SubjectKey,
@@ -116,6 +251,8 @@ pub struct Commit<'a> {
     pub command_id: &'a str,
     pub digest: &'a str,
     pub generation: i64,
+    /// The event this command appends, if any.
+    pub event: Option<NewEvent>,
 }
 
 pub struct Store {
@@ -196,6 +333,10 @@ impl Store {
                  key   TEXT PRIMARY KEY,
                  value INTEGER NOT NULL
              );
+             CREATE TABLE IF NOT EXISTS meta_text (
+                 key  TEXT PRIMARY KEY,
+                 text TEXT NOT NULL
+             );
              CREATE TABLE IF NOT EXISTS subjects (
                  kind          TEXT    NOT NULL,
                  id            TEXT    NOT NULL,
@@ -203,6 +344,29 @@ impl Store {
                  value         TEXT    NOT NULL,
                  applied_count INTEGER NOT NULL,
                  PRIMARY KEY (kind, id)
+             );
+             CREATE TABLE IF NOT EXISTS events (
+                 epoch         INTEGER NOT NULL,
+                 sequence      INTEGER NOT NULL,
+                 type          TEXT    NOT NULL,
+                 subject_kind  TEXT    NOT NULL,
+                 subject_id    TEXT    NOT NULL,
+                 revision      INTEGER NOT NULL,
+                 origin        TEXT    NOT NULL,
+                 operation_ref TEXT,
+                 command_id    TEXT,
+                 caused_by     TEXT    NOT NULL,
+                 recorded_at   TEXT    NOT NULL,
+                 payload       TEXT    NOT NULL,
+                 PRIMARY KEY (epoch, sequence)
+             );
+             -- One row per epoch the stream has had. `vouched_through` is the
+             -- last sequence the provider still vouches for in a closed epoch;
+             -- nothing after it is ever delivered again (CORE section 16.1).
+             CREATE TABLE IF NOT EXISTS epochs (
+                 epoch           INTEGER PRIMARY KEY,
+                 vouched_through INTEGER NOT NULL,
+                 closed          INTEGER NOT NULL
              );
              CREATE TABLE IF NOT EXISTS commands (
                  principal  TEXT    NOT NULL,
@@ -213,6 +377,149 @@ impl Store {
                  PRIMARY KEY (principal, command_id)
              );",
         )?;
+        Ok(())
+    }
+
+    fn meta(&self, key: &str) -> Result<Option<i64>, StoreError> {
+        Ok(self
+            .connection
+            .query_row(
+                "SELECT value FROM meta WHERE key = ?1",
+                params![key],
+                |row| row.get(0),
+            )
+            .optional()?)
+    }
+
+    /// The stream's stable identity, minted once when the store is created.
+    ///
+    /// Cursors carry it, so a well-formed cursor from another store is
+    /// `invalid_cursor` rather than silently readable against this one.
+    pub fn stream_id(&self) -> Result<String, StoreError> {
+        let existing: Option<String> = self
+            .connection
+            .query_row(
+                "SELECT text FROM meta_text WHERE key = 'stream_id'",
+                [],
+                |row| row.get(0),
+            )
+            .optional()?;
+        if let Some(id) = existing {
+            return Ok(id);
+        }
+        // Minted from the creation instant and the process id. It need not be
+        // unpredictable, only distinct between stores.
+        let seed = format!(
+            "{:?}-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default(),
+            std::process::id()
+        );
+        let id = cbr_encoding::sha256_hex(seed.as_bytes())[..16].to_string();
+        self.connection.execute(
+            "INSERT INTO meta_text (key, text) VALUES ('stream_id', ?1)",
+            params![id],
+        )?;
+        Ok(id)
+    }
+
+    pub fn current_epoch(&self) -> Result<i64, StoreError> {
+        Ok(self.meta("current_epoch")?.unwrap_or(1))
+    }
+
+    /// The last sequence recorded in an epoch, or 0 when it has none.
+    pub fn last_sequence(&self, epoch: i64) -> Result<i64, StoreError> {
+        Ok(self
+            .connection
+            .query_row(
+                "SELECT COALESCE(MAX(sequence), 0) FROM events WHERE epoch = ?1",
+                params![epoch],
+                |row| row.get(0),
+            )
+            .optional()?
+            .unwrap_or(0))
+    }
+
+    /// Start a new stream epoch, closing the current one.
+    ///
+    /// A provider does this when it can no longer vouch for continuity.
+    /// `unvouched_last` is how many trailing events of the closing epoch it can
+    /// no longer vouch for; they stay in the table but are never delivered,
+    /// because a consumer holding them must be told so explicitly rather than
+    /// have them quietly reappear.
+    pub fn start_new_epoch(&mut self, unvouched_last: i64) -> Result<(), StoreError> {
+        let transaction = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let epoch: i64 = transaction
+            .query_row(
+                "SELECT value FROM meta WHERE key = 'current_epoch'",
+                [],
+                |row| row.get(0),
+            )
+            .optional()?
+            .unwrap_or(1);
+        let last: i64 = transaction.query_row(
+            "SELECT COALESCE(MAX(sequence), 0) FROM events WHERE epoch = ?1",
+            params![epoch],
+            |row| row.get(0),
+        )?;
+        let vouched = (last - unvouched_last).max(0);
+        transaction.execute(
+            "INSERT INTO epochs (epoch, vouched_through, closed) VALUES (?1, ?2, 1)
+             ON CONFLICT(epoch) DO UPDATE SET vouched_through = ?2, closed = 1",
+            params![epoch, vouched],
+        )?;
+        transaction.execute(
+            "INSERT INTO meta (key, value) VALUES ('current_epoch', ?1)
+             ON CONFLICT(key) DO UPDATE SET value = ?1",
+            params![epoch + 1],
+        )?;
+        transaction.commit()?;
+        Ok(())
+    }
+
+    /// Discard all but the last `retain` events, across epochs.
+    ///
+    /// Retention is what makes a gap real: a reader whose position precedes the
+    /// earliest retained event is told so with a snapshot, never handed the
+    /// next surviving event as though nothing were missing.
+    pub fn retain_last_events(&mut self, retain: i64) -> Result<(), StoreError> {
+        let transaction = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        // The highest position about to be discarded becomes the watermark. A
+        // read starting at or before it gets a gap, which is what stops the
+        // next surviving event from being served as though nothing were
+        // missing.
+        let doomed: Option<(i64, i64)> = transaction
+            .query_row(
+                "SELECT epoch, sequence FROM events
+                 WHERE (epoch, sequence) NOT IN (
+                     SELECT epoch, sequence FROM events ORDER BY epoch DESC, sequence DESC LIMIT ?1
+                 )
+                 ORDER BY epoch DESC, sequence DESC LIMIT 1",
+                params![retain],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()?;
+        if let Some((epoch, sequence)) = doomed {
+            transaction.execute(
+                "DELETE FROM events WHERE (epoch, sequence) NOT IN (
+                     SELECT epoch, sequence FROM events ORDER BY epoch DESC, sequence DESC LIMIT ?1
+                 )",
+                params![retain],
+            )?;
+            for (key, value) in [("discarded_epoch", epoch), ("discarded_sequence", sequence)] {
+                transaction.execute(
+                    "INSERT INTO meta (key, value) VALUES (?1, ?2)
+                     ON CONFLICT(key) DO UPDATE SET value = ?2",
+                    params![key, value],
+                )?;
+            }
+        }
+        transaction.commit()?;
         Ok(())
     }
 
@@ -320,7 +627,7 @@ impl Store {
     pub fn commit_command(
         &mut self,
         commit: Commit<'_>,
-        make_result: impl FnOnce(i64) -> Value,
+        make_result: impl FnOnce(i64, &str) -> Value,
     ) -> Result<Value, StoreError> {
         let transaction = self
             .connection
@@ -345,7 +652,66 @@ impl Store {
                 applied
             ],
         )?;
-        let result = make_result(revision);
+        // The operation reference is minted from a durable counter, so it is
+        // unique across restarts and an event can name the operation that
+        // produced it without two processes colliding.
+        let operation_number: i64 = transaction
+            .query_row(
+                "SELECT value FROM meta WHERE key = 'operation_counter'",
+                [],
+                |row| row.get(0),
+            )
+            .optional()?
+            .unwrap_or(0)
+            + 1;
+        transaction.execute(
+            "INSERT INTO meta (key, value) VALUES ('operation_counter', ?1)
+             ON CONFLICT(key) DO UPDATE SET value = ?1",
+            params![operation_number],
+        )?;
+        let operation_ref = format!("op-{operation_number}");
+
+        // The event commits here, in the same transaction as the state change
+        // and the command record. A crash between them is not representable.
+        if let Some(event) = commit.event {
+            let epoch: i64 = transaction
+                .query_row(
+                    "SELECT value FROM meta WHERE key = 'current_epoch'",
+                    [],
+                    |row| row.get(0),
+                )
+                .optional()?
+                .unwrap_or(1);
+            let last: i64 = transaction.query_row(
+                "SELECT COALESCE(MAX(sequence), 0) FROM events WHERE epoch = ?1",
+                params![epoch],
+                |row| row.get(0),
+            )?;
+            transaction.execute(
+                "INSERT INTO events (epoch, sequence, type, subject_kind, subject_id, revision,
+                                     origin, operation_ref, command_id, caused_by, recorded_at, payload)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'command', ?7, ?8, ?9, ?10, ?11)",
+                params![
+                    epoch,
+                    last + 1,
+                    event.event_type,
+                    commit.key.kind,
+                    commit.key.id,
+                    revision,
+                    operation_ref,
+                    commit.command_id,
+                    String::from_utf8(cbr_encoding::to_canonical(&Value::Array(
+                        event.caused_by.iter().map(|c| Value::String(c.clone())).collect(),
+                    )))
+                    .expect("canonical form is UTF-8"),
+                    now(),
+                    String::from_utf8(cbr_encoding::to_canonical(&(event.payload)(revision)))
+                        .expect("canonical form is UTF-8")
+                ],
+            )?;
+        }
+
+        let result = make_result(revision, &operation_ref);
         transaction.execute(
             "INSERT INTO commands (principal, command_id, digest, generation, result)
              VALUES (?1, ?2, ?3, ?4, ?5)",
@@ -360,6 +726,287 @@ impl Store {
         )?;
         transaction.commit()?;
         Ok(result)
+    }
+
+    /// Record how far retention has discarded, so a later read can tell a
+    /// reader that events are missing instead of handing them the next
+    /// surviving event as though nothing were gone.
+    fn discarded_watermark(&self) -> Result<Option<Position>, StoreError> {
+        let epoch = self.meta("discarded_epoch")?;
+        let sequence = self.meta("discarded_sequence")?;
+        Ok(match (epoch, sequence) {
+            (Some(epoch), Some(sequence)) => Some(Position { epoch, sequence }),
+            _ => None,
+        })
+    }
+
+    /// The head of the stream: the last position recorded anywhere.
+    fn head(&self) -> Result<Position, StoreError> {
+        let epoch = self.current_epoch()?;
+        Ok(Position {
+            epoch,
+            sequence: self.last_sequence(epoch)?,
+        })
+    }
+
+    fn epoch_vouched_through(&self, epoch: i64) -> Result<Option<i64>, StoreError> {
+        Ok(self
+            .connection
+            .query_row(
+                "SELECT vouched_through FROM epochs WHERE epoch = ?1 AND closed = 1",
+                params![epoch],
+                |row| row.get(0),
+            )
+            .optional()?)
+    }
+
+    fn events_in(
+        &self,
+        epoch: i64,
+        from_sequence: i64,
+        through: Option<i64>,
+    ) -> Result<Vec<EventRecord>, StoreError> {
+        let ceiling = through.unwrap_or(i64::MAX);
+        let mut statement = self.connection.prepare(
+            "SELECT epoch, sequence, type, subject_kind, subject_id, revision, origin,
+                    operation_ref, command_id, caused_by, recorded_at, payload
+             FROM events WHERE epoch = ?1 AND sequence >= ?2 AND sequence <= ?3
+             ORDER BY sequence",
+        )?;
+        let rows = statement.query_map(params![epoch, from_sequence, ceiling], |row| {
+            let caused_by: String = row.get(9)?;
+            let payload: String = row.get(11)?;
+            Ok(EventRecord {
+                position: Position {
+                    epoch: row.get(0)?,
+                    sequence: row.get(1)?,
+                },
+                event_type: row.get(2)?,
+                subject: SubjectKey {
+                    kind: row.get(3)?,
+                    id: row.get(4)?,
+                },
+                revision: row.get(5)?,
+                origin: row.get(6)?,
+                operation_ref: row.get(7)?,
+                command_id: row.get(8)?,
+                caused_by: cbr_encoding::parse(caused_by.as_bytes())
+                    .expect("stored caused_by was written as canonical bytes"),
+                recorded_at: row.get(10)?,
+                payload: cbr_encoding::parse(payload.as_bytes())
+                    .expect("a stored payload was written as canonical bytes"),
+            })
+        })?;
+        let mut out = Vec::new();
+        for row in rows {
+            out.push(row?);
+        }
+        Ok(out)
+    }
+
+    /// Every visible subject and its current state, for a retention snapshot.
+    fn snapshot_subjects(&self) -> Result<Vec<Value>, StoreError> {
+        let mut statement = self
+            .connection
+            .prepare("SELECT kind, id, revision, value FROM subjects ORDER BY kind, id")?;
+        let rows = statement.query_map([], |row| {
+            let kind: String = row.get(0)?;
+            let id: String = row.get(1)?;
+            let revision: i64 = row.get(2)?;
+            let value: String = row.get(3)?;
+            Ok((kind, id, revision, value))
+        })?;
+        let mut out = Vec::new();
+        for row in rows {
+            let (kind, id, revision, value) = row?;
+            // Each subject kind declares its own snapshot state (CORE section
+            // 16.4). The authority subject's state is its epoch, which is its
+            // revision, so the two cannot disagree here either.
+            let state = match kind.as_str() {
+                "core-test.authority" => {
+                    Value::Object(vec![("epoch".into(), Value::Int(revision))])
+                }
+                _ => Value::Object(vec![("value".into(), Value::String(value))]),
+            };
+            out.push(Value::Object(vec![
+                (
+                    "subject".into(),
+                    Value::Object(vec![
+                        ("kind".into(), Value::String(kind)),
+                        ("id".into(), Value::String(id)),
+                    ]),
+                ),
+                ("revision".into(), Value::Int(revision)),
+                ("state".into(), state),
+            ]));
+        }
+        Ok(out)
+    }
+
+    /// The earliest position a reader may ask for.
+    pub fn stream_start(&self) -> Result<Position, StoreError> {
+        let earliest: Option<i64> = self
+            .connection
+            .query_row("SELECT MIN(epoch) FROM epochs", [], |row| row.get(0))
+            .optional()?
+            .flatten();
+        Ok(Position {
+            epoch: earliest.unwrap_or(1).min(self.current_epoch()?),
+            sequence: 1,
+        })
+    }
+
+    /// Read the stream from `start`, in order, without silent gaps.
+    ///
+    /// Returns the items, the position to resume from, and whether anything in
+    /// the range covered was hidden. `budget` is the caller's receive limit:
+    /// items are added while they fit, and if not even the first one fits the
+    /// caller is told so rather than handed a truncated view.
+    pub fn read_events(
+        &self,
+        start: Position,
+        limit: i64,
+        kinds: &[String],
+        budget: usize,
+    ) -> Result<ReadEvents, StoreError> {
+        let stream = self.stream_id()?;
+        let current = self.current_epoch()?;
+        let head = self.head()?;
+        let mut items: Vec<Value> = Vec::new();
+        let mut filtered = false;
+        let mut at = start;
+        let mut used: usize = 0;
+        let mut too_large_alone = false;
+
+        let watermark = self.discarded_watermark()?;
+
+        'outer: while at.epoch <= current && (items.len() as i64) < limit {
+            let vouched = self.epoch_vouched_through(at.epoch)?;
+
+            // A closed epoch whose vouched end the reader is already past:
+            // announce the change before anything else. A consumer holding
+            // events beyond it must be told they will never be delivered
+            // again, rather than have them quietly disappear into a gap.
+            if let Some(vouched_through) = vouched
+                && at.sequence > vouched_through
+                && at.epoch < current
+            {
+                let item = epoch_change_item(at.epoch, vouched_through);
+                let size = cbr_encoding::to_canonical(&item).len();
+                if used + size > budget {
+                    break 'outer;
+                }
+                used += size;
+                items.push(item);
+                at = Position {
+                    epoch: at.epoch + 1,
+                    sequence: 1,
+                };
+                continue;
+            }
+
+            // Events missing from this epoch become a typed gap with a
+            // snapshot. A gap may span epochs, and epoch changes inside it are
+            // not reported separately because the snapshot supersedes them
+            // (CORE section 16.4).
+            let earliest: Option<i64> = self
+                .connection
+                .query_row(
+                    "SELECT MIN(sequence) FROM events WHERE epoch = ?1",
+                    params![at.epoch],
+                    |row| row.get(0),
+                )
+                .optional()?
+                .flatten();
+            let missing_here = earliest.is_none_or(|first| at.sequence < first);
+            if let Some(discarded) = watermark
+                && missing_here
+                && (at.epoch, at.sequence) <= (discarded.epoch, discarded.sequence)
+            {
+                let subjects = self.snapshot_subjects()?;
+                let item = Value::Object(vec![(
+                    "gap".into(),
+                    Value::Object(vec![
+                        ("kind".into(), Value::String("retention".into())),
+                        ("from".into(), at.to_value()),
+                        ("to".into(), head.to_value()),
+                        (
+                            "snapshot".into(),
+                            Value::Object(vec![
+                                ("as_of".into(), head.to_value()),
+                                ("subjects".into(), Value::Array(subjects)),
+                            ]),
+                        ),
+                    ]),
+                )]);
+                let size = cbr_encoding::to_canonical(&item).len();
+                if used + size > budget {
+                    break 'outer;
+                }
+                used += size;
+                items.push(item);
+                at = Position {
+                    epoch: head.epoch,
+                    sequence: head.sequence + 1,
+                };
+                continue;
+            }
+
+            for event in self.events_in(at.epoch, at.sequence, vouched)? {
+                if (items.len() as i64) >= limit {
+                    break 'outer;
+                }
+                at = Position {
+                    epoch: event.position.epoch,
+                    sequence: event.position.sequence + 1,
+                };
+                if !kinds.is_empty() && !kinds.contains(&event.subject.kind) {
+                    filtered = true;
+                    continue;
+                }
+                let item = Value::Object(vec![("event".into(), event_to_value(&stream, &event))]);
+                let size = cbr_encoding::to_canonical(&item).len();
+                if used + size > budget {
+                    if items.is_empty() {
+                        too_large_alone = true;
+                    }
+                    // Stop before the item, and leave `at` pointing at it so a
+                    // resume delivers it rather than skipping it.
+                    at = event.position;
+                    break 'outer;
+                }
+                used += size;
+                items.push(item);
+            }
+            match vouched {
+                // A closed epoch: announce the change and continue in the next.
+                Some(vouched_through) if at.epoch < current => {
+                    if (items.len() as i64) >= limit {
+                        break 'outer;
+                    }
+                    let item = epoch_change_item(at.epoch, vouched_through);
+                    let size = cbr_encoding::to_canonical(&item).len();
+                    if used + size > budget {
+                        break 'outer;
+                    }
+                    used += size;
+                    items.push(item);
+                    at = Position {
+                        epoch: at.epoch + 1,
+                        sequence: 1,
+                    };
+                }
+                _ => break 'outer,
+            }
+        }
+
+        Ok(ReadEvents {
+            stream_epoch: current,
+            items,
+            next_cursor: at,
+            filtered,
+            first_item_too_large: too_large_alone,
+        })
     }
 
     /// Publish immutable bytes, then return the path they landed at.
@@ -491,8 +1138,9 @@ mod tests {
                         command_id: "cmd-1",
                         digest: "sha256:aa",
                         generation: 1,
+                        event: None,
                     },
-                    |revision| Value::Object(vec![("revision".into(), Value::Int(revision))]),
+                    |revision, _| Value::Object(vec![("revision".into(), Value::Int(revision))]),
                 )
                 .unwrap();
         }
@@ -525,8 +1173,9 @@ mod tests {
                         command_id: "cmd-1",
                         digest: "sha256:aa",
                         generation: current,
+                        event: None,
                     },
-                    |_| Value::Object(vec![]),
+                    |_, _| Value::Object(vec![]),
                 )
                 .unwrap();
         }
