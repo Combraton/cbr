@@ -76,7 +76,7 @@ impl Provider {
 
 const CORE_ONLY: &str =
     r#"{"name":"core","majors":[1],"required":true,"required_features":[],"optional_features":[]}"#;
-const CORE_AND_TEST: &str = r#"{"name":"core","majors":[1],"required":true,"required_features":[],"optional_features":[]},{"name":"core-test","majors":[1],"required":true,"required_features":[],"optional_features":[]}"#;
+const CORE_AND_TEST: &str = r#"{"name":"core","majors":[1],"required":true,"required_features":["core.events"],"optional_features":[]},{"name":"core-test","majors":[1],"required":true,"required_features":[],"optional_features":[]}"#;
 
 fn conformance_config(directory: &Path) -> PathBuf {
     let path = directory.join("conformance.json");
@@ -230,6 +230,73 @@ fn committed_state_survives_sigkill() {
     assert!(
         replayed.contains("\"replay\":true"),
         "the command record must survive too: {replayed}"
+    );
+
+    // The event committed before the kill is readable afterwards at the same
+    // position. A store that rebuilt its log from current state could satisfy
+    // applied_count above and still fail this.
+    let read = provider.call(
+        r#"{"jsonrpc":"2.0","id":4,"method":"core.events.read","params":{"operation":"core.events.read","message_id":"m-4","payload":{"limit":100,"from":"start"}}}"#,
+    );
+    assert!(
+        read.contains("\"epoch\":1") && read.contains("\"sequence\":1"),
+        "the event survives SIGKILL at its original position: {read}"
+    );
+    assert!(
+        read.contains("\"command_id\":\"cmd-1\""),
+        "and still names its command: {read}"
+    );
+    provider.stop();
+}
+
+#[test]
+fn a_retention_gap_after_restart_is_reported_rather_than_closed() {
+    let directory = tempfile::tempdir().expect("temp dir");
+    let config = conformance_config(directory.path());
+
+    let mut provider = Provider::start(directory.path(), Some(&config));
+    provider.negotiate(CORE_AND_TEST);
+    for (n, revision) in [(1, 0), (2, 1), (3, 2)] {
+        let envelope = format!(
+            r#"{{"operation":"core-test.subject.put","message_id":"m-{n}","command_id":"cmd-{n}","dedupe_generation":1,"subject":{{"kind":"core-test.subject","id":"s-1"}},"preconditions":[{{"subject":{{"kind":"core-test.subject","id":"s-1"}},"revision":{revision}}}],"authority_epoch":0,"requires":[],"payload":{{"value":"v{n}"}}}}"#
+        );
+        let value = cbr_encoding::parse(envelope.as_bytes()).expect("envelope parses");
+        let digest = cbr_encoding::command_digest(&value).expect("intent");
+        let framed = format!(
+            r#"{{"jsonrpc":"2.0","id":{n},"method":"core-test.subject.put","params":{}}}"#,
+            envelope.replace(
+                r#""payload""#,
+                &format!(r#""command_digest":"{digest}","payload""#)
+            )
+        );
+        assert!(provider.call(&framed).contains("\"replay\":false"));
+    }
+    provider.kill();
+
+    // Restart keeping only the last event. The earlier ones are gone, and a
+    // reader starting from the beginning must be told so.
+    let retaining = directory.path().join("retaining.json");
+    std::fs::write(
+        &retaining,
+        r#"{"format":"combraton-conformance-config/1","principal":"owner","authority_principals":["owner"],"events":{"retain_last":1}}"#,
+    )
+    .expect("writes config");
+    let mut provider = Provider::start(directory.path(), Some(&retaining));
+    provider.negotiate(CORE_AND_TEST);
+    let read = provider.call(
+        r#"{"jsonrpc":"2.0","id":9,"method":"core.events.read","params":{"operation":"core.events.read","message_id":"m-9","payload":{"limit":100,"from":"start"}}}"#,
+    );
+    assert!(
+        read.contains(r#""kind":"retention""#),
+        "a gap is reported, not closed over: {read}"
+    );
+    assert!(
+        read.contains(r#""snapshot""#),
+        "and it carries a snapshot: {read}"
+    );
+    assert!(
+        !read.contains(r#""error""#),
+        "a gap is an item, never a refusal: {read}"
     );
     provider.stop();
 }

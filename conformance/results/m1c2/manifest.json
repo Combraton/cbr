@@ -1,0 +1,1865 @@
+{
+  "coverage_limits": [],
+  "environment": {
+    "arch": "aarch64",
+    "os": "macos"
+  },
+  "format": "combraton-conformance-result/1",
+  "participant": {
+    "claimed_profiles": [
+      {
+        "major": 1,
+        "name": "core"
+      },
+      {
+        "major": 1,
+        "name": "core-test"
+      }
+    ],
+    "client_mutant": null,
+    "descriptor_digest": "sha256:edaa9c1dafb5e4ff6a6572100b97268b9bb77f7721cfbcd3ccebedea011d2d95",
+    "mutant": null,
+    "name": "cbr-provider",
+    "version": "0.1.0"
+  },
+  "results": [
+    {
+      "failed_step": null,
+      "fixture": "core.acknowledgment.effect-refs-empty-for-effect-free-operations",
+      "fixture_digest": "sha256:fe0a327c1a0a25f3cd21af493bef4ca66abaaff91458219de6734fe0af0be1b8",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "CMP-6"
+      ],
+      "transcript": "transcripts/core.acknowledgment.effect-refs-empty-for-effect-free-operations.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.authentication.launch-authenticated-session-refuses-authenticate",
+      "fixture_digest": "sha256:79b20f57cf48400d6eea37dc87c6024d2b6d5e21f0201f30b25ee5ae5d311975",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "CORE-15"
+      ],
+      "transcript": "transcripts/core.authentication.launch-authenticated-session-refuses-authenticate.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.authority.claim-requires-current-epoch",
+      "fixture_digest": "sha256:b221f0c513c01b260889df967caabdf7e20614146f0e188ca88bb6ee4a10f508",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "CORE-9",
+        "CORE-10"
+      ],
+      "transcript": "transcripts/core.authority.claim-requires-current-epoch.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.authority.current-epoch-accepted",
+      "fixture_digest": "sha256:06a42adec593fbf083ac7aee810bbb9b9662dd54fc79713fa4bbbfca5daeafe2",
+      "outcome": "pass",
+      "polarity": "positive",
+      "reason": null,
+      "requirements": [
+        "CORE-10"
+      ],
+      "transcript": "transcripts/core.authority.current-epoch-accepted.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.authority.epoch-checked-before-preconditions",
+      "fixture_digest": "sha256:c0e38fd24413bc6ef7582ab21d3e5f31bf2c804fdd8501c7e8f6bdf431dc0817",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "CORE-10",
+        "CORE-9"
+      ],
+      "transcript": "transcripts/core.authority.epoch-checked-before-preconditions.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.authority.stale-epoch-refused",
+      "fixture_digest": "sha256:b5024607071c531ff579ba178e143b0a1ebe73f4401bdbaec03c47963a8dbe42",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "CORE-10"
+      ],
+      "transcript": "transcripts/core.authority.stale-epoch-refused.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.authority.unknown-epoch-refused",
+      "fixture_digest": "sha256:0b37ababb5729d21431bca254a3c3a17c2296fe28dc5ed4d2d54ad7ceb3758b1",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "CORE-10"
+      ],
+      "transcript": "transcripts/core.authority.unknown-epoch-refused.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.capabilities.change-raises-revision-and-event",
+      "fixture_digest": "sha256:f3853ce3726f059257ae573ec2639c5953417705ad3a0edeb944503a539bfc45",
+      "outcome": "unsupported",
+      "polarity": "negative",
+      "reason": "participant does not claim feature core.capabilities",
+      "requirements": [
+        "CORE-16",
+        "OBS-1"
+      ],
+      "transcript": "transcripts/core.capabilities.change-raises-revision-and-event.jsonl",
+      "version": 2
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.capabilities.checked-after-authorization-before-preconditions",
+      "fixture_digest": "sha256:f73c8e53eb82f2f9dcef732bcc8e628cf7ae734ec92f7636199de69195520aa2",
+      "outcome": "unsupported",
+      "polarity": "negative",
+      "reason": "participant does not claim feature core.capabilities",
+      "requirements": [
+        "CORE-16",
+        "CORE-3"
+      ],
+      "transcript": "transcripts/core.capabilities.checked-after-authorization-before-preconditions.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.capabilities.claim-does-not-depend-on-writes",
+      "fixture_digest": "sha256:de0c29088910d6ae6f13b3db6c6a7d0a4764f5071b714d9524cf7c2c1ef63aee",
+      "outcome": "unsupported",
+      "polarity": "negative",
+      "reason": "participant does not claim feature core.capabilities",
+      "requirements": [
+        "CORE-16"
+      ],
+      "transcript": "transcripts/core.capabilities.claim-does-not-depend-on-writes.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.capabilities.loss-refuses-new-but-replays-bound",
+      "fixture_digest": "sha256:245027af2c2231d7ceda89b12db5fac4af5bb315b06c2dbc28d8d898e73cd105",
+      "outcome": "unsupported",
+      "polarity": "negative",
+      "reason": "participant does not claim feature core.capabilities",
+      "requirements": [
+        "CORE-16",
+        "CORE-17"
+      ],
+      "transcript": "transcripts/core.capabilities.loss-refuses-new-but-replays-bound.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.capabilities.restored-capability-admits-commands",
+      "fixture_digest": "sha256:485fa2d017eafbcbc6de4dc19097c63c6d00a8879a76e231e64cdc45122d0ee8",
+      "outcome": "unsupported",
+      "polarity": "positive",
+      "reason": "participant does not claim feature core.capabilities",
+      "requirements": [
+        "CORE-17",
+        "CORE-16"
+      ],
+      "transcript": "transcripts/core.capabilities.restored-capability-admits-commands.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.capabilities.snapshot-reports-evidenced-predicates",
+      "fixture_digest": "sha256:4c53b0fea62b272c18b423ed35ebb19b8e8ea76c63b5302e0d2bbcc585d7de6e",
+      "outcome": "unsupported",
+      "polarity": "positive",
+      "reason": "participant does not claim feature core.capabilities",
+      "requirements": [
+        "CORE-16"
+      ],
+      "transcript": "transcripts/core.capabilities.snapshot-reports-evidenced-predicates.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.capabilities.unknown-is-not-supported",
+      "fixture_digest": "sha256:0bbec1e75fa85c7dbe80627a84daca5d1be50e41bb7de20fe7870679d2213d94",
+      "outcome": "unsupported",
+      "polarity": "negative",
+      "reason": "participant does not claim feature core.capabilities",
+      "requirements": [
+        "CORE-16"
+      ],
+      "transcript": "transcripts/core.capabilities.unknown-is-not-supported.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.dedupe.forgotten-generation-unavailable",
+      "fixture_digest": "sha256:ead454a0a27a8b2941d21125764980e823f9f1ee91a95e59a3a9da1f3438c58d",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "CORE-8"
+      ],
+      "transcript": "transcripts/core.dedupe.forgotten-generation-unavailable.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.dedupe.future-generation-invalid",
+      "fixture_digest": "sha256:77df17fc53e8b50a47b6a226af54821c8e9eb6df4a1da8220144520e59dcefcd",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "CORE-8"
+      ],
+      "transcript": "transcripts/core.dedupe.future-generation-invalid.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.dedupe.retain-counts-current-generation",
+      "fixture_digest": "sha256:abe7fee460b217570b9745db8416c3a021840681facb9e844da18bb8fe0a1351",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "CORE-8"
+      ],
+      "transcript": "transcripts/core.dedupe.retain-counts-current-generation.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.dedupe.retained-generation-replays-after-advance",
+      "fixture_digest": "sha256:5eba348f10696507870686378bccc31b7acfc4836f9ca34a5334e2c56427a212",
+      "outcome": "pass",
+      "polarity": "positive",
+      "reason": null,
+      "requirements": [
+        "CORE-8",
+        "CORE-7"
+      ],
+      "transcript": "transcripts/core.dedupe.retained-generation-replays-after-advance.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.describe.manifest-declares-profiles-and-unsupported",
+      "fixture_digest": "sha256:e24e61af57953e9bb0763ae4348d376b2e3949ff1c8c9666126d3a02deb5931c",
+      "outcome": "pass",
+      "polarity": "positive",
+      "reason": null,
+      "requirements": [
+        "REL-2",
+        "REL-9"
+      ],
+      "transcript": "transcripts/core.describe.manifest-declares-profiles-and-unsupported.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.digest.canonical-order-and-non-ascii-accepted",
+      "fixture_digest": "sha256:83c814040b60975c4cebe13f2274816324fc3aa590af552b466e6e7a3ad0c17b",
+      "outcome": "pass",
+      "polarity": "positive",
+      "reason": null,
+      "requirements": [
+        "CORE-6"
+      ],
+      "transcript": "transcripts/core.digest.canonical-order-and-non-ascii-accepted.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.digest.correlation-excluded",
+      "fixture_digest": "sha256:cfa91bdbe438905905c4455dd8e20f5fe4f51cb7f8a5248c0e381795475c9142",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "CORE-6",
+        "CORE-7"
+      ],
+      "transcript": "transcripts/core.digest.correlation-excluded.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.digest.mismatch-refused",
+      "fixture_digest": "sha256:78a0806e0c5cc5a971df54544c904c2afb21d4f606f1f72458448e454ba707a9",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "CORE-6"
+      ],
+      "transcript": "transcripts/core.digest.mismatch-refused.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.digest.unsupported-algorithm-refused",
+      "fixture_digest": "sha256:f5cd42ccff67d83130d51e556973b604d32954f036b1a3b825a89a828037a1ec",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "CORE-6"
+      ],
+      "transcript": "transcripts/core.digest.unsupported-algorithm-refused.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.digest.wrong-length-invalid",
+      "fixture_digest": "sha256:dc2294f8831de2820176b93c60e27d67fa3d8a7f1fb77b520c9cbd9bc756f9fc",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "CORE-6"
+      ],
+      "transcript": "transcripts/core.digest.wrong-length-invalid.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.envelope.depth-limit-exceeded",
+      "fixture_digest": "sha256:1bbd44c18fe4ffa40ad3f73de4513123865755bcdaaa4a0fdd1049cc3eacf6ce",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "CORE-5"
+      ],
+      "transcript": "transcripts/core.envelope.depth-limit-exceeded.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.envelope.limits-at-and-over-boundary",
+      "fixture_digest": "sha256:6179b81690f1cd9aabf8813f71b7ef9f1df54ca7215b798ade370b17383d5891",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "CORE-5"
+      ],
+      "transcript": "transcripts/core.envelope.limits-at-and-over-boundary.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.envelope.query-requires-checked",
+      "fixture_digest": "sha256:914adc545cf0319dd162b35ef0f14ed74f097eb965cd5e39c9acdd509b17df8f",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "CORE-4"
+      ],
+      "transcript": "transcripts/core.envelope.query-requires-checked.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.envelope.required-extension-must-be-present",
+      "fixture_digest": "sha256:d5ea264e43e82f7fa0058e1146bb531c435c2dd7a6c3bba2075ab853b764eeaa",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "CORE-4"
+      ],
+      "transcript": "transcripts/core.envelope.required-extension-must-be-present.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.envelope.requires-unique",
+      "fixture_digest": "sha256:fd598a95673998bc9962c61ac523c45026909ae858d63b9dda66b2ba382ed1a8",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "CORE-4"
+      ],
+      "transcript": "transcripts/core.envelope.requires-unique.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.envelope.string-limit-exceeded",
+      "fixture_digest": "sha256:09fa8235e726af99e8548ad73d4215af90170e465709b5345f21b87db1d1d185",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "CORE-5"
+      ],
+      "transcript": "transcripts/core.envelope.string-limit-exceeded.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.envelope.unknown-field-refused",
+      "fixture_digest": "sha256:d3b94afc421b587106039e38f3994e8af1697ee6e7e945301ae950170d582cb7",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "CORE-4"
+      ],
+      "transcript": "transcripts/core.envelope.unknown-field-refused.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.envelope.unknown-optional-extension-accepted",
+      "fixture_digest": "sha256:e6373a63aa51193fae13d24136c335d0f0ab6a03f94989d48df8fc0fcb123cb7",
+      "outcome": "pass",
+      "polarity": "positive",
+      "reason": null,
+      "requirements": [
+        "CORE-4"
+      ],
+      "transcript": "transcripts/core.envelope.unknown-optional-extension-accepted.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.envelope.unknown-payload-field-refused",
+      "fixture_digest": "sha256:e50b4a49f095a43930f6102c851796b568a2cb3cd99c3bec775b6e8dba8257ba",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "CORE-4"
+      ],
+      "transcript": "transcripts/core.envelope.unknown-payload-field-refused.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.envelope.unknown-required-extension-refused",
+      "fixture_digest": "sha256:6bedbc4b2ef3f727a2510f79d953472af25a3dd7fc11de0bdfa2f7dadbfd742f",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "CORE-4"
+      ],
+      "transcript": "transcripts/core.envelope.unknown-required-extension-refused.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.envelope.unknown-required-feature-refused",
+      "fixture_digest": "sha256:13e566d8af6cd0d11d43a7fb3302ee3d3ec765a8d64c613ee7678c945539a023",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "CORE-4"
+      ],
+      "transcript": "transcripts/core.envelope.unknown-required-feature-refused.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.errors.query-rejection-records-nothing",
+      "fixture_digest": "sha256:6e56bc3d98c7ce8a8a6f1de4a74d0c3b906f72c634e77e646826046fe0ffb04c",
+      "outcome": "pass",
+      "polarity": "positive",
+      "reason": null,
+      "requirements": [
+        "CORE-14"
+      ],
+      "transcript": "transcripts/core.errors.query-rejection-records-nothing.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.events.authorization-and-filtering",
+      "fixture_digest": "sha256:f86835ab615f560f5e8983ec145bfbeceedfbe4b7145d192bc30607e9fbd95e6",
+      "outcome": "unsupported",
+      "polarity": "negative",
+      "reason": "participant does not claim feature core.grants",
+      "requirements": [
+        "CORE-12",
+        "OBS-2"
+      ],
+      "transcript": "transcripts/core.events.authorization-and-filtering.jsonl",
+      "version": 2
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.events.commands-append-contiguous-events",
+      "fixture_digest": "sha256:f2f83ccac06c27c417905f318b07f2c67a69d8ccd9be1bc50a00a98e0d689b91",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "OBS-1",
+        "OBS-4",
+        "CORE-2"
+      ],
+      "transcript": "transcripts/core.events.commands-append-contiguous-events.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.events.cursor-from-another-stream-refused",
+      "fixture_digest": "sha256:2a4985be73a5c746f9689fe9ac26c186dd1715e9870612dc3af8702e01000805",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "OBS-2",
+        "OBS-8"
+      ],
+      "transcript": "transcripts/core.events.cursor-from-another-stream-refused.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.events.cursor-in-new-epoch-has-no-change-item",
+      "fixture_digest": "sha256:796d87158760ff44769cc623dabc4ca083c1fc6c2ad584b77a1591b79999b901",
+      "outcome": "pass",
+      "polarity": "positive",
+      "reason": null,
+      "requirements": [
+        "OBS-6"
+      ],
+      "transcript": "transcripts/core.events.cursor-in-new-epoch-has-no-change-item.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.events.cursor-past-vouched-position-gets-epoch-change",
+      "fixture_digest": "sha256:6bf0c95a3cf1a10dd7ff2610008355bcd2670ff2505de5a40c3cebd58bb261f8",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "OBS-6",
+        "OBS-8"
+      ],
+      "transcript": "transcripts/core.events.cursor-past-vouched-position-gets-epoch-change.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.events.cursor-resumes-exactly",
+      "fixture_digest": "sha256:e87e750d1b2ceb2780f5af5f1eee70ed6a22c3ca908360aaaee0cfc0b9670da8",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "OBS-2",
+        "OBS-8"
+      ],
+      "transcript": "transcripts/core.events.cursor-resumes-exactly.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.events.durable-across-restart",
+      "fixture_digest": "sha256:077f979ffb36d2be58b38e482aca10a701e62d4621adae377451dbf223480dd0",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "OBS-1",
+        "CORE-13"
+      ],
+      "transcript": "transcripts/core.events.durable-across-restart.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.events.epoch-change-is-explicit",
+      "fixture_digest": "sha256:03aaefc7c1255efc92000f31e6aa0d94341fbc7e2da158a862980335b41cd09b",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "OBS-6"
+      ],
+      "transcript": "transcripts/core.events.epoch-change-is-explicit.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.events.event-record-carries-causation",
+      "fixture_digest": "sha256:dcaf74f8efd13ffdc1fc545c18fa871fddfa862d08d631ada3001622de77d8a7",
+      "outcome": "pass",
+      "polarity": "positive",
+      "reason": null,
+      "requirements": [
+        "CORE-2",
+        "OBS-1"
+      ],
+      "transcript": "transcripts/core.events.event-record-carries-causation.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.events.feature-must-be-negotiated",
+      "fixture_digest": "sha256:6f1504f9afe90e3281df913ce754aa5ffe0a0f460f0e5c2431e26a80c86fa02b",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "CORE-3",
+        "CORE-4"
+      ],
+      "transcript": "transcripts/core.events.feature-must-be-negotiated.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.events.filtered-and-cursor-cover-exact-range",
+      "fixture_digest": "sha256:0caaf62025b14f369553b2a510508c0f57ee00af1640ac8a82ca113f06b7d8ab",
+      "outcome": "unsupported",
+      "polarity": "negative",
+      "reason": "participant does not claim feature core.grants",
+      "requirements": [
+        "OBS-2",
+        "OBS-8"
+      ],
+      "transcript": "transcripts/core.events.filtered-and-cursor-cover-exact-range.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.events.from-now-and-kind-filter",
+      "fixture_digest": "sha256:638c5d6afd0d1be091204442507f901d3c29febee7f29ca84470428e60e7566e",
+      "outcome": "pass",
+      "polarity": "positive",
+      "reason": null,
+      "requirements": [
+        "OBS-2",
+        "OBS-8"
+      ],
+      "transcript": "transcripts/core.events.from-now-and-kind-filter.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.events.gap-spanning-epochs",
+      "fixture_digest": "sha256:9427644bca6130764d4918f7779931826445545a872ad7d3afef42ae09ba5bcc",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "OBS-5",
+        "OBS-6"
+      ],
+      "transcript": "transcripts/core.events.gap-spanning-epochs.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.events.invalid-cursor-refused",
+      "fixture_digest": "sha256:448061054f94e37ff0e11574a570fd637549313f5fe615c9c544b8b88347721c",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "OBS-2",
+        "OBS-8"
+      ],
+      "transcript": "transcripts/core.events.invalid-cursor-refused.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.events.multi-event-command-contiguous",
+      "fixture_digest": "sha256:f88aaa18d60501a94937c892a279aef0d3075bad4e347c5a1e30f264a7ee5799",
+      "outcome": "unsupported",
+      "polarity": "positive",
+      "reason": "participant does not claim feature core.grants",
+      "requirements": [
+        "OBS-4",
+        "OBS-1"
+      ],
+      "transcript": "transcripts/core.events.multi-event-command-contiguous.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.events.no-gap-after-retained-cursor",
+      "fixture_digest": "sha256:3bbdf615a904fe0503479fde36739a1728d8011d77799dd0468542bb7c014c96",
+      "outcome": "pass",
+      "polarity": "positive",
+      "reason": null,
+      "requirements": [
+        "OBS-5"
+      ],
+      "transcript": "transcripts/core.events.no-gap-after-retained-cursor.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.events.older-consumer-is-closed-without-notice",
+      "fixture_digest": "sha256:50259576501d42a8da2ad2f475e2deb4eb1c9649211127a66fd2cff8b6327d92",
+      "outcome": "unsupported",
+      "polarity": "negative",
+      "reason": "participant does not claim execution/1",
+      "requirements": [
+        "TRN-4",
+        "CMP-7"
+      ],
+      "transcript": "transcripts/core.events.older-consumer-is-closed-without-notice.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.events.read-and-subscribe-need-events-right",
+      "fixture_digest": "sha256:20f9fed618761f6c2d08b5066e220edaedb3f61a90c667a41422be5c404316ed",
+      "outcome": "unsupported",
+      "polarity": "negative",
+      "reason": "participant does not claim feature core.grants",
+      "requirements": [
+        "OBS-2",
+        "CORE-11"
+      ],
+      "transcript": "transcripts/core.events.read-and-subscribe-need-events-right.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.events.reads-and-notifications-fit-receive-limit",
+      "fixture_digest": "sha256:7ec8709a030d497e823de1392d70a95f3e38e1ebf5957577870effd4d193bf01",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "OBS-2",
+        "TRN-2"
+      ],
+      "transcript": "transcripts/core.events.reads-and-notifications-fit-receive-limit.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.events.replays-and-rejections-append-nothing",
+      "fixture_digest": "sha256:9950f8311981c05e137445b7863089b8863141a53e10ffaf59a479af1a4ec301",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "OBS-3",
+        "OBS-1"
+      ],
+      "transcript": "transcripts/core.events.replays-and-rejections-append-nothing.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.events.resubscribe-replays-identical-positions",
+      "fixture_digest": "sha256:1d9a8c3fe6cc3a6fc75c35626c01a7cf678baaf0b2b29a66012d0834d2906d98",
+      "outcome": "pass",
+      "polarity": "positive",
+      "reason": null,
+      "requirements": [
+        "OBS-3",
+        "OBS-2"
+      ],
+      "transcript": "transcripts/core.events.resubscribe-replays-identical-positions.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.events.retention-gap-returns-snapshot",
+      "fixture_digest": "sha256:6fef493583996cc803c5ca1735b7691df0b376f86d1af439af015c96dc4c8ea0",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "OBS-5"
+      ],
+      "transcript": "transcripts/core.events.retention-gap-returns-snapshot.jsonl",
+      "version": 2
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.events.retention-snapshot-is-filtered",
+      "fixture_digest": "sha256:e799aa78f23097273c6179e41f1e39f6fbed179b6263d182a304d39c4971cb6e",
+      "outcome": "unsupported",
+      "polarity": "negative",
+      "reason": "participant does not claim feature core.grants",
+      "requirements": [
+        "OBS-5",
+        "CORE-12"
+      ],
+      "transcript": "transcripts/core.events.retention-snapshot-is-filtered.jsonl",
+      "version": 2
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.events.slow-consumer-is-closed-with-notice-and-resumes",
+      "fixture_digest": "sha256:0f50d4d7724499bfe2ab0464fa00341db24644172e452737423e75439b7b6204",
+      "outcome": "unsupported",
+      "polarity": "negative",
+      "reason": "participant does not claim execution/1",
+      "requirements": [
+        "TRN-4",
+        "OBS-7",
+        "OBS-1"
+      ],
+      "transcript": "transcripts/core.events.slow-consumer-is-closed-with-notice-and-resumes.jsonl",
+      "version": 2
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.events.slow-consumer-recovery-reports-retention-gap",
+      "fixture_digest": "sha256:13a13ed9af2a7062e27ec65f6083716fda13f97eb31dce7b00f1d31d9d8e1506",
+      "outcome": "unsupported",
+      "polarity": "negative",
+      "reason": "participant does not claim execution/1",
+      "requirements": [
+        "TRN-4",
+        "OBS-3"
+      ],
+      "transcript": "transcripts/core.events.slow-consumer-recovery-reports-retention-gap.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.events.subscription-applies-kinds-and-grant",
+      "fixture_digest": "sha256:8c164acfecf2daaa2f1e3a59740245bdbb05b32c04b0d2cc4e161d3b1a1e922c",
+      "outcome": "unsupported",
+      "polarity": "negative",
+      "reason": "participant does not claim feature core.grants",
+      "requirements": [
+        "OBS-2",
+        "CORE-12"
+      ],
+      "transcript": "transcripts/core.events.subscription-applies-kinds-and-grant.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.events.subscription-delivers-backlog-then-live",
+      "fixture_digest": "sha256:812780e14a61f4ceb0165fd03a2340cebf3ba49e124600b2d884a2b75260531f",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "OBS-2",
+        "OBS-3"
+      ],
+      "transcript": "transcripts/core.events.subscription-delivers-backlog-then-live.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.events.subscription-ends-at-grant-expiry",
+      "fixture_digest": "sha256:fd83a690f11794db19a1b5bb97e3336a1d846be7303c893e3e39874ff00bc4ed",
+      "outcome": "unsupported",
+      "polarity": "negative",
+      "reason": "participant does not claim feature core.grants",
+      "requirements": [
+        "OBS-9",
+        "CORE-11",
+        "REL-12"
+      ],
+      "transcript": "transcripts/core.events.subscription-ends-at-grant-expiry.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.events.subscription-ends-when-grant-revoked",
+      "fixture_digest": "sha256:db61049953589ebdc42194e8e4cd05ff05e6fd9464223e107770528ca76472b7",
+      "outcome": "unsupported",
+      "polarity": "negative",
+      "reason": "participant does not claim feature core.grants",
+      "requirements": [
+        "OBS-2",
+        "CORE-11"
+      ],
+      "transcript": "transcripts/core.events.subscription-ends-when-grant-revoked.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.events.subscription-ends-when-grant-stops-authorizing",
+      "fixture_digest": "sha256:df32049b0bbed45f8006e441b762828ce0eaa57eb0b45c3ddbb191d605ac6b9d",
+      "outcome": "unsupported",
+      "polarity": "negative",
+      "reason": "participant does not claim feature core.grants",
+      "requirements": [
+        "OBS-2",
+        "CORE-11"
+      ],
+      "transcript": "transcripts/core.events.subscription-ends-when-grant-stops-authorizing.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.events.unfiltered-read-under-grant",
+      "fixture_digest": "sha256:302419fa4168be04cf182765e3f2814cc25776bd65adb13bfba7b06543444f25",
+      "outcome": "unsupported",
+      "polarity": "negative",
+      "reason": "participant does not claim feature core.grants",
+      "requirements": [
+        "OBS-2",
+        "CORE-12"
+      ],
+      "transcript": "transcripts/core.events.unfiltered-read-under-grant.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.events.unread-ending-notice-does-not-hold-the-connection",
+      "fixture_digest": "sha256:b99d5081010d4560fd4091bad73689baf16eaa3d6ad4d12b52945219518c9d0c",
+      "outcome": "unsupported",
+      "polarity": "negative",
+      "reason": "participant does not claim execution/1",
+      "requirements": [
+        "TRN-4"
+      ],
+      "transcript": "transcripts/core.events.unread-ending-notice-does-not-hold-the-connection.jsonl",
+      "version": 2
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.events.visibility-follows-direct-read-authority",
+      "fixture_digest": "sha256:2f8f837cdb65279ad8a903b921178a21fe626b111fb6787bcd2bcf91bec30a1e",
+      "outcome": "unsupported",
+      "polarity": "negative",
+      "reason": "participant does not claim feature core.grants",
+      "requirements": [
+        "CORE-12",
+        "OBS-2"
+      ],
+      "transcript": "transcripts/core.events.visibility-follows-direct-read-authority.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.feature-dependencies-match-negotiation",
+      "fixture_digest": "sha256:f2df72af185d7cfd8adf5ad3f01093a0f55de7d8e9fdc85a1bf00166d8ff060d",
+      "outcome": "unsupported",
+      "polarity": "positive",
+      "reason": "participant does not claim execution/1",
+      "requirements": [
+        "CMP-5",
+        "CORE-3"
+      ],
+      "transcript": "transcripts/core.feature-dependencies-match-negotiation.jsonl",
+      "version": 2
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.grants.authority-binding-scope-must-exist",
+      "fixture_digest": "sha256:a8fe9542e7725a1bc7c7c337252f3bf76e18098a4f6295d49797c1b9e1d86f52",
+      "outcome": "unsupported",
+      "polarity": "negative",
+      "reason": "participant does not claim feature core.grants",
+      "requirements": [
+        "CORE-11",
+        "CORE-10"
+      ],
+      "transcript": "transcripts/core.grants.authority-binding-scope-must-exist.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.grants.authority-epoch-binding",
+      "fixture_digest": "sha256:43c879c40ab5778f9acf72a4f7f1d381597b621c804818216efc1bc86c1abf42",
+      "outcome": "unsupported",
+      "polarity": "negative",
+      "reason": "participant does not claim feature core.grants",
+      "requirements": [
+        "CORE-11",
+        "CORE-10"
+      ],
+      "transcript": "transcripts/core.grants.authority-epoch-binding.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.grants.authority-issues-holder-acts",
+      "fixture_digest": "sha256:e54c1dcbacf061de44b7313151c71e68a5281c7c910a32905cc8ce33922b88ff",
+      "outcome": "unsupported",
+      "polarity": "positive",
+      "reason": "participant does not claim feature core.grants",
+      "requirements": [
+        "CORE-11"
+      ],
+      "transcript": "transcripts/core.grants.authority-issues-holder-acts.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.grants.authorization-without-grants-feature",
+      "fixture_digest": "sha256:5c20353f255a7c96811fa29e2c3f0adb2a1abab3a510d27364728fa202d99707",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "CORE-11"
+      ],
+      "transcript": "transcripts/core.grants.authorization-without-grants-feature.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.grants.cascade-skips-revoked-descendants",
+      "fixture_digest": "sha256:d0b72766d4f28e71365c3ddb4cc98b0230ed53583c2a5231394853906dacccd6",
+      "outcome": "unsupported",
+      "polarity": "negative",
+      "reason": "participant does not claim feature core.grants",
+      "requirements": [
+        "CORE-11"
+      ],
+      "transcript": "transcripts/core.grants.cascade-skips-revoked-descendants.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.grants.claim-and-applied-count-need-rights",
+      "fixture_digest": "sha256:6c3c361b60c839da67983a497c43471e5fb910631e37aa9704fe7d8825c69b64",
+      "outcome": "unsupported",
+      "polarity": "negative",
+      "reason": "participant does not claim feature core.grants",
+      "requirements": [
+        "CORE-11"
+      ],
+      "transcript": "transcripts/core.grants.claim-and-applied-count-need-rights.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.grants.current-epoch-needs-read",
+      "fixture_digest": "sha256:cfa6c367af2a0041c4d6de46ccbcb1b9d2da72b1ca0491671c7bd9f112a763bb",
+      "outcome": "unsupported",
+      "polarity": "negative",
+      "reason": "participant does not claim feature core.grants",
+      "requirements": [
+        "CORE-10",
+        "CORE-12"
+      ],
+      "transcript": "transcripts/core.grants.current-epoch-needs-read.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.grants.deduplication-scoped-by-principal",
+      "fixture_digest": "sha256:98497f9fd245e8db2aa3a57b6d7f34e2d40a9af411a2a3091e148175cf387887",
+      "outcome": "unsupported",
+      "polarity": "negative",
+      "reason": "participant does not claim feature core.grants",
+      "requirements": [
+        "CORE-12",
+        "CORE-7"
+      ],
+      "transcript": "transcripts/core.grants.deduplication-scoped-by-principal.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.grants.delegation-bounded",
+      "fixture_digest": "sha256:3e96cef1445c860f3fd6435024a508106bfeed0a4813974076265f47a2210412",
+      "outcome": "unsupported",
+      "polarity": "negative",
+      "reason": "participant does not claim feature core.grants",
+      "requirements": [
+        "CORE-11"
+      ],
+      "transcript": "transcripts/core.grants.delegation-bounded.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.grants.delegation-keeps-expiry-and-binding",
+      "fixture_digest": "sha256:a6c7f384aa9f234118d207d7bdce204e4f205db8c33356ba27c7858349bcb972",
+      "outcome": "unsupported",
+      "polarity": "negative",
+      "reason": "participant does not claim feature core.grants",
+      "requirements": [
+        "CORE-11",
+        "CORE-10"
+      ],
+      "transcript": "transcripts/core.grants.delegation-keeps-expiry-and-binding.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.grants.delegation-needs-usable-delegable-parent",
+      "fixture_digest": "sha256:df2e49590a91a204dee8b264804b6d20fc607de9326e3a272b30b64b08853882",
+      "outcome": "unsupported",
+      "polarity": "negative",
+      "reason": "participant does not claim feature core.grants",
+      "requirements": [
+        "CORE-11"
+      ],
+      "transcript": "transcripts/core.grants.delegation-needs-usable-delegable-parent.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.grants.denial-reason-order",
+      "fixture_digest": "sha256:a4c44985b9b1f6d9b235cf76365819e2704a5f24aa882650f750c9dae5383b2f",
+      "outcome": "unsupported",
+      "polarity": "negative",
+      "reason": "participant does not claim feature core.grants",
+      "requirements": [
+        "CORE-11",
+        "CORE-12"
+      ],
+      "transcript": "transcripts/core.grants.denial-reason-order.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.grants.existence-not-leaked",
+      "fixture_digest": "sha256:9a262ba7322edf2482f1fd89c9b1b939b6ef9d7c34180622d13d08dfd105c34c",
+      "outcome": "unsupported",
+      "polarity": "negative",
+      "reason": "participant does not claim feature core.grants",
+      "requirements": [
+        "CORE-12"
+      ],
+      "transcript": "transcripts/core.grants.existence-not-leaked.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.grants.expired-grant-refused",
+      "fixture_digest": "sha256:8aa7355b07812a70686b5b30bfe7028f26841f90c7f08790718925e5e9b31f8c",
+      "outcome": "unsupported",
+      "polarity": "negative",
+      "reason": "participant does not claim feature core.grants",
+      "requirements": [
+        "CORE-11"
+      ],
+      "transcript": "transcripts/core.grants.expired-grant-refused.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.grants.expiry-instant-is-exclusive",
+      "fixture_digest": "sha256:e9aabf401725b39947a2743d2fd332584a8734700153639c2574ff9244c7e413",
+      "outcome": "unsupported",
+      "polarity": "negative",
+      "reason": "participant does not claim feature core.grants",
+      "requirements": [
+        "CORE-11"
+      ],
+      "transcript": "transcripts/core.grants.expiry-instant-is-exclusive.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.grants.grant-command-precondition-revision",
+      "fixture_digest": "sha256:891b69f7747690e2eea7c06c629c5f9289aebfd7ad2aefd764887691bdbb7f99",
+      "outcome": "unsupported",
+      "polarity": "negative",
+      "reason": "participant does not claim feature core.grants",
+      "requirements": [
+        "CORE-11",
+        "CORE-9"
+      ],
+      "transcript": "transcripts/core.grants.grant-command-precondition-revision.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.grants.grant-field-requires-feature",
+      "fixture_digest": "sha256:1293fb1b96ed98efc577ed18f29800160ce103009a9d3c4763bc526cd92bfc6c",
+      "outcome": "unsupported",
+      "polarity": "negative",
+      "reason": "participant does not claim feature core.grants",
+      "requirements": [
+        "CORE-4",
+        "CORE-11"
+      ],
+      "transcript": "transcripts/core.grants.grant-field-requires-feature.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.grants.grant-required-for-non-authority",
+      "fixture_digest": "sha256:2bfb3b14747aa0c0513168db5854fc27ff97585a658bc86fbb15cb859b396df4",
+      "outcome": "unsupported",
+      "polarity": "negative",
+      "reason": "participant does not claim feature core.grants",
+      "requirements": [
+        "CORE-11"
+      ],
+      "transcript": "transcripts/core.grants.grant-required-for-non-authority.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.grants.holder-only",
+      "fixture_digest": "sha256:c06a0232a0bc37fb8788a8893c49f0994fdb0a2c1dbefc1ed7c75fddd09123d3",
+      "outcome": "unsupported",
+      "polarity": "negative",
+      "reason": "participant does not claim feature core.grants",
+      "requirements": [
+        "CORE-11",
+        "CORE-12"
+      ],
+      "transcript": "transcripts/core.grants.holder-only.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.grants.issue-replays-after-expiry",
+      "fixture_digest": "sha256:7e9f9b7100704cda9da408c638a477e18d876203864ab394ad9d521f6265ef63",
+      "outcome": "unsupported",
+      "polarity": "negative",
+      "reason": "participant does not claim feature core.grants",
+      "requirements": [
+        "CORE-11",
+        "CORE-13"
+      ],
+      "transcript": "transcripts/core.grants.issue-replays-after-expiry.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.grants.issue-validation",
+      "fixture_digest": "sha256:e86dd7116d7cea6225fe4753cdfc0e734891806be121da764d2dc72cf1b31698",
+      "outcome": "unsupported",
+      "polarity": "negative",
+      "reason": "participant does not claim feature core.grants",
+      "requirements": [
+        "CORE-11"
+      ],
+      "transcript": "transcripts/core.grants.issue-validation.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.grants.issue-validity-check-order",
+      "fixture_digest": "sha256:34ff9c4031491f5cc642dced7ac649dddeb003c4a3eed3900cc901cef1c2b84c",
+      "outcome": "unsupported",
+      "polarity": "negative",
+      "reason": "participant does not claim feature core.grants",
+      "requirements": [
+        "CORE-11"
+      ],
+      "transcript": "transcripts/core.grants.issue-validity-check-order.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.grants.named-grant-restricts-authority",
+      "fixture_digest": "sha256:c245b1656bf1c339e00279c41b83dd7c9c91e1b84022d851d05e1d2dd67d1769",
+      "outcome": "unsupported",
+      "polarity": "negative",
+      "reason": "participant does not claim feature core.grants",
+      "requirements": [
+        "CORE-11"
+      ],
+      "transcript": "transcripts/core.grants.named-grant-restricts-authority.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.grants.non-authority-cannot-issue-root-grant",
+      "fixture_digest": "sha256:84b155700e8dfe3f6fb3c3d9b686dbfa8a0ed2b7f1f392dccd07b8a2c6165e36",
+      "outcome": "unsupported",
+      "polarity": "negative",
+      "reason": "participant does not claim feature core.grants",
+      "requirements": [
+        "CORE-11"
+      ],
+      "transcript": "transcripts/core.grants.non-authority-cannot-issue-root-grant.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.grants.precondition-current-needs-read",
+      "fixture_digest": "sha256:f8b7b740c7ecafde3c3e3ab29e4b93e57a2d04cb2f346ccdf558981f3122d282",
+      "outcome": "unsupported",
+      "polarity": "negative",
+      "reason": "participant does not claim feature core.grants",
+      "requirements": [
+        "CORE-9",
+        "CORE-12"
+      ],
+      "transcript": "transcripts/core.grants.precondition-current-needs-read.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.grants.precondition-subjects-need-read",
+      "fixture_digest": "sha256:55531f8b751217fe877775db54b32853a9902e078abd074e6496877cd61d92c8",
+      "outcome": "unsupported",
+      "polarity": "negative",
+      "reason": "participant does not claim feature core.grants",
+      "requirements": [
+        "CORE-11",
+        "CORE-12"
+      ],
+      "transcript": "transcripts/core.grants.precondition-subjects-need-read.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.grants.readable-subject-revision-disclosed",
+      "fixture_digest": "sha256:5b74d4105b5e3ae8d30163e622603abc94b618964bbcb57c35f44b4a55a058cb",
+      "outcome": "unsupported",
+      "polarity": "positive",
+      "reason": "participant does not claim feature core.grants",
+      "requirements": [
+        "CORE-12",
+        "CORE-11"
+      ],
+      "transcript": "transcripts/core.grants.readable-subject-revision-disclosed.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.grants.revocation-cascades",
+      "fixture_digest": "sha256:4a5e8024332799971ed39863c7ca12c9a107f0b076f5c345c29959cf1b33d5de",
+      "outcome": "unsupported",
+      "polarity": "negative",
+      "reason": "participant does not claim feature core.grants",
+      "requirements": [
+        "CORE-11"
+      ],
+      "transcript": "transcripts/core.grants.revocation-cascades.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.grants.revoke-needs-issuer-or-authority",
+      "fixture_digest": "sha256:273c9210823c934995bc99e25bb9a82be8aa57bf61fc365bfbe840ef85161547",
+      "outcome": "unsupported",
+      "polarity": "negative",
+      "reason": "participant does not claim feature core.grants",
+      "requirements": [
+        "CORE-11"
+      ],
+      "transcript": "transcripts/core.grants.revoke-needs-issuer-or-authority.jsonl",
+      "version": 2
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.grants.revoked-grant-refused-replay-kept",
+      "fixture_digest": "sha256:be111dd8bb380e7fdf3f33f26460be7a9f6fd776d514229958787a7f359cbd91",
+      "outcome": "unsupported",
+      "polarity": "negative",
+      "reason": "participant does not claim feature core.grants",
+      "requirements": [
+        "CORE-11",
+        "CORE-13"
+      ],
+      "transcript": "transcripts/core.grants.revoked-grant-refused-replay-kept.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.grants.right-and-scope-enforced",
+      "fixture_digest": "sha256:fd863eb37b9fdb5c7a45ade5430c028a84548a3a21997c1e648f12bc21096dfc",
+      "outcome": "unsupported",
+      "polarity": "negative",
+      "reason": "participant does not claim feature core.grants",
+      "requirements": [
+        "CORE-11"
+      ],
+      "transcript": "transcripts/core.grants.right-and-scope-enforced.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.grants.test-clock-never-moves-backward",
+      "fixture_digest": "sha256:74712af70ea807662b50a2fb16761ad01e7c3ba28838bc6d072f1a9c664a4dc9",
+      "outcome": "unsupported",
+      "polarity": "negative",
+      "reason": "participant does not claim feature core.grants",
+      "requirements": [
+        "REL-12",
+        "CORE-11"
+      ],
+      "transcript": "transcripts/core.grants.test-clock-never-moves-backward.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.grants.unprotected-operations",
+      "fixture_digest": "sha256:6af431623adecedd7529db0ff8b8d1732322afb6c18f53ba248310b4837db533",
+      "outcome": "unsupported",
+      "polarity": "negative",
+      "reason": "participant does not claim feature core.grants",
+      "requirements": [
+        "CORE-11",
+        "CORE-16"
+      ],
+      "transcript": "transcripts/core.grants.unprotected-operations.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.idempotency.conflicting-intent-refused",
+      "fixture_digest": "sha256:b63ad9f8ac9ecd1bdfe104f07c235fcc16e5275ac63d66ec437c22a0d0e92112",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "CORE-7"
+      ],
+      "transcript": "transcripts/core.idempotency.conflicting-intent-refused.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.idempotency.duplicate-returns-prior-result",
+      "fixture_digest": "sha256:f6719f5588018ac53da0eca00c2695ebb2b00c8249bd1ae84cebaeffae1f8b37",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "CORE-7",
+        "CORE-1"
+      ],
+      "transcript": "transcripts/core.idempotency.duplicate-returns-prior-result.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.idempotency.rejected-command-not-bound",
+      "fixture_digest": "sha256:3af32d2fee2bf23163fa41188133eb3e91fd7f937ef23aba36868dad51a4510e",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "CORE-7",
+        "CORE-9"
+      ],
+      "transcript": "transcripts/core.idempotency.rejected-command-not-bound.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.idempotency.replay-after-restart",
+      "fixture_digest": "sha256:b2fb562400b98cc4d37b415c603a910b65baeb22d0e40b29f87bce6d0731d597",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "CORE-7",
+        "CORE-13"
+      ],
+      "transcript": "transcripts/core.idempotency.replay-after-restart.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.idempotency.replay-under-new-epoch",
+      "fixture_digest": "sha256:db19da7725c8ee68ff6988c197ec4f47e16cccd2346047e923fbfea3f6067431",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "CORE-7",
+        "CORE-10"
+      ],
+      "transcript": "transcripts/core.idempotency.replay-under-new-epoch.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.idempotency.retransmitted-create-returns-result",
+      "fixture_digest": "sha256:4b1faaf12adbd9e1d3f80203db5ee740ffb546d66f9aedb183b5aac21db105da",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "CORE-7",
+        "CORE-9"
+      ],
+      "transcript": "transcripts/core.idempotency.retransmitted-create-returns-result.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.idempotency.scope-is-per-principal",
+      "fixture_digest": "sha256:8910837e7c461c7eaedb621901064358d0ac9d186add2ee5f03eca8199adb2d4",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "CORE-7",
+        "CORE-12"
+      ],
+      "transcript": "transcripts/core.idempotency.scope-is-per-principal.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.idempotency.state-durable-across-restart",
+      "fixture_digest": "sha256:f241831b051e33c636d6ee3beddc22dea9f633ccd0723bbe1aaf0c7b8ab15413",
+      "outcome": "pass",
+      "polarity": "positive",
+      "reason": null,
+      "requirements": [
+        "CORE-13"
+      ],
+      "transcript": "transcripts/core.idempotency.state-durable-across-restart.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.identity.retransmission-versus-new-command",
+      "fixture_digest": "sha256:7e8383d627f36550ba911742daae37cc2de0d1986ed1eebaf40a86293012da72",
+      "outcome": "pass",
+      "polarity": "positive",
+      "reason": null,
+      "requirements": [
+        "CORE-1",
+        "CORE-7"
+      ],
+      "transcript": "transcripts/core.identity.retransmission-versus-new-command.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.negotiation.callers-unaware-of-execution-are-unaffected",
+      "fixture_digest": "sha256:35f0250e96ef995b617e1a85142572fc45049d2c2cef0136d64418fb19c0826a",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "CMP-7",
+        "CORE-3"
+      ],
+      "transcript": "transcripts/core.negotiation.callers-unaware-of-execution-are-unaffected.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.negotiation.core-always-required",
+      "fixture_digest": "sha256:44fa5e9a3141e09b8404b5ecdb2c09cb8b036a31bbaa37b35e8e7c1bafa6f1f5",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "CORE-3"
+      ],
+      "transcript": "transcripts/core.negotiation.core-always-required.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.negotiation.declared-unsupported-profile-refused",
+      "fixture_digest": "sha256:2509797433d29195a62bac934b822ce0fe6ed4f30f23a94e07e0f066b63c2017",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "REL-9",
+        "CORE-3"
+      ],
+      "transcript": "transcripts/core.negotiation.declared-unsupported-profile-refused.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.negotiation.duplicate-profile-invalid",
+      "fixture_digest": "sha256:3409987a6f6d8c67078ff7de54a723273809de88bfa8a04280ab2f2af2d426a6",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "CORE-3"
+      ],
+      "transcript": "transcripts/core.negotiation.duplicate-profile-invalid.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.negotiation.error-precedence",
+      "fixture_digest": "sha256:5e9c11579264351fc8865e8a4c011f34400723d123997a7477b0febc5834d6b6",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "CORE-3"
+      ],
+      "transcript": "transcripts/core.negotiation.error-precedence.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.negotiation.execution-requests-against-any-provider",
+      "fixture_digest": "sha256:8780f8d77e68f4c53d4067de9aac214a244fd6b117969023be33b4cca0e45b97",
+      "outcome": "pass",
+      "polarity": "positive",
+      "reason": null,
+      "requirements": [
+        "CMP-7"
+      ],
+      "transcript": "transcripts/core.negotiation.execution-requests-against-any-provider.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.negotiation-major-mismatch-in-both-request-forms",
+      "fixture_digest": "sha256:c100ca40bfaf1ec1e810e2ceb4894e139a81a4a5804f9e3a8308ce3950f5eb80",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "CMP-3",
+        "CORE-3"
+      ],
+      "transcript": "transcripts/core.negotiation-major-mismatch-in-both-request-forms.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.negotiation.no-common-major-refused",
+      "fixture_digest": "sha256:1da858edfd6b1007c43f49f5dd6a4cb91a78cd6eb20db94ad1cd81a935fb61d3",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "CORE-3",
+        "CMP-3"
+      ],
+      "transcript": "transcripts/core.negotiation.no-common-major-refused.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.negotiation.optional-profile-missing-required-feature",
+      "fixture_digest": "sha256:e8095ce815e75c93c10b95a22d0039ceca13fb6727680ea2ca70cf60d353ee83",
+      "outcome": "pass",
+      "polarity": "positive",
+      "reason": null,
+      "requirements": [
+        "CORE-3"
+      ],
+      "transcript": "transcripts/core.negotiation.optional-profile-missing-required-feature.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.negotiation.optional-unsupported-profile-unselected",
+      "fixture_digest": "sha256:413cfab486b4a34e4536afc65c3eb2fc8615509df9e055bf1f9b30fe2175dbca",
+      "outcome": "pass",
+      "polarity": "positive",
+      "reason": null,
+      "requirements": [
+        "REL-9",
+        "CORE-3"
+      ],
+      "transcript": "transcripts/core.negotiation.optional-unsupported-profile-unselected.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.negotiation.profile-not-selected-refused",
+      "fixture_digest": "sha256:4e4e63f88737dc2af394b4b2d67467f143fb67c0a393757a597b6aa3cd7df6d9",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "CORE-3"
+      ],
+      "transcript": "transcripts/core.negotiation.profile-not-selected-refused.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.negotiation.refused-negotiation-can-retry",
+      "fixture_digest": "sha256:20e91843fc14b7e0148e590348560d84649c6cc0805ad57d95833fb23dd091b5",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "CORE-3"
+      ],
+      "transcript": "transcripts/core.negotiation.refused-negotiation-can-retry.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.negotiation.required-before-operations",
+      "fixture_digest": "sha256:3cd0715be29daa803adfbca8d093a0bc377fdd6d1abbe77b10b461e2bc68c62a",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "CORE-3"
+      ],
+      "transcript": "transcripts/core.negotiation.required-before-operations.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.negotiation.selects-core-and-requested-profile",
+      "fixture_digest": "sha256:2cceb06914984e9b5c6784cebbc5d94718ca8c22d0ba955f9b8857d25ed0872d",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "CORE-3"
+      ],
+      "transcript": "transcripts/core.negotiation.selects-core-and-requested-profile.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.negotiation.unknown-optional-feature-unselected",
+      "fixture_digest": "sha256:23e8274439cb27922891d6e10a72e6e27112afd69f5ae505cc04dd81226f5ad1",
+      "outcome": "pass",
+      "polarity": "positive",
+      "reason": null,
+      "requirements": [
+        "CORE-3"
+      ],
+      "transcript": "transcripts/core.negotiation.unknown-optional-feature-unselected.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.negotiation.unknown-required-feature-refused",
+      "fixture_digest": "sha256:ad4d16fb431378f0213a14329dfeea2699c9e343f544420bc613d8069350de8e",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "CORE-3"
+      ],
+      "transcript": "transcripts/core.negotiation.unknown-required-feature-refused.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.preconditions.all-failures-listed",
+      "fixture_digest": "sha256:98969e36100d08d7692ca375905a4a654e197e6fb0b62f755d20798b6b03678b",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "CORE-9"
+      ],
+      "transcript": "transcripts/core.preconditions.all-failures-listed.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.preconditions.create-existing-refused",
+      "fixture_digest": "sha256:33a3889fc1ac6460857a545e568965a3630547dabc18da820e32a1b8ba3d082a",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "CORE-9"
+      ],
+      "transcript": "transcripts/core.preconditions.create-existing-refused.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.preconditions.duplicate-subject-invalid",
+      "fixture_digest": "sha256:a8a474390696d27c0031a1739ec0a43782013666d2494f530218f96852db01a3",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "CORE-9"
+      ],
+      "transcript": "transcripts/core.preconditions.duplicate-subject-invalid.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.preconditions.matching-revisions-apply",
+      "fixture_digest": "sha256:ecba2077157277fe81bef8fdca936dbf7944400288b77deb46dd29b06a102b94",
+      "outcome": "pass",
+      "polarity": "positive",
+      "reason": null,
+      "requirements": [
+        "CORE-9"
+      ],
+      "transcript": "transcripts/core.preconditions.matching-revisions-apply.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.preconditions.multi-object-atomic",
+      "fixture_digest": "sha256:b7b6cffc7358fe04673387fc085eff892feea3ffe2978be27d29f7d269f5f17b",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "CORE-9"
+      ],
+      "transcript": "transcripts/core.preconditions.multi-object-atomic.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.preconditions.primary-precondition-required",
+      "fixture_digest": "sha256:fd2f27acfeb2a4474e259b82a205ee31e0888c72425e899eb4a6a418d4a50f19",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "CORE-9"
+      ],
+      "transcript": "transcripts/core.preconditions.primary-precondition-required.jsonl",
+      "version": 1
+    },
+    {
+      "failed_step": null,
+      "fixture": "core.preconditions.stale-revision-refused",
+      "fixture_digest": "sha256:4ffc3c8bfd2fb21c97b0b2e3d2724645b369db95a7d29a3c9020da7ee4be8da5",
+      "outcome": "pass",
+      "polarity": "negative",
+      "reason": null,
+      "requirements": [
+        "CORE-9"
+      ],
+      "transcript": "transcripts/core.preconditions.stale-revision-refused.jsonl",
+      "version": 1
+    }
+  ],
+  "runner": {
+    "name": "combraton-conformance",
+    "version": "0.1.0"
+  },
+  "status_note": "Protocol 0.1 conformance suite. A result is a conformance claim only for the fixtures it lists as passing, run from the v0.1.0 release inventory; skipped and unsupported outcomes are coverage limits, not passes.",
+  "suite": {
+    "fixtures": 135,
+    "fixtures_digest": "sha256:b696c217367b39a5c6d2b118defcd823accf55c642b7de32425660c16a082852",
+    "protocol_commit": "514781bb3a3b6ef78edc97b6ff8dde8134d1c264"
+  },
+  "summary": {
+    "pass": 80,
+    "unsupported": 55
+  }
+}

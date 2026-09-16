@@ -42,6 +42,13 @@ const UNSUPPORTED: &[(&str, &str)] = &[
     ("remote-trust", "not_in_release"),
 ];
 
+/// The per-connection bound on output produced but not yet written. The
+/// conformance launch configuration documents 8 MiB as the default for
+/// `max_pending_notification_bytes`, and `core.events.backpressure` is not
+/// negotiated here, so this bound is CBR's own discipline rather than a
+/// declared guarantee.
+const MAX_PENDING_NOTIFICATION_BYTES: usize = 8 * 1024 * 1024;
+
 /// Operations answerable before negotiation (CORE section 3).
 const PRE_NEGOTIATION: [&str; 4] = [
     "core.describe",
@@ -69,6 +76,8 @@ pub struct Provider {
     dedupe_oldest: i64,
     /// The largest frame this caller accepts, from its negotiation request.
     caller_receive_limit: usize,
+    subscriptions: Vec<Subscription>,
+    next_subscription: u64,
 }
 
 impl Provider {
@@ -98,6 +107,8 @@ impl Provider {
             dedupe_current: current,
             dedupe_oldest: oldest,
             caller_receive_limit: crate::frames::PRE_NEGOTIATION_LIMIT,
+            subscriptions: Vec::new(),
+            next_subscription: 0,
         })
     }
 
@@ -173,6 +184,8 @@ impl Provider {
                 // method/operation mismatch that step 2 owns.
                 | "core.authenticate"
                 | "core.events.read"
+                | "core.events.subscribe"
+                | "core.events.unsubscribe"
                 | "core-test.subject.put"
                 | "core-test.subject.get"
                 | "core-test.subject.applied_count"
@@ -576,6 +589,18 @@ impl Provider {
                 self.check_requires(&query.requires)?;
                 self.applied_count(&query)
             }
+            "core.events.subscribe" => {
+                let query = envelope::parse_query(params)?;
+                self.check_method_matches(method, &query.operation)?;
+                self.check_requires(&query.requires)?;
+                self.events_subscribe(&query)
+            }
+            "core.events.unsubscribe" => {
+                let query = envelope::parse_query(params)?;
+                self.check_method_matches(method, &query.operation)?;
+                self.check_requires(&query.requires)?;
+                self.events_unsubscribe(&query)
+            }
             "core.events.read" => {
                 let query = envelope::parse_query(params)?;
                 self.check_method_matches(method, &query.operation)?;
@@ -714,6 +739,158 @@ impl Provider {
             return Err(invalid("beyond the end of the stream"));
         }
         Ok(position)
+    }
+
+    fn events_subscribe(&mut self, query: &Query) -> Result<Value, ProtocolError> {
+        if !self.selected_feature("core.events") {
+            return Err(ProtocolError::unsupported_required_feature_message(
+                Value::Array(vec![Value::String("core.events".into())]),
+            ));
+        }
+        let start = self.read_start(&query.payload)?;
+        let kinds = self.read_kinds(&query.payload)?;
+        self.next_subscription += 1;
+        let id = format!("sub-{}", self.next_subscription);
+        self.subscriptions.push(Subscription {
+            id: id.clone(),
+            cursor: start,
+            kinds,
+            // The principal is captured now and re-checked before every
+            // delivery, so a subscription cannot outlive the authority that
+            // created it.
+            principal: self.config.principal.clone(),
+            ended: false,
+        });
+        Ok(Value::Object(vec![
+            ("subscription".into(), Value::String(id)),
+            (
+                "stream".into(),
+                Value::Object(vec![
+                    ("id".into(), Value::String(self.store.stream_id()?)),
+                    ("epoch".into(), Value::Int(self.store.current_epoch()?)),
+                ]),
+            ),
+        ]))
+    }
+
+    fn events_unsubscribe(&mut self, query: &Query) -> Result<Value, ProtocolError> {
+        let id = query
+            .payload
+            .get("subscription")
+            .and_then(Value::as_str)
+            .ok_or_else(|| ProtocolError::invalid_envelope("/payload/subscription", "absent"))?;
+        let before = self.subscriptions.len();
+        self.subscriptions.retain(|s| s.id != id);
+        if self.subscriptions.len() == before {
+            return Err(ProtocolError::not_found());
+        }
+        Ok(Value::Object(vec![]))
+    }
+
+    /// Frames to deliver for every live subscription, in order.
+    ///
+    /// Called after each request has produced its response, so a notification
+    /// carrying events caused by a command on this connection follows that
+    /// command's response (CORE section 16.5).
+    /// `pending` is what the connection has produced but not yet written.
+    /// When it is over the bound, no further items are produced: the withheld
+    /// items stay undelivered and are produced on a later pass. They are never
+    /// skipped, because a semantic event that vanishes is indistinguishable
+    /// from one that never happened.
+    pub fn drain_subscriptions(&mut self, pending: usize) -> Vec<Value> {
+        if pending >= MAX_PENDING_NOTIFICATION_BYTES {
+            return Vec::new();
+        }
+        let mut frames = Vec::new();
+        let budget = self.receive_budget();
+        for index in 0..self.subscriptions.len() {
+            loop {
+                let subscription = &self.subscriptions[index];
+                if subscription.ended {
+                    break;
+                }
+                // Authorization is re-checked before each delivery, not only at
+                // subscribe: a subscription must not outlive the authority it
+                // was created under.
+                if !self.config.is_authority(&subscription.principal) {
+                    let cursor = subscription.cursor;
+                    let id = subscription.id.clone();
+                    self.subscriptions[index].ended = true;
+                    frames.push(self.ending_notification(&id, cursor, "authorization_lost"));
+                    break;
+                }
+                let (id, cursor, kinds) = (
+                    subscription.id.clone(),
+                    subscription.cursor,
+                    subscription.kinds.clone(),
+                );
+                let Ok(read) = self.store.read_events(cursor, 1000, &kinds, budget) else {
+                    break;
+                };
+                if read.first_item_too_large {
+                    // The item is never skipped: the subscription ends and says
+                    // where delivery stopped, so the consumer knows exactly what
+                    // it has not seen.
+                    self.subscriptions[index].ended = true;
+                    frames.push(self.ending_notification(&id, read.next_cursor, "item_too_large"));
+                    break;
+                }
+                if read.items.is_empty() {
+                    break;
+                }
+                self.subscriptions[index].cursor = read.next_cursor;
+                let Ok(next_cursor) = self.encode_cursor(read.next_cursor) else {
+                    break;
+                };
+                frames.push(notification(&id, read.items, &next_cursor, None));
+            }
+        }
+        self.subscriptions.retain(|s| !s.ended);
+        frames
+    }
+
+    fn ending_notification(&self, id: &str, cursor: crate::store::Position, reason: &str) -> Value {
+        let encoded = self.encode_cursor(cursor).unwrap_or_default();
+        notification(id, Vec::new(), &encoded, Some(reason))
+    }
+
+    fn read_start(&self, payload: &Value) -> Result<crate::store::Position, ProtocolError> {
+        match (payload.get("cursor"), payload.get("from")) {
+            (Some(Value::String(cursor)), None) => self.decode_cursor(cursor),
+            (None, Some(Value::String(from))) => match from.as_str() {
+                "start" => Ok(self.store.stream_start()?),
+                "now" => {
+                    let epoch = self.store.current_epoch()?;
+                    Ok(crate::store::Position {
+                        epoch,
+                        sequence: self.store.last_sequence(epoch)? + 1,
+                    })
+                }
+                _ => Err(ProtocolError::invalid_envelope(
+                    "/payload/from",
+                    "unknown value",
+                )),
+            },
+            _ => Err(ProtocolError::invalid_envelope(
+                "/payload",
+                "exactly one of cursor or from is required",
+            )),
+        }
+    }
+
+    fn read_kinds(&self, payload: &Value) -> Result<Vec<String>, ProtocolError> {
+        match payload.get("kinds") {
+            None => Ok(Vec::new()),
+            Some(Value::Array(items)) => Ok(items
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::to_string)
+                .collect()),
+            Some(_) => Err(ProtocolError::invalid_envelope(
+                "/payload/kinds",
+                "not an array",
+            )),
+        }
     }
 
     fn events_read(&self, query: &Query) -> Result<Value, ProtocolError> {
@@ -1146,6 +1323,34 @@ impl Provider {
     }
 }
 
+struct Subscription {
+    id: String,
+    cursor: crate::store::Position,
+    kinds: Vec<String>,
+    principal: String,
+    ended: bool,
+}
+
+/// A `core.events.notify` notification frame.
+fn notification(id: &str, items: Vec<Value>, next_cursor: &str, ended: Option<&str>) -> Value {
+    let mut params = vec![
+        ("subscription".into(), Value::String(id.to_string())),
+        ("items".into(), Value::Array(items)),
+        ("next_cursor".into(), Value::String(next_cursor.to_string())),
+    ];
+    if let Some(reason) = ended {
+        params.push((
+            "ended".into(),
+            Value::Object(vec![("reason".into(), Value::String(reason.to_string()))]),
+        ));
+    }
+    Value::Object(vec![
+        ("jsonrpc".into(), Value::String("2.0".into())),
+        ("method".into(), Value::String("core.events.notify".into())),
+        ("params".into(), Value::Object(params)),
+    ])
+}
+
 /// A replay returns the stored acknowledgment and outcome unchanged, with
 /// `replay` set to true.
 fn replayed(mut result: Value) -> Value {
@@ -1190,5 +1395,64 @@ impl ProtocolError {
             retry: crate::errors::Retry::No,
             details: Vec::new(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::{Config, Mode};
+
+    fn provider(directory: &std::path::Path) -> Provider {
+        let config = Config {
+            mode: Mode::Conformance,
+            principal: "owner".into(),
+            authority_principals: vec!["owner".into()],
+            ..Config::default()
+        };
+        Provider::open(config, directory).expect("opens")
+    }
+
+    /// A subscription must not outlive the authority it was created under.
+    ///
+    /// The fixture-level kill for this guard is carried to stage c3: all three
+    /// fixtures that exercise it — `core.events.subscription-ends-at-grant-expiry`,
+    /// `core.events.subscription-ends-when-grant-revoked` and
+    /// `core.events.subscription-ends-when-grant-stops-authorizing` — declare
+    /// `core.grants`, which c2 does not implement. This test stands in for
+    /// them until then, and is not a substitute for them.
+    #[test]
+    fn a_subscription_ends_when_its_principal_stops_being_an_authority() {
+        let directory = tempfile::tempdir().expect("temp dir");
+        let mut provider = provider(directory.path());
+        provider.negotiated = Some(vec![("core".into(), 1, vec!["core.events".into()])]);
+
+        let subscribe = cbr_encoding::parse(
+            br#"{"operation":"core.events.subscribe","message_id":"m","payload":{"from":"start"}}"#,
+        )
+        .unwrap();
+        let query = envelope::parse_query(&subscribe).unwrap();
+        provider.events_subscribe(&query).expect("subscribes");
+        assert_eq!(provider.subscriptions.len(), 1);
+
+        // Nothing to deliver yet, and the subscription survives.
+        assert!(provider.drain_subscriptions(0).is_empty());
+        assert_eq!(provider.subscriptions.len(), 1);
+
+        // The principal stops being an authority. The next delivery ends the
+        // subscription rather than continuing to serve it.
+        provider.config.authority_principals = vec!["someone-else".into()];
+        let frames = provider.drain_subscriptions(0);
+        assert_eq!(frames.len(), 1, "one ending notification: {frames:?}");
+        let params = frames[0].get("params").expect("params");
+        assert_eq!(
+            params
+                .get("ended")
+                .and_then(|e| e.get("reason"))
+                .and_then(Value::as_str),
+            Some("authorization_lost")
+        );
+        assert_eq!(params.get("items"), Some(&Value::Array(vec![])));
+        assert!(provider.subscriptions.is_empty(), "and it is gone");
     }
 }

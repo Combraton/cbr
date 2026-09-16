@@ -14,10 +14,10 @@ mod envelope;
 mod errors;
 mod frames;
 mod jsonrpc;
+mod outbox;
 mod provider;
 mod store;
 
-use std::io::Write;
 use std::path::PathBuf;
 
 use cbr_encoding::Value;
@@ -58,22 +58,21 @@ fn parse_args() -> Result<Args, String> {
     Ok(args)
 }
 
-/// Write one frame: canonical bytes, then the terminator. Never a line feed
-/// inside, which canonical encoding guarantees by escaping control characters.
-fn write_frame(out: &mut impl Write, value: &Value) -> std::io::Result<()> {
-    let bytes = cbr_encoding::to_canonical(value);
+/// One frame: canonical bytes, then the terminator. Never a line feed inside,
+/// which canonical encoding guarantees by escaping control characters.
+fn frame_bytes(value: &Value) -> Vec<u8> {
+    let mut bytes = cbr_encoding::to_canonical(value);
     debug_assert!(
         !bytes.contains(&b'\n'),
         "a frame must not contain a line feed"
     );
-    out.write_all(&bytes)?;
-    out.write_all(b"\n")?;
-    out.flush()
+    bytes.push(b'\n');
+    bytes
 }
 
 /// A frame-level failure: answer once with a null id, flush, and close without
 /// reading further input (STREAM section 2).
-fn frame_failure(out: &mut impl Write, failure: FrameFailure) -> std::io::Result<()> {
+fn frame_failure(out: &crate::outbox::Outbox, failure: FrameFailure) {
     let error = Value::Object(vec![
         ("code".into(), Value::Int(failure.jsonrpc_code())),
         ("message".into(), Value::String(failure.code().into())),
@@ -86,7 +85,8 @@ fn frame_failure(out: &mut impl Write, failure: FrameFailure) -> std::io::Result
             ]),
         ),
     ]);
-    write_frame(out, &jsonrpc::error_response(Value::Null, error))
+    out.push(frame_bytes(&jsonrpc::error_response(Value::Null, error)));
+    out.close();
 }
 
 fn run() -> Result<(), String> {
@@ -98,8 +98,9 @@ fn run() -> Result<(), String> {
 
     let stdin = std::io::stdin();
     let mut reader = FrameReader::new(stdin.lock());
-    let stdout = std::io::stdout();
-    let mut out = stdout.lock();
+    // Output goes through a writer thread, so a consumer that stops reading
+    // stalls its own delivery and never the command path.
+    let out = crate::outbox::Outbox::start(std::io::stdout());
 
     loop {
         let frame = match reader.next_frame(provider.frame_limit()) {
@@ -108,17 +109,20 @@ fn run() -> Result<(), String> {
         };
         match frame {
             // End of input: the provider exits 0 after draining.
-            Frame::Eof => return Ok(()),
+            Frame::Eof => {
+                out.close();
+                return Ok(());
+            }
             Frame::Blank => continue,
             Frame::TooLarge => {
-                let _ = frame_failure(&mut out, FrameFailure::TooLarge);
+                frame_failure(&out, FrameFailure::TooLarge);
                 return Ok(());
             }
             Frame::Bytes(bytes) => {
                 let value = match frames::parse_frame(&bytes) {
                     Ok(value) => value,
                     Err(failure) => {
-                        let _ = frame_failure(&mut out, failure);
+                        frame_failure(&out, failure);
                         return Ok(());
                     }
                 };
@@ -126,10 +130,10 @@ fn run() -> Result<(), String> {
                     // A notification is neither processed nor answered.
                     jsonrpc::Incoming::Notification => continue,
                     jsonrpc::Incoming::Invalid { id } => {
-                        let response =
-                            jsonrpc::error_response(id, jsonrpc::invalid_request_error());
-                        write_frame(&mut out, &response)
-                            .map_err(|e| format!("writing response: {e}"))?;
+                        out.push(frame_bytes(&jsonrpc::error_response(
+                            id,
+                            jsonrpc::invalid_request_error(),
+                        )));
                     }
                     jsonrpc::Incoming::Request { id, method, params } => {
                         let response = match provider.handle(&method, &params) {
@@ -138,8 +142,13 @@ fn run() -> Result<(), String> {
                                 jsonrpc::error_response(id, error.to_error_object(error.code))
                             }
                         };
-                        write_frame(&mut out, &response)
-                            .map_err(|e| format!("writing response: {e}"))?;
+                        out.push(frame_bytes(&response));
+                        // Notifications follow the response of the command that
+                        // caused them, which queueing in this order guarantees
+                        // (CORE section 16.5).
+                        for frame in provider.drain_subscriptions(out.pending()) {
+                            out.push(frame_bytes(&frame));
+                        }
                     }
                 }
             }
