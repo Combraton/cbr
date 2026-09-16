@@ -1,0 +1,32 @@
+{
+  "format": "combraton-conformance-participant/1",
+  "name": "thirdparty-minimal-executor",
+  "version": "0.1.0",
+  "description": "Minimal independent execution kernel (client only, not an execution/1 provider). Written from docs/spec, schemas and conformance/thirdparty/README.md only. See conformance/thirdparty/minimal-executor/README.md.",
+  "role": "client",
+  "binding": "unix",
+  "claims": {
+    "profiles": [],
+    "features": [],
+    "test_controls": []
+  },
+  "launch": {
+    "argv": [
+      "python3",
+      "{repo}/conformance/thirdparty/minimal-executor/kernel.py",
+      "--config",
+      "{config_file}"
+    ]
+  },
+  "mutants": {
+    "argv": [
+      "--mutant",
+      "{mutant}"
+    ],
+    "names": [
+      "ignores-required-boundary",
+      "trusts-advertised-digest",
+      "ignores-claim-invalidation"
+    ]
+  }
+}

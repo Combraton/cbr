@@ -22,7 +22,9 @@
     "conformance/schemas/",
     "conformance/fixtures/",
     "conformance/vectors/",
-    "conformance/runner/"
+    "conformance/runner/",
+    "conformance/thirdparty/minimal-executor/",
+    "conformance/thirdparty/common/combraton_client.py"
   ],
   "authored_by_cbr_not_the_archive": [
     "PIN.json",
@@ -31,7 +33,10 @@
   "deliberately_not_vendored": {
     "conformance/reference/": "The protocol's reference provider. CBR writes its own implementation and its own test controls; the reference is not a library to depend on.",
     "conformance/independent/": "The protocol's independent Python provider, for the same reason.",
-    "conformance/thirdparty/": "Client-only third-party consumers; vendored only if a composition fixture CBR runs needs them.",
+    "conformance/thirdparty/": "Client-only third-party consumers. Only minimal-executor/ is vendored, because composition fixture thirdparty-kernel-enforces-required-claim-boundary launches it (M3a), together with common/combraton_client.py, the one module kernel.py imports from its sibling common/ directory; the kernel cannot start without it. minimal-publisher/ and the rest of the directory are not vendored.",
     "conformance/participants/": "Descriptors for the protocol's own participants. CBR writes its own descriptor."
+  },
+  "vendored_from_archive_notes": {
+    "conformance/thirdparty/": "Vendored at M3a, 2026-09-17, from the same verified release extraction; checked against BUNDLE-SHA256SUMS by scripts/verify_pin.py like every other vendored file."
   }
 }

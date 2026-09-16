@@ -1,0 +1,21 @@
+{
+  "note": "M3a runs the composition suite over the Unix-socket descriptor, whose participants are separate CBR instances with their own stores. Three fixtures need no executor role: direct-fetch-needs-one-grant-per-audience, packets-are-sealed-at-a-separate-evidence-provider and thirdparty-kernel-enforces-required-claim-boundary; the last launches the protocol's client-only minimal-executor, vendored at M3a. Of the other 11, ten declare the execution profile and one declares verification, neither of which CBR serves, so they are permanently unsupported. Confirmed by a run against M2's binary (39113b2) with an uncommitted scratch descriptor declaring the context claims: 0 pass, 3 fail, 11 unsupported, the 11 exactly these.",
+  "suite": "composition.",
+  "total": 14,
+  "pass": 3,
+  "runner_exit_status": 0,
+  "permanently_unsupported": 11,
+  "unsupported": [
+    "composition.blocked-consumer-releases-the-slot-for-preparation",
+    "composition.cancelling-one-consumer-leaves-the-other",
+    "composition.claims-in-packets-block-only-the-required-boundary",
+    "composition.context-provider-outage-advisory-proceeds-required-waits",
+    "composition.correction-before-dispatch-blocks-the-superseded-revision",
+    "composition.executor-fetches-bound-packet-and-seals-outputs",
+    "composition.executor-verifies-assembled-packet-bytes",
+    "composition.missing-required-context-blocks-bound-work",
+    "composition.pinned-and-current-bindings-treat-supersession-differently",
+    "composition.preparation-runs-without-the-consumer-slot",
+    "composition.thirdparty-publisher-feeds-reference-verification"
+  ]
+}
