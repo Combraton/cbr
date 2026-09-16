@@ -39,6 +39,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "cbr-identity"
+version = "0.1.0"
+dependencies = [
+ "cbr-encoding",
+ "tempfile",
+]
+
+[[package]]
 name = "cbr-provider"
 version = "0.1.0"
 dependencies = [

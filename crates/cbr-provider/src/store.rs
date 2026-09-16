@@ -1923,6 +1923,33 @@ mod tests {
     }
 
     #[test]
+    fn a_claim_revision_can_be_neither_updated_nor_deleted() {
+        let (_directory, store) = store();
+        store
+            .connection
+            .execute(
+                "INSERT INTO knowledge_revisions (claim, revision, digest, record, recorded_at)
+                 VALUES ('c', 1, 'sha256:00', '{}', '2030-01-01T00:00:00Z')",
+                [],
+            )
+            .expect("a revision is inserted");
+        let updated = store.connection.execute(
+            "UPDATE knowledge_revisions SET record = '{\"edited\":true}' WHERE claim = 'c'",
+            [],
+        );
+        assert!(updated.is_err(), "an update is refused by the database");
+        let deleted = store
+            .connection
+            .execute("DELETE FROM knowledge_revisions WHERE claim = 'c'", []);
+        assert!(deleted.is_err(), "a delete is refused by the database");
+        let row = store
+            .claim_revision("c", 1)
+            .expect("reads")
+            .expect("still there");
+        assert_eq!(row.record, Value::Object(vec![]), "and unchanged");
+    }
+
+    #[test]
     fn state_and_command_records_survive_reopening() {
         let directory = tempfile::tempdir().expect("temp dir");
         let key = SubjectKey {
