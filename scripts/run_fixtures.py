@@ -30,6 +30,11 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--filter", required=True, help="Fixture id prefix, for example 'stream.'")
     parser.add_argument("--out", required=True, help="Results directory, relative to the repository root")
+    parser.add_argument(
+        "--participant",
+        default=str(DESCRIPTOR.relative_to(ROOT)),
+        help="Participant descriptor, relative to the repository root (default: the stdio descriptor)",
+    )
     args = parser.parse_args()
 
     if not RUNNER_IDENTITY.is_file():
@@ -49,7 +54,7 @@ def main():
         "--repo",
         str(VENDOR),
         "--participant",
-        str(DESCRIPTOR),
+        str(ROOT / args.participant),
         "--filter",
         args.filter,
         "--out",
@@ -82,6 +87,7 @@ def main():
         "runner_identity": identity,
         "runner_exit_status": completed.returncode,
         "filter": args.filter,
+        "participant": args.participant,
         "fixture_source": {
             "note": (
                 "Fixtures and schemas came from the vendored Protocol release. The manifest's "

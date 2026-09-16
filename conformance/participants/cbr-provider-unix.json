@@ -1,0 +1,51 @@
+{
+  "format": "combraton-conformance-participant/1",
+  "name": "cbr-provider-unix",
+  "version": "0.1.0",
+  "description": "CBR's protocol provider over the Unix-socket binding (STREAM section 6). Claims the same profiles, features and test controls as the stdio descriptor, and declares the one test barrier CBR implements, subscription.recheck.after_authorization, between a subscription's re-authorization and its event read under the processing lock. Run with --repo pointing at vendor/protocol/v0.1.0; the launch path is relative to that so this descriptor carries no machine-specific path. Build first: cargo build --workspace.",
+  "role": "provider",
+  "binding": "unix",
+  "claims": {
+    "profiles": [
+      {
+        "name": "core",
+        "major": 1
+      },
+      {
+        "name": "core-test",
+        "major": 1
+      }
+    ],
+    "features": [
+      "core.events",
+      "core.grants",
+      "core.capabilities",
+      "core.events.backpressure",
+      "core.effects"
+    ],
+    "test_controls": [
+      "clock.file"
+    ],
+    "test_barriers": [
+      "subscription.recheck.after_authorization"
+    ]
+  },
+  "launch": {
+    "argv": [
+      "{repo}/../../../target/debug/cbr-provider",
+      "--data-dir",
+      "{data_dir}",
+      "--config",
+      "{config_file}",
+      "--socket",
+      "{socket_path}"
+    ]
+  },
+  "mutants": {
+    "argv": [
+      "--mutant",
+      "{mutant}"
+    ],
+    "names": []
+  }
+}

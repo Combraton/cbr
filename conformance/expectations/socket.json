@@ -1,0 +1,12 @@
+{
+  "note": "Stage d runs the socket suite with conformance/participants/cbr-provider-unix.json, which claims the same profiles, features and clock.file control as the stdio descriptor, plus the test barrier subscription.recheck.after_authorization. Derived from declared profiles, features, controls and barriers before implementing, then confirmed by an unimplemented run: 2 pass, 8 fail, 3 unsupported. Those 2 passes were vacuous: malformed-clock-file-refused and unsafe-directory-refused need only a failed start, and the unimplemented binary failed on the unknown --socket flag. With the binding implemented and the barrier not declared: 10 pass, 3 unsupported. Declared: 11 pass, 2 unsupported. The 2 declare the execution profile and are permanently out of reach. The different-user branch of the peer check is not a fixture and is a coverage limit on this machine.",
+  "suite": "socket.",
+  "total": 13,
+  "pass": 11,
+  "runner_exit_status": 0,
+  "permanently_unsupported": 2,
+  "unsupported": [
+    "socket.closing-a-session-does-not-cancel",
+    "socket.idle-obligation-overdue-without-traffic"
+  ]
+}

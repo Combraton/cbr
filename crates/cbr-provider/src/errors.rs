@@ -162,6 +162,18 @@ impl ProtocolError {
             .with("status", Value::String(status.to_string()))
     }
 
+    /// A shared-transport session called something other than
+    /// `core.describe` or `core.authenticate` before authenticating.
+    pub fn authentication_required() -> Self {
+        Self::new("authentication_required", Retry::No)
+    }
+
+    /// Unknown, malformed and revoked credentials alike, with empty details
+    /// (CORE section 18.2).
+    pub fn authentication_failed() -> Self {
+        Self::new("authentication_failed", Retry::No)
+    }
+
     pub fn not_found() -> Self {
         Self::new("not_found", Retry::No)
     }

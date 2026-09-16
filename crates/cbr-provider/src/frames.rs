@@ -21,6 +21,11 @@ pub enum Frame {
     TooLarge,
     /// Input ended. Any bytes after the last terminator were discarded.
     Eof,
+    /// No complete frame arrived before the connection's read timeout. Bytes
+    /// of a partly received frame are kept for the next call. Only a
+    /// connection with a read timeout — the socket form, which polls so idle
+    /// sessions are re-checked — ever sees this.
+    Idle,
 }
 
 pub struct FrameReader<R: Read> {
@@ -28,6 +33,9 @@ pub struct FrameReader<R: Read> {
     buffered: Vec<u8>,
     at: usize,
     eof: bool,
+    /// The frame being assembled. Held here rather than in `next_frame`, so a
+    /// read timeout in the middle of a frame does not discard what arrived.
+    partial: Vec<u8>,
 }
 
 impl<R: Read> FrameReader<R> {
@@ -37,6 +45,7 @@ impl<R: Read> FrameReader<R> {
             buffered: Vec::new(),
             at: 0,
             eof: false,
+            partial: Vec::new(),
         }
     }
 
@@ -44,7 +53,6 @@ impl<R: Read> FrameReader<R> {
     /// the binding uses 1 MiB until negotiation completes, then the value each
     /// side advertised.
     pub fn next_frame(&mut self, limit: usize) -> std::io::Result<Frame> {
-        let mut frame = Vec::new();
         loop {
             if self.at == self.buffered.len() {
                 if self.eof {
@@ -54,7 +62,20 @@ impl<R: Read> FrameReader<R> {
                 }
                 self.buffered.clear();
                 self.buffered.resize(8192, 0);
-                let read = self.input.read(&mut self.buffered)?;
+                let read = match self.input.read(&mut self.buffered) {
+                    Ok(read) => read,
+                    Err(error)
+                        if matches!(
+                            error.kind(),
+                            std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+                        ) =>
+                    {
+                        self.buffered.clear();
+                        self.at = 0;
+                        return Ok(Frame::Idle);
+                    }
+                    Err(error) => return Err(error),
+                };
                 self.buffered.truncate(read);
                 self.at = 0;
                 if read == 0 {
@@ -65,6 +86,7 @@ impl<R: Read> FrameReader<R> {
             let chunk = &self.buffered[self.at..];
             match chunk.iter().position(|byte| *byte == b'\n') {
                 Some(offset) => {
+                    let mut frame = std::mem::take(&mut self.partial);
                     frame.extend_from_slice(&chunk[..offset]);
                     self.at += offset + 1;
                     if frame.len() > limit {
@@ -79,12 +101,12 @@ impl<R: Read> FrameReader<R> {
                     return Ok(Frame::Bytes(frame));
                 }
                 None => {
-                    frame.extend_from_slice(chunk);
+                    self.partial.extend_from_slice(chunk);
                     self.at = self.buffered.len();
                     // Stop accumulating as soon as the limit is passed. The
                     // remaining bytes of an oversized frame are never buffered,
                     // and the connection closes, so they are never read.
-                    if frame.len() > limit {
+                    if self.partial.len() > limit {
                         return Ok(Frame::TooLarge);
                     }
                 }

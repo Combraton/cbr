@@ -94,12 +94,31 @@ impl TooSlow {
 }
 
 /// Serve one connection until its input ends or it is closed.
+///
+/// `closer`, for a socket, is shut down when the connection must close while
+/// its writer may still be blocked on a consumer that stopped reading: the
+/// shutdown is what unblocks it. On stdio there is nothing to shut down;
+/// closing is the process ending.
 pub fn serve<R: Read, W: Write + Send + 'static>(
     input: R,
     out: W,
     provider: &mut Provider,
+    closer: Option<&std::os::unix::net::UnixStream>,
 ) -> Result<Ended, String> {
     let outbox = Outbox::start(out);
+    let ended = serve_frames(input, &outbox, provider);
+    if let (Ok(Ended::TooSlow(_)), Some(stream)) = (&ended, closer) {
+        let _ = stream.shutdown(std::net::Shutdown::Both);
+    }
+    ended
+}
+
+fn serve_frames<R: Read>(
+    input: R,
+    outbox: &Arc<Outbox>,
+    provider: &mut Provider,
+) -> Result<Ended, String> {
+    let outbox = outbox.clone();
     let mut reader = FrameReader::new(input);
 
     loop {
@@ -114,6 +133,17 @@ pub fn serve<R: Read, W: Write + Send + 'static>(
                 return Ok(Ended::Normally);
             }
             Frame::Blank => continue,
+            // A socket session polls. With no request in hand it still owes
+            // re-checks: a grant can expire or be revoked from another
+            // connection, and events committed by another session are
+            // delivered, without waiting for this consumer to say anything
+            // (CORE section 16.5).
+            Frame::Idle => {
+                provider.tick();
+                if let Err(ended) = deliver(&outbox, provider) {
+                    return Ok(ended);
+                }
+            }
             Frame::TooLarge => return frame_failure(&outbox, provider, FrameFailure::TooLarge),
             Frame::Bytes(bytes) => {
                 let value = match frames::parse_frame(&bytes) {
@@ -344,7 +374,7 @@ mod tests {
         let (done, finished) = mpsc::channel();
         std::thread::spawn(move || {
             let started = Instant::now();
-            let ended = serve(&input[..], out, &mut provider).expect("serves");
+            let ended = serve(&input[..], out, &mut provider, None).expect("serves");
             let _ = done.send((ended, started.elapsed()));
         });
         finished

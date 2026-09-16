@@ -559,6 +559,15 @@ impl Store {
         Ok((current, oldest))
     }
 
+    /// The deduplication window as the process that started this store left
+    /// it, for a further connection to the same store. Unlike
+    /// `start_generation`, this advances and discards nothing: a connection is
+    /// not a process start.
+    pub fn current_generation(&self, retain_generations: i64) -> Result<(i64, i64), StoreError> {
+        let current = self.meta("dedupe_current")?.unwrap_or(1);
+        Ok((current, (current - retain_generations + 1).max(0)))
+    }
+
     pub fn revision(&self, key: &SubjectKey) -> Result<i64, StoreError> {
         Ok(self.subject(key)?.map_or(0, |state| state.revision))
     }

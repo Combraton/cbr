@@ -35,6 +35,7 @@ name = "cbr-provider"
 version = "0.1.0"
 dependencies = [
  "cbr-encoding",
+ "libc",
  "rusqlite",
  "tempfile",
 ]
