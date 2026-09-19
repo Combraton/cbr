@@ -1,0 +1,15 @@
+[package]
+name = "cbr-memory"
+description = "CBR's derived memory: the persistent dependency evaluator, the lexical index and code anchors."
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+cbr-encoding = { path = "../cbr-encoding" }
+rusqlite.workspace = true
+
+[dev-dependencies]
+tempfile = "3.27.0"
