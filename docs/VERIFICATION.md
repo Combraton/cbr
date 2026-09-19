@@ -202,7 +202,7 @@ These are **derived** memory: computed from the journal, replaceable without cha
 
 **Indexing a tree** reports its own coverage: blobs seen, indexed and anchored, and the three gaps — binary, too large, and an unanchored language. An empty search result is not proof of absence (INTERNALS §5), so a caller must be able to tell "nothing matched" from "never looked". Indexing is per tree and replaces that tree's rows, so re-indexing is idempotent and each tree answers only for itself.
 
-**Source identity moved to `gix`** here, in this process: no subprocess, no shell and no runtime dependency on an installed `git`. Reading a tree's blobs in bulk is what made the difference, and the four identity property tests with their negative controls pass unchanged, which is the acceptance that move was promised on. (The decision record that names the trigger is ADR 001 question 11, which lands with the m3a branch; when both are on `main` that row says the trigger fired here.)
+**Source identity moved to `gix`** here, in this process: no subprocess, no shell and no runtime dependency on an installed `git`. Reading a tree's blobs in bulk is what made the difference, and the four identity property tests with their negative controls pass unchanged, which is the acceptance that move was promised on. (ADR 001 question 11 names the trigger and now records that it fired here, with those four tests as the acceptance it met.)
 
 **What m3b does not establish.**
 - **No packet.** Nothing here compiles context; that is m3c.
@@ -210,6 +210,7 @@ These are **derived** memory: computed from the journal, replaceable without cha
 - **Anchors resolve names, not references.** Generics, macros, re-exports and shadowing stay ambiguous by design.
 - **Untested at scale.** The largest indexed tree is a test repository. Index size, the 20-line chunk and the 1 MiB blob cap are unmeasured choices.
 - **The evaluator has no caller yet**, so its durability levels and untracked marks are exercised only by its harness.
+- **The rules that govern a retrieval answer are not built.** An index carries no build manifest — no source frontier, no compiler version, no `complete` / `lagging` / `unavailable` state — so a reader cannot tell a current index from a stalled one. Nothing yet forbids a lagging index from answering "nothing found" instead of a bounded canonical fallback or an explicit incomplete coverage, which INTERNALS §5 requires and which journey 1's negative control depends on. There is no test that an index rebuilt from the canonical records equals the incrementally maintained one. **Search has no principal**: nothing filters a result by what the caller may read. And bounding is one `LIMIT` on a row count, with no pagination cursor, no span or byte cap per read and no aggregate cap across a batch. These five are m3c's first commits, each with its test, before any packet is compiled; [STATE](work/STATE.md) records them with their reasons.
 - **Non-git trees still have no identity** (PROTOCOL-PIN §5), and a submodule is still a gitlink with no contents.
 
 ### The `cbr` command, and the credentials it needs
