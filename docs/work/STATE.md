@@ -38,7 +38,7 @@ One pull request against `main`, independent of m3a's branch. Six commits:
 
 ### Mutants
 
-All observed, all restored. 25 mutants against `cargo test`: 23 fail a test, 1 is equivalent, and 1 is **unresolved** — its rerun against the test written for it did not complete before this session ended, so no kill is claimed for it.
+All observed, all restored. 25 mutants against `cargo test`: 24 fail a test and 1 is equivalent.
 
 | Mutant | Killed by | At |
 |---|---|---|
@@ -54,7 +54,7 @@ All observed, all restored. 25 mutants against `cargo test`: 23 fail a test, 1 i
 | Binary content indexed lossily · symlinks and gitlinks indexed as blobs | the tree-index test | the coverage counts |
 | A tree listing its subtrees as blobs · a staged change not dirty · untracked files collapsed into their directory | the identity tests | "a tree is not a blob" · the staged-change case · "the file, not its directory" |
 | **Setting an input ignores a durability change** | **nothing — equivalent** | With the same value, ignoring a durability change cannot produce a wrong answer: the input keeps its recorded durability, and the next change to its value announces at the higher of the old and new, so every memo still sees it. Recorded, not counted as a kill |
-| **Shallow validation not recording that it verified** | **unresolved** | It survived the first batch. `a_durable_memo_is_verified_without_walking_and_records_it` was written to pin that invariant and passes, but the mutant rerun against it was interrupted, so whether it kills is unverified. To finish: rerun that one mutant |
+| Shallow validation not recording that it verified | `a_durable_memo_is_verified_without_walking_and_records_it` | It survived the first batch, which had no test for it; the test was written and the mutant rerun against it. `verified_at: 1` where the revision is 2 — a memo that validates without walking never advances, so it re-walks its edges on every later read |
 
 ### Coverage limits
 
