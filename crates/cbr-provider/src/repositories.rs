@@ -14,7 +14,7 @@
 //! searched and never named, so a principal cannot tell "no match" from "not
 //! allowed" (INTERNALS section 5, CORE section 15.5).
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use crate::grants::Grant;
 use crate::store::{REPOSITORY, Store, StoreError, SubjectKey};
@@ -114,28 +114,6 @@ pub fn view(store: &Store, grant: Option<&Grant>) -> Result<Vec<Visible>, StoreE
     Ok(visible)
 }
 
-/// Where a repository is checked out, if this session may read it.
-pub fn checkout(
-    store: &Store,
-    grant: Option<&Grant>,
-    id: &str,
-) -> Result<Option<PathBuf>, StoreError> {
-    Ok(view(store, grant)?
-        .into_iter()
-        .find(|visible| visible.id == id)
-        .map(|visible| visible.checkout))
-}
-
-/// Whether `path` is inside `root`, for the rule that nothing reads a
-/// checkout outside a granted scope: a registered repository's own directory
-/// is the whole of what registering it permitted.
-pub fn inside(root: &Path, path: &Path) -> bool {
-    match (root.canonicalize(), path.canonicalize()) {
-        (Ok(root), Ok(path)) => path.starts_with(root),
-        _ => false,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -154,7 +132,7 @@ mod tests {
         Value::String(text.to_string())
     }
 
-    fn checkout_at(directory: &Path) -> PathBuf {
+    fn checkout_at(directory: &std::path::Path) -> PathBuf {
         let output = std::process::Command::new("git")
             .arg("-C")
             .arg(directory)
@@ -348,16 +326,5 @@ mod tests {
             vec![string(READ_RIGHT)],
         );
         assert!(view(&store, Some(&elsewhere)).expect("view").is_empty());
-    }
-
-    #[test]
-    fn a_path_outside_a_registered_checkout_is_outside_the_grant() {
-        let directory = tempfile::tempdir().expect("temp dir");
-        let inside_path = directory.path().join("app/src");
-        std::fs::create_dir_all(&inside_path).expect("dir");
-        let root = directory.path().join("app");
-        assert!(inside(&root, &inside_path));
-        assert!(!inside(&root, directory.path()));
-        assert!(!inside(&root, &directory.path().join("other")));
     }
 }

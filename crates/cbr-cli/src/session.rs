@@ -6,6 +6,18 @@ use std::path::Path;
 
 use cbr_encoding::Value;
 
+/// Every `context/1` feature, asked for as optional. A client that asks for
+/// none of them cannot submit an advisory item, which is most of them.
+const CONTEXT_FEATURES: [&str; 7] = [
+    "context.advisory",
+    "context.required_before_start",
+    "context.required_before_transition",
+    "context.shared_jobs",
+    "context.updates",
+    "context.expand",
+    "context.claims",
+];
+
 pub fn string(text: &str) -> Value {
     Value::String(text.into())
 }
@@ -28,6 +40,16 @@ pub fn canonical(value: &Value) -> String {
 }
 
 /// A value at a path of member names, or `Null`.
+/// Set or replace one member of an object, keeping the members sorted as the
+/// canonical form needs them.
+pub fn set(value: &mut Value, name: &str, member: Value) {
+    if let Value::Object(members) = value {
+        members.retain(|(existing, _)| existing != name);
+        members.push((name.to_string(), member));
+        members.sort_by(|left, right| left.0.cmp(&right.0));
+    }
+}
+
 pub fn at(value: &Value, path: &[&str]) -> Value {
     let mut current = value;
     for name in path {
@@ -90,12 +112,20 @@ impl Session {
             ),
         ])];
         for profile in profiles {
+            // Optional, always: a provider that does not serve one of these
+            // leaves it unselected rather than refusing the session, and the
+            // verb that needed it gets `unsupported_required_feature` with
+            // the feature named.
+            let optional: Vec<Value> = match *profile {
+                "context" => CONTEXT_FEATURES.iter().map(|f| string(f)).collect(),
+                _ => Vec::new(),
+            };
             requested.push(object(vec![
                 ("name", string(profile)),
                 ("majors", Value::Array(vec![Value::Int(1)])),
                 ("required", Value::Bool(true)),
                 ("required_features", Value::Array(vec![])),
-                ("optional_features", Value::Array(vec![])),
+                ("optional_features", Value::Array(optional)),
             ]));
         }
         let negotiated = session.query(

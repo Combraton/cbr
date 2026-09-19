@@ -22,6 +22,7 @@
 use cbr_encoding::Value;
 
 use super::{Epoch, Provider, Step6, accepted};
+use crate::compiler::{self, Decided, Reach, Selection, Unmet};
 use crate::context::{
     self, JOB, PACKET, REQUEST, at, canonical, int, key, list, object, set, string, subject, text,
 };
@@ -30,6 +31,13 @@ use crate::errors::ProtocolError;
 use crate::grants::Grant;
 use crate::peer::{self, PeerConfig};
 use crate::store::{Change, Commit, NewEvent, ProviderEvent, ProviderWrite, SubjectKey};
+
+/// One repository the compiler may read, at the tree the basis names.
+struct Frontier {
+    repository: String,
+    tree: String,
+    checkout: std::path::PathBuf,
+}
 
 fn event(event_type: &str, payload: Value, caused_by: &[String]) -> NewEvent {
     NewEvent {
@@ -209,6 +217,358 @@ impl Provider {
         )?)
     }
 
+    /// The repositories this session may read, as
+    /// [`crate::repositories::view`] resolves them from the grant the command
+    /// named. Only the ids travel into the job: a path is local.
+    fn readable_repositories(&self, params: &Value) -> Result<Vec<String>, ProtocolError> {
+        let named = params.get("grant").and_then(Value::as_str);
+        let grant = self.authorize(named, &[])?;
+        Ok(crate::repositories::view(&self.store, grant.as_ref())
+            .map_err(|_| ProtocolError::new_internal_error())?
+            .into_iter()
+            .map(|visible| visible.id)
+            .collect())
+    }
+
+    /// The deterministic compiler, run as the job's first step
+    /// (INTERNALS section 5). Returns the steps that replace the marker.
+    fn compile(&self, job: &Value, tick: &mut Tick) -> Result<Vec<Value>, TickError> {
+        let view: Vec<String> = list(job, &["view"])
+            .iter()
+            .filter_map(Value::as_str)
+            .map(str::to_string)
+            .collect();
+        let mut decided = Decided::default();
+        let mut trees: Vec<Frontier> = Vec::new();
+
+        // Steps 1 and 2: the view, and a frontier for each repository in it.
+        for repository in list(job, &["basis", "repositories"]) {
+            let id = text(repository, &["id"]).to_string();
+            let tree = text(repository, &["tree"]).to_string();
+            if !view.contains(&id) {
+                continue;
+            }
+            let Some(checkout) = self
+                .store
+                .repository_checkout(&id)
+                .map_err(|_| ProtocolError::new_internal_error())?
+            else {
+                continue;
+            };
+            let reach = self.ensure_index(&id, &checkout, &tree)?;
+            decided.reach.push(reach);
+            trees.push(Frontier {
+                repository: id,
+                tree,
+                checkout,
+            });
+        }
+
+        // Steps 3 and 4: one selection per item, inside the view.
+        let request = list(job, &["requests"])
+            .first()
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string();
+        let record = self
+            .tick_record(tick, REQUEST, &request)?
+            .map(|(_, record)| record)
+            .unwrap_or(Value::Null);
+        for item in list(job, &["items"]) {
+            self.decide_item(item, &record, &trees, &mut decided, tick)?;
+        }
+
+        let mut steps = compiler::steps(&decided);
+        // Step 5's refusal, moved to where a compiled request can know it:
+        // the sizes exist only once something has been selected.
+        let capacity = int(job, &["limits", "output_capacity", "amount"]);
+        if context::mandatory_size(&steps, list(job, &["items"])) > capacity {
+            steps = vec![object(vec![("end", string("budget_insufficient"))])];
+        }
+        Ok(steps)
+    }
+
+    /// Build the index for `repository` at `tree` unless a manifest already
+    /// says it is there, and report what that projection reaches.
+    fn ensure_index(
+        &self,
+        repository: &str,
+        checkout: &std::path::Path,
+        tree: &str,
+    ) -> Result<Reach, TickError> {
+        use cbr_memory::retrieval;
+        let connection = self.store.connection();
+        let position = self
+            .store
+            .current_epoch()
+            .and_then(|epoch| self.store.last_sequence(epoch))
+            .unwrap_or(0);
+        let existing = retrieval::manifest(connection, repository).ok().flatten();
+        let manifest = match existing {
+            Some(manifest) if manifest.frontier == tree => Ok(manifest),
+            _ => retrieval::build(connection, repository, checkout, tree, position),
+        };
+        Ok(match manifest {
+            Ok(manifest) => {
+                let coverage = &manifest.coverage;
+                let mut gaps = Vec::new();
+                for (count, what) in [
+                    (coverage.binary, "blobs were not text"),
+                    (coverage.too_large, "blobs were over the size cap"),
+                    (
+                        coverage.unanchored_language,
+                        "blobs are in a language with no anchors",
+                    ),
+                ] {
+                    if count > 0 {
+                        gaps.push(format!("{count} {what}"));
+                    }
+                }
+                Reach {
+                    repository: repository.to_string(),
+                    frontier: manifest.frontier,
+                    state: "complete".into(),
+                    gaps,
+                }
+            }
+            // A projection that cannot be built is unavailable and says so.
+            // It is never silently an empty one.
+            Err(error) => Reach {
+                repository: repository.to_string(),
+                frontier: tree.to_string(),
+                state: "unavailable".into(),
+                gaps: vec![format!("the index could not be built: {error}")],
+            },
+        })
+    }
+
+    /// One item: what satisfies it, or why nothing does.
+    fn decide_item(
+        &self,
+        item: &Value,
+        record: &Value,
+        trees: &[Frontier],
+        decided: &mut Decided,
+        tick: &mut Tick,
+    ) -> Result<(), TickError> {
+        let item_id = text(item, &["item_id"]).to_string();
+        let check = at(item, &["check"]);
+        match text(check, &["kind"]) {
+            "source_included" => {
+                let wanted = text(check, &["repository"]);
+                let path = text(check, &["path"]).to_string();
+                // A repository outside the view is indistinguishable here
+                // from one that was never registered: one reason covers
+                // both, so nothing leaks through the difference.
+                let Some(frontier) = trees.iter().find(|f| f.repository == wanted) else {
+                    decided.unmet.push(Unmet {
+                        item: item_id,
+                        reason: "source_unavailable".into(),
+                    });
+                    return Ok(());
+                };
+                match self.select_source(frontier, item, &path, tick)? {
+                    Some(selection) => decided.selections.push(selection),
+                    None => decided.unmet.push(Unmet {
+                        item: item_id,
+                        reason: "source_absent_at_basis".into(),
+                    }),
+                }
+            }
+            "evidence_included" => {
+                let reference = at(check, &["evidence"]).clone();
+                let artifact = text(&reference, &["artifact", "id"]).to_string();
+                let sealed = self
+                    .store
+                    .subject(&crate::evidence::artifact_key(&artifact))
+                    .map_err(|_| ProtocolError::new_internal_error())?;
+                let holds = match &sealed {
+                    Some(state) => {
+                        let value = parse_record(&state.value)?;
+                        text(&value, &["state"]) == "sealed"
+                            && text(&value, &["descriptor", "digest"])
+                                == text(&reference, &["digest"])
+                    }
+                    None => false,
+                };
+                if holds {
+                    decided.evidence.push(compiler::EvidenceSection {
+                        item: item_id,
+                        summary: format!("evidence {artifact}"),
+                        evidence: reference,
+                    });
+                } else {
+                    decided.unmet.push(Unmet {
+                        item: item_id,
+                        reason: "evidence_unavailable".into(),
+                    });
+                }
+            }
+            "claim_included" => {
+                let reference = at(check, &["claim"]).clone();
+                let read = self.read_claim(&reference);
+                decided.claims.push(compiler::ClaimSection {
+                    item: item_id,
+                    reference,
+                    read,
+                });
+            }
+            "authority_content_included" => {
+                match list(record, &["authority_content"])
+                    .iter()
+                    .find(|content| text(content, &["item_id"]) == item_id)
+                {
+                    Some(content) => decided.authority.push(compiler::AuthoritySection {
+                        item: item_id,
+                        revision: int(content, &["authority_revision"]),
+                        evidence: at(content, &["evidence"]).clone(),
+                    }),
+                    None => decided.unmet.push(Unmet {
+                        item: item_id,
+                        reason: "authority_content_absent".into(),
+                    }),
+                }
+            }
+            _ => decided.unmet.push(Unmet {
+                item: item_id,
+                reason: "uncheckable_item".into(),
+            }),
+        }
+        Ok(())
+    }
+
+    /// The span of `path` this item gets, and the artifact that holds it.
+    ///
+    /// Retrieval chooses which part of the file to name, inside the view and
+    /// after authorization (INTERNALS section 5 step 3). If the selector
+    /// matches nothing in that file, the file's first chunk is named rather
+    /// than nothing at all: the file is in the tree, so absence of a match is
+    /// not absence of the source.
+    fn select_source(
+        &self,
+        frontier: &Frontier,
+        item: &Value,
+        path: &str,
+        tick: &mut Tick,
+    ) -> Result<Option<Selection>, TickError> {
+        use cbr_memory::retrieval::{Bounds, Origin, Readable};
+        let entries = match cbr_identity::tree_entries(&frontier.checkout, &frontier.tree) {
+            Ok(entries) => entries,
+            Err(_) => return Ok(None),
+        };
+        let Some(entry) = entries.into_iter().find(|entry| entry.path == path) else {
+            return Ok(None);
+        };
+        let Ok(bytes) = cbr_identity::read_blob(&frontier.checkout, &entry.blob) else {
+            return Ok(None);
+        };
+
+        let readable = [Readable {
+            id: &frontier.repository,
+            checkout: &frontier.checkout,
+            basis: &frontier.tree,
+        }];
+        let query = text(at(item, &["selector"]), &["value"]).to_string();
+        let answer = cbr_memory::retrieval::search(
+            self.store.connection(),
+            &readable,
+            &query,
+            &Bounds {
+                rows: 32,
+                ..Bounds::default()
+            },
+        )
+        .map_err(|_| ProtocolError::new_internal_error())?;
+        let hit = answer.found.iter().find(|found| found.path == path);
+        let (start_byte, end_byte, start_line, end_line, origin) = match hit {
+            Some(found) => (
+                found.start_byte,
+                found.end_byte,
+                found.start_line,
+                found.end_line,
+                match found.origin {
+                    Origin::Index => "index",
+                    Origin::Canonical => "canonical",
+                },
+            ),
+            None => {
+                let first = String::from_utf8_lossy(&bytes);
+                let chunk = cbr_memory::lexical::chunks(&first, cbr_memory::index::CHUNK_LINES)
+                    .into_iter()
+                    .next();
+                match chunk {
+                    Some(chunk) => (
+                        chunk.start_byte,
+                        chunk.end_byte,
+                        chunk.start_line,
+                        chunk.end_line,
+                        "whole-file",
+                    ),
+                    None => (0, 0, 1, 1, "whole-file"),
+                }
+            }
+        };
+
+        let digest = cbr_encoding::digest_bytes(&bytes);
+        let selection = Selection {
+            item: text(item, &["item_id"]).to_string(),
+            repository: frontier.repository.clone(),
+            tree: frontier.tree.clone(),
+            path: path.to_string(),
+            blob: entry.blob.clone(),
+            digest: digest.clone(),
+            size: bytes.len(),
+            start_byte,
+            end_byte,
+            start_line,
+            end_line,
+            origin,
+        };
+        self.seal_source(tick, &selection, &bytes)?;
+        Ok(Some(selection))
+    }
+
+    /// Seal a cited file as evidence, unless an artifact already holds it.
+    /// The id is the blob, so citing the same file twice is one artifact.
+    fn seal_source(
+        &self,
+        tick: &mut Tick,
+        selection: &Selection,
+        bytes: &[u8],
+    ) -> Result<(), TickError> {
+        let artifact = selection.artifact();
+        let artifact_key = crate::evidence::artifact_key(&artifact);
+        if self.store.revision(&artifact_key)? != 0 || tick.batch.written(&artifact_key).is_some() {
+            return Ok(());
+        }
+        let payload = compiler::source_descriptor(
+            &selection.repository,
+            &selection.tree,
+            &selection.path,
+            &selection.digest,
+            selection.size,
+            &tick.now,
+        );
+        let descriptor = crate::evidence::parse_descriptor(&payload, &self.config.principal)?;
+        self.store.publish_object(&selection.digest, bytes)?;
+        let sealed = object(vec![
+            ("descriptor", descriptor.clone()),
+            ("state", string("sealed")),
+            ("staged_at", string(&tick.now)),
+        ]);
+        let revision = self.tick_save(tick, &artifact_key, &sealed)?;
+        tick.batch.event(
+            &artifact_key,
+            revision,
+            "evidence.artifact.sealed",
+            object(vec![
+                ("digest", string(&selection.digest)),
+                ("size", Value::Int(selection.size as i64)),
+            ]),
+        );
+        Ok(())
+    }
+
     /// The script a job started by `request` follows: the `context.script`
     /// control's entry for it, else its default, else nothing.
     fn script_for(&self, request: &str) -> Vec<Value> {
@@ -308,11 +668,38 @@ impl Provider {
                 }
             }
         }
+        // Step 1 of INTERNALS section 5, at the only place it can honestly
+        // happen: the command, where the grant is. Preparation runs later and
+        // on the provider's own authority, so it is handed the view rather
+        // than allowed to compute one, and cannot widen it.
+        let view = self.readable_repositories(params)?;
         let (job_id, job) = joined.unwrap_or_else(|| {
-            (
-                id.clone(),
-                context::new_job(&principal, payload, &script, &id),
-            )
+            let mut job = context::new_job(&principal, payload, &script, &id);
+            set(
+                &mut job,
+                "view",
+                Value::Array(view.iter().map(|id| string(id)).collect()),
+            );
+            // Compiling is a production capability, and a conformance
+            // launch is a test harness: there, a request with no script is
+            // still a request nothing prepares, which is what every context
+            // fixture was measured against. The two never overlap, because a
+            // production launch serves no test control at all.
+            if script.is_empty()
+                && self.config.mode == crate::config::Mode::Production
+                && self.config.context.0 == Value::Null
+            {
+                // Nothing scripts this request, so it is compiled. The marker
+                // is the first step, and compiling replaces it with what it
+                // decided.
+                set(
+                    &mut job,
+                    "script",
+                    Value::Array(vec![object(vec![("compile", Value::Object(Vec::new()))])]),
+                );
+                set(&mut job, "compiler", string(compiler::COMPILER));
+            }
+            (id.clone(), job)
         });
         let job_subject = subject(JOB, &job_id);
         set(&mut record, "state", string("preparing"));
@@ -729,6 +1116,15 @@ impl Provider {
                     }
                 }
                 "stall" => break,
+                "compile" => {
+                    let compiled = self.compile(job, tick)?;
+                    // The marker is replaced by what compiling decided, so
+                    // everything after this is the same path a script takes.
+                    let mut script: Vec<Value> = list(job, &["script"]).to_vec();
+                    script.splice(cursor as usize..=cursor as usize, compiled);
+                    set(job, "script", Value::Array(script));
+                    continue;
+                }
                 "investigate" => {
                     let spent = int(job, &["spent"]) + argument_int(argument);
                     set(job, "spent", Value::Int(spent));

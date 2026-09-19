@@ -26,6 +26,13 @@ use cbr_encoding::Value;
 /// defines no repository subject, and a grant narrows this kind by id exactly
 /// as it narrows any other.
 pub const REPOSITORY: &str = "cbr.repository";
+
+/// A failure inside the derived memory, as a store error. It is corruption
+/// of this file either way: the projections live in it.
+fn memory_failed(error: cbr_memory::index::IndexError) -> StoreError {
+    eprintln!("cbr-provider: derived memory: {error}");
+    StoreError::Corrupt("the derived memory could not be migrated")
+}
 use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params};
 
 /// A provider-owned object, named by kind and id.
@@ -541,6 +548,11 @@ impl Store {
                  path       TEXT NOT NULL
              );",
         )?;
+        // The derived memory lives in the same file, so it migrates with the
+        // journal: an index that is not there is a projection that is
+        // unavailable, and the compiler would have to say so on every read.
+        cbr_memory::index::migrate(&self.connection).map_err(memory_failed)?;
+        cbr_memory::retrieval::migrate(&self.connection).map_err(memory_failed)?;
         Ok(())
     }
 
@@ -1077,6 +1089,15 @@ impl Store {
             )
             .optional()?
             .map(PathBuf::from))
+    }
+
+    /// The connection, for the derived memory that lives in the same file.
+    ///
+    /// Index rows are written outside the caller's command transaction on
+    /// purpose: an index is derived and idempotent, so a build that survives
+    /// a failed tick costs a rebuild at worst and never makes a record wrong.
+    pub fn connection(&self) -> &rusqlite::Connection {
+        &self.connection
     }
 
     pub fn credentials(&self) -> Result<Vec<crate::config::Credential>, StoreError> {

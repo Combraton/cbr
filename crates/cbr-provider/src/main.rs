@@ -8,6 +8,7 @@
 
 mod barriers;
 mod clock;
+mod compiler;
 mod config;
 mod context;
 mod credentials;
@@ -22,10 +23,6 @@ mod knowledge;
 mod outbox;
 mod peer;
 mod provider;
-// The view these build is read by the packet compiler, which is the next
-// commit; registration and the view land first because the compiler's tests
-// are written against them. The attribute goes when that caller arrives.
-#[allow(dead_code)]
 mod repositories;
 mod session;
 mod socket;

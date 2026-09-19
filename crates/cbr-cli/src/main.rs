@@ -18,6 +18,12 @@
 //! cbr history <claim>
 //! cbr authority bind <scope> --authority PRINCIPAL
 //! cbr basis --repo PATH --repo-id ID [--commit REV] [--environment FACTS]
+//! cbr context <request> --repo PATH --repo-id ID [--commit REV]
+//!     --want <item>=source:<path>|claim:<claim>|evidence:<artifact>@<digest> …
+//!     [--obligation O] [--selector TEXT] [--task TEXT]
+//!     [--capacity BYTES] [--deadline INSTANT] [--investigation N]
+//! cbr request <request>
+//! cbr packet <request> [--revision N] [--excerpt SECTION]
 //! ```
 //!
 //! Every verb except `basis` takes `--socket PATH --credential-file PATH` and
@@ -29,6 +35,7 @@
 //! for; a mismatch writes nothing and exits nonzero. The knowledge verbs print
 //! the outcome or result as canonical JSON.
 
+mod context;
 mod evidence;
 mod knowledge;
 mod session;
@@ -47,11 +54,11 @@ pub struct Options {
     pub commit: String,
 }
 
-const USAGE: &str =
-    "usage: cbr ingest|fetch|propose|revise|decide|evaluate|inspect|history|authority bind|basis …";
+const USAGE: &str = "usage: cbr ingest|fetch|propose|revise|decide|evaluate|inspect|history|\
+                     authority bind|basis|context|request|packet …";
 
 /// Options that take a value; everything else starting `--` is refused.
-const VALUED: [&str; 19] = [
+const VALUED: [&str; 27] = [
     "--socket",
     "--authority",
     "--credential-file",
@@ -71,6 +78,14 @@ const VALUED: [&str; 19] = [
     "--decision",
     "--use",
     "--rationale",
+    "--want",
+    "--obligation",
+    "--selector",
+    "--task",
+    "--capacity",
+    "--deadline",
+    "--investigation",
+    "--excerpt",
 ];
 
 fn run() -> Result<(), String> {
@@ -78,9 +93,12 @@ fn run() -> Result<(), String> {
     let verb = argv.next().ok_or(USAGE)?;
     let mut positional = Vec::new();
     let mut values: BTreeMap<String, String> = BTreeMap::new();
+    let mut wants: Vec<String> = Vec::new();
     let mut target = None;
     while let Some(argument) = argv.next() {
-        if argument == "--target" {
+        if argument == "--want" {
+            wants.push(argv.next().ok_or("--want needs a value")?);
+        } else if argument == "--target" {
             target = Some(argv.next().ok_or("--target needs a value")?);
         } else if VALUED.contains(&argument.as_str()) {
             let value = argv.next().ok_or(format!("{argument} needs a value"))?;
@@ -123,6 +141,37 @@ fn run() -> Result<(), String> {
     let positional: Vec<&str> = positional.iter().map(String::as_str).collect();
     match (verb.as_str(), positional.as_slice()) {
         ("ingest", [file]) => evidence::ingest(&options, Path::new(file)),
+        ("context", [request]) => context::submit(
+            &options,
+            request,
+            &PathBuf::from(required("--repo")?),
+            &required("--repo-id")?,
+            &options.commit,
+            &wants,
+            &value("--obligation").unwrap_or_else(|| "advisory".into()),
+            value("--selector").as_deref(),
+            &value("--task").unwrap_or_else(|| "context".into()),
+            value("--capacity")
+                .as_deref()
+                .map_or(Ok(65536), str::parse)
+                .map_err(|_| "--capacity is a number of bytes")?,
+            &value("--deadline").unwrap_or_else(|| "2099-01-01T00:00:00Z".into()),
+            value("--investigation")
+                .as_deref()
+                .map_or(Ok(0), str::parse)
+                .map_err(|_| "--investigation is a number")?,
+        ),
+        ("request", [request]) => context::inspect(&options, request),
+        ("packet", [request]) => context::packet(
+            &options,
+            request,
+            value("--revision")
+                .as_deref()
+                .map(str::parse)
+                .transpose()
+                .map_err(|_| "--revision is a number")?,
+            value("--excerpt").as_deref(),
+        ),
         ("fetch", [artifact]) => evidence::fetch(
             &options,
             artifact,
