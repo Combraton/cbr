@@ -430,6 +430,14 @@ fn a_recomputed_value_that_did_not_change_does_not_re_execute_its_dependents() {
         vec!["above".to_string(), "constant".to_string()]
     );
 
+    // Validation records the revision it verified at, so the next revision's
+    // walk starts from there rather than from the memo's last change.
+    let revision = evaluator::revision(&database.connection).expect("revision");
+    let memo = evaluator::memo(&database.connection, "above:y")
+        .expect("memo")
+        .expect("a memo");
+    assert_eq!(memo.verified_at, revision, "{memo:?}");
+
     executions.lock().expect("log").clear();
     evaluator::set_input(&database.connection, "input:a", &bytes(2), Durability::Low)
         .expect("sets an input");
@@ -441,6 +449,74 @@ fn a_recomputed_value_that_did_not_change_does_not_re_execute_its_dependents() {
         vec!["constant".to_string()],
         "the constant is recomputed, its dependent is not"
     );
+    let revision = evaluator::revision(&database.connection).expect("revision");
+    let memo = evaluator::memo(&database.connection, "above:y")
+        .expect("memo")
+        .expect("a memo");
+    assert_eq!(
+        memo.verified_at, revision,
+        "a memo validated without re-executing still records that it is current: {memo:?}"
+    );
+    assert!(
+        memo.changed_at < revision,
+        "and keeps the revision it last changed in: {memo:?}"
+    );
+}
+
+/// Durability's whole point: when nothing at least as durable as a memo has
+/// changed, it is current without walking anything — and it records that it
+/// was verified, so later walks compare against that revision.
+#[test]
+fn a_durable_memo_is_verified_without_walking_and_records_it() {
+    let database = Database::new();
+    let executions = Arc::new(Mutex::new(0u64));
+    let mut functions = Functions::new();
+    let counted = executions.clone();
+    functions.register("durable", move |session: &mut Session<'_>, _argument| {
+        *counted.lock().expect("count") += 1;
+        Ok(bytes(number(&session.read("input:durable")?) + 1))
+    });
+
+    evaluator::set_input(
+        &database.connection,
+        "input:durable",
+        &bytes(1),
+        Durability::High,
+    )
+    .expect("sets an input");
+    assert_eq!(
+        number(&evaluator::evaluate(&database.connection, &functions, "durable:x").expect("ok")),
+        2
+    );
+    assert_eq!(*executions.lock().expect("count"), 1);
+
+    // A volatile input this memo never read changes. Nothing as durable as
+    // the memo has changed, so it is current without walking its edges.
+    evaluator::set_input(
+        &database.connection,
+        "input:volatile",
+        &bytes(9),
+        Durability::Low,
+    )
+    .expect("sets an input");
+    let revision = evaluator::revision(&database.connection).expect("revision");
+    assert_eq!(
+        number(&evaluator::evaluate(&database.connection, &functions, "durable:x").expect("ok")),
+        2
+    );
+    assert_eq!(
+        *executions.lock().expect("count"),
+        1,
+        "a durable memo is not re-executed for a volatile change"
+    );
+    let memo = evaluator::memo(&database.connection, "durable:x")
+        .expect("memo")
+        .expect("a memo");
+    assert_eq!(
+        memo.verified_at, revision,
+        "verifying without walking still records the revision it is current at: {memo:?}"
+    );
+    assert!(memo.changed_at < revision, "{memo:?}");
 }
 
 /// A node that read something untracked is re-executed in every revision,

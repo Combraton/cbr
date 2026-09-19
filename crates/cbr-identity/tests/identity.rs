@@ -165,12 +165,28 @@ fn the_snapshot_changes_on_a_deletion_and_a_mode_change_but_not_on_mtime_alone()
 
     // An untracked, not ignored, file must change it.
     std::fs::write(path.join("new.txt"), "new\n").unwrap();
-    assert_ne!(
-        dirty_snapshot(path)
-            .expect("snapshot")
-            .expect("dirty")
-            .digest,
-        deleted.digest
+    let untracked = dirty_snapshot(path).expect("snapshot").expect("dirty");
+    assert_ne!(untracked.digest, deleted.digest);
+
+    // Including one inside a directory that is itself new: the entry is the
+    // file, never the directory, because a directory has no content digest
+    // and would record the whole subtree as one unexamined thing.
+    std::fs::create_dir(path.join("fresh")).unwrap();
+    std::fs::write(path.join("fresh/inside.txt"), "inside\n").unwrap();
+    let nested = dirty_snapshot(path).expect("snapshot").expect("dirty");
+    assert_ne!(nested.digest, untracked.digest);
+    let paths: Vec<String> = nested
+        .document
+        .get("entries")
+        .unwrap()
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|entry| entry.as_array().unwrap()[0].as_str().unwrap().to_string())
+        .collect();
+    assert!(
+        paths.iter().any(|path| path == "fresh/inside.txt"),
+        "the file, not its directory: {paths:?}"
     );
 
     // And the digest is the digest of the document it comes with.

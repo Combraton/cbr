@@ -3,12 +3,68 @@
 This is a dated navigation snapshot. Reconcile it with Git, linked issues and current task evidence before acting. Issues own live progress; this file does not grant authority or maintain a second backlog.
 
 - **Updated:** 2026-09-17.
-- **Owner/task:** Claude Code session as implementation lead for standalone CBR. **M1 and M2 are complete**: [issue #3](https://github.com/Combraton/cbr/issues/3) and [issue #12](https://github.com/Combraton/cbr/issues/12) are closed; M1's closing record is [m1/CLOSEOUT.md](m1/CLOSEOUT.md). Active task: **M3, [issue #15](https://github.com/Combraton/cbr/issues/15)**, in four pull requests against `main`, each reviewed at its head before merging: **m3a, the Context profile, on branch `m3a/context-profile`**; then m3b retrieval and the dependency evaluator, m3c the packet compiler on a real repository, m3d the journey-6 pilot. Parent: [issue #1](https://github.com/Combraton/cbr/issues/1). An independent reviewer session reviews this read-only.
+- **Owner/task:** Claude Code session as implementation lead for standalone CBR. **M1 and M2 are complete**; M1's closing record is [m1/CLOSEOUT.md](m1/CLOSEOUT.md). Active task: **M3, [issue #15](https://github.com/Combraton/cbr/issues/15)**, in four pull requests against `main`, each reviewed at its head before merging: m3a the Context profile (PR #16, open); **m3b retrieval and the dependency evaluator, on branch `m3b/retrieval-and-evaluator`**; then m3c the packet compiler on a real repository, m3d the journey-6 pilot. Parent: [issue #1](https://github.com/Combraton/cbr/issues/1). An independent reviewer session reviews this read-only.
 - **Merged:** PR #2 as `d68e9d6`, pinned to `877139f`; PR #4 as `a939446`, pinned to `630011c`; PR #5 (c1) as `8b75129`; PR #6 (c2) as `da1e650`, pinned to `b00ec49`; **PR #7 (c3) as `8ba2594`, pinned to `5b98a9f`, confirmed from `merged: true` and `merged_at: 2026-09-16T15:31:51Z`**. Earlier: PR #6 pinned to `b00ec49`, confirmed from `merged: true` and `merged_at: 2026-09-16T14:26:34Z`**, the draft marked ready first and the head re-read unchanged before merging. Every owner decision, including the ceiling, is in [ADR 001](../decisions/001-standalone-v0.1-scope-and-stack.md). **PR #8 (owner follow-ups) as `f00faaf`, pinned to `40cb30b`, `merged_at: 2026-09-16T16:57:29Z`; PR #9 (c4) as `9a7b8f5`, pinned to `5db9d7c`, `merged_at: 2026-09-16T16:57:53Z`**, in that order, each confirmed from `merged` and `merged_at`. **PR #10 (d) as `96a33f2`, pinned to `a1048e6`, `merged_at: 2026-09-16T18:17:38Z`; then PR #11 (e) as `6c63d91`, pinned to `c2a262d`, `merged_at: 2026-09-16T18:17:56Z`**. PR #11 was stacked on #10's branch, so it was retargeted to `main` after #10 merged and before its own merge; retargeting leaves the head unchanged, and `c2a262d` was re-read before merging. **PR #13 (M1 close-out, README) as `5c667ed`, pinned to `507fc77`, `merged_at: 2026-09-16T18:58:44Z`; then PR #14 (M2) as `39113b2`, pinned to `62cbb99`, `merged_at: 2026-09-16T18:59:00Z`**, #14 retargeted to `main` first.
 - **Merge rule, 2026-09-16, superseded the same day.** This session ran `gh pr merge` on PR #2 after the owner replied "you can merge PR 2" in-session, having first reported the contradicting claim with evidence and waited. It landed the exact reviewed head `877139f` and is kept. A stricter rule was then recorded, and the owner then **granted merge authority under four conditions**, now in [AGENTS.md](../../AGENTS.md): pin with `--match-head-commit`; the head's CI is green; the reviewer has seen that head; no squash. Confirm from `merged` and `merged_at` afterwards, **never `merge_commit_sha`** — GitHub populates that on an open pull request with the test-merge candidate. Tags and releases remain the owner's alone.
 - **Inspected revisions:** protocol `v0.1.0` = `cbf8e4df9df2ca8a9b50264df6acace6e4c3a0fc`; combraton `9af69ce`; pio `e65b7c0`; benchmarks `c8d5878`.
 
-## This change — M3a, the Context profile
+## This change — M3b, retrieval and the dependency evaluator
+
+One pull request against `main`, independent of m3a's branch. Six commits:
+1. the evaluator's gate, written and run against an unimplemented evaluator (`0e06413`);
+2. the evaluator, and the bug its harness found (`fdc70fc`);
+3. the lexical index and its pre-tokeniser (`1024245`);
+4. source identity moves to `gix` and gains bulk tree and blob reads (`2f2a34f`);
+5. indexing a tree, with the coverage it did not reach (`e691afa`);
+6. the query simplification and three tests that can fail (`e5de325`).
+
+| `cargo test --workspace --locked` | 0 | **116 tests**: 20 encoding, 6 identity, 22 memory, 57 provider unit, 21 against the real provider, 5 running `cbr` against it. The evaluator harness is 14s of that |
+| `git diff --check` | 0 | — |
+| `stream` / `core` / `socket` / `evidence` / `knowledge` + `check_results.py` | 0 | 24/24 · 130/5/0 · 11/2/0 · 16/0/0 · 10/0/0, unchanged |
+
+**The gate, derived before implementing.** STACK §7 names the acceptance criterion for a hand-rolled evaluator: a property harness over random DAGs and random input mutations, with demand-driven evaluation always agreeing with a from-scratch recompute. It was written first and measured against the unimplemented evaluator — 5 tests, all failing with "not implemented" — before any of it existed. The lexical tests were run the same way against a stubbed module: 7 failing, then 7 passing.
+
+**What the harness caught.** At seed 1, an input whose durability *decreased* announced its change only at the new, lower level, so a memo that had recorded the higher durability shallow-verified against that level and served a stale value. A write now announces at the higher of the old and new durability. This is the exact failure mode STACK §7 warned about — "subtle validation bugs that silently serve stale answers" — found by the mitigation it prescribed, in the first seed.
+
+### What changed
+
+- **`crates/cbr-memory`**, a new crate of derived memory, all of it working on a caller-supplied connection so index and memo rows commit in the caller's transaction:
+  - `evaluator`: `changed_at`/`verified_at` per memo, ordered edges with a reverse index, early cutoff by backdating, durability levels, and the two guards (no backdating when durability decreased; never validate an untracked read without re-executing). Cycles are refused.
+  - `lexical`: FTS5 with a Rust pre-tokeniser. An identifier is stored whole and as its parts; a query asks for the parts. Hits name spans of blobs, never text.
+  - `anchors`: tree-sitter tags for Rust, Python, JavaScript, TypeScript and TSX only. Every candidate kept, ambiguity marked, each anchor recorded at its tree and blob.
+  - `index`: indexing one tree, reporting blobs seen, indexed, anchored, and the three gaps — binary, too large, unanchored language.
+- **`cbr-identity` moved to `gix`**: `git_basis` and `dirty_snapshot` in process with no installed `git`, plus `tree_entries` and `read_blob`. This is ADR 001 question 11's first named trigger — retrieval reading a tree's blobs in bulk — and the acceptance it named, the four property tests with their negative controls, passes unchanged. **The ADR row itself is on the m3a branch**, so the "it fired" note belongs to whichever of the two lands second.
+- **Two tests added to make mutants killable**: a call site so a reference is not offered as a definition, a symlink so only regular blobs are indexed, and a staged-then-restored change so the index half of "dirty" is covered.
+
+### Mutants
+
+All observed, all restored. 25 mutants against `cargo test`: 23 fail a test, 1 is equivalent, and 1 is **unresolved** — its rerun against the test written for it did not complete before this session ended, so no kill is claimed for it.
+
+| Mutant | Killed by | At |
+|---|---|---|
+| A durability decrease announced only at its new level | the property harness | seed 1, round 5 |
+| Backdating without the durability guard | same | seed 141, round 6 |
+| Backdating whatever the value · deep verification checking only the first dependency | same | seed 1, round 2 |
+| An untracked memo validated like any other | `an_untracked_read_is_never_validated_without_re_executing` · the harness | seed 1, round 1 |
+| Shallow verification at the highest durability | the harness · the early-cutoff test | seed 8, round 2 |
+| Never backdating | `a_recomputed_value_that_did_not_change_does_not_re_execute_its_dependents` | "the constant is recomputed, its dependent is not" |
+| Identifiers not split · only the parts stored, never the whole · a chunk ending one byte late | the tree-index test · `the_pre_tokeniser_emits_the_whole_and_the_parts` · `chunks_tile_the_text_exactly` | — |
+| A search answering across every tree · removing one tree removing every tree · re-indexing accumulating | the tree-index test | "the old text is not searchable at the new tree" · a constraint violation · the re-index count |
+| A reference resolving as a definition · ambiguity never marked · resolution picking the first candidate · an anchor answering for any tree · every file claimed as Rust | the anchor tests | the two-definition resolution · "two definitions of one name are ambiguous" · the same · "a different tree has no anchors" · the language map |
+| Binary content indexed lossily · symlinks and gitlinks indexed as blobs | the tree-index test | the coverage counts |
+| A tree listing its subtrees as blobs · a staged change not dirty · untracked files collapsed into their directory | the identity tests | "a tree is not a blob" · the staged-change case · "the file, not its directory" |
+| **Setting an input ignores a durability change** | **nothing — equivalent** | With the same value, ignoring a durability change cannot produce a wrong answer: the input keeps its recorded durability, and the next change to its value announces at the higher of the old and new, so every memo still sees it. Recorded, not counted as a kill |
+| **Shallow validation not recording that it verified** | **unresolved** | It survived the first batch. `a_durable_memo_is_verified_without_walking_and_records_it` was written to pin that invariant and passes, but the mutant rerun against it was interrupted, so whether it kills is unverified. To finish: rerun that one mutant |
+
+### Coverage limits
+
+- **Nothing here is reachable over the protocol yet**; the packet compiler at m3c is its first caller.
+- **Ranking is BM25 with no evaluation of usefulness.**
+- **Scale is untested**: the largest indexed tree is a test repository, and the chunk size and 1 MiB blob cap are unmeasured.
+- **Anchors resolve names, not references**; ambiguity stays ambiguous by design.
+- **Non-git trees still have no identity**, and a submodule is a gitlink with no contents.
+
+## Earlier — M3a, the Context profile
 
 One pull request, five commits:
 1. two records the reviewer asked for in the M3 branch: ADR 001 question 11 (the `git` binary, not `gix`) and the M4 obligation that CBR's own producer never names a derived artifact as an ancestry root (`448534f`);

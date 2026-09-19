@@ -98,7 +98,7 @@ Five of the 135 `core` fixtures declare the `execution` profile and require the 
 
 So the maximum attainable on the `core` suite is **130 of 135**, with exactly those five `unsupported`. Any statement of the form "all 135 core fixtures pass" is unattainable and must not be written.
 
-**What is and is not established.** `stream` passes completely; `core` passes every fixture a provider that never serves `execution/1` can pass. `socket` passes every fixture a provider that never serves `execution/1` can pass. `evidence`, `knowledge` and `context` pass completely. `composition` passes every fixture that needs neither `execution/1` nor `verification/1`, which CBR never serves. The store **is** durable — SQLite in WAL mode with `synchronous=FULL`, verified by reading the PRAGMAs back from the open connection, and by tests that `SIGKILL` the provider and restart it over the same data directory. No retrieval, packet compiler or model call exists: a packet's content comes only from the `context.script` test control.
+**What is and is not established.** `stream` passes completely; `core` passes every fixture a provider that never serves `execution/1` can pass. `socket` passes every fixture a provider that never serves `execution/1` can pass. `evidence`, `knowledge` and `context` pass completely. `composition` passes every fixture that needs neither `execution/1` nor `verification/1`, which CBR never serves. The store **is** durable — SQLite in WAL mode with `synchronous=FULL`, verified by reading the PRAGMAs back from the open connection, and by tests that `SIGKILL` the provider and restart it over the same data directory. There is retrieval — a lexical index, code anchors and a dependency evaluator, none of it reachable over the protocol yet. There is no packet compiler and no model call: a packet's content comes only from the `context.script` test control.
 
 ### Knowledge, source identity and the knowledge verbs
 
@@ -147,7 +147,7 @@ Each row has a mutant that fails its test.
   - the `workspace` clean/dirty determination under a lock. A snapshot is read without one, so a working tree changing during the read gives a snapshot of no single instant;
   - submodule contents, which are recorded as a gitlink with no digest.
 
-  Identity needs the `git` binary; `gix` remains the M3 choice for bulk tree access.
+  Identity is computed with `gix` in this process, since m3b; it needs no installed `git`.
 - **Cost of reads.** `inspect` and `history` scan every record of a kind, which is proportionate to v0.1 counts and not measured beyond them.
 - **CLI coverage.** `cbr` has no verb for conflicts, transfers or grants.
 
@@ -187,6 +187,30 @@ Of 57 mutants, 48 fail a context or composition fixture at a named step and 9 fa
 - **Responsiveness under a stalled peer.** A context provider calls peers while holding its processing lock, bounded by a three-second timeout per frame, so a stalled peer delays every request to that provider for up to that long. Preparation runs on every request and idle poll of an authenticated session, and its cost grows with the number of running jobs.
 - **Untested paths.** Event visibility of `context.job` subjects under a grant follows the requests' `context.read` without a dedicated test. Skipping preparation for an unauthenticated connection has no test. A `packet.<request>.<n>` id that collides with an existing artifact stops that publication with a diagnostic and has no test.
 - **Read cost.** A request record holds every published revision's facts, and each tick parses every job.
+
+### Retrieval, code anchors and the dependency evaluator
+
+These are **derived** memory: computed from the journal, replaceable without changing what the journal says, and never authority. Each records enough to be checked rather than trusted — the tree an index was built from, the tree and blob an anchor was taken at, and the exact inputs an evaluation read. They live in `crates/cbr-memory`, work on a caller-supplied connection, and are **not yet reachable over the protocol**: nothing calls them until the packet compiler does at m3c.
+
+**The dependency evaluator** (STACK §7) is salsa's algorithm, written small against SQLite so it runs inside the caller's transaction. Per memo it keeps `changed_at` and `verified_at`, ordered edges with a reverse index, early cutoff by backdating, and durability levels. Its two guards are that backdating is refused when a recomputation's durability decreased, and that a memo which read something untracked is never validated without re-executing.
+
+**Its acceptance is a property harness, not an example**, as STACK §7 requires: 200 seeded random programs with dependencies that change with the values read, functions that frequently recompute to the value they had, inputs whose durability changes, untracked reads, and a database reopened mid-run. Demand-driven evaluation must agree with a from-scratch recompute every time. The harness **found a soundness bug in the first seed**: an input whose durability decreased announced its change only at the new, lower level, so a memo that had recorded the higher durability still shallow-verified against it and served a stale value. A write now announces at the higher of the old and new durability. That is the failure a hand-rolled evaluator is most likely to have and least likely to notice, and it was caught before anything depended on it.
+
+**The lexical index** (STACK §5) is SQLite FTS5 with text normalised in Rust first, because FTS5 has no camelCase splitting and stemming is harmful on identifiers. Each run of letters and digits is stored whole and as its parts, and a query asks for the parts: `user name`, `name` and `getUserName` all find the identifier, `getUserName` also finds prose that says "get user name", and `flush` still does not find `flushed`. The engine was chosen for atomicity rather than features, and that argument is tested — a rolled-back transaction leaves nothing searchable.
+
+**Code anchors** (STACK §6) come from each grammar's own `tags.scm`, for the languages CBR pins and only those: Rust, Python, JavaScript, TypeScript and TSX. A file in any other language is indexed as text and has no anchors at all, which is a visible gap rather than a guess. Tags find **where a name is defined**, never which definition a call refers to, so **every candidate is kept and ambiguity is marked** (INTERNALS §2). Each anchor records its tree and blob, so one that has gone stale is detectable.
+
+**Indexing a tree** reports its own coverage: blobs seen, indexed and anchored, and the three gaps — binary, too large, and an unanchored language. An empty search result is not proof of absence (INTERNALS §5), so a caller must be able to tell "nothing matched" from "never looked". Indexing is per tree and replaces that tree's rows, so re-indexing is idempotent and each tree answers only for itself.
+
+**Source identity moved to `gix`** here, in this process: no subprocess, no shell and no runtime dependency on an installed `git`. Reading a tree's blobs in bulk is what made the difference, and the four identity property tests with their negative controls pass unchanged, which is the acceptance that move was promised on. (The decision record that names the trigger is ADR 001 question 11, which lands with the m3a branch; when both are on `main` that row says the trigger fired here.)
+
+**What m3b does not establish.**
+- **No packet.** Nothing here compiles context; that is m3c.
+- **Ranking is BM25 and nothing else.** Whether what it returns is what a task needed is unevaluated. INTERNALS §7 says retrieval scores alone cannot establish product value, and none is claimed.
+- **Anchors resolve names, not references.** Generics, macros, re-exports and shadowing stay ambiguous by design.
+- **Untested at scale.** The largest indexed tree is a test repository. Index size, the 20-line chunk and the 1 MiB blob cap are unmeasured choices.
+- **The evaluator has no caller yet**, so its durability levels and untracked marks are exercised only by its harness.
+- **Non-git trees still have no identity** (PROTOCOL-PIN §5), and a submodule is still a gitlink with no contents.
 
 ### The `cbr` command, and the credentials it needs
 
