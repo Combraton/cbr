@@ -6,7 +6,9 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::process::Command;
 
-use cbr_identity::{Fact, FactClass, dirty_snapshot, environment, git_basis};
+use cbr_identity::{
+    Fact, FactClass, dirty_snapshot, environment, git_basis, read_blob, tree_entries,
+};
 
 fn git(repository: &Path, arguments: &[&str]) -> String {
     let output = Command::new("git")
@@ -220,4 +222,53 @@ fn the_environment_digest_covers_declared_build_facts_and_says_so() {
     // A fact declared twice is refused rather than resolved.
     let twice = vec![facts[0].clone(), facts[0].clone()];
     assert!(environment(&twice).is_err());
+}
+
+/// Reading a tree's blobs in bulk is what M3's retrieval needs, and what ADR
+/// 001 question 11 named as the trigger for this crate moving to `gix`. A
+/// tree answers for its own content and no other: an anchor taken at one tree
+/// is detectably stale at another.
+#[test]
+fn a_tree_lists_its_own_blobs_and_each_one_reads_back_exactly() {
+    let directory = repository();
+    let path = directory.path();
+    std::fs::create_dir(path.join("dir")).unwrap();
+    std::fs::write(path.join("dir/c.txt"), "gamma\n").unwrap();
+    let mut permissions = std::fs::metadata(path.join("b.txt")).unwrap().permissions();
+    permissions.set_mode(0o755);
+    std::fs::set_permissions(path.join("b.txt"), permissions).unwrap();
+    git(path, &["add", "."]);
+    git(path, &["commit", "-q", "-m", "second"]);
+
+    let second = git_basis(path, "HEAD").expect("basis");
+    let first = git_basis(path, "HEAD~1").expect("basis");
+
+    let entries = tree_entries(path, &second.tree).expect("entries");
+    let named = |name: &str| entries.iter().find(|entry| entry.path == name);
+    assert!(named(".gitignore").is_some(), "{entries:#?}");
+    assert_eq!(named("a.txt").expect("a.txt").mode, "100644");
+    assert_eq!(named("b.txt").expect("b.txt").mode, "100755");
+    let nested = named("dir/c.txt").expect("a path inside a directory, not the directory");
+    assert!(
+        !entries.iter().any(|entry| entry.path == "dir"),
+        "a tree is not a blob: {entries:#?}"
+    );
+
+    assert_eq!(read_blob(path, &nested.blob).expect("blob"), b"gamma\n");
+    assert_eq!(
+        read_blob(path, &named("a.txt").expect("a.txt").blob).expect("blob"),
+        b"alpha\n"
+    );
+
+    // The earlier tree does not know about the later file.
+    let earlier = tree_entries(path, &first.tree).expect("entries");
+    assert!(
+        !earlier.iter().any(|entry| entry.path == "dir/c.txt"),
+        "a tree answers for its own content only: {earlier:#?}"
+    );
+    assert_eq!(earlier.len(), 3, "{earlier:#?}");
+
+    // A tree that does not exist is an error, never an empty listing that
+    // would read as "this tree has no files".
+    assert!(tree_entries(path, &"0".repeat(40)).is_err());
 }

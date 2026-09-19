@@ -21,13 +21,17 @@
 //!   and the record says so in `covers`, because Protocol 0.1 has no
 //!   `build_digest` condition (G1). Nothing undeclared is ever captured.
 //!
-//! Git is reached through its plumbing commands with fixed arguments and no
-//! shell. This crate reads; it never changes a repository.
+//! Git is read through `gix`, in this process: no subprocess, no shell, and no
+//! runtime dependency on an installed `git`. ADR 001 question 11 chose the
+//! `git` binary while identity needed one `rev-parse`, and named the trigger
+//! that would change it — retrieval reading a tree's blobs in bulk. M3 does
+//! that, so this moved, behind the same functions and with the same property
+//! tests as its acceptance. This crate reads; it never changes a repository.
 
 use std::path::Path;
-use std::process::Command;
 
 use cbr_encoding::Value;
+use gix::bstr::ByteSlice;
 
 pub const SNAPSHOT_FORMAT: &str = "cbr-dirty-snapshot/1";
 pub const ENVIRONMENT_FORMAT: &str = "cbr-environment/1";
@@ -65,27 +69,8 @@ fn object(members: Vec<(&str, Value)>) -> Value {
     )
 }
 
-fn git(repository: &Path, arguments: &[&str]) -> Result<Vec<u8>, IdentityError> {
-    let output = Command::new("git")
-        .arg("-C")
-        .arg(repository)
-        .args(arguments)
-        .output()
-        .map_err(|error| IdentityError::Git(format!("could not run git: {error}")))?;
-    if !output.status.success() {
-        return Err(IdentityError::Git(format!(
-            "git {} failed: {}",
-            arguments.first().copied().unwrap_or_default(),
-            String::from_utf8_lossy(&output.stderr).trim()
-        )));
-    }
-    Ok(output.stdout)
-}
-
-fn git_line(repository: &Path, arguments: &[&str]) -> Result<String, IdentityError> {
-    Ok(String::from_utf8_lossy(&git(repository, arguments)?)
-        .trim()
-        .to_string())
+fn open(repository: &Path) -> Result<gix::Repository, IdentityError> {
+    gix::open(repository).map_err(|error| IdentityError::Git(format!("opening: {error}")))
 }
 
 /// A commit and the root tree object it names.
@@ -97,25 +82,76 @@ pub struct GitBasis {
 
 /// The commit a revision names, and its root tree object id.
 pub fn git_basis(repository: &Path, revision: &str) -> Result<GitBasis, IdentityError> {
-    let commit = git_line(
-        repository,
-        &[
-            "rev-parse",
-            "--verify",
-            "--quiet",
-            &format!("{revision}^{{commit}}"),
-        ],
-    )?;
-    let tree = git_line(
-        repository,
-        &[
-            "rev-parse",
-            "--verify",
-            "--quiet",
-            &format!("{commit}^{{tree}}"),
-        ],
-    )?;
-    Ok(GitBasis { commit, tree })
+    let repository = open(repository)?;
+    basis(&repository, revision)
+}
+
+fn basis(repository: &gix::Repository, revision: &str) -> Result<GitBasis, IdentityError> {
+    let object = repository
+        .rev_parse_single(revision)
+        .map_err(|error| IdentityError::Git(format!("resolving {revision}: {error}")))?;
+    let commit = object
+        .object()
+        .map_err(|error| IdentityError::Git(format!("reading {revision}: {error}")))?
+        .peel_to_commit()
+        .map_err(|error| IdentityError::Git(format!("{revision} is not a commit: {error}")))?;
+    let tree = commit
+        .tree_id()
+        .map_err(|error| IdentityError::Git(format!("reading the tree of {revision}: {error}")))?;
+    Ok(GitBasis {
+        commit: commit.id().to_string(),
+        tree: tree.to_string(),
+    })
+}
+
+/// One path in a tree: where it is, what it is, and the blob it names.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TreeEntry {
+    pub path: String,
+    /// Git's six-digit mode, as the tree records it.
+    pub mode: String,
+    pub blob: String,
+}
+
+/// Every blob in a tree, recursively, in the tree's own order. Submodules are
+/// reported as gitlinks with no blob: their contents are their own
+/// repository's identity, not this one's.
+pub fn tree_entries(repository: &Path, tree: &str) -> Result<Vec<TreeEntry>, IdentityError> {
+    let repository = open(repository)?;
+    let tree = repository
+        .rev_parse_single(tree)
+        .map_err(|error| IdentityError::Git(format!("resolving the tree: {error}")))?
+        .object()
+        .map_err(|error| IdentityError::Git(format!("reading the tree: {error}")))?
+        .peel_to_tree()
+        .map_err(|error| IdentityError::Git(format!("not a tree: {error}")))?;
+    let mut recorder = gix::traverse::tree::Recorder::default();
+    tree.traverse()
+        .breadthfirst(&mut recorder)
+        .map_err(|error| IdentityError::Git(format!("walking the tree: {error}")))?;
+    let mut entries = Vec::new();
+    for record in recorder.records {
+        if record.mode.is_tree() {
+            continue;
+        }
+        entries.push(TreeEntry {
+            path: record.filepath.to_str_lossy().into_owned(),
+            mode: format!("{:06o}", record.mode.value()),
+            blob: record.oid.to_string(),
+        });
+    }
+    Ok(entries)
+}
+
+/// One blob's bytes, by object id.
+pub fn read_blob(repository: &Path, blob: &str) -> Result<Vec<u8>, IdentityError> {
+    let repository = open(repository)?;
+    let object = repository
+        .rev_parse_single(blob)
+        .map_err(|error| IdentityError::Git(format!("resolving blob {blob}: {error}")))?
+        .object()
+        .map_err(|error| IdentityError::Git(format!("reading blob {blob}: {error}")))?;
+    Ok(object.detach().data)
 }
 
 /// A dirty working tree's snapshot: the digest, and the document it is the
@@ -128,33 +164,45 @@ pub struct Snapshot {
 
 /// The snapshot of everything that differs from `HEAD`, or `None` when the
 /// working tree is clean.
-pub fn dirty_snapshot(repository: &Path) -> Result<Option<Snapshot>, IdentityError> {
-    let base = git_basis(repository, "HEAD")?;
-    // `--no-renames` reports a rename as a deletion and an addition, both of
-    // which the entries then carry explicitly. `-z` keeps paths byte-exact.
-    let status = git(
-        repository,
-        &[
-            "status",
-            "--porcelain=v2",
-            "-z",
-            "--untracked-files=all",
-            "--no-renames",
-        ],
-    )?;
+pub fn dirty_snapshot(path: &Path) -> Result<Option<Snapshot>, IdentityError> {
+    let repository = open(path)?;
+    let base = basis(&repository, "HEAD")?;
+    // Both halves of "dirty": what the working tree has that the index does
+    // not, and what the index has that `HEAD` does not. Untracked files are
+    // reported one by one rather than collapsed into their directory, because
+    // an entry names a file. Ignored files are not reported at all.
+    let status = repository
+        .status(gix::progress::Discard)
+        .map_err(|error| IdentityError::Git(format!("status: {error}")))?
+        .untracked_files(gix::status::UntrackedFiles::Files)
+        .index_worktree_submodules(gix::status::Submodule::Given {
+            ignore: gix::submodule::config::Ignore::All,
+            check_dirty: false,
+        })
+        .into_iter(None)
+        .map_err(|error| IdentityError::Git(format!("status: {error}")))?;
+    let mut changed: Vec<(String, bool)> = Vec::new();
+    for item in status {
+        let item = item.map_err(|error| IdentityError::Git(format!("status: {error}")))?;
+        match item {
+            gix::status::Item::IndexWorktree(item) => {
+                let untracked = matches!(
+                    item,
+                    gix::status::index_worktree::Item::DirectoryContents { .. }
+                );
+                changed.push((item.rela_path().to_str_lossy().into_owned(), untracked));
+            }
+            gix::status::Item::TreeIndex(change) => {
+                changed.push((location(&change).to_str_lossy().into_owned(), false));
+            }
+        }
+    }
+    changed.sort();
+    changed.dedup_by(|a, b| a.0 == b.0);
     let mut entries: Vec<(String, Value)> = Vec::new();
-    for record in status.split(|b| *b == 0).filter(|r| !r.is_empty()) {
-        let text = String::from_utf8_lossy(record);
-        let (untracked, path) = match text.as_bytes().first() {
-            // `1 XY sub mH mI mW hH hI path`
-            Some(b'1') => (false, text.splitn(9, ' ').nth(8)),
-            // `u XY sub m1 m2 m3 mW h1 h2 h3 path`
-            Some(b'u') => (false, text.splitn(11, ' ').nth(10)),
-            Some(b'?') => (true, text.get(2..)),
-            _ => continue,
-        };
-        let Some(path) = path else { continue };
-        entries.push((path.to_string(), entry(repository, path, untracked)?));
+    for (path_in_tree, untracked) in changed {
+        let value = entry(path, &path_in_tree, untracked)?;
+        entries.push((path_in_tree, value));
     }
     if entries.is_empty() {
         return Ok(None);
@@ -172,6 +220,16 @@ pub fn dirty_snapshot(repository: &Path) -> Result<Option<Snapshot>, IdentityErr
         digest: cbr_encoding::digest_canonical(&document),
         document,
     }))
+}
+
+/// The path a staged change names.
+fn location(change: &gix::diff::index::Change) -> &gix::bstr::BStr {
+    match change {
+        gix::diff::index::Change::Addition { location, .. }
+        | gix::diff::index::Change::Deletion { location, .. }
+        | gix::diff::index::Change::Modification { location, .. }
+        | gix::diff::index::Change::Rewrite { location, .. } => location.as_ref(),
+    }
 }
 
 /// `[path, status, mode, sha256 | null]` for one changed path, from what is
