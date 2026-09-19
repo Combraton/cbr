@@ -10,15 +10,23 @@ This is a dated navigation snapshot. Reconcile it with Git, linked issues and cu
 
 ## This change — M3b, retrieval and the dependency evaluator
 
-One pull request against `main`, independent of m3a's branch. Six commits:
+One pull request against `main`, independent of m3a's branch. Eight commits:
 1. the evaluator's gate, written and run against an unimplemented evaluator (`0e06413`);
 2. the evaluator, and the bug its harness found (`fdc70fc`);
 3. the lexical index and its pre-tokeniser (`1024245`);
 4. source identity moves to `gix` and gains bulk tree and blob reads (`2f2a34f`);
 5. indexing a tree, with the coverage it did not reach (`e691afa`);
-6. the query simplification and three tests that can fail (`e5de325`).
+6. the query simplification and three tests that can fail (`e5de325`);
+7. the tests two surviving mutants asked for, and this record (`7ffe50d`);
+8. the last mutant, rerun and observed (`1263fd6`).
 
-| `cargo test --workspace --locked` | 0 | **116 tests**: 20 encoding, 6 identity, 22 memory, 57 provider unit, 21 against the real provider, 5 running `cbr` against it. The evaluator harness is 14s of that |
+| Command | Exit | Result |
+|---|---|---|
+| `check_docs.py` / `verify_pin.py` | 0 / 0 | 22 files, 0 errors; 429 and 420 files match their anchors |
+| `cargo fmt --all -- --check` | 0 | — |
+| `cargo clippy --workspace --all-targets --locked -- -D warnings` | 0 | — |
+| `cargo build --workspace --locked` | 0 | — |
+| `cargo test --workspace --locked` | 0 | **117 tests**: 20 encoding, 6 identity, 23 memory, 46 provider unit, 17 against the real provider, 5 running `cbr` against it. The evaluator harness is 16s of that |
 | `git diff --check` | 0 | — |
 | `stream` / `core` / `socket` / `evidence` / `knowledge` + `check_results.py` | 0 | 24/24 · 130/5/0 · 11/2/0 · 16/0/0 · 10/0/0, unchanged |
 
