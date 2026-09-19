@@ -13,6 +13,12 @@ path = "src/main.rs"
 
 [dependencies]
 cbr-encoding = { path = "../cbr-encoding" }
+# M3c is the first milestone in which the provider itself reads a repository:
+# it registers a checkout, indexes its tree and compiles packets from it. Up
+# to M2 only the client resolved a basis, so neither of these was a provider
+# dependency.
+cbr-identity = { path = "../cbr-identity" }
+cbr-memory = { path = "../cbr-memory" }
 rusqlite.workspace = true
 # Peer credentials (SO_PEERCRED, getpeereid) and the effective user id, for the
 # Unix-socket binding's same-user check. Already in the lockfile via rusqlite.

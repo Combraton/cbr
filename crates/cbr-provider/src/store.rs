@@ -21,6 +21,11 @@ use std::io::Write as _;
 use std::path::{Path, PathBuf};
 
 use cbr_encoding::Value;
+
+/// The subject kind a registered repository takes. CBR-owned: the protocol
+/// defines no repository subject, and a grant narrows this kind by id exactly
+/// as it narrows any other.
+pub const REPOSITORY: &str = "cbr.repository";
 use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params};
 
 /// A provider-owned object, named by kind and id.
@@ -526,6 +531,14 @@ impl Store {
                  generation INTEGER NOT NULL,
                  result     TEXT    NOT NULL,
                  PRIMARY KEY (principal, command_id)
+             );
+             -- Where a registered repository is checked out on this machine.
+             -- Deliberately not a subject and never a fact: a path is local
+             -- configuration, it identifies the operator's filesystem, and
+             -- nothing that leaves this process needs it.
+             CREATE TABLE IF NOT EXISTS repository_checkout (
+                 repository TEXT PRIMARY KEY,
+                 path       TEXT NOT NULL
              );",
         )?;
         Ok(())
@@ -985,6 +998,87 @@ impl Store {
     }
 
     /// Every stored credential digest with its principal and revocation.
+    /// Register a repository, or confirm one already registered: a
+    /// `cbr.repository` subject holding the id, and a local row holding the
+    /// checkout path. The subject never carries the path.
+    ///
+    /// Registering the same id at the same path again is not a change, so it
+    /// produces no revision and no event; a different path is a change.
+    pub fn register_repository(
+        &mut self,
+        id: &str,
+        path: &Path,
+        recorded_at: &str,
+    ) -> Result<i64, StoreError> {
+        let key = SubjectKey {
+            kind: REPOSITORY.to_string(),
+            id: id.to_string(),
+        };
+        let facts = Value::Object(vec![
+            ("repository".into(), Value::String(id.to_string())),
+            ("registered_at".into(), Value::String(recorded_at.into())),
+        ]);
+        let canonical =
+            String::from_utf8(cbr_encoding::to_canonical(&facts)).expect("canonical form is UTF-8");
+        let text = path.to_string_lossy().into_owned();
+        let transaction = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let known: Option<String> = transaction
+            .query_row(
+                "SELECT path FROM repository_checkout WHERE repository = ?1",
+                params![id],
+                |row| row.get(0),
+            )
+            .optional()?;
+        transaction.execute(
+            "INSERT INTO repository_checkout (repository, path) VALUES (?1, ?2)
+             ON CONFLICT (repository) DO UPDATE SET path = excluded.path",
+            params![id, text],
+        )?;
+        let existing: Option<i64> = transaction
+            .query_row(
+                "SELECT revision FROM subjects WHERE kind = ?1 AND id = ?2",
+                params![key.kind, key.id],
+                |row| row.get(0),
+            )
+            .optional()?;
+        let revision = match existing {
+            Some(revision) if known.as_deref() == Some(text.as_str()) => revision,
+            Some(revision) => {
+                transaction.execute(
+                    "UPDATE subjects SET revision = ?3 WHERE kind = ?1 AND id = ?2",
+                    params![key.kind, key.id, revision + 1],
+                )?;
+                revision + 1
+            }
+            None => {
+                transaction.execute(
+                    "INSERT INTO subjects (kind, id, revision, value, applied_count)
+                     VALUES (?1, ?2, 1, ?3, 0)",
+                    params![key.kind, key.id, canonical],
+                )?;
+                1
+            }
+        };
+        transaction.commit()?;
+        Ok(revision)
+    }
+
+    /// Where a registered repository is checked out, if it is registered on
+    /// this machine.
+    pub fn repository_checkout(&self, id: &str) -> Result<Option<PathBuf>, StoreError> {
+        Ok(self
+            .connection
+            .query_row(
+                "SELECT path FROM repository_checkout WHERE repository = ?1",
+                params![id],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()?
+            .map(PathBuf::from))
+    }
+
     pub fn credentials(&self) -> Result<Vec<crate::config::Credential>, StoreError> {
         let mut statement = self
             .connection
