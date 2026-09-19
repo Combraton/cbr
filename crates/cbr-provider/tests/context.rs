@@ -189,6 +189,23 @@ impl ContextProvider {
         )
     }
 
+    /// A request with the items, fallback and deadline a test needs, rather
+    /// than the one shape `submit` builds.
+    fn submit_with(&mut self, request: &str, items: &str, fallback: &str, deadline: &str) -> Value {
+        let payload = format!(
+            r#"{{"consumer":{{"task":"fix the build","principal":"owner"}},"basis":{{"repositories":[{{"id":"repo-a","tree":"tree-1","workspace":"clean","dirty":null}}],"completeness":"complete"}},"items":[{items}],"fallback":"{fallback}","limits":{{"deadline":"{deadline}","investigation":{{"units":"queries","amount":10}},"output_capacity":{{"units":"bytes","amount":4096}}}}}}"#
+        );
+        self.call(
+            "context.request.submit",
+            Some((
+                &format!("submit-{request}"),
+                ("context.request", request),
+                0,
+            )),
+            &payload,
+        )
+    }
+
     fn inspect(&mut self, request: &str) -> Value {
         let response = self.call(
             "context.request.inspect",
@@ -596,5 +613,155 @@ fn a_correction_after_publication_is_reported_at_the_read_beside_supersession() 
             .map(<[_]>::len),
         Some(0)
     );
+    ctx.kill();
+}
+
+/// One item of a request, as J8 needs them: a path check nothing will
+/// satisfy, so the only thing that can resolve the item is the deadline.
+fn unsatisfiable(item: &str, obligation: &str) -> String {
+    format!(
+        r#"{{"item_id":"{item}","selector":{{"kind":"path","value":"src/{item}.rs"}},"obligation":"{obligation}","reliance":"evidence","selected_by":"owner","check":{{"kind":"source_included","repository":"repo-a","path":"src/{item}.rs"}}}}"#
+    )
+}
+
+/// **J8.** A required item is still unmet when the deadline passes; it stays
+/// unmet, and advisory items follow the fallback the request declared.
+///
+/// The three behaviours are separated deliberately. `proceed_with_gap`
+/// publishes rather than waiting, so its advisory item is degraded straight
+/// away. `wait_until_deadline` holds the publication while an advisory item
+/// is unsatisfied, so the request is still preparing at the same instant.
+/// When the deadline does pass, the required item is `unmet` with
+/// `deadline_passed` and the advisory one is `degraded` with the same
+/// reason: expiry is not evidence, and it is not consent either — the packet
+/// it publishes carries no citation and no claim for those items, and the
+/// request is never `ready`.
+#[test]
+fn j8_a_deadline_leaves_required_items_unmet_and_advisory_items_at_their_fallback() {
+    let directory = tempfile::tempdir().expect("temp dir");
+    let script = r#"{"default_script":[{"publish":{}}]}"#;
+    let config = |now: &str| {
+        format!(
+            r#"{{"format":"combraton-conformance-config/1","principal":"owner","authority_principals":["owner"],"clock":{{"fixed":"{now}"}},"context":{script}}}"#
+        )
+    };
+    let before = "2030-01-01T00:00:00Z";
+    let deadline = "2030-01-01T00:10:00Z";
+    let after = "2030-01-01T00:10:01Z";
+
+    let mut ctx = ContextProvider::start_with(
+        directory.path(),
+        &config(before),
+        &["context.required_before_start", "context.advisory"],
+    );
+
+    // `proceed_with_gap`: the publication happens now, and the advisory item
+    // is degraded rather than held.
+    let gap = ctx.submit_with(
+        "r-gap",
+        &unsatisfiable("advisory", "advisory"),
+        "proceed_with_gap",
+        deadline,
+    );
+    assert_eq!(text(result(&gap), &["outcome", "state"]), "preparing");
+    let request = ctx.inspect("r-gap");
+    assert_eq!(text(&request, &["state"]), "partial", "{request:?}");
+    let items = at(&request, &["items"]).as_array().expect("items").to_vec();
+    assert_eq!(text(&items[0], &["result"]), "degraded", "{items:?}");
+    assert!(
+        !text(&items[0], &["reason"]).is_empty(),
+        "a degraded item carries its reason: {items:?}"
+    );
+
+    // `wait_until_deadline`: the same instant, and this one is still
+    // preparing, because its advisory item is unsatisfied.
+    let items = format!(
+        "{},{}",
+        unsatisfiable("required", "required_before_start"),
+        unsatisfiable("optional", "advisory")
+    );
+    let waiting = ctx.submit_with("r-wait", &items, "wait_until_deadline", deadline);
+    assert_eq!(text(result(&waiting), &["outcome", "state"]), "preparing");
+    let request = ctx.inspect("r-wait");
+    assert_eq!(
+        text(&request, &["state"]),
+        "preparing",
+        "wait_until_deadline waits: {request:?}"
+    );
+    assert!(
+        at(&request, &["packets"])
+            .as_array()
+            .expect("packets")
+            .is_empty(),
+        "and publishes nothing while it waits: {request:?}"
+    );
+    ctx.kill();
+
+    // The deadline passes. Nothing else changes.
+    let mut ctx = ContextProvider::start_with(
+        directory.path(),
+        &config(after),
+        &["context.required_before_start", "context.advisory"],
+    );
+    let request = ctx.inspect("r-wait");
+    assert_eq!(text(&request, &["state"]), "unmet", "{request:?}");
+    let items = at(&request, &["items"]).as_array().expect("items").to_vec();
+    let of = |id: &str| {
+        items
+            .iter()
+            .find(|item| text(item, &["item_id"]) == id)
+            .cloned()
+            .unwrap_or(Value::Null)
+    };
+    assert_eq!(text(&of("required"), &["result"]), "unmet", "{items:?}");
+    assert_eq!(
+        text(&of("required"), &["reason"]),
+        "deadline_passed",
+        "{items:?}"
+    );
+    assert_eq!(text(&of("optional"), &["result"]), "degraded", "{items:?}");
+    assert_eq!(
+        text(&of("optional"), &["reason"]),
+        "deadline_passed",
+        "an advisory item follows its fallback at the deadline: {items:?}"
+    );
+
+    // Expiry supplies no evidence and no consent.
+    let packets = at(&request, &["packets"])
+        .as_array()
+        .expect("packets")
+        .to_vec();
+    assert_eq!(packets.len(), 1, "{packets:?}");
+    let revision = match at(&packets[0], &["reference", "revision"]) {
+        Value::Int(revision) => *revision,
+        other => panic!("a revision: {other:?}"),
+    };
+    let packet = result(&ctx.call(
+        "context.packet.inspect",
+        None,
+        &format!(r#"{{"packet":"r-wait","revision":{revision}}}"#),
+    ))
+    .clone();
+    assert!(
+        at(&packet, &["citations"])
+            .as_array()
+            .expect("citations")
+            .is_empty(),
+        "a deadline cites nothing: {packet:?}"
+    );
+    assert!(
+        at(&packet, &["sections"])
+            .as_array()
+            .expect("sections")
+            .is_empty(),
+        "and includes nothing: {packet:?}"
+    );
+    for item in at(&packet, &["items"]).as_array().expect("items") {
+        assert_ne!(
+            text(item, &["result"]),
+            "satisfied",
+            "expiry satisfies nothing: {item:?}"
+        );
+    }
     ctx.kill();
 }

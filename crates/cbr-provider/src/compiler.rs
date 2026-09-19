@@ -451,6 +451,29 @@ mod tests {
                 "section", "section", "coverage", "coverage", "unmet", "unmet", "publish"
             ]
         );
+        // And ascending, not merely stable: a script that reversed every
+        // list would be just as independent of the order things were found
+        // in, and would still be a different packet.
+        let field = |name: &str, field: &str| -> Vec<String> {
+            steps(&forwards)
+                .iter()
+                .filter(|step| crate::context::step(step).0 == name)
+                .filter_map(|step| {
+                    crate::context::step(step)
+                        .1
+                        .get(field)
+                        .and_then(Value::as_str)
+                        .map(str::to_string)
+                })
+                .collect()
+        };
+        assert_eq!(field("section", "item_id"), ["a", "b"]);
+        assert_eq!(field("unmet", "item_id"), ["c", "d"]);
+        let producers = field("coverage", "producer");
+        assert!(
+            producers[0].ends_with(" a") && producers[1].ends_with(" z"),
+            "coverage is in repository order: {producers:?}"
+        );
     }
 
     #[test]

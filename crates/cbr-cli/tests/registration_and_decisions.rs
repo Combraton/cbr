@@ -405,3 +405,206 @@ fn a_registration_that_cannot_be_read_refuses_the_launch() {
         "a refused launch listens on nothing"
     );
 }
+
+/// Issue a grant as `owner` over a raw protocol session. There is no
+/// `cbr grant` verb; this is test setup through the public protocol, not a
+/// shortcut into the store.
+fn issue_grant(fixture: &Fixture, id: &str, holder: &str, repository: &str) {
+    use std::io::{BufRead, Write};
+    let credential = std::fs::read_to_string(fixture.credential("owner")).expect("credential");
+    let stream = UnixStream::connect(&fixture.socket).expect("connects");
+    let mut reader = BufReader::new(stream.try_clone().expect("clone"));
+    let mut writer = stream;
+    let mut call = |frame: String| {
+        writeln!(writer, "{frame}").expect("writes");
+        let mut line = String::new();
+        reader.read_line(&mut line).expect("reads");
+        assert!(line.contains("\"result\""), "{line}");
+    };
+    call(format!(
+        r#"{{"jsonrpc":"2.0","id":1,"method":"core.authenticate","params":{{"operation":"core.authenticate","message_id":"a","payload":{{"credential":"{}"}}}}}}"#,
+        credential.trim_end()
+    ));
+    call(r#"{"jsonrpc":"2.0","id":2,"method":"core.negotiate","params":{"operation":"core.negotiate","message_id":"n","payload":{"caller":{"name":"t","version":"1"},"receive_limits":{"max_frame_bytes":1048576},"profiles":[{"name":"core","majors":[1],"required":true,"required_features":["core.events","core.grants"],"optional_features":[]}]}}}"#.to_string());
+    let envelope = format!(
+        r#"{{"operation":"core.grant.issue","message_id":"g","command_id":"grant-{id}","dedupe_generation":1,"subject":{{"kind":"core.grant","id":"{id}"}},"preconditions":[{{"subject":{{"kind":"core.grant","id":"{id}"}},"revision":0}}],"requires":[],"payload":{{"holder":"{holder}","audience":"cbr","rights":["context.request","context.read","context.packet.read"],"resources":[{{"kind":"context.request"}},{{"kind":"context.job"}},{{"kind":"context.packet"}},{{"kind":"cbr.repository","id":"{repository}"}}],"delegation":{{"allowed":false,"max_depth":0}}}}}}"#
+    );
+    let digest =
+        cbr_encoding::command_digest(&cbr_encoding::parse(envelope.as_bytes()).unwrap()).unwrap();
+    let envelope = envelope.replacen(
+        r#""payload""#,
+        &format!(r#""command_digest":"{digest}","payload""#),
+        1,
+    );
+    call(format!(
+        r#"{{"jsonrpc":"2.0","id":3,"method":"core.grant.issue","params":{envelope}}}"#
+    ));
+}
+
+/// The access rule, at the compiler rather than at the index: a principal
+/// whose grant covers one repository sees that one and nothing of the other,
+/// even when its request names both.
+#[test]
+fn a_request_naming_a_repository_outside_the_grant_is_answered_only_from_the_view() {
+    let fixture = Fixture::new();
+    let closed = fixture.directory.path().join("closed");
+    std::fs::create_dir_all(closed.join("src")).expect("src");
+    std::fs::write(
+        closed.join("src/secret.rs"),
+        "pub fn embargoedThing() -> u8 {\n    7\n}\n",
+    )
+    .expect("writes");
+    git(&closed, &["init", "-q", "-b", "main"]);
+    git(&closed, &["add", "."]);
+    git(&closed, &["commit", "-q", "-m", "embargoed"]);
+
+    let mut provider = fixture.start(&[
+        format!("app={}", fixture.checkout.display()),
+        format!("closed={}", closed.display()),
+    ]);
+
+    // A second principal, with a grant over `app` only.
+    let issued = Command::new(provider_binary())
+        .arg("--data-dir")
+        .arg(fixture.data())
+        .arg("--config")
+        .arg(fixture.directory.path().join("cbr.json"))
+        .arg("--issue-credential")
+        .arg("reader")
+        .output()
+        .expect("issues");
+    assert!(issued.status.success(), "{:?}", issued);
+    issue_grant(&fixture, "g-reader", "reader", "app");
+
+    // The request names the repository the grant does not cover.
+    let submitted = Command::new(env!("CARGO_BIN_EXE_cbr"))
+        .args([
+            "context",
+            "scoped",
+            "--repo",
+            closed.to_str().expect("utf-8"),
+            "--repo-id",
+            "closed",
+            "--want",
+            "code=source:src/secret.rs",
+            "--selector",
+            "embargoed thing",
+            "--capacity",
+            "65536",
+            "--grant",
+            "g-reader",
+        ])
+        .arg("--socket")
+        .arg(&fixture.socket)
+        .arg("--credential-file")
+        .arg(fixture.credential("reader"))
+        .output()
+        .expect("cbr runs");
+    assert!(
+        submitted.status.success(),
+        "the submit itself is allowed: {}",
+        String::from_utf8_lossy(&submitted.stderr)
+    );
+
+    let inspected = Command::new(env!("CARGO_BIN_EXE_cbr"))
+        .args(["request", "scoped", "--grant", "g-reader"])
+        .arg("--socket")
+        .arg(&fixture.socket)
+        .arg("--credential-file")
+        .arg(fixture.credential("reader"))
+        .output()
+        .expect("cbr runs");
+    let inspected = ok(&inspected);
+    let items = at(&inspected, &["items"])
+        .as_array()
+        .map(<[Value]>::to_vec)
+        .unwrap_or_default();
+    assert_eq!(items.len(), 1, "{inspected:?}");
+    assert_eq!(text(&items[0], &["result"]), "unmet", "{inspected:?}");
+    assert_eq!(
+        text(&items[0], &["reason"]),
+        "source_unavailable",
+        "a repository outside the view answers exactly as one that is not \
+         registered: {inspected:?}"
+    );
+
+    provider.kill().expect("kills");
+    provider.wait().expect("reaps");
+}
+
+/// A projection that cannot be built says so. The basis here names a
+/// repository at a tree that repository does not have — a real thing to ask
+/// for when two checkouts are confused, and the answer has to be "this
+/// projection is unavailable", never a packet that looks like it searched.
+#[test]
+fn a_projection_that_cannot_be_built_is_reported_unavailable_rather_than_empty() {
+    let fixture = Fixture::new();
+    let other = fixture.directory.path().join("other");
+    std::fs::create_dir_all(&other).expect("dir");
+    std::fs::write(other.join("README.md"), "another repository\n").expect("writes");
+    git(&other, &["init", "-q", "-b", "main"]);
+    git(&other, &["add", "."]);
+    git(&other, &["commit", "-q", "-m", "other"]);
+
+    let mut provider = fixture.start(&[
+        format!("app={}", fixture.checkout.display()),
+        format!("other={}", other.display()),
+    ]);
+
+    // The basis is resolved from `app`'s checkout but labelled `other`, so
+    // the tree it names is not in the repository the provider will read.
+    let submitted = fixture.cbr(
+        "owner",
+        &[
+            "context",
+            "confused",
+            "--repo",
+            fixture.checkout.to_str().expect("utf-8"),
+            "--repo-id",
+            "other",
+            "--want",
+            "doc=source:docs/decisions/0001-adapter.md",
+            "--selector",
+            "compatibility adapter",
+            "--capacity",
+            "65536",
+        ],
+    );
+    assert!(
+        submitted.status.success(),
+        "{}",
+        String::from_utf8_lossy(&submitted.stderr)
+    );
+
+    let inspected = ok(&fixture.cbr("owner", &["request", "confused"]));
+    let items = at(&inspected, &["items"])
+        .as_array()
+        .map(<[Value]>::to_vec)
+        .unwrap_or_default();
+    assert_eq!(text(&items[0], &["result"]), "unmet", "{inspected:?}");
+
+    let packet = ok(&fixture.cbr("owner", &["packet", "confused"]));
+    let coverage = at(&packet, &["coverage"])
+        .as_array()
+        .map(<[Value]>::to_vec)
+        .unwrap_or_default();
+    assert_eq!(coverage.len(), 1, "{packet:?}");
+    let gaps: Vec<String> = at(&coverage[0], &["gaps"])
+        .as_array()
+        .map(<[Value]>::to_vec)
+        .unwrap_or_default()
+        .iter()
+        .map(|gap| gap.as_str().unwrap_or_default().to_string())
+        .collect();
+    assert!(
+        gaps.iter().any(|gap| gap == "projection unavailable"),
+        "the coverage says the projection is unavailable: {gaps:?}"
+    );
+    assert!(
+        gaps.iter().any(|gap| gap.contains("could not be built")),
+        "and why: {gaps:?}"
+    );
+
+    provider.kill().expect("kills");
+    provider.wait().expect("reaps");
+}
