@@ -500,6 +500,23 @@ fn a_packet_is_never_published_before_its_local_seal_commits() {
     let bytes = cbr_encoding::decode_base64(data).expect("base64");
     assert_eq!(cbr_encoding::digest_bytes(&bytes), digest);
 
+    // A scripted packet says so where a consumer reads it. The compiled
+    // compiler has the matching assertion in J1; between them, a packet's
+    // provenance is read by a test rather than only written by one. It is
+    // not in the sealed bytes: the packet format carries content, and
+    // provenance belongs to the revision that carries the content.
+    let inspected = result(&restarted.call(
+        "context.packet.inspect",
+        None,
+        r#"{"packet":"r-1","revision":1}"#,
+    ))
+    .clone();
+    assert_eq!(
+        text(&inspected, &["provenance", "compiler"]),
+        "cbr-context-script",
+        "{inspected:?}"
+    );
+
     let events = restarted.call("core.events.read", None, r#"{"from":"start","limit":1000}"#);
     let published: Vec<String> = at(result(&events), &["items"])
         .as_array()

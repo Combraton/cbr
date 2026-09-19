@@ -229,6 +229,22 @@ pub struct After {
     pub include_equal_score: bool,
 }
 
+/// What a multi-term query means.
+///
+/// The ladder is recorded rather than implied, because a selector of several
+/// words is the common case and the two readings differ sharply: `All` finds
+/// only chunks holding every term, which is precise and often empty, while
+/// `Any` finds the best partial match, which is what a caller wants when the
+/// precise reading returned nothing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Terms {
+    /// Every part of every token must be in the chunk.
+    All,
+    /// Any part may match; BM25 ranks the chunk with the most, and the
+    /// rarest, of them first.
+    Any,
+}
+
 /// Search one tree. Every query token must match, as itself or as its parts;
 /// an empty query matches nothing rather than everything.
 pub fn search(
@@ -237,7 +253,7 @@ pub fn search(
     query: &str,
     limit: usize,
 ) -> Result<Vec<Hit>, rusqlite::Error> {
-    search_after(connection, tree, query, None, limit)
+    search_after(connection, tree, query, None, None, Terms::All, limit)
 }
 
 /// Search one tree, continuing after a keyset position. The position is
@@ -248,10 +264,12 @@ pub fn search_after(
     connection: &Connection,
     tree: &str,
     query: &str,
+    within: Option<&str>,
     after: Option<&After>,
+    terms: Terms,
     limit: usize,
 ) -> Result<Vec<Hit>, rusqlite::Error> {
-    let Some(expression) = match_expression(query) else {
+    let Some(expression) = match_expression(query, terms) else {
         return Ok(Vec::new());
     };
     let (score, path, start_byte, equal) = match after {
@@ -271,6 +289,7 @@ pub fn search_after(
              FROM lexical_search
              JOIN lexical_chunk c ON c.id = lexical_search.rowid
              WHERE lexical_search MATCH ?1 AND c.tree = ?2
+               AND (?9 IS NULL OR c.path = ?9)
          )
          WHERE ?4 = 0
             OR score > ?5
@@ -288,7 +307,8 @@ pub fn search_after(
             score,
             path,
             i64::from(equal),
-            start_byte
+            start_byte,
+            within
         ],
         |row| {
             Ok(Hit {
@@ -313,12 +333,16 @@ pub fn search_after(
 /// A document stores each identifier as its parts as well as whole, so the
 /// parts alone are enough, and asking for them means a query for
 /// `getUserName` also finds prose that says "get user name".
-fn match_expression(query: &str) -> Option<String> {
+fn match_expression(query: &str, mode: Terms) -> Option<String> {
     let terms: Vec<String> = query_terms(query)
         .into_iter()
         .map(|term| format!("\"{term}\""))
         .collect();
-    (!terms.is_empty()).then(|| terms.join(" AND "))
+    let joiner = match mode {
+        Terms::All => " AND ",
+        Terms::Any => " OR ",
+    };
+    (!terms.is_empty()).then(|| terms.join(joiner))
 }
 
 /// The terms a query asks for: every part of every token, lowercased. The
@@ -354,6 +378,19 @@ mod tests {
 
     #[test]
     fn an_empty_query_matches_nothing() {
-        assert_eq!(match_expression("   ...  "), None);
+        assert_eq!(match_expression("   ...  ", Terms::All), None);
+        assert_eq!(match_expression("   ...  ", Terms::Any), None);
+    }
+
+    #[test]
+    fn the_two_readings_of_a_multi_term_query_are_different_expressions() {
+        assert_eq!(
+            match_expression("drainQueue now", Terms::All).expect("an expression"),
+            "\"drain\" AND \"queue\" AND \"now\""
+        );
+        assert_eq!(
+            match_expression("drainQueue now", Terms::Any).expect("an expression"),
+            "\"drain\" OR \"queue\" OR \"now\""
+        );
     }
 }

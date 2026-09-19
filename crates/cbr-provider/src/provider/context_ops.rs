@@ -278,6 +278,12 @@ impl Provider {
             self.decide_item(item, &record, &trees, &mut decided, tick)?;
         }
 
+        // Step 3 again, for what no item named: the task is a question, and
+        // a packet that answers only what was already located is a pointer
+        // list. Everything here is advisory and is dropped by capacity
+        // before anything an item required.
+        self.discover(&record, job, &trees, &mut decided, tick)?;
+
         let mut steps = compiler::steps(&decided);
         // Step 5's refusal, moved to where a compiled request can know it:
         // the sizes exist only once something has been selected.
@@ -286,6 +292,316 @@ impl Provider {
             steps = vec![object(vec![("end", string("budget_insufficient"))])];
         }
         Ok(steps)
+    }
+
+    /// The words a request is about: its task, and every selector.
+    fn question(record: &Value, job: &Value) -> String {
+        let mut words = vec![text(record, &["consumer", "task"]).to_string()];
+        for item in list(job, &["items"]) {
+            words.push(text(at(item, &["selector"]), &["value"]).to_string());
+        }
+        words.join(" ")
+    }
+
+    /// The names in a request that could be code.
+    ///
+    /// **Not every word of the task.** A prose question contains ordinary
+    /// words, and ordinary words are function names somewhere in any large
+    /// repository: asking about "the git binary" pulled in every helper
+    /// called `git` and every one called `binary`, which is noise wearing
+    /// the clothes of code flow. So a name comes from a selector, which is
+    /// chosen words, or from a word in the task that is shaped like an
+    /// identifier -- `snake_case`, `camelCase`, or dotted.
+    fn symbols(record: &Value, job: &Value) -> Vec<String> {
+        let identifier = |word: &str| {
+            word.contains('_')
+                || word.contains('.')
+                || (word.chars().next().is_some_and(char::is_lowercase)
+                    && word.chars().any(char::is_uppercase))
+        };
+        let mut names: Vec<String> = Vec::new();
+        for item in list(job, &["items"]) {
+            names.extend(
+                text(at(item, &["selector"]), &["value"])
+                    .split(|c: char| !c.is_alphanumeric() && c != '_')
+                    .filter(|word| word.len() > 2)
+                    .map(str::to_string),
+            );
+        }
+        for word in text(record, &["consumer", "task"]).split_whitespace() {
+            let trimmed = word.trim_matches(|c: char| !c.is_alphanumeric() && c != '_' && c != '.');
+            if trimmed.len() > 2 && identifier(trimmed) {
+                names.push(trimmed.to_string());
+                // A dotted name is also its parts: `np.concatenate` is worth
+                // looking up as `concatenate` when the module is not anchored.
+                names.extend(
+                    trimmed
+                        .split('.')
+                        .filter(|part| part.len() > 2)
+                        .map(str::to_string),
+                );
+            }
+        }
+        names.sort();
+        names.dedup();
+        names
+    }
+
+    /// Sections no item asked for (CONTEXT section 6): spans the question
+    /// finds, the definitions and callers of the names in it, and the claims
+    /// that bear on the basis.
+    fn discover(
+        &self,
+        record: &Value,
+        job: &Value,
+        trees: &[Frontier],
+        decided: &mut Decided,
+        tick: &mut Tick,
+    ) -> Result<(), TickError> {
+        let question = Self::question(record, job);
+        self.discover_spans(&question, trees, decided, tick)?;
+        self.discover_anchors(&Self::symbols(record, job), trees, decided)?;
+        self.discover_claims(record, decided)?;
+        Ok(())
+    }
+
+    /// Retrieval over the whole view, from the question rather than from a
+    /// path. Spans an item already cited are skipped: a packet should not
+    /// pay twice for the same bytes.
+    fn discover_spans(
+        &self,
+        question: &str,
+        trees: &[Frontier],
+        decided: &mut Decided,
+        tick: &mut Tick,
+    ) -> Result<(), TickError> {
+        use cbr_memory::retrieval::{Ask, Bounds, Readable};
+        let readable: Vec<Readable<'_>> = trees
+            .iter()
+            .map(|frontier| Readable {
+                id: &frontier.repository,
+                checkout: &frontier.checkout,
+                basis: &frontier.tree,
+            })
+            .collect();
+        if readable.is_empty() {
+            return Ok(());
+        }
+        // Ask for more rows than the packet will carry: the per-path cap
+        // below discards some of them, and asking for exactly the budget
+        // would leave the packet short whenever one file ranked twice.
+        let bounds = Bounds {
+            rows: compiler::DISCOVERED_SPANS * 4,
+            batch_bytes: usize::MAX,
+            ..Bounds::default()
+        };
+        // **A question is prose, and every-term over prose is the wrong
+        // reading.** Asking for every term of "why does source identity use
+        // gix rather than the git binary" returns only chunks that quote the
+        // question -- which, in a repository that contains the test asking
+        // it, is exactly what the first version of this returned, while the
+        // answer went unfound. The ranked partial reading is the right one
+        // here: BM25 already weights the rare terms that carry the question.
+        // A selector inside a named path keeps the every-term reading, which
+        // is what `select_source` uses, because a selector is chosen words.
+        let answer = cbr_memory::retrieval::search(
+            self.store.connection(),
+            &readable,
+            &Ask::all(question).partial(),
+            &bounds,
+        )
+        .map_err(|_| ProtocolError::new_internal_error())?;
+
+        let mut per_path: std::collections::BTreeMap<String, usize> =
+            std::collections::BTreeMap::new();
+        let mut taken = 0;
+        for found in answer.found {
+            if taken >= compiler::DISCOVERED_SPANS {
+                break;
+            }
+            let seen = per_path.entry(found.path.clone()).or_default();
+            if *seen >= compiler::DISCOVERED_PER_PATH {
+                continue;
+            }
+            let already = decided.selections.iter().any(|selection| {
+                selection.blob == found.blob && selection.start_byte == found.start_byte
+            });
+            if already {
+                continue;
+            }
+            *seen += 1;
+            taken += 1;
+            let Some(frontier) = trees
+                .iter()
+                .find(|frontier| frontier.repository == found.repository)
+            else {
+                continue;
+            };
+            let Ok(Some(bytes)) = cbr_identity::read_blob_bounded(
+                &frontier.checkout,
+                &found.blob,
+                cbr_memory::index::MAX_BLOB_BYTES as u64,
+            ) else {
+                continue;
+            };
+            let selection = Selection {
+                item: String::new(),
+                repository: found.repository.clone(),
+                tree: frontier.tree.clone(),
+                path: found.path.clone(),
+                blob: found.blob.clone(),
+                digest: cbr_encoding::digest_bytes(&bytes),
+                size: bytes.len(),
+                start_byte: found.start_byte,
+                end_byte: found.end_byte,
+                start_line: found.start_line,
+                end_line: found.end_line,
+                origin: "index",
+                excerpt: compiler::excerpt(&bytes, found.start_byte, found.end_byte),
+            };
+            self.seal_source(tick, &selection, &bytes)?;
+            decided.discovered.push(compiler::Discovered {
+                id: format!("span-{}-{}", selection.path, selection.start_byte),
+                label: "source_inspected",
+                historical: false,
+                content: selection.content(),
+                citation: Some(object(vec![
+                    ("provider", string(&self.config.provider_id)),
+                    (
+                        "artifact",
+                        subject(crate::evidence::ARTIFACT, &selection.artifact()),
+                    ),
+                    ("digest", string(&selection.digest)),
+                ])),
+            });
+        }
+        Ok(())
+    }
+
+    /// Code flow, as far as tags can honestly take it: where a name in the
+    /// question is defined, and where it is used. Tags say a name appears,
+    /// never which definition a use means, so ambiguity is stated and
+    /// nothing is narrowed.
+    fn discover_anchors(
+        &self,
+        names: &[String],
+        trees: &[Frontier],
+        decided: &mut Decided,
+    ) -> Result<(), TickError> {
+        for frontier in trees {
+            for name in names {
+                let resolution =
+                    cbr_memory::anchors::resolve(self.store.connection(), &frontier.tree, name)
+                        .map_err(|_| ProtocolError::new_internal_error())?;
+                if resolution.candidates.is_empty() {
+                    continue;
+                }
+                let where_defined: Vec<String> = resolution
+                    .candidates
+                    .iter()
+                    .map(|candidate| {
+                        format!(
+                            "{} {}:{} line {}",
+                            candidate.kind,
+                            frontier.repository,
+                            candidate.path,
+                            candidate.start_line
+                        )
+                    })
+                    .collect();
+                let callers =
+                    cbr_memory::anchors::references(self.store.connection(), &frontier.tree, name)
+                        .map_err(|_| ProtocolError::new_internal_error())?;
+                let used_at: Vec<String> = callers
+                    .iter()
+                    .take(16)
+                    .map(|candidate| {
+                        format!(
+                            "{}:{} line {}",
+                            frontier.repository, candidate.path, candidate.start_line
+                        )
+                    })
+                    .collect();
+                let ambiguity = if resolution.ambiguous {
+                    "\nambiguous: every candidate is listed; none is chosen"
+                } else {
+                    ""
+                };
+                let uses = if used_at.is_empty() {
+                    "no use of this name is anchored at this tree".to_string()
+                } else {
+                    format!("used at:\n  {}", used_at.join("\n  "))
+                };
+                decided.discovered.push(compiler::Discovered {
+                    id: format!("anchor-{}-{name}", frontier.repository),
+                    label: "inferred",
+                    historical: false,
+                    content: format!(
+                        "{name} defined at:\n  {}\n{uses}{ambiguity}",
+                        where_defined.join("\n  ")
+                    ),
+                    citation: None,
+                });
+            }
+        }
+        Ok(())
+    }
+
+    /// Every claim this provider holds, against the request's basis.
+    ///
+    /// A claim is labelled by what the authority permitted it for, so
+    /// `binding` means an authority said so and nothing else does. A
+    /// rejected claim, and one that is not applicable at this basis, is
+    /// carried as `stale` and historical: INTERNALS section 5 step 3 wants
+    /// rejected alternatives distinguishable, not absent, and a historical
+    /// section is never current for an item.
+    fn discover_claims(&self, record: &Value, decided: &mut Decided) -> Result<(), TickError> {
+        let basis = at(record, &["basis"]);
+        let kinds: Vec<String> = crate::knowledge::CONDITION_KINDS
+            .iter()
+            .map(|kind| (*kind).to_string())
+            .collect();
+        for (claim, _) in self.store.subjects_of_kind(crate::knowledge::CLAIM)? {
+            let payload = object(vec![("claim", string(&claim))]);
+            let Ok(inspected) = self.knowledge_inspect(&payload) else {
+                continue;
+            };
+            let claim_record = at(&inspected, &["record"]);
+            let findings = crate::knowledge::condition_findings(claim_record, basis, &kinds);
+            let applicability = crate::knowledge::result_of(&findings);
+            let state = text(&inspected, &["reliance", "state"]).to_string();
+            let permitted = text(&inspected, &["reliance", "permitted_use"]).to_string();
+            let current = state == "accepted_for_use" && applicability == "applicable";
+            let label = match permitted.as_str() {
+                _ if !current => "stale",
+                "binding" => "binding",
+                "evidence" => "observation",
+                "hypothesis" => "hypothesis",
+                _ => "unknown",
+            };
+            let why = if state != "accepted_for_use" {
+                format!("state {state}")
+            } else {
+                format!("applicability {applicability}")
+            };
+            decided.discovered.push(compiler::Discovered {
+                id: format!("claim-{claim}"),
+                label,
+                historical: !current,
+                content: format!(
+                    "claim {claim} revision {}: {}\n{}",
+                    int(&inspected, &["current_revision"]),
+                    if current {
+                        format!("accepted for use as {permitted}")
+                    } else {
+                        format!("not current here: {why}")
+                    },
+                    crate::context::canonical(at(claim_record, &["statement"]))
+                ),
+                citation: None,
+            });
+        }
+        Ok(())
     }
 
     /// Build the index for `repository` at `tree` unless a manifest already
@@ -439,11 +755,19 @@ impl Provider {
 
     /// The span of `path` this item gets, and the artifact that holds it.
     ///
-    /// Retrieval chooses which part of the file to name, inside the view and
-    /// after authorization (INTERNALS section 5 step 3). If the selector
-    /// matches nothing in that file, the file's first chunk is named rather
-    /// than nothing at all: the file is in the tree, so absence of a match is
-    /// not absence of the source.
+    /// **Retrieval is scoped to the named path, in SQL.** An unscoped search
+    /// ranks this file's best span against every other file's, and in a real
+    /// repository the file's own span loses: the first version of this took
+    /// rows from the whole repository and then filtered by path, and cited a
+    /// file's first twenty lines while the answer was on line 24.
+    ///
+    /// **A multi-term selector has a recorded ladder.** INTERNALS section 5
+    /// leaves the reading to the implementation, so it is written down here
+    /// rather than left to whatever the query engine happens to do:
+    /// 1. every term inside one chunk;
+    /// 2. failing that, the best partial match, ranked;
+    /// 3. failing that, the file's first chunk, marked `first-chunk` so a
+    ///    reader knows no term was found in the file at all.
     fn select_source(
         &self,
         frontier: &Frontier,
@@ -451,7 +775,7 @@ impl Provider {
         path: &str,
         tick: &mut Tick,
     ) -> Result<Option<Selection>, TickError> {
-        use cbr_memory::retrieval::{Bounds, Origin, Readable};
+        use cbr_memory::retrieval::{Ask, Bounds, Origin, Readable};
         let entries = match cbr_identity::tree_entries(&frontier.checkout, &frontier.tree) {
             Ok(entries) => entries,
             Err(_) => return Ok(None),
@@ -459,7 +783,15 @@ impl Provider {
         let Some(entry) = entries.into_iter().find(|entry| entry.path == path) else {
             return Ok(None);
         };
-        let Ok(bytes) = cbr_identity::read_blob(&frontier.checkout, &entry.blob) else {
+        // Bounded before the read: a repository nobody in this process
+        // controls should not be able to make it allocate a blob in order to
+        // decide the blob is too big. A file too large to cite is a file that
+        // was not found.
+        let Ok(Some(bytes)) = cbr_identity::read_blob_bounded(
+            &frontier.checkout,
+            &entry.blob,
+            cbr_memory::index::MAX_BLOB_BYTES as u64,
+        ) else {
             return Ok(None);
         };
 
@@ -469,18 +801,27 @@ impl Provider {
             basis: &frontier.tree,
         }];
         let query = text(at(item, &["selector"]), &["value"]).to_string();
-        let answer = cbr_memory::retrieval::search(
+        let bounds = Bounds {
+            rows: 8,
+            ..Bounds::default()
+        };
+        let mut answer = cbr_memory::retrieval::search(
             self.store.connection(),
             &readable,
-            &query,
-            &Bounds {
-                rows: 32,
-                ..Bounds::default()
-            },
+            &Ask::within(&query, path),
+            &bounds,
         )
         .map_err(|_| ProtocolError::new_internal_error())?;
-        let hit = answer.found.iter().find(|found| found.path == path);
-        let (start_byte, end_byte, start_line, end_line, origin) = match hit {
+        if answer.found.is_empty() {
+            answer = cbr_memory::retrieval::search(
+                self.store.connection(),
+                &readable,
+                &Ask::within(&query, path).partial(),
+                &bounds,
+            )
+            .map_err(|_| ProtocolError::new_internal_error())?;
+        }
+        let (start_byte, end_byte, start_line, end_line, origin) = match answer.found.first() {
             Some(found) => (
                 found.start_byte,
                 found.end_byte,
@@ -492,8 +833,8 @@ impl Provider {
                 },
             ),
             None => {
-                let first = String::from_utf8_lossy(&bytes);
-                let chunk = cbr_memory::lexical::chunks(&first, cbr_memory::index::CHUNK_LINES)
+                let contents = String::from_utf8_lossy(&bytes);
+                let chunk = cbr_memory::lexical::chunks(&contents, cbr_memory::index::CHUNK_LINES)
                     .into_iter()
                     .next();
                 match chunk {
@@ -502,9 +843,9 @@ impl Provider {
                         chunk.end_byte,
                         chunk.start_line,
                         chunk.end_line,
-                        "whole-file",
+                        "first-chunk",
                     ),
-                    None => (0, 0, 1, 1, "whole-file"),
+                    None => (0, 0, 1, 1, "first-chunk"),
                 }
             }
         };
@@ -523,6 +864,7 @@ impl Provider {
             start_line,
             end_line,
             origin,
+            excerpt: compiler::excerpt(&bytes, start_byte, end_byte),
         };
         self.seal_source(tick, &selection, &bytes)?;
         Ok(Some(selection))
@@ -657,22 +999,22 @@ impl Provider {
             );
         }
 
+        // Step 1 of INTERNALS section 5, at the only place it can honestly
+        // happen: the command, where the grant is. Preparation runs later and
+        // on the provider's own authority, so it is handed the view rather
+        // than allowed to compute one, and cannot widen it.
+        let view = self.readable_repositories(params)?;
         let mut joined = None;
         if self.selected_feature("context.shared_jobs") {
             for (job_id, _, value) in self.store.subjects_in_recorded_order(JOB)? {
                 let mut job = parse_record(&value)?;
-                if context::may_join(&job, &principal, payload) {
+                if context::may_join(&job, &principal, payload, &view) {
                     context::push(&mut job, "requests", string(&id));
                     joined = Some((job_id, job));
                     break;
                 }
             }
         }
-        // Step 1 of INTERNALS section 5, at the only place it can honestly
-        // happen: the command, where the grant is. Preparation runs later and
-        // on the provider's own authority, so it is handed the view rather
-        // than allowed to compute one, and cannot widen it.
-        let view = self.readable_repositories(params)?;
         let (job_id, job) = joined.unwrap_or_else(|| {
             let mut job = context::new_job(&principal, payload, &script, &id);
             set(
@@ -1138,7 +1480,13 @@ impl Provider {
                 }
                 "section" => {
                     let mut section = argument.clone();
-                    set(&mut section, "historical", Value::Bool(false));
+                    // A section is current unless it says otherwise. The
+                    // compiler says otherwise for a rejected claim and for
+                    // one that is not applicable at this basis; a scripted
+                    // section never sets it, so this defaults as before.
+                    if section.get("historical").is_none() {
+                        set(&mut section, "historical", Value::Bool(false));
+                    }
                     if let Some(reference) = argument.get("claim") {
                         let read = self.read_claim(reference);
                         let snapshot = context::claim_snapshot(
@@ -1293,8 +1641,15 @@ impl Provider {
         }
         let past_deadline = tick.now.as_str() >= text(&record, &["limits", "deadline"]);
         let reason = reason.or(past_deadline.then_some("deadline_passed"));
-        let packet =
-            context::compile_packet(request, &record, job, reason, context::SCRIPT_COMPILER);
+        // The compiler the job actually ran, not the one this line used to
+        // assume. `job.compiler` is set at submit for a compiled request and
+        // absent for a scripted one, and a packet's provenance is the only
+        // place a reader can tell the two apart.
+        let compiler = match at(job, &["compiler"]).as_str() {
+            Some(compiler) => compiler.to_string(),
+            None => context::SCRIPT_COMPILER.to_string(),
+        };
+        let packet = context::compile_packet(request, &record, job, reason, &compiler);
 
         let provider = match PeerConfig::from_value(self.config.context.0.get("evidence_provider"))
         {

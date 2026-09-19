@@ -718,14 +718,24 @@ pub fn new_job(principal: &str, payload: &Value, script: &[Value], request: &str
 
 /// Whether a request may subscribe to an existing job (CONTEXT section 4): the
 /// job is still running and has not published, and the request has the same
-/// basis, the same items and the same access scope, which here is the same
-/// submitting principal. Another principal never joins a job.
-pub fn may_join(job: &Value, principal: &str, payload: &Value) -> bool {
+/// basis, the same items and the same access scope. Access scope is both the
+/// submitting principal *and* the view its grant gave it: another principal
+/// never joins a job, and neither does the same principal under a narrower
+/// grant.
+pub fn may_join(job: &Value, principal: &str, payload: &Value, view: &[String]) -> bool {
+    let same_view = list(job, &["view"])
+        .iter()
+        .filter_map(Value::as_str)
+        .eq(view.iter().map(String::as_str));
     text(job, &["state"]) == "running"
         && at(job, &["published"]) != &Value::Bool(true)
         && text(job, &["principal"]) == principal
         && same(at(job, &["basis"]), at(payload, &["basis"]))
         && same(at(job, &["items"]), at(payload, &["items"]))
+        // The same principal can hold two grants of different width. A job
+        // compiled under the wider one has already read repositories the
+        // narrower request may not, so joining it would hand them over.
+        && same_view
 }
 
 // ---- preparation -----------------------------------------------------------
@@ -1735,5 +1745,52 @@ mod tests {
             cbr_encoding::encode_base64(b"234")
         );
         assert!(excerpt.get("digest").is_none());
+    }
+
+    #[test]
+    fn a_job_is_joined_only_by_a_request_with_the_same_view() {
+        // Two grants of different width belong to the same principal often
+        // enough: one for a review, one for everything. A job compiled under
+        // the wider one has already read repositories the narrower request
+        // may not, so joining it would hand them over -- and `may_join` is
+        // the only place that can refuse, because preparation runs on the
+        // provider's own authority and never re-checks.
+        let payload = parse(
+            r#"{"consumer":{"task":"t","principal":"p"},
+                "basis":{"repositories":[{"id":"a","tree":"t1","workspace":"clean","dirty":null}],"completeness":"complete"},
+                "items":[],
+                "limits":{"deadline":"2030-01-01T00:00:00Z","investigation":{"units":"q","amount":1},"output_capacity":{"units":"bytes","amount":4096}}}"#,
+        );
+        let wide = vec!["a".to_string(), "b".to_string()];
+        let narrow = vec!["a".to_string()];
+        let job = new_job("owner", &payload, &[], "r-1");
+        let mut wide_job = job.clone();
+        set(
+            &mut wide_job,
+            "view",
+            Value::Array(wide.iter().map(|id| string(id)).collect()),
+        );
+        let mut narrow_job = job;
+        set(
+            &mut narrow_job,
+            "view",
+            Value::Array(narrow.iter().map(|id| string(id)).collect()),
+        );
+
+        assert!(may_join(&wide_job, "owner", &payload, &wide));
+        assert!(
+            !may_join(&wide_job, "owner", &payload, &narrow),
+            "a narrower request never joins a wider job"
+        );
+        assert!(
+            !may_join(&narrow_job, "owner", &payload, &wide),
+            "and a wider one never joins a narrower job either: the packet \
+             would be short of what it was entitled to without saying so"
+        );
+        assert!(may_join(&narrow_job, "owner", &payload, &narrow));
+        assert!(
+            !may_join(&narrow_job, "someone-else", &payload, &narrow),
+            "another principal never joins a job"
+        );
     }
 }

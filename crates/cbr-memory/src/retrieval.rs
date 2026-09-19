@@ -214,6 +214,47 @@ impl Answer {
     }
 }
 
+/// What a caller is asking for, apart from how much of it they want back.
+///
+/// `within` is applied **in SQL**, not to the rows a page already returned:
+/// a search over a whole repository ranks a named file's own best span
+/// against every other file's, and in any real repository the file's span
+/// loses. That is not a ranking problem to tune; it is the wrong question.
+#[derive(Debug, Clone)]
+pub struct Ask<'a> {
+    pub query: &'a str,
+    pub within: Option<&'a str>,
+    pub terms: lexical::Terms,
+}
+
+impl<'a> Ask<'a> {
+    /// Every term, anywhere in the view.
+    pub fn all(query: &'a str) -> Self {
+        Ask {
+            query,
+            within: None,
+            terms: lexical::Terms::All,
+        }
+    }
+
+    /// Every term, inside one path.
+    pub fn within(query: &'a str, path: &'a str) -> Self {
+        Ask {
+            query,
+            within: Some(path),
+            terms: lexical::Terms::All,
+        }
+    }
+
+    /// The best partial match instead of every term.
+    pub fn partial(self) -> Self {
+        Ask {
+            terms: lexical::Terms::Any,
+            ..self
+        }
+    }
+}
+
 /// One repository the principal may read, as the caller's view names it.
 /// Building this is the authorization step: a repository the principal has no
 /// read grant for is simply absent, so nothing downstream can leak it.
@@ -384,9 +425,10 @@ pub fn index_digest(connection: &Connection, tree: &str) -> Result<String, Index
 pub fn search(
     connection: &Connection,
     view: &[Readable<'_>],
-    query: &str,
+    ask: &Ask<'_>,
     bounds: &Bounds,
 ) -> Result<Answer, IndexError> {
+    let query = ask.query;
     let mut readable: Vec<&Readable<'_>> = view.iter().collect();
     readable.sort_by(|left, right| left.id.cmp(right.id));
 
@@ -396,8 +438,17 @@ pub fn search(
 
     for repository in readable {
         let manifest = manifest(connection, repository.id)?;
+        // A projection is complete only when it was built to this basis *by
+        // this compiler*. A different compiler version means different rows
+        // for the same tree -- a changed pre-tokeniser, a changed chunk size
+        // -- so trusting it would be trusting an index nobody in this build
+        // ever produced. It is lagging, which is exactly what it is.
         let state = match &manifest {
-            Some(manifest) if manifest.frontier == repository.basis => State::Complete,
+            Some(manifest)
+                if manifest.frontier == repository.basis && manifest.compiler == COMPILER =>
+            {
+                State::Complete
+            }
             Some(_) => State::Lagging,
             None => State::Unavailable,
         };
@@ -428,13 +479,19 @@ pub fn search(
                     connection,
                     repository,
                     &manifest.expect("complete implies a manifest").frontier,
-                    query,
+                    ask,
                     bounds,
                     after(bounds, repository.id).as_ref(),
                 )?);
             }
             State::Lagging | State::Unavailable => {
-                match from_canonical(repository, &terms, bounds, after(bounds, repository.id)) {
+                match from_canonical(
+                    repository,
+                    ask,
+                    &terms,
+                    bounds,
+                    after(bounds, repository.id),
+                ) {
                     Ok((found, budget_reached)) => {
                         if budget_reached {
                             reason = Some(format!(
@@ -576,15 +633,17 @@ fn from_index(
     connection: &Connection,
     repository: &Readable<'_>,
     frontier: &str,
-    query: &str,
+    ask: &Ask<'_>,
     bounds: &Bounds,
     after: Option<&lexical::After>,
 ) -> Result<Vec<Found>, IndexError> {
     let hits = lexical::search_after(
         connection,
         frontier,
-        query,
+        ask.query,
+        ask.within,
         after,
+        ask.terms,
         bounds.rows.saturating_add(1),
     )?;
     Ok(hits
@@ -613,6 +672,7 @@ fn from_index(
 /// itself a gap the answer has to declare.
 fn from_canonical(
     repository: &Readable<'_>,
+    ask: &Ask<'_>,
     terms: &[String],
     bounds: &Bounds,
     after: Option<lexical::After>,
@@ -627,14 +687,24 @@ fn from_canonical(
         if entry.mode != "100644" && entry.mode != "100755" {
             continue;
         }
+        if ask.within.is_some_and(|path| path != entry.path) {
+            continue;
+        }
         if read >= CANONICAL_READ_BYTES {
             return Ok((found, true));
         }
-        let bytes = cbr_identity::read_blob(repository.checkout, &entry.blob)?;
-        read += bytes.len();
-        if bytes.len() > MAX_BLOB_BYTES {
+        // Bounded before the read, not after it: a repository nobody in this
+        // process controls should not be able to make it allocate a blob in
+        // order to decide the blob is too big.
+        let Some(bytes) = cbr_identity::read_blob_bounded(
+            repository.checkout,
+            &entry.blob,
+            MAX_BLOB_BYTES as u64,
+        )?
+        else {
             continue;
-        }
+        };
+        read += bytes.len();
         let Ok(text) = String::from_utf8(bytes) else {
             continue;
         };
@@ -650,7 +720,11 @@ fn from_canonical(
             if !passes(after.as_ref(), 0.0, &entry.path, chunk.start_byte) {
                 continue;
             }
-            if terms.iter().all(|term| tokens.contains(term)) {
+            let matched = match ask.terms {
+                lexical::Terms::All => terms.iter().all(|term| tokens.contains(term)),
+                lexical::Terms::Any => terms.iter().any(|term| tokens.contains(term)),
+            };
+            if matched {
                 found.push(Found {
                     repository: repository.id.to_string(),
                     path: entry.path.clone(),

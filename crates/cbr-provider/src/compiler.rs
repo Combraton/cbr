@@ -49,6 +49,36 @@ pub const SOURCE_MEDIA_TYPE: &str = "application/octet-stream";
 /// The evidence `source.kind` a cited source file is sealed under.
 pub const SOURCE_KIND: &str = "repository_blob";
 
+/// How much of a cited span a section carries as its content.
+///
+/// A section that carried only a locator would make the output capacity
+/// measure nothing a consumer reads: the budget would be spent on pointers
+/// and the packet would look small while the work of reading it was entirely
+/// ahead of the reader. So a section carries a bounded excerpt of the span
+/// it cites, and that excerpt is what the capacity counts.
+pub const EXCERPT_BYTES: usize = 2048;
+
+/// The excerpt a section carries for a span: the span's own bytes, cut to
+/// [`EXCERPT_BYTES`] at a character boundary.
+///
+/// It is always a **prefix of the cited span**, so a reader can check it
+/// against the artifact: fetch the citation, take the span, and the excerpt
+/// is its first `excerpt.len()` bytes. Nothing is elided from the middle and
+/// nothing is reflowed.
+pub fn excerpt(bytes: &[u8], start_byte: i64, end_byte: i64) -> String {
+    let start = usize::try_from(start_byte).unwrap_or(0).min(bytes.len());
+    let end = usize::try_from(end_byte)
+        .unwrap_or(0)
+        .clamp(start, bytes.len());
+    let span = &bytes[start..end];
+    let mut cut = span.len().min(EXCERPT_BYTES);
+    // Back up to a character boundary: a continuation byte is 0b10xxxxxx.
+    while cut > 0 && cut < span.len() && (span[cut] & 0b1100_0000) == 0b1000_0000 {
+        cut -= 1;
+    }
+    String::from_utf8_lossy(&span[..cut]).into_owned()
+}
+
 /// The artifact id a cited blob takes. Content-addressed, so citing the same
 /// blob twice — from two items, two requests or two repositories — is one
 /// artifact, and a citation is stable across recompilations.
@@ -117,8 +147,11 @@ pub struct Selection {
     pub end_byte: i64,
     pub start_line: u32,
     pub end_line: u32,
-    /// `index` or `canonical`: which projection answered.
+    /// `index`, `canonical`, or `first-chunk` when no term was found in the
+    /// file at all and its opening chunk was cited instead.
     pub origin: &'static str,
+    /// A bounded prefix of the cited span, carried as the section's content.
+    pub excerpt: String,
 }
 
 impl Selection {
@@ -126,14 +159,21 @@ impl Selection {
         artifact_id(&self.blob)
     }
 
-    /// The line a section carries as its content: what was selected, where it
-    /// is and how it was found, in one line a reader can act on. The bytes
-    /// themselves are the citation, not the content, because a packet is a
-    /// bounded thing and a file is not.
+    /// A locator line, then the excerpt it locates. The locator says where
+    /// the bytes are and how they were found; the excerpt is the bytes, so
+    /// the output capacity measures what a consumer actually reads.
     pub fn content(&self) -> String {
+        format!("{}\n{}", self.locator(), self.excerpt)
+    }
+
+    pub fn locator(&self) -> String {
+        let how = match self.origin {
+            "first-chunk" => "no term matched in this file; its opening chunk".to_string(),
+            projection => format!("found in the {projection} projection"),
+        };
         format!(
-            "{}:{} lines {}-{} at tree {} (found in the {} projection)",
-            self.repository, self.path, self.start_line, self.end_line, self.tree, self.origin
+            "{}:{} lines {}-{} at tree {} ({how})",
+            self.repository, self.path, self.start_line, self.end_line, self.tree
         )
     }
 }
@@ -208,6 +248,44 @@ pub struct EvidenceSection {
     pub summary: String,
 }
 
+/// How many discovered spans one packet may carry. A discovery section is
+/// advisory, so capacity drops the surplus anyway; this bounds the work of
+/// producing them.
+pub const DISCOVERED_SPANS: usize = 8;
+
+/// How many discovered spans may come from one file.
+///
+/// Without this, one file takes the whole budget: ranking by score alone
+/// gave three of six spans to a single source file and two to the test that
+/// quoted the question, and the decision record that answered it never
+/// appeared. Six spans from two files have covered less ground than six
+/// spans from six.
+pub const DISCOVERED_PER_PATH: usize = 2;
+
+/// A section no item asked for.
+///
+/// CONTEXT section 6 lets a packet carry content beyond what its items name,
+/// and INTERNALS section 5 step 3 says what that content is for: current
+/// decisions, applicable observations, rejected alternatives and unresolved
+/// hypotheses, each distinguishable. A request that names its answer by path
+/// is not asking a question; these are what makes the answer findable when
+/// it does not.
+///
+/// All of them are advisory: they carry no `item_id`, so
+/// `context::inclusion` reserves nothing for them and drops them with reason
+/// `output_capacity` before it drops anything an item required.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Discovered {
+    /// Sorts the section within the discovered block, and names it.
+    pub id: String,
+    pub label: &'static str,
+    /// A rejected alternative or a superseded revision: present, and never
+    /// current.
+    pub historical: bool,
+    pub content: String,
+    pub citation: Option<Value>,
+}
+
 /// Authority content the request supplied for an item.
 #[derive(Debug, Clone, PartialEq)]
 pub struct AuthoritySection {
@@ -223,6 +301,7 @@ pub struct Decided {
     pub claims: Vec<ClaimSection>,
     pub evidence: Vec<EvidenceSection>,
     pub authority: Vec<AuthoritySection>,
+    pub discovered: Vec<Discovered>,
     pub reach: Vec<Reach>,
     pub unmet: Vec<Unmet>,
 }
@@ -344,6 +423,35 @@ pub fn steps(decided: &Decided) -> Vec<Value> {
             ]),
         ));
     }
+    // Item-bound sections first, discovered ones after: `context::inclusion`
+    // walks sections in order, and what an item required must be reserved
+    // before anything nobody asked for is considered.
+    for (key, section) in &mut sections {
+        *key = format!("1:{key}");
+        let _ = &section;
+    }
+    for found in &decided.discovered {
+        let mut section = object(vec![
+            ("section_id", string(&format!("d-{}", found.id))),
+            ("label", string(found.label)),
+            ("content", string(&found.content)),
+            ("historical", Value::Bool(found.historical)),
+            (
+                "citations",
+                Value::Array(match &found.citation {
+                    Some(evidence) => vec![object(vec![
+                        ("citation_id", string(&format!("dc-{}", found.id))),
+                        ("evidence", evidence.clone()),
+                    ])],
+                    None => Vec::new(),
+                }),
+            ),
+        ]);
+        if found.historical {
+            set_label(&mut section, "stale");
+        }
+        sections.push((format!("2:{}", found.id), section));
+    }
     sections.sort_by(|left, right| left.0.cmp(&right.0));
     for (_, section) in sections {
         steps.push(object(vec![("section", section)]));
@@ -369,6 +477,16 @@ pub fn steps(decided: &Decided) -> Vec<Value> {
 
     steps.push(object(vec![("publish", Value::Object(Vec::new()))]));
     steps
+}
+
+fn set_label(section: &mut Value, label: &str) {
+    if let Value::Object(members) = section {
+        for (name, value) in members.iter_mut() {
+            if name == "label" {
+                *value = string(label);
+            }
+        }
+    }
 }
 
 fn reference_id(reference: &Value) -> String {
@@ -397,7 +515,46 @@ mod tests {
             start_line: 1,
             end_line: 2,
             origin: "index",
+            excerpt: "fn one() {}\n".into(),
         }
+    }
+
+    #[test]
+    fn an_excerpt_is_a_prefix_of_the_span_it_cites() {
+        let bytes = b"line one\nline two\nline three\n";
+        assert_eq!(excerpt(bytes, 0, 9), "line one\n");
+        assert_eq!(excerpt(bytes, 9, 18), "line two\n");
+        // Out of range is clamped rather than panicking: the span comes from
+        // an index that may have been built from an older blob.
+        assert_eq!(excerpt(bytes, 9, 9_000), "line two\nline three\n");
+        assert_eq!(excerpt(bytes, 9_000, 9_001), "");
+        // Long spans are cut, and only ever from the end.
+        let long = vec![b'x'; EXCERPT_BYTES * 2];
+        let cut = excerpt(&long, 0, long.len() as i64);
+        assert_eq!(cut.len(), EXCERPT_BYTES);
+        assert!(long.starts_with(cut.as_bytes()));
+        // A cut never lands inside a character.
+        let wide: Vec<u8> = "\u{4e00}".repeat(EXCERPT_BYTES).into_bytes();
+        let cut = excerpt(&wide, 0, wide.len() as i64);
+        assert!(cut.len() <= EXCERPT_BYTES);
+        assert!(wide.starts_with(cut.as_bytes()));
+    }
+
+    #[test]
+    fn a_section_carries_its_locator_and_then_the_bytes() {
+        let selection = selection("a", "src/one.rs");
+        let content = selection.content();
+        assert!(content.starts_with(&selection.locator()), "{content}");
+        assert!(content.ends_with(&selection.excerpt), "{content}");
+        let unmatched = Selection {
+            origin: "first-chunk",
+            ..selection
+        };
+        assert!(
+            unmatched.locator().contains("no term matched"),
+            "a first chunk says it is one: {}",
+            unmatched.locator()
+        );
     }
 
     #[test]

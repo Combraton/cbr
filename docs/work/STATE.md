@@ -6,6 +6,7 @@ This is a dated navigation snapshot. Reconcile it with Git, linked issues and cu
 - **Owner/task:** Claude Code session as implementation lead for standalone CBR. **M1 and M2 are complete**; M1's closing record is [m1/CLOSEOUT.md](m1/CLOSEOUT.md). Active task: **M3, [issue #15](https://github.com/Combraton/cbr/issues/15)**, in four pull requests against `main`, each reviewed at its head before merging: m3a the Context profile (**merged**) and m3b retrieval and the dependency evaluator (**merged**); **m3c the packet compiler on a real repository (PR #18, open)**; then m3d the journey-6 pilot. Parent: [issue #1](https://github.com/Combraton/cbr/issues/1). An independent reviewer session reviews this read-only.
 - **Merged:** PR #2 as `d68e9d6`, pinned to `877139f`; PR #4 as `a939446`, pinned to `630011c`; PR #5 (c1) as `8b75129`; PR #6 (c2) as `da1e650`, pinned to `b00ec49`; **PR #7 (c3) as `8ba2594`, pinned to `5b98a9f`, confirmed from `merged: true` and `merged_at: 2026-09-16T15:31:51Z`**. Earlier: PR #6 pinned to `b00ec49`, confirmed from `merged: true` and `merged_at: 2026-09-16T14:26:34Z`**, the draft marked ready first and the head re-read unchanged before merging. Every owner decision, including the ceiling, is in [ADR 001](../decisions/001-standalone-v0.1-scope-and-stack.md). **PR #8 (owner follow-ups) as `f00faaf`, pinned to `40cb30b`, `merged_at: 2026-09-16T16:57:29Z`; PR #9 (c4) as `9a7b8f5`, pinned to `5db9d7c`, `merged_at: 2026-09-16T16:57:53Z`**, in that order, each confirmed from `merged` and `merged_at`. **PR #10 (d) as `96a33f2`, pinned to `a1048e6`, `merged_at: 2026-09-16T18:17:38Z`; then PR #11 (e) as `6c63d91`, pinned to `c2a262d`, `merged_at: 2026-09-16T18:17:56Z`**. PR #11 was stacked on #10's branch, so it was retargeted to `main` after #10 merged and before its own merge; retargeting leaves the head unchanged, and `c2a262d` was re-read before merging. **PR #13 (M1 close-out, README) as `5c667ed`, pinned to `507fc77`, `merged_at: 2026-09-16T18:58:44Z`; then PR #14 (M2) as `39113b2`, pinned to `62cbb99`, `merged_at: 2026-09-16T18:59:00Z`**, #14 retargeted to `main` first. **PR #16 (m3a) as `cbfaebe`, pinned to `1bd9a7a`, confirmed from `merged: true` and `merged_at: 2026-09-19T14:48:17Z`**, the draft marked ready first and the head re-read unchanged; the merge commit's second parent is `1bd9a7a`, so the reviewed head is on `main` unaltered. **PR #17 (m3b) as `c3cdf51`, pinned to `fb67250`, confirmed from `merged: true` and `merged_at: 2026-09-19T15:55:37Z`**, second parent `fb67250`.
 - **Merge rule, 2026-09-16, superseded the same day.** This session ran `gh pr merge` on PR #2 after the owner replied "you can merge PR 2" in-session, having first reported the contradicting claim with evidence and waited. It landed the exact reviewed head `877139f` and is kept. A stricter rule was then recorded, and the owner then **granted merge authority under four conditions**, now in [AGENTS.md](../../AGENTS.md): pin with `--match-head-commit`; the head's CI is green; the reviewer has seen that head; no squash. Confirm from `merged` and `merged_at` afterwards, **never `merge_commit_sha`** — GitHub populates that on an open pull request with the test-merge candidate. Tags and releases remain the owner's alone.
+- **Owner decision, 2026-09-20, recorded at the m3c review: m3d has two pilot repositories**, as an amendment to [ADR 001](../decisions/001-standalone-v0.1-scope-and-stack.md) question 6. Knowscroll-v2 stays the decision-memory pilot; the owner's **brian2 fork** is added as a brownfield pilot, registered read-only, whose journey tests discovery and code flow rather than decision memory, whose oracle the owner writes before the run, and whose dirty working tree makes it the first journey to exercise the dirty path. **brian2 is CeCILL-licensed and this repository is MIT, so none of its bytes, excerpts or packets are committed here** — digests, paths, spans, counts and costs only. It is recorded now and acted on only after m3c is cleared; no other brian2 work belongs in this pull request.
 - **Inspected revisions:** protocol `v0.1.0` = `cbf8e4df9df2ca8a9b50264df6acace6e4c3a0fc`; combraton `9af69ce`; pio `e65b7c0`; benchmarks `c8d5878`.
 
 ## This change — M3c, the deterministic packet compiler
@@ -14,7 +15,8 @@ This is a dated navigation snapshot. Reconcile it with Git, linked issues and cu
 1. **the five rules a retrieval answer owes its caller**, each with its test, before any packet is compiled;
 2. **a registered checkout, and the view a grant makes of it**;
 3. **the deterministic packet compiler, and J1** on this repository, with its negative control;
-4. **J8, the journey records and this one.**
+4. **J8, the journey records and this one**;
+5. **the review round**: the five corrections below, and the owner's m3d amendment recorded in ADR 001 question 6.
 
 | Command | Exit | Result |
 |---|---|---|
@@ -22,7 +24,7 @@ This is a dated navigation snapshot. Reconcile it with Git, linked issues and cu
 | `cargo fmt --all -- --check` | 0 | — |
 | `cargo clippy --workspace --all-targets --locked -- -D warnings` | 0 | — |
 | `cargo build --workspace --locked` | 0 | — |
-| `cargo test --workspace --locked` | 0 | **156 tests** (132 on `main`) |
+| `cargo test --workspace --locked` | 0 | **166 tests** (156 at the review, 132 on `main`) |
 | `git diff --check` | 0 | — |
 | all seven suites + `check_results.py` | 0 | `stream` 24/24 · `core` 130/5/0 · `socket` 11/2/0 · `evidence` 16/0/0 · `knowledge` 10/0/0 · `context` 11/0/0 · `composition` 3 pass, 11 unsupported — **unchanged** |
 
@@ -46,9 +48,42 @@ This is a dated navigation snapshot. Reconcile it with Git, linked issues and cu
 - **J1's negative control is hermetic** — it has to move a repository, and moving this one would tie the test to its own branch's history. It has a positive half as well as a negative one: a compiler that simply cached the first tree would pass the negative half and fail the step where a request at the new tree must get the new bytes.
 - **J8** separates the two fallbacks at one instant: `proceed_with_gap` publishes rather than waiting, `wait_until_deadline` holds the publication while an advisory item is unsatisfied. At the deadline the required item is `unmet` with `deadline_passed` and the advisory one `degraded` with the same reason, and the packet it publishes **cites nothing, includes nothing and satisfies nothing**.
 
+### The review round, and what it corrected
+
+The reviewer ran J1 by hand against a registered checkout and read the packet. Five things were wrong or thin; all five are fixed in this pull request, and the record says how each got past what was already there.
+
+**The packet's provenance said `cbr-context-script`.** The publication path passed that constant unconditionally and never read the job's own `compiler` field, so the "distinct by construction" this branch reported was true of two constants and not of any packet. **How it passed 21 mutants: no test read the field.** The mutant that swapped the two constants was killed only by the coverage line, which is built from a different one, so it looked covered and was not. Both halves are asserted now — a compiled packet in J1, a scripted packet in the m3a test — and a mutant reverting the line is killed by the first.
+
+**Span selection missed the answer.** `select_source` searched the whole repository and filtered by path afterwards, so a named file's own best span lost to every other file's and the packet cited a file's opening twenty lines while the answer was on line 24. The search is scoped to the path **in SQL** now, and a multi-term selector has a written ladder: every term in one chunk, else the best ranked partial match, else the opening chunk, marked `first-chunk` rather than the old `whole-file`, which said twenty lines were a file.
+
+**A question is prose and a selector is chosen words.** Asking for every term of "why does source identity use gix rather than the git binary" returns only chunks that quote the question — in this repository, the test that asks it. Discovery uses the ranked partial reading; `select_source`, given a path, keeps the strict one.
+
+**J1 was a partial and did not say so.** The request named both answer files by exact path, so two of its three oracle facts could not fail; the task text was never read; no decision was ingested as a claim; anchors were unused; and sections carried a locator line and no content, 281 bytes in all. The journey is redone: the request names **no path that answers it**, the ADR is ingested and accepted as a claim, a rejected claim is planted as a second trap, and the compiler has to find the rest. The record now reports 11 sections and 9 citations, and says what it still does not establish.
+
+**Discovery, and what a section carries.** Beyond item-bound sections the compiler adds sections with no `item_id` (CONTEXT section 6): spans the question finds across the view, at most two per file so one file cannot take the budget; anchors for the **identifier-shaped** names only, because ordinary words of a task are function names somewhere in any large repository and pulled in every helper called `git`; and every claim judged against the basis, labelled by what an authority permitted, with rejected and inapplicable ones carried as `stale` and historical. A section now carries a **bounded excerpt** of the span it cites, so the output capacity counts what a consumer reads.
+
+**Four smaller corrections.** A manifest built by a different compiler version is `lagging`, not `complete`. `may_join` compares the view, so a request under a narrower grant never joins a job compiled under a wider one. A blob's size is read from the object header before the blob is read, in all three read paths. And the index build inside the preparation tick is recorded in [VERIFICATION](../VERIFICATION.md) as a known limit with its measured cost, to be resolved in M4's bounded runtime rather than papered over with an unsupervised thread now.
+
 ### Mutants
 
-All observed, all restored. **21 distinct mutants, all killed**: 12 against the retrieval rules, 9 against the compiler and its provider glue. Five of them survived their first batch and are killed by tests written for them, named below.
+**This round: 12 mutants, all killed.** They exist because the round's first lesson was that a rule nothing reads is a rule nothing holds — `provenance.compiler` was wrong under 21 green mutants because no test read the field.
+
+| Mutant | Killed by |
+|---|---|
+| **The packet forgets which compiler made it** — the defect itself | J1, on `provenance.compiler` |
+| **The search is not scoped to the named path** | J1, where a cited span stops being the named file's bytes at the named line |
+| A partial match still requires every term | `a_multi_term_query_can_ask_for_every_term_or_for_the_best_partial_match` |
+| A question is read as every term | J1: the answer stops being found, because only chunks quoting the question match |
+| **A section carries only its locator** | `an_excerpt_is_what_the_output_capacity_counts` · J1 |
+| An excerpt is taken from the start of the file | J1, at the excerpt-equals-the-artifact-at-this-line check |
+| Discovery adds nothing | `an_excerpt_is_what_the_output_capacity_counts` · J1 |
+| A rejected claim is served as current | J1's second trap |
+| **One file may take the whole discovery budget** | `discovery_covers_more_than_one_file_however_loud_a_single_file_is`, **written for it**: it survived its first run, because the decision record still landed inside the top eight by score with the cap removed, so the cap improved the packet while nothing pinned it |
+| A manifest from another compiler is still complete | `an_index_built_by_another_compiler_is_lagging_however_current_its_tree` |
+| A narrower request joins a wider job | `a_job_is_joined_only_by_a_request_with_the_same_view` |
+| A blob is read before its size is checked | `a_blob_is_measured_before_it_is_read` |
+
+From the first round: all observed, all restored. **21 distinct mutants, all killed**: 12 against the retrieval rules, 9 against the compiler and its provider glue. Five of them survived their first batch and are killed by tests written for them, named below.
 
 | Mutant | Killed by |
 |---|---|

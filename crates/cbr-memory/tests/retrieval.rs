@@ -12,7 +12,7 @@ use std::path::Path;
 use std::process::Command;
 
 use cbr_memory::index;
-use cbr_memory::retrieval::{self, Bounds, Origin, State};
+use cbr_memory::retrieval::{self, Ask, Bounds, Origin, State};
 use rusqlite::Connection;
 
 fn git(repository: &Path, arguments: &[&str]) -> String {
@@ -97,7 +97,7 @@ fn an_index_records_the_frontier_and_the_compiler_it_was_built_with() {
     let answer = retrieval::search(
         &connection,
         &view("svc", path, &first),
-        "drain",
+        &Ask::all("drain"),
         &Bounds::default(),
     )
     .expect("searches");
@@ -119,7 +119,7 @@ fn an_index_records_the_frontier_and_the_compiler_it_was_built_with() {
     let answer = retrieval::search(
         &connection,
         &view("svc", path, &second),
-        "drain",
+        &Ask::all("drain"),
         &Bounds::default(),
     )
     .expect("searches");
@@ -129,7 +129,7 @@ fn an_index_records_the_frontier_and_the_compiler_it_was_built_with() {
     let answer = retrieval::search(
         &connection,
         &view("other", path, &second),
-        "drain",
+        &Ask::all("drain"),
         &Bounds::default(),
     )
     .expect("searches");
@@ -153,7 +153,7 @@ fn a_lagging_projection_falls_back_to_the_canonical_records_and_never_answers_no
     let answer = retrieval::search(
         &connection,
         &view("svc", path, &second),
-        "compatibility",
+        &Ask::all("compatibility"),
         &Bounds::default(),
     )
     .expect("searches");
@@ -188,7 +188,7 @@ fn an_unavailable_projection_states_why_rather_than_answering_empty() {
     let answer = retrieval::search(
         &connection,
         &view("svc", path, &tree),
-        "queue",
+        &Ask::all("queue"),
         &Bounds::default(),
     )
     .expect("searches");
@@ -202,7 +202,7 @@ fn an_unavailable_projection_states_why_rather_than_answering_empty() {
     let answer = retrieval::search(
         &connection,
         &view("svc", &missing, &tree),
-        "queue",
+        &Ask::all("queue"),
         &Bounds::default(),
     )
     .expect("searches");
@@ -220,7 +220,7 @@ fn an_unavailable_projection_states_why_rather_than_answering_empty() {
     let answer = retrieval::search(
         &connection,
         &view("svc", path, &tree),
-        "wordthatisnowhereinthistree",
+        &Ask::all("wordthatisnowhereinthistree"),
         &Bounds::default(),
     )
     .expect("searches");
@@ -267,7 +267,7 @@ fn a_page_walks_two_repositories_that_tie_on_score_without_repeating_either() {
     let all = retrieval::search(
         &connection,
         &both,
-        "drain",
+        &Ask::all("drain"),
         &Bounds {
             rows: 1000,
             batch_bytes: usize::MAX,
@@ -287,7 +287,7 @@ fn a_page_walks_two_repositories_that_tie_on_score_without_repeating_either() {
         let page = retrieval::search(
             &connection,
             &both,
-            "drain",
+            &Ask::all("drain"),
             &Bounds {
                 rows: 1,
                 cursor: cursor.clone(),
@@ -373,16 +373,26 @@ fn a_principal_without_read_sees_nothing_from_that_repository_and_cannot_tell_it
     let narrow = view("open", open, &open_tree);
 
     // The word lives only in the repository the narrow principal may not read.
-    let full = retrieval::search(&connection, &everything, "embargoed", &Bounds::default())
-        .expect("searches");
+    let full = retrieval::search(
+        &connection,
+        &everything,
+        &Ask::all("embargoed"),
+        &Bounds::default(),
+    )
+    .expect("searches");
     assert!(!full.found.is_empty(), "{full:?}");
 
-    let refused =
-        retrieval::search(&connection, &narrow, "embargoed", &Bounds::default()).expect("searches");
+    let refused = retrieval::search(
+        &connection,
+        &narrow,
+        &Ask::all("embargoed"),
+        &Bounds::default(),
+    )
+    .expect("searches");
     let absent = retrieval::search(
         &connection,
         &narrow,
-        "wordthatisinneitherrepository",
+        &Ask::all("wordthatisinneitherrepository"),
         &Bounds::default(),
     )
     .expect("searches");
@@ -414,7 +424,7 @@ fn a_page_is_bounded_by_rows_and_its_cursor_walks_every_hit_exactly_once() {
     let all = retrieval::search(
         &connection,
         &view("svc", path, &tree),
-        "drain",
+        &Ask::all("drain"),
         &Bounds {
             rows: 1000,
             batch_bytes: usize::MAX,
@@ -432,7 +442,7 @@ fn a_page_is_bounded_by_rows_and_its_cursor_walks_every_hit_exactly_once() {
         let page = retrieval::search(
             &connection,
             &view("svc", path, &tree),
-            "drain",
+            &Ask::all("drain"),
             &Bounds {
                 rows: 2,
                 cursor: cursor.clone(),
@@ -483,7 +493,7 @@ fn one_read_is_bounded_by_its_span_and_a_batch_by_its_total() {
     let clipped = retrieval::search(
         &connection,
         &view("svc", path, &tree),
-        "drain",
+        &Ask::all("drain"),
         &Bounds {
             rows: 10,
             span_bytes: 512,
@@ -504,7 +514,7 @@ fn one_read_is_bounded_by_its_span_and_a_batch_by_its_total() {
     let batched = retrieval::search(
         &connection,
         &view("svc", path, &tree),
-        "drain",
+        &Ask::all("drain"),
         &Bounds {
             rows: 10,
             span_bytes: 512,
@@ -525,4 +535,152 @@ fn one_read_is_bounded_by_its_span_and_a_batch_by_its_total() {
     );
     assert_eq!(batched.truncated, Some(retrieval::Truncation::Bytes));
     assert!(batched.cursor.is_some(), "and the rest is reachable");
+}
+
+#[test]
+fn a_file_keeps_its_own_span_however_far_it_ranks_behind_the_rest_of_the_tree() {
+    // The failure this pins: an unscoped search takes the top N rows of the
+    // whole tree and a caller filters them by path afterwards, so a file
+    // whose own best span ranks below those N never appears at all — and the
+    // caller cites its opening lines instead of its answer.
+    let directory = tempfile::tempdir().expect("temp dir");
+    let path = directory.path();
+    let mut files: Vec<(String, String)> = Vec::new();
+    for index in 0..40 {
+        files.push((
+            format!("docs/noise-{index:02}.md"),
+            "the queue drains and drains and drains\n".repeat(4),
+        ));
+    }
+    // The answer is one line, deep in a file that says nothing else about it.
+    let mut answer = "unrelated prose\n".repeat(30);
+    answer.push_str("the queue drains through the compatibility adapter\n");
+    files.push(("docs/answer.md".into(), answer));
+    let borrowed: Vec<(&str, &str)> = files
+        .iter()
+        .map(|(path, text)| (path.as_str(), text.as_str()))
+        .collect();
+    let tree = repository(path, &borrowed);
+
+    let connection = database();
+    retrieval::build(&connection, "svc", path, &tree, 1).expect("builds");
+
+    let unscoped = retrieval::search(
+        &connection,
+        &view("svc", path, &tree),
+        &Ask::all("queue drains"),
+        &Bounds {
+            rows: 8,
+            ..Bounds::default()
+        },
+    )
+    .expect("searches");
+    assert!(
+        !unscoped
+            .found
+            .iter()
+            .any(|found| found.path == "docs/answer.md"),
+        "the whole-tree search is crowded out, which is the point: {:?}",
+        unscoped.found.iter().map(|f| &f.path).collect::<Vec<_>>()
+    );
+
+    let scoped = retrieval::search(
+        &connection,
+        &view("svc", path, &tree),
+        &Ask::within("queue drains", "docs/answer.md"),
+        &Bounds {
+            rows: 8,
+            ..Bounds::default()
+        },
+    )
+    .expect("searches");
+    assert_eq!(scoped.found.len(), 1, "{scoped:?}");
+    assert_eq!(scoped.found[0].path, "docs/answer.md");
+    assert!(
+        scoped.found[0].start_line > 20,
+        "and it is the span that holds the answer, not the file's opening: {:?}",
+        scoped.found[0]
+    );
+}
+
+#[test]
+fn a_multi_term_query_can_ask_for_every_term_or_for_the_best_partial_match() {
+    let directory = tempfile::tempdir().expect("temp dir");
+    let path = directory.path();
+    let tree = repository(
+        path,
+        &[
+            ("docs/one.md", "the adapter stays\n"),
+            ("docs/two.md", "the queue drains\n"),
+        ],
+    );
+    let connection = database();
+    retrieval::build(&connection, "svc", path, &tree, 1).expect("builds");
+
+    let all = retrieval::search(
+        &connection,
+        &view("svc", path, &tree),
+        &Ask::all("adapter queue"),
+        &Bounds::default(),
+    )
+    .expect("searches");
+    assert!(
+        all.found.is_empty(),
+        "no chunk holds both terms: {:?}",
+        all.found
+    );
+
+    let partial = retrieval::search(
+        &connection,
+        &view("svc", path, &tree),
+        &Ask::all("adapter queue").partial(),
+        &Bounds::default(),
+    )
+    .expect("searches");
+    let paths: Vec<&str> = partial.found.iter().map(|f| f.path.as_str()).collect();
+    assert_eq!(paths.len(), 2, "{partial:?}");
+    assert!(paths.contains(&"docs/one.md") && paths.contains(&"docs/two.md"));
+}
+
+#[test]
+fn an_index_built_by_another_compiler_is_lagging_however_current_its_tree() {
+    let directory = tempfile::tempdir().expect("temp dir");
+    let path = directory.path();
+    let tree = repository(path, &[("src/queue.rs", "pub fn drainQueue() {}\n")]);
+    let connection = database();
+    let manifest = retrieval::build(&connection, "svc", path, &tree, 1).expect("builds");
+    assert_eq!(
+        retrieval::search(
+            &connection,
+            &view("svc", path, &tree),
+            &Ask::all("drain"),
+            &Bounds::default()
+        )
+        .expect("searches")
+        .sources[0]
+            .state,
+        State::Complete
+    );
+
+    // The same tree, built by something else. Its rows are not this build's
+    // rows: a different pre-tokeniser or chunk size means a different index
+    // for the same source, and trusting it would be trusting an index
+    // nobody here produced.
+    retrieval::record_manifest(
+        &connection,
+        &retrieval::Manifest {
+            compiler: "cbr-index/0".into(),
+            ..manifest
+        },
+    )
+    .expect("records");
+    let answer = retrieval::search(
+        &connection,
+        &view("svc", path, &tree),
+        &Ask::all("drain"),
+        &Bounds::default(),
+    )
+    .expect("searches");
+    assert_eq!(answer.sources[0].state, State::Lagging, "{answer:?}");
+    assert!(answer.declares_its_gaps(), "{answer:?}");
 }
