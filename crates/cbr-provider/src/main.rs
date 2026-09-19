@@ -8,6 +8,7 @@
 
 mod barriers;
 mod clock;
+mod compiler;
 mod config;
 mod context;
 mod credentials;
@@ -22,6 +23,7 @@ mod knowledge;
 mod outbox;
 mod peer;
 mod provider;
+mod repositories;
 mod session;
 mod socket;
 mod store;
@@ -44,6 +46,10 @@ struct Args {
     /// person, or a model producer that will act under a grant — revoking any
     /// it held, write its handoff file, and exit.
     issue_credential: Option<String>,
+    /// Register a repository this process may read, as `<id>=<path>`. A
+    /// checkout path is local configuration and never crosses the wire, so
+    /// it is given to the process that reads it rather than to a client.
+    register_repository: Vec<repositories::Registration>,
 }
 
 fn parse_args() -> Result<Args, String> {
@@ -54,6 +60,7 @@ fn parse_args() -> Result<Args, String> {
         rotate_credential: false,
         revoke_credential: None,
         issue_credential: None,
+        register_repository: Vec::new(),
     };
     let mut argv = std::env::args().skip(1);
     while let Some(flag) = argv.next() {
@@ -77,6 +84,12 @@ fn parse_args() -> Result<Args, String> {
             "--issue-credential" => {
                 args.issue_credential =
                     Some(argv.next().ok_or("--issue-credential needs a principal")?);
+            }
+            "--register-repository" => {
+                let value = argv
+                    .next()
+                    .ok_or("--register-repository needs <id>=<path>")?;
+                args.register_repository.push(repositories::parse(&value)?);
             }
             "--schemas" => {
                 // Accepted and ignored: this provider validates against its own
@@ -135,6 +148,10 @@ fn run() -> Result<(), String> {
     // happen once, here, whichever binding follows.
     let mut provider = Provider::open(config.clone(), clock, &data_dir)
         .map_err(|error| format!("opening the store at {}: {error}", data_dir.display()))?;
+
+    // Registration is a launch-time act: a checkout that cannot be read is
+    // refused here rather than becoming a repository that answers nothing.
+    provider.register_repositories(&args.register_repository)?;
 
     if let Some(socket) = &args.socket {
         // A production socket needs a credential someone can hold. A

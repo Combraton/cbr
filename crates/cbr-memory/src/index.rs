@@ -101,11 +101,14 @@ pub fn index_tree(
             continue;
         }
         coverage.blobs += 1;
-        let bytes = cbr_identity::read_blob(repository, &entry.blob)?;
-        if bytes.len() > MAX_BLOB_BYTES {
+        // The size comes from the object header, so an oversized blob is
+        // refused without being allocated.
+        let Some(bytes) =
+            cbr_identity::read_blob_bounded(repository, &entry.blob, MAX_BLOB_BYTES as u64)?
+        else {
             coverage.too_large += 1;
             continue;
-        }
+        };
         let Ok(text) = String::from_utf8(bytes) else {
             coverage.binary += 1;
             continue;

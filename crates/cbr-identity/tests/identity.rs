@@ -316,3 +316,39 @@ fn a_tree_lists_its_own_blobs_and_each_one_reads_back_exactly() {
     // would read as "this tree has no files".
     assert!(tree_entries(path, &"0".repeat(40)).is_err());
 }
+
+#[test]
+fn a_blob_is_measured_before_it_is_read() {
+    // The size comes from the object header, so a blob too large to want is
+    // refused without being allocated. Every read path here is fed by a
+    // repository nobody in this process controls.
+    let directory = tempfile::tempdir().expect("temp dir");
+    let path = directory.path();
+    git(path, &["init", "-q", "-b", "main"]);
+    std::fs::write(path.join("small.txt"), "small\n").expect("writes");
+    std::fs::write(path.join("large.txt"), "x".repeat(50_000)).expect("writes");
+    git(path, &["add", "."]);
+    git(path, &["commit", "-q", "-m", "two"]);
+
+    let small = git(path, &["rev-parse", "HEAD:small.txt"]);
+    let large = git(path, &["rev-parse", "HEAD:large.txt"]);
+    assert_eq!(cbr_identity::blob_size(path, &small).expect("size"), 6);
+    assert_eq!(cbr_identity::blob_size(path, &large).expect("size"), 50_000);
+
+    assert_eq!(
+        cbr_identity::read_blob_bounded(path, &small, 1_000).expect("reads"),
+        Some(b"small\n".to_vec())
+    );
+    assert_eq!(
+        cbr_identity::read_blob_bounded(path, &large, 1_000).expect("reads"),
+        None,
+        "over the limit is refused, not truncated"
+    );
+    assert_eq!(
+        cbr_identity::read_blob_bounded(path, &large, 50_000)
+            .expect("reads")
+            .map(|bytes| bytes.len()),
+        Some(50_000),
+        "exactly at the limit is read"
+    );
+}

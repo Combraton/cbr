@@ -11,6 +11,8 @@
 //! - [`evaluator`]: the persistent dependency evaluator (STACK section 7).
 //! - [`lexical`]: the FTS5 index and its pre-tokeniser (STACK section 5).
 //! - [`anchors`]: code anchors from tree-sitter tags (STACK section 6).
+//! - [`retrieval`]: the rules a caller of those gets — the build manifest, the
+//!   false-absence rule, the view a search answers inside, and the bounds.
 //!
 //! Everything here works on a caller-supplied `rusqlite` connection or
 //! transaction, so index rows and memo rows commit in the same transaction as
@@ -21,3 +23,4 @@ pub mod anchors;
 pub mod evaluator;
 pub mod index;
 pub mod lexical;
+pub mod retrieval;
