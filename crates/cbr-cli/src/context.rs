@@ -113,6 +113,7 @@ pub fn submit(
     repository_id: &str,
     commit: &str,
     wants: &[String],
+    also: &[String],
     obligation: &str,
     selector: Option<&str>,
     task: &str,
@@ -121,6 +122,23 @@ pub fn submit(
     investigation: i64,
 ) -> Result<(), String> {
     let (target, _) = crate::knowledge::repository_basis(repository, repository_id, commit, None)?;
+    // A task can span repositories, and a basis names every one it is about
+    // (CONTEXT section 3). `--also <id>=<path>` adds one, resolved the same
+    // way and at its own `HEAD`: the provider is sent trees, never paths.
+    let mut extra = Vec::new();
+    for specification in also {
+        let (id, path) = specification
+            .split_once('=')
+            .ok_or("--also takes <id>=<path>")?;
+        let (other, _) = crate::knowledge::repository_basis(Path::new(path), id, "HEAD", None)?;
+        extra.extend(
+            at(&other, &["repositories"])
+                .as_array()
+                .unwrap_or_default()
+                .iter()
+                .cloned(),
+        );
+    }
     // A context basis says what the working tree is, which a knowledge target
     // does not have to: `dirty` carries the snapshot when there is one, and
     // `workspace` says whether there was anything to snapshot. A dirty tree
@@ -130,6 +148,7 @@ pub fn submit(
         .as_array()
         .unwrap_or_default()
         .iter()
+        .chain(extra.iter())
         .map(|entry| {
             let mut entry = entry.clone();
             let dirty = entry.get("dirty").is_some_and(|value| value.is_object());

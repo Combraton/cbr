@@ -18,7 +18,7 @@
 //! cbr history <claim>
 //! cbr authority bind <scope> --authority PRINCIPAL
 //! cbr basis --repo PATH --repo-id ID [--commit REV] [--environment FACTS]
-//! cbr context <request> --repo PATH --repo-id ID [--commit REV]
+//! cbr context <request> --repo PATH --repo-id ID [--commit REV] [--also ID=PATH]…
 //!     --want <item>=source:<path>|claim:<claim>|evidence:<artifact>@<digest> …
 //!     [--obligation O] [--selector TEXT] [--task TEXT]
 //!     [--capacity BYTES] [--deadline INSTANT] [--investigation N]
@@ -94,10 +94,13 @@ fn run() -> Result<(), String> {
     let mut positional = Vec::new();
     let mut values: BTreeMap<String, String> = BTreeMap::new();
     let mut wants: Vec<String> = Vec::new();
+    let mut also: Vec<String> = Vec::new();
     let mut target = None;
     while let Some(argument) = argv.next() {
         if argument == "--want" {
             wants.push(argv.next().ok_or("--want needs a value")?);
+        } else if argument == "--also" {
+            also.push(argv.next().ok_or("--also needs <id>=<path>")?);
         } else if argument == "--target" {
             target = Some(argv.next().ok_or("--target needs a value")?);
         } else if VALUED.contains(&argument.as_str()) {
@@ -148,6 +151,7 @@ fn run() -> Result<(), String> {
             &required("--repo-id")?,
             &options.commit,
             &wants,
+            &also,
             &value("--obligation").unwrap_or_else(|| "advisory".into()),
             value("--selector").as_deref(),
             &value("--task").unwrap_or_else(|| "context".into()),

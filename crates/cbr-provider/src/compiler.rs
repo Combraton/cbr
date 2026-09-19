@@ -34,7 +34,7 @@
 
 use cbr_encoding::Value;
 
-use crate::context::{object, string};
+use crate::context::{object, set, string};
 
 /// The provenance a compiled packet carries. Distinct from the scripted
 /// compiler by construction, and version-bearing because a change to the
@@ -262,6 +262,34 @@ pub const DISCOVERED_SPANS: usize = 8;
 /// spans from six.
 pub const DISCOVERED_PER_PATH: usize = 2;
 
+/// Where a discovered section sits when capacity runs out.
+///
+/// INTERNALS section 5 step 5 orders a packet: mandatory constraints and
+/// material unknowns first, then task evidence, then optional context. Item
+/// sections are the mandatory part and `context::inclusion` reserves for
+/// them; this orders everything after them, so that under pressure a packet
+/// loses what it can most afford to.
+///
+/// Sorting by section id, which is what this did, drops by **path name**:
+/// an anchor for `binary` outlived a binding decision because `a` sorts
+/// before `c`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Rank {
+    /// A decision an authority made binding. Losing this loses the answer.
+    BindingClaim,
+    /// Another claim that is current at this basis.
+    CurrentClaim,
+    /// A span the question found, in the order retrieval ranked it.
+    Span,
+    /// Where a name is defined and used: useful, and reconstructible from
+    /// the spans by a reader who has them.
+    Anchor,
+    /// Rejected alternatives and claims not applicable here. They belong in
+    /// the packet (INTERNALS section 5 step 3) and they are the first thing
+    /// to go when it will not fit.
+    Historical,
+}
+
 /// A section no item asked for.
 ///
 /// CONTEXT section 6 lets a packet carry content beyond what its items name,
@@ -276,14 +304,24 @@ pub const DISCOVERED_PER_PATH: usize = 2;
 /// `output_capacity` before it drops anything an item required.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Discovered {
-    /// Sorts the section within the discovered block, and names it.
+    /// Names the section. Ties within a rank are broken by it, so a packet
+    /// is still reproducible.
     pub id: String,
+    pub rank: Rank,
+    /// Position within the rank: retrieval's own order for a span.
+    pub order: usize,
     pub label: &'static str,
-    /// A rejected alternative or a superseded revision: present, and never
-    /// current.
+    /// A rejected alternative or a claim not applicable here: present, and
+    /// never current (CONTEXT section 14: a historical section is never
+    /// current for an item, and a read reports it as invalidated).
     pub historical: bool,
     pub content: String,
     pub citation: Option<Value>,
+    /// The claim this section carries, as a `claim_included` item's section
+    /// carries it, so `context::claim_snapshot` and the read-time facts of
+    /// CONTEXT section 14 see a discovered claim exactly as they see an
+    /// asked-for one.
+    pub claim: Option<Value>,
 }
 
 /// Authority content the request supplied for an item.
@@ -302,6 +340,9 @@ pub struct Decided {
     pub evidence: Vec<EvidenceSection>,
     pub authority: Vec<AuthoritySection>,
     pub discovered: Vec<Discovered>,
+    /// What the compiler looked at and left out, with a typed reason, so a
+    /// caller can count what it did not get.
+    pub omitted: Vec<Value>,
     pub reach: Vec<Reach>,
     pub unmet: Vec<Unmet>,
 }
@@ -430,7 +471,11 @@ pub fn steps(decided: &Decided) -> Vec<Value> {
         *key = format!("1:{key}");
         let _ = &section;
     }
-    for found in &decided.discovered {
+    let mut ordered: Vec<&Discovered> = decided.discovered.iter().collect();
+    ordered.sort_by(|left, right| {
+        (left.rank, left.order, &left.id).cmp(&(right.rank, right.order, &right.id))
+    });
+    for (position, found) in ordered.into_iter().enumerate() {
         let mut section = object(vec![
             ("section_id", string(&format!("d-{}", found.id))),
             ("label", string(found.label)),
@@ -447,10 +492,18 @@ pub fn steps(decided: &Decided) -> Vec<Value> {
                 }),
             ),
         ]);
+        if let Some(claim) = &found.claim {
+            set(&mut section, "claim", claim.clone());
+        }
         if found.historical {
             set_label(&mut section, "stale");
         }
-        sections.push((format!("2:{}", found.id), section));
+        // `inclusion` walks sections in order and keeps them while capacity
+        // lasts, so the position here *is* the drop order.
+        sections.push((format!("2:{position:04}"), section));
+    }
+    for omitted in &decided.omitted {
+        steps.push(object(vec![("omit", omitted.clone())]));
     }
     sections.sort_by(|left, right| left.0.cmp(&right.0));
     for (_, section) in sections {

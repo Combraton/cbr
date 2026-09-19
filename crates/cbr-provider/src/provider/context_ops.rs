@@ -230,6 +230,36 @@ impl Provider {
             .collect())
     }
 
+    /// The claims this session may read, resolved **at the command, where
+    /// the grant is**.
+    ///
+    /// Preparation runs later, on the provider's own authority, and
+    /// `knowledge_inspect` authorizes nothing: it is the body of an
+    /// operation whose authorization happened at step 6 of the command that
+    /// called it. Discovery called it directly and so read every claim in
+    /// the store. The repository view had this shape from the start; claims
+    /// did not, and nothing covered them.
+    fn readable_claims(&self, params: &Value) -> Result<Vec<String>, ProtocolError> {
+        let named = params.get("grant").and_then(Value::as_str);
+        let grant = self.authorize(named, &[])?;
+        let mut readable = Vec::new();
+        for (claim, _) in self.store.subjects_of_kind(crate::knowledge::CLAIM)? {
+            let permitted = match &grant {
+                // The authority principal holds no grant and reads its own
+                // store; anyone else reads exactly what a grant covers.
+                None => true,
+                Some(grant) => {
+                    grant.may_read(&key(crate::knowledge::CLAIM, &claim), "knowledge.read")
+                }
+            };
+            if permitted {
+                readable.push(claim);
+            }
+        }
+        readable.sort();
+        Ok(readable)
+    }
+
     /// The deterministic compiler, run as the job's first step
     /// (INTERNALS section 5). Returns the steps that replace the marker.
     fn compile(&self, job: &Value, tick: &mut Tick) -> Result<Vec<Value>, TickError> {
@@ -361,7 +391,7 @@ impl Provider {
         let question = Self::question(record, job);
         self.discover_spans(&question, trees, decided, tick)?;
         self.discover_anchors(&Self::symbols(record, job), trees, decided)?;
-        self.discover_claims(record, decided)?;
+        self.discover_claims(record, job, decided)?;
         Ok(())
     }
 
@@ -430,7 +460,6 @@ impl Provider {
                 continue;
             }
             *seen += 1;
-            taken += 1;
             let Some(frontier) = trees
                 .iter()
                 .find(|frontier| frontier.repository == found.repository)
@@ -462,6 +491,11 @@ impl Provider {
             self.seal_source(tick, &selection, &bytes)?;
             decided.discovered.push(compiler::Discovered {
                 id: format!("span-{}-{}", selection.path, selection.start_byte),
+                rank: compiler::Rank::Span,
+                // Retrieval's own order, kept: under capacity pressure a
+                // span drops by rank, never by path name.
+                order: taken,
+                claim: None,
                 label: "source_inspected",
                 historical: false,
                 content: selection.content(),
@@ -474,6 +508,7 @@ impl Provider {
                     ("digest", string(&selection.digest)),
                 ])),
             });
+            taken += 1;
         }
         Ok(())
     }
@@ -534,6 +569,9 @@ impl Provider {
                 };
                 decided.discovered.push(compiler::Discovered {
                     id: format!("anchor-{}-{name}", frontier.repository),
+                    rank: compiler::Rank::Anchor,
+                    order: 0,
+                    claim: None,
                     label: "inferred",
                     historical: false,
                     content: format!(
@@ -547,58 +585,132 @@ impl Provider {
         Ok(())
     }
 
-    /// Every claim this provider holds, against the request's basis.
+    /// The claims that bear on this request, from the set this session may
+    /// read.
+    ///
+    /// **Authorization happened at the command.** `knowledge_inspect` is the
+    /// body of an operation whose step 6 ran before it; calling it here, on
+    /// the provider's own authority, authorizes nothing. So the job carries
+    /// the claims the submitting grant could read, resolved where the grant
+    /// was, and a claim outside that set is never read and never named —
+    /// identical to a claim that was never proposed.
+    ///
+    /// **Relevance, stated rather than implied.** Every claim in the store
+    /// is not context for every request: a pilot repository with twenty-two
+    /// decisions would put all twenty-two in a packet about one of them. A
+    /// claim is carried when either
+    /// 1. one of its conditions names a repository the basis names — it is
+    ///    about the code this request is about; or
+    /// 2. its scope or its statement shares a term with the question.
+    ///
+    /// Anything else is **omitted with reason `applicability`**, one
+    /// omission each, so a caller counts what it did not get.
     ///
     /// A claim is labelled by what the authority permitted it for, so
-    /// `binding` means an authority said so and nothing else does. A
-    /// rejected claim, and one that is not applicable at this basis, is
-    /// carried as `stale` and historical: INTERNALS section 5 step 3 wants
-    /// rejected alternatives distinguishable, not absent, and a historical
-    /// section is never current for an item.
-    fn discover_claims(&self, record: &Value, decided: &mut Decided) -> Result<(), TickError> {
+    /// `binding` means an authority said so. A rejected claim, or one not
+    /// applicable at this basis, is carried as historical: CONTEXT section
+    /// 14 makes a historical section never current for an item and reports
+    /// it at the read, which is what INTERNALS section 5 step 3 means by
+    /// keeping rejected alternatives distinguishable rather than absent.
+    fn discover_claims(
+        &self,
+        record: &Value,
+        job: &Value,
+        decided: &mut Decided,
+    ) -> Result<(), TickError> {
         let basis = at(record, &["basis"]);
+        let repositories: Vec<String> = list(basis, &["repositories"])
+            .iter()
+            .map(|repository| text(repository, &["id"]).to_string())
+            .collect();
+        let question = cbr_memory::lexical::query_terms(&Self::question(record, job));
         let kinds: Vec<String> = crate::knowledge::CONDITION_KINDS
             .iter()
             .map(|kind| (*kind).to_string())
             .collect();
-        for (claim, _) in self.store.subjects_of_kind(crate::knowledge::CLAIM)? {
+
+        let readable: Vec<String> = list(job, &["readable_claims"])
+            .iter()
+            .filter_map(Value::as_str)
+            .map(str::to_string)
+            .collect();
+        for claim in readable {
             let payload = object(vec![("claim", string(&claim))]);
             let Ok(inspected) = self.knowledge_inspect(&payload) else {
                 continue;
             };
             let claim_record = at(&inspected, &["record"]);
+
+            let about_this_code = list(claim_record, &["conditions"]).iter().any(|condition| {
+                repositories.contains(&text(condition, &["repository"]).to_string())
+            });
+            let words = cbr_memory::lexical::query_terms(&format!(
+                "{} {}",
+                text(claim_record, &["scope", "id"]),
+                crate::context::canonical(at(claim_record, &["statement"]))
+            ));
+            let shared = question.iter().filter(|term| words.contains(term)).count();
+            if !about_this_code && shared == 0 {
+                decided.omitted.push(object(vec![
+                    ("section_id", string(&format!("d-claim-{claim}"))),
+                    ("reason", string("applicability")),
+                ]));
+                continue;
+            }
+
             let findings = crate::knowledge::condition_findings(claim_record, basis, &kinds);
             let applicability = crate::knowledge::result_of(&findings);
             let state = text(&inspected, &["reliance", "state"]).to_string();
             let permitted = text(&inspected, &["reliance", "permitted_use"]).to_string();
+            let decision = text(&inspected, &["reliance", "decision"]).to_string();
             let current = state == "accepted_for_use" && applicability == "applicable";
-            let label = match permitted.as_str() {
-                _ if !current => "stale",
-                "binding" => "binding",
-                "evidence" => "observation",
-                "hypothesis" => "hypothesis",
-                _ => "unknown",
+            let (rank, label) = match permitted.as_str() {
+                _ if !current => (compiler::Rank::Historical, "stale"),
+                "binding" => (compiler::Rank::BindingClaim, "binding"),
+                "evidence" => (compiler::Rank::CurrentClaim, "observation"),
+                "hypothesis" => (compiler::Rank::CurrentClaim, "hypothesis"),
+                _ => (compiler::Rank::CurrentClaim, "unknown"),
             };
-            let why = if state != "accepted_for_use" {
-                format!("state {state}")
+            // "stale" is the nearest label CONTEXT section 14 has, and it
+            // says "was once valid", which a rejected claim never was. The
+            // content says what actually happened and names the decision
+            // that did it.
+            let standing = if state == "rejected" {
+                match decision.as_str() {
+                    "" => "rejected by an authority".to_string(),
+                    decision => format!("rejected by decision {decision}"),
+                }
+            } else if state != "accepted_for_use" {
+                format!("not accepted for use: {state}")
+            } else if current {
+                format!("accepted for use as {permitted}, by decision {decision}")
             } else {
-                format!("applicability {applicability}")
+                format!("accepted as {permitted}, but {applicability} at this basis")
             };
+            let why = if about_this_code {
+                "names a repository of this basis"
+            } else {
+                "shares terms with the question"
+            };
+
             decided.discovered.push(compiler::Discovered {
                 id: format!("claim-{claim}"),
+                rank,
+                order: usize::MAX - shared,
+                claim: Some(at(&inspected, &["reference"]).clone()),
                 label,
                 historical: !current,
                 content: format!(
-                    "claim {claim} revision {}: {}\n{}",
+                    "claim {claim} revision {}: {standing}\nselected because it {why}\n{}",
                     int(&inspected, &["current_revision"]),
-                    if current {
-                        format!("accepted for use as {permitted}")
-                    } else {
-                        format!("not current here: {why}")
-                    },
                     crate::context::canonical(at(claim_record, &["statement"]))
                 ),
-                citation: None,
+                // The claim's own support, where the reader may read it: a
+                // binding statement a reader cannot check against evidence
+                // is an assertion, not a citation.
+                citation: list(claim_record, &["support"])
+                    .first()
+                    .map(|support| at(support, &["evidence"]).clone()),
             });
         }
         Ok(())
@@ -1004,11 +1116,12 @@ impl Provider {
         // on the provider's own authority, so it is handed the view rather
         // than allowed to compute one, and cannot widen it.
         let view = self.readable_repositories(params)?;
+        let claims = self.readable_claims(params)?;
         let mut joined = None;
         if self.selected_feature("context.shared_jobs") {
             for (job_id, _, value) in self.store.subjects_in_recorded_order(JOB)? {
                 let mut job = parse_record(&value)?;
-                if context::may_join(&job, &principal, payload, &view) {
+                if context::may_join(&job, &principal, payload, &view, &claims) {
                     context::push(&mut job, "requests", string(&id));
                     joined = Some((job_id, job));
                     break;
@@ -1021,6 +1134,11 @@ impl Provider {
                 &mut job,
                 "view",
                 Value::Array(view.iter().map(|id| string(id)).collect()),
+            );
+            set(
+                &mut job,
+                "readable_claims",
+                Value::Array(claims.iter().map(|id| string(id)).collect()),
             );
             // Compiling is a production capability, and a conformance
             // launch is a test harness: there, a request with no script is

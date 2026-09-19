@@ -16,7 +16,8 @@ This is a dated navigation snapshot. Reconcile it with Git, linked issues and cu
 2. **a registered checkout, and the view a grant makes of it**;
 3. **the deterministic packet compiler, and J1** on this repository, with its negative control;
 4. **J8, the journey records and this one**;
-5. **the review round**: the five corrections below, and the owner's m3d amendment recorded in ADR 001 question 6.
+5. **the first review round**: five corrections, and the owner's m3d amendment recorded in ADR 001 question 6;
+6. **the second review round**: the authorization leak discovery opened, and five more corrections.
 
 | Command | Exit | Result |
 |---|---|---|
@@ -24,7 +25,7 @@ This is a dated navigation snapshot. Reconcile it with Git, linked issues and cu
 | `cargo fmt --all -- --check` | 0 | — |
 | `cargo clippy --workspace --all-targets --locked -- -D warnings` | 0 | — |
 | `cargo build --workspace --locked` | 0 | — |
-| `cargo test --workspace --locked` | 0 | **166 tests** (156 at the review, 132 on `main`) |
+| `cargo test --workspace --locked` | 0 | **171 tests** (166 and 156 at the two reviews, 132 on `main`) |
 | `git diff --check` | 0 | — |
 | all seven suites + `check_results.py` | 0 | `stream` 24/24 · `core` 130/5/0 · `socket` 11/2/0 · `evidence` 16/0/0 · `knowledge` 10/0/0 · `context` 11/0/0 · `composition` 3 pass, 11 unsupported — **unchanged** |
 
@@ -64,9 +65,40 @@ The reviewer ran J1 by hand against a registered checkout and read the packet. F
 
 **Four smaller corrections.** A manifest built by a different compiler version is `lagging`, not `complete`. `may_join` compares the view, so a request under a narrower grant never joins a job compiled under a wider one. A blob's size is read from the object header before the blob is read, in all three read paths. And the index build inside the preparation tick is recorded in [VERIFICATION](../VERIFICATION.md) as a known limit with its measured cost, to be resolved in M4's bounded runtime rather than papered over with an unsupervised thread now.
 
+### The second review round: a leak discovery opened
+
+The reviewer probed the packet with a grant that covered repositories and nothing of knowledge, and got back a binding section carrying another principal's claim id, its state and its full statement.
+
+**The cause.** `discover_claims` walked every claim subject in the store and called `knowledge_inspect`, which authorizes nothing — it is the body of an operation whose step 6 ran before it, in the command that normally calls it. Preparation calls it directly, on the provider's own authority, so nothing stood between a claim and any packet.
+
+**How it shipped.** The repository view had exactly this shape from the first commit of this branch — resolve at the command, carry the ids in the job, compare them in `may_join` — and it had a test. Claims were added three commits later and got none of it. **The view test covered repositories, and nothing covered claims.** The same sentence as the provenance defect one round earlier: a rule nothing reads is a rule nothing holds, and here the rule existed and was simply not applied to the second thing that needed it.
+
+**The fix, and its test.** The job carries `readable_claims`, resolved at submit from the grant with `knowledge.read`, `may_join` compares the set, and preparation reads nothing outside it. The test does not check that the section was labelled carefully: it asserts the packet is **byte-identical** to one prepared in a store where the claim was never proposed. The same test exists for a repository outside the view.
+
+**Five more corrections in the same round.** A discovered claim carries its `claim` reference, so CONTEXT section 14's read-time facts see it and a later rejection shows at the read; it cites the evidence its claim rests on. Relevance is a stated rule — a condition naming a repository of the basis, or a shared term with the question — and everything else is omitted with reason `applicability` rather than silently. Drop order follows INTERNALS section 5 step 5 instead of the section id, which had let an anchor outlive a binding decision. A rejected claim's content names the decision that rejected it, because the label vocabulary has no `rejected` and `stale` alone says "was once valid". And the negative control now covers discovery: every blob any section cites is in the tree the packet names.
+
 ### Mutants
 
-**This round: 12 mutants, all killed.** They exist because the round's first lesson was that a rule nothing reads is a rule nothing holds — `provenance.compiler` was wrong under 21 green mutants because no test read the field.
+**This round: 10 mutants, all killed.** Five survived their first run and are killed by tests written for them; each is named below with what was missing. No mutant here is a WRONG-REASON kill — every one fails at the assertion that states the rule it broke — with one exception, noted in the table.
+
+| Mutant | Killed by | At |
+|---|---|---|
+| **Discovery reads every claim in the store** — the leak itself | `a_claim_the_grant_does_not_cover_is_absent_from_the_packet_byte_for_byte` | "a claim outside the grant is identical to a claim that never existed" |
+| Discovery reads every registered repository | `a_request_naming_a_repository_outside_the_grant_is_answered_only_from_the_view` **and** `a_repository_outside_the_grant_contributes_nothing_to_discovery` | the item's unmet reason, and the byte-identity of the packet. **The first is arguably a WRONG-REASON kill for discovery**: it catches the guard through the item path, not through discovery, which is why the second was written |
+| A discovered claim carries no reference | `a_discovered_claim_is_a_claim_section_and_a_later_rejection_shows_at_the_read` | "a discovered claim carries its reference, so a reader can check it" |
+| **A discovered claim cites nothing** | same test, **after a citation assertion was added** | "a claim section cites its support" |
+| **Every readable claim goes into every packet** | `a_readable_claim_that_does_not_bear_on_the_request_is_omitted_with_its_reason`, **written for it** | the toaster claim appears among the sections |
+| **An irrelevant claim is dropped silently** | same test, **written for it** | "an irrelevant claim is omitted, not dropped: []" |
+| **Discovered sections are ordered by their id** | `under_pressure_a_packet_loses_what_it_can_most_afford_to`, **after the test was given anchors to lose** | "and so does the code the question is about" |
+| **The drop order is reversed** | same test, same repair | "the binding decision outlives everything advisory" |
+| A rejected claim does not name its decision | `j1_a_question_finds_its_own_answer_with_a_cited_packet` | "a rejected claim names the decision that rejected it: … no longer current" |
+| A job is joined whatever claims it could read | `context::tests::a_job_is_joined_only_by_a_request_with_the_same_view` | "a request that may read more claims never joins a narrower job" |
+
+**Why five survived, in one sentence each.** Every claim in every test was relevant and accepted, so the relevance rule, its omission and the claim's evidence citation were written and never executed. And the drop-order test used a selector that produces no anchors, at a capacity where everything fit, so "anchors go before spans" passed with no anchors present.
+
+**One claim I had made was wrong and is corrected in the test.** `context::inclusion` **packs** rather than truncates: it walks sections in order and keeps each that still fits, so a small low-priority section can occupy room a larger one could not use. What the order decides is priority, not exclusion. The assertion now pins the statement that is true and that distinguishes the two orderings — historical material is the first thing to go while task evidence stays.
+
+**The round before: 12 mutants, all killed.** They exist because the round's first lesson was that a rule nothing reads is a rule nothing holds — `provenance.compiler` was wrong under 21 green mutants because no test read the field.
 
 | Mutant | Killed by |
 |---|---|

@@ -722,20 +722,32 @@ pub fn new_job(principal: &str, payload: &Value, script: &[Value], request: &str
 /// submitting principal *and* the view its grant gave it: another principal
 /// never joins a job, and neither does the same principal under a narrower
 /// grant.
-pub fn may_join(job: &Value, principal: &str, payload: &Value, view: &[String]) -> bool {
+pub fn may_join(
+    job: &Value,
+    principal: &str,
+    payload: &Value,
+    view: &[String],
+    claims: &[String],
+) -> bool {
     let same_view = list(job, &["view"])
         .iter()
         .filter_map(Value::as_str)
         .eq(view.iter().map(String::as_str));
+    let same_claims = list(job, &["readable_claims"])
+        .iter()
+        .filter_map(Value::as_str)
+        .eq(claims.iter().map(String::as_str));
     text(job, &["state"]) == "running"
         && at(job, &["published"]) != &Value::Bool(true)
         && text(job, &["principal"]) == principal
         && same(at(job, &["basis"]), at(payload, &["basis"]))
         && same(at(job, &["items"]), at(payload, &["items"]))
         // The same principal can hold two grants of different width. A job
-        // compiled under the wider one has already read repositories the
-        // narrower request may not, so joining it would hand them over.
+        // compiled under the wider one has already read repositories, and
+        // claims, the narrower request may not, so joining it would hand
+        // them over.
         && same_view
+        && same_claims
 }
 
 // ---- preparation -----------------------------------------------------------
@@ -1763,6 +1775,7 @@ mod tests {
         );
         let wide = vec!["a".to_string(), "b".to_string()];
         let narrow = vec!["a".to_string()];
+        let claims: Vec<String> = vec!["c-1".into()];
         let job = new_job("owner", &payload, &[], "r-1");
         let mut wide_job = job.clone();
         set(
@@ -1776,21 +1789,44 @@ mod tests {
             "view",
             Value::Array(narrow.iter().map(|id| string(id)).collect()),
         );
+        for job in [&mut wide_job, &mut narrow_job] {
+            set(
+                job,
+                "readable_claims",
+                Value::Array(claims.iter().map(|id| string(id)).collect()),
+            );
+        }
 
-        assert!(may_join(&wide_job, "owner", &payload, &wide));
+        assert!(may_join(&wide_job, "owner", &payload, &wide, &claims));
         assert!(
-            !may_join(&wide_job, "owner", &payload, &narrow),
+            !may_join(&wide_job, "owner", &payload, &narrow, &claims),
             "a narrower request never joins a wider job"
         );
         assert!(
-            !may_join(&narrow_job, "owner", &payload, &wide),
+            !may_join(&narrow_job, "owner", &payload, &wide, &claims),
             "and a wider one never joins a narrower job either: the packet \
              would be short of what it was entitled to without saying so"
         );
-        assert!(may_join(&narrow_job, "owner", &payload, &narrow));
+        assert!(may_join(&narrow_job, "owner", &payload, &narrow, &claims));
         assert!(
-            !may_join(&narrow_job, "someone-else", &payload, &narrow),
+            !may_join(&narrow_job, "someone-else", &payload, &narrow, &claims),
             "another principal never joins a job"
+        );
+        // And the claims a grant could read are part of the scope too: a
+        // job compiled while another claim was readable has already read it.
+        assert!(
+            !may_join(
+                &narrow_job,
+                "owner",
+                &payload,
+                &narrow,
+                &["c-1".into(), "c-2".into()]
+            ),
+            "a request that may read more claims never joins a narrower job"
+        );
+        assert!(
+            !may_join(&narrow_job, "owner", &payload, &narrow, &[]),
+            "nor one that may read fewer"
         );
     }
 }

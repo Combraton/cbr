@@ -608,3 +608,271 @@ fn a_projection_that_cannot_be_built_is_reported_unavailable_rather_than_empty()
     provider.kill().expect("kills");
     provider.wait().expect("reaps");
 }
+
+/// One run of the same request in its own store, returning the packet's
+/// exact bytes.
+///
+/// Two runs differ only in what the test sets up, and the packet body
+/// carries no instant and no store-local identity — the request id, the
+/// tree and the content-addressed artifact ids are all the same — so the
+/// bytes are comparable byte for byte. That is the strongest statement of
+/// "this principal learned nothing about it": not that the claim was
+/// labelled carefully, but that the answer is the answer they would have
+/// got had the claim never existed.
+fn packet_bytes_for(
+    setup: impl FnOnce(&Fixture, &str, &str),
+    register_second: bool,
+    as_owner: bool,
+) -> Vec<u8> {
+    let fixture = Fixture::new();
+    let second = fixture.directory.path().join("other");
+    std::fs::create_dir_all(second.join("src")).expect("dir");
+    std::fs::write(
+        second.join("src/embargoed.rs"),
+        "pub fn embargoedAdapterThing() -> u8 {\n    7\n}\n",
+    )
+    .expect("writes");
+    git(&second, &["init", "-q", "-b", "main"]);
+    git(&second, &["add", "."]);
+    git(&second, &["commit", "-q", "-m", "embargoed"]);
+
+    let mut registrations = vec![format!("app={}", fixture.checkout.display())];
+    if register_second {
+        registrations.push(format!("closed={}", second.display()));
+    }
+    let mut provider = fixture.start(&registrations);
+
+    let printed = fixture.cbr(
+        "owner",
+        &[
+            "basis",
+            "--repo",
+            fixture.checkout.to_str().expect("utf-8"),
+            "--repo-id",
+            "app",
+        ],
+    );
+    let basis = cbr_encoding::parse(lines(&printed)[0].as_bytes()).expect("canonical JSON");
+    let tree = first(&basis, "repositories", "tree");
+
+    let ingested = fixture.cbr(
+        "owner",
+        &[
+            "ingest",
+            fixture
+                .checkout
+                .join("docs/decisions/0001-adapter.md")
+                .to_str()
+                .expect("utf-8"),
+            "--media-type",
+            "text/markdown",
+            "--source-kind",
+            "human_decision_record",
+            "--repo",
+            fixture.checkout.to_str().expect("utf-8"),
+        ],
+    );
+    let artifact = field(&ingested, "artifact");
+    let digest = field(&ingested, "digest");
+    setup(&fixture, &artifact, &digest);
+    let _ = tree;
+
+    // A reader whose grant covers `app` and the context subjects, and
+    // nothing of knowledge and nothing of `closed`.
+    let issued = Command::new(provider_binary())
+        .arg("--data-dir")
+        .arg(fixture.data())
+        .arg("--config")
+        .arg(fixture.directory.path().join("cbr.json"))
+        .arg("--issue-credential")
+        .arg("reader")
+        .output()
+        .expect("issues");
+    assert!(issued.status.success());
+    issue_grant(&fixture, "g-reader", "reader", "app");
+
+    // The basis names both repositories whether or not the second is
+    // registered and whether or not the grant covers it. Without that the
+    // compiler never reaches the view check at all, because it walks the
+    // basis: an earlier version of this test registered a repository the
+    // basis never named and proved nothing.
+    let principal = if as_owner { "owner" } else { "reader" };
+    let mut arguments: Vec<String> = [
+        "context",
+        "probe",
+        "--repo",
+        fixture.checkout.to_str().expect("utf-8"),
+        "--repo-id",
+        "app",
+        "--also",
+    ]
+    .iter()
+    .map(|argument| (*argument).to_string())
+    .collect();
+    arguments.push(format!("closed={}", second.display()));
+    arguments.extend(
+        [
+            "--want",
+            "code=source:src/queue.rs",
+            "--selector",
+            "adapter",
+            "--task",
+            "what does the compatibility adapter do to the queue",
+            "--capacity",
+            "65536",
+        ]
+        .iter()
+        .map(|argument| (*argument).to_string()),
+    );
+    if !as_owner {
+        arguments.extend(["--grant".to_string(), "g-reader".to_string()]);
+    }
+    let submitted = Command::new(env!("CARGO_BIN_EXE_cbr"))
+        .args(&arguments)
+        .arg("--socket")
+        .arg(&fixture.socket)
+        .arg("--credential-file")
+        .arg(fixture.credential(principal))
+        .output()
+        .expect("cbr runs");
+    assert!(
+        submitted.status.success(),
+        "submit: {}",
+        String::from_utf8_lossy(&submitted.stderr)
+    );
+
+    let read = |arguments: &[&str]| {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_cbr"));
+        command.args(arguments);
+        if !as_owner {
+            command.args(["--grant", "g-reader"]);
+        }
+        command
+            .arg("--socket")
+            .arg(&fixture.socket)
+            .arg("--credential-file")
+            .arg(fixture.credential(principal))
+            .output()
+            .expect("cbr runs")
+    };
+    read(&["request", "probe"]);
+    let printed = ok(&read(&["packet", "probe", "--excerpt", "1000000"]));
+    let data = text(&printed, &["excerpt", "data_base64"]);
+    let bytes = cbr_encoding::decode_base64(&data).expect("base64");
+
+    provider.kill().expect("kills");
+    provider.wait().expect("reaps");
+    bytes
+}
+
+/// Propose a claim about `app` and have the owner accept it as binding.
+fn accept_a_claim(fixture: &Fixture, artifact: &str, digest: &str) {
+    let printed = fixture.cbr(
+        "owner",
+        &[
+            "basis",
+            "--repo",
+            fixture.checkout.to_str().expect("utf-8"),
+            "--repo-id",
+            "app",
+        ],
+    );
+    let basis = cbr_encoding::parse(lines(&printed)[0].as_bytes()).expect("canonical JSON");
+    let tree = first(&basis, "repositories", "tree");
+    ok(&fixture.cbr(
+        "owner",
+        &["authority", "bind", "svc", "--authority", "owner"],
+    ));
+    let claim = fixture.write(
+        "secret.json",
+        &format!(
+            r#"{{"plane":"normative",
+                 "statement":{{"subject":{{"kind":"app.service","id":"queue"}},
+                               "predicate":"keeps_compatibility_adapter","value":true,
+                               "cardinality":"single"}},
+                 "scope":{{"id":"svc","qualifiers":{{}}}},
+                 "support":[{{"support_id":"s1",
+                              "evidence":{{"provider":"cbr",
+                                           "artifact":{{"kind":"evidence.artifact","id":"{artifact}"}},
+                                           "digest":"{digest}"}},
+                              "ancestry":{{"completeness":"complete",
+                                           "roots":[{{"kind":"evidence","provider":"cbr",
+                                                      "artifact":{{"kind":"evidence.artifact","id":"{artifact}"}},
+                                                      "digest":"{digest}"}}]}}}}],
+                 "derivation":{{"kind":"human","inputs":[]}},
+                 "conditions":[{{"condition_id":"at-tree","kind":"repository_tree",
+                                 "repository":"app","expected":"{tree}"}}]}}"#
+        ),
+    );
+    ok(&fixture.cbr("owner", &["propose", "adapter", "--content", &claim]));
+    ok(&fixture.cbr(
+        "owner",
+        &[
+            "decide",
+            "d1",
+            "--claim",
+            "adapter",
+            "--revision",
+            "1",
+            "--decision",
+            "accepted_for_use",
+            "--use",
+            "binding",
+            "--rationale",
+            "the decision record says so",
+        ],
+    ));
+}
+
+#[test]
+fn a_claim_the_grant_does_not_cover_is_absent_from_the_packet_byte_for_byte() {
+    // The leak this closes: discovery walked every claim in the store and
+    // called `knowledge_inspect`, which authorizes nothing because its
+    // authorization is step 6 of the command that normally calls it. A
+    // reader with no knowledge right got a binding section carrying another
+    // principal's claim id, state and full statement.
+    //
+    // The assertion is not that the section was labelled carefully. It is
+    // that the packet is the packet they would have received had the claim
+    // never been proposed.
+    let with_claim = packet_bytes_for(accept_a_claim, false, false);
+    let without_claim = packet_bytes_for(|_, _, _| {}, false, false);
+    assert_eq!(
+        String::from_utf8_lossy(&with_claim),
+        String::from_utf8_lossy(&without_claim),
+        "a claim outside the grant is identical to a claim that never existed"
+    );
+}
+
+#[test]
+fn a_repository_outside_the_grant_contributes_nothing_to_discovery() {
+    // The same statement for repositories: no discovered span, no anchor
+    // section, no coverage entry — the packet a reader gets is the packet
+    // they would have got had the repository never been registered.
+    let with_second = packet_bytes_for(|_, _, _| {}, true, false);
+    let without_second = packet_bytes_for(|_, _, _| {}, false, false);
+    assert_eq!(
+        String::from_utf8_lossy(&with_second),
+        String::from_utf8_lossy(&without_second),
+        "a repository outside the grant is identical to one never registered"
+    );
+    assert!(
+        !String::from_utf8_lossy(&with_second).contains("embargoed"),
+        "and nothing of it appears at all"
+    );
+
+    // And the mechanism is not merely absent: the authority principal, whose
+    // view is every registration, gets a coverage entry for the same
+    // repository from the same basis. Without this arm the assertion above
+    // would be satisfied by a compiler that never looked at either.
+    let as_owner = packet_bytes_for(|_, _, _| {}, true, true);
+    let seen = String::from_utf8_lossy(&as_owner);
+    assert!(
+        seen.contains("over closed"),
+        "the owner's packet covers the second repository: {seen}"
+    );
+    assert!(
+        !String::from_utf8_lossy(&with_second).contains("over closed"),
+        "and the reader's does not"
+    );
+}

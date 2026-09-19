@@ -420,6 +420,14 @@ fn j1_a_question_finds_its_own_answer_with_a_cited_packet() {
         "stale",
         "{rejected_section:?}"
     );
+    // The label vocabulary of CONTEXT section 14 has no "rejected", and
+    // "stale" alone says "was once valid", which this never was. The content
+    // says what happened and names the decision that did it.
+    let standing = text(rejected_section, &["content"]);
+    assert!(
+        standing.contains("rejected by decision d-git"),
+        "a rejected claim names the decision that rejected it: {standing}"
+    );
 
     // Every excerpt is the cited artifact's own bytes, starting at the line
     // the locator names. Not "contains": at the line, byte for byte.
@@ -519,9 +527,12 @@ fn cited_spans(
     for citation in citations {
         let artifact = text(citation, &["evidence", "artifact", "id"]);
         let digest = text(citation, &["evidence", "digest"]);
-        let blob = artifact
-            .strip_prefix("src.")
-            .expect("a source citation names its blob");
+        // A claim section cites the evidence its claim rests on, which is
+        // an ingested artifact rather than a repository blob. Those are
+        // checked by the claim assertions; this walks the source spans.
+        let Some(blob) = artifact.strip_prefix("src.") else {
+            continue;
+        };
         let out = fixture.directory.path().join(format!("{blob}.bytes"));
         let fetched = fixture.cbr(&[
             "fetch",
@@ -698,6 +709,26 @@ fn j1_negative_control_a_moved_tree_is_never_silently_answered_from() {
         "and one at the old tree still gets the old bytes: {at_old:?}"
     );
     assert_ne!(citation_blobs(&at_old), citation_blobs(&at_new));
+
+    // Discovery reads the basis too, not `HEAD` and not an index built at
+    // another tree. Every blob any section cites — asked for or discovered —
+    // must be in the tree the packet names.
+    for (packet, tree) in [
+        (&again, &old_tree),
+        (&at_old, &old_tree),
+        (&at_new, &new_tree),
+    ] {
+        let listed = git(
+            &repository,
+            &["ls-tree", "-r", "--format=%(objectname)", tree],
+        );
+        for blob in citation_blobs(packet) {
+            assert!(
+                listed.lines().any(|line| line == blob),
+                "a citation of a tree that is not the basis: {blob} not in {tree}"
+            );
+        }
+    }
 
     provider.kill().expect("kills");
     provider.wait().expect("reaps");
@@ -915,6 +946,410 @@ fn discovery_covers_more_than_one_file_however_loud_a_single_file_is() {
             "no file takes more than its share: {path} has {count}"
         );
     }
+
+    provider.kill().expect("kills");
+    provider.wait().expect("reaps");
+}
+
+#[test]
+fn a_discovered_claim_is_a_claim_section_and_a_later_rejection_shows_at_the_read() {
+    // A binding statement a reader cannot check against a revision and a
+    // digest is an assertion, not a citation. A discovered claim carries the
+    // same `claim` reference an asked-for one carries, so CONTEXT section
+    // 14's read-time facts see it: reject it after publication and the read
+    // says so, without the packet's own bytes changing.
+    let repository = checkout();
+    let tree = git(&repository, &["rev-parse", "HEAD^{tree}"]);
+    let fixture = Fixture::new();
+    let mut provider = fixture.start(&[format!("cbr={}", repository.display())]);
+
+    let adr = repository.join(DECISION_PATH);
+    let ingested = fixture.cbr(&[
+        "ingest",
+        adr.to_str().expect("utf-8"),
+        "--media-type",
+        "text/markdown",
+        "--source-kind",
+        "human_decision_record",
+        "--repo",
+        repository.to_str().expect("utf-8"),
+    ]);
+    let artifact = field(&ingested, "artifact");
+    let digest = field(&ingested, "digest");
+    ok(&fixture.cbr(&["authority", "bind", "stack", "--authority", "owner"]));
+    let accepted = claim_file(
+        &fixture,
+        "later.json",
+        &artifact,
+        &digest,
+        &tree,
+        "uses_gix_for_source_identity",
+        true,
+    );
+    ok(&fixture.cbr(&["propose", "gix-decision", "--content", &accepted]));
+    ok(&fixture.cbr(&[
+        "decide",
+        "d-gix",
+        "--claim",
+        "gix-decision",
+        "--revision",
+        "1",
+        "--decision",
+        "accepted_for_use",
+        "--use",
+        "binding",
+        "--rationale",
+        "ADR 001 question 11",
+    ]));
+
+    ok(&fixture.cbr(&[
+        "context",
+        "later",
+        "--repo",
+        repository.to_str().expect("utf-8"),
+        "--repo-id",
+        "cbr",
+        "--want",
+        "readme=source:README.md",
+        "--selector",
+        "gix",
+        "--task",
+        "why does source identity use gix rather than the git binary",
+        "--capacity",
+        "65536",
+    ]));
+    let (before, _) = wait_for_packet(&fixture, "later");
+    let carried = array(&before, &["sections"])
+        .into_iter()
+        .find(|section| text(section, &["section_id"]) == "d-claim-gix-decision")
+        .expect("the accepted claim is carried");
+    assert_eq!(text(&carried, &["label"]), "binding", "{carried:?}");
+    assert_eq!(
+        text(&carried, &["claim", "reference", "claim"]),
+        "gix-decision",
+        "a discovered claim carries its reference, so a reader can check it: {carried:?}"
+    );
+    assert!(
+        !text(&carried, &["claim", "reference", "digest"]).is_empty(),
+        "and the digest of the revision it snapshotted: {carried:?}"
+    );
+    // And the evidence the claim rests on, where the reader may read it: a
+    // binding statement a reader cannot check against evidence is an
+    // assertion, not a citation.
+    let cited = array(&carried, &["citations"]);
+    assert_eq!(
+        cited.len(),
+        1,
+        "a claim section cites its support: {carried:?}"
+    );
+    let supporting = array(&before, &["citations"])
+        .into_iter()
+        .find(|citation| Some(text(citation, &["citation_id"]).as_str()) == cited[0].as_str())
+        .unwrap_or_else(|| panic!("the citation resolves: {carried:?}"));
+    assert_eq!(
+        text(&supporting, &["evidence", "digest"]),
+        digest,
+        "and it is the evidence the claim was proposed with: {supporting:?}"
+    );
+
+    // The authority changes its mind after the packet was sealed.
+    ok(&fixture.cbr(&[
+        "decide",
+        "d-reversal",
+        "--claim",
+        "gix-decision",
+        "--revision",
+        "1",
+        "--decision",
+        "rejected",
+        "--rationale",
+        "reconsidered",
+    ]));
+
+    let after = ok(&fixture.cbr(&["packet", "later"]));
+    let changes = array(&after, &["claim_changes"]);
+    assert!(
+        changes
+            .iter()
+            .any(|change| text(change, &["claim", "claim"]) == "gix-decision"),
+        "the read reports that the carried claim changed: {after:?}"
+    );
+
+    provider.kill().expect("kills");
+    provider.wait().expect("reaps");
+}
+
+#[test]
+fn under_pressure_a_packet_loses_what_it_can_most_afford_to() {
+    // INTERNALS section 5 step 5 orders a packet: mandatory first, then task
+    // evidence, then optional context. Sorting discovered sections by id
+    // dropped by path name instead, so an anchor outlived a binding
+    // decision. At a capacity where about half the advisory content fits,
+    // the decision and both answers must outlive the rest.
+    let repository = checkout();
+    let tree = git(&repository, &["rev-parse", "HEAD^{tree}"]);
+    let fixture = Fixture::new();
+    let mut provider = fixture.start(&[format!("cbr={}", repository.display())]);
+
+    let adr = repository.join(DECISION_PATH);
+    let ingested = fixture.cbr(&[
+        "ingest",
+        adr.to_str().expect("utf-8"),
+        "--media-type",
+        "text/markdown",
+        "--source-kind",
+        "human_decision_record",
+        "--repo",
+        repository.to_str().expect("utf-8"),
+    ]);
+    let artifact = field(&ingested, "artifact");
+    let digest = field(&ingested, "digest");
+    ok(&fixture.cbr(&["authority", "bind", "stack", "--authority", "owner"]));
+    let accepted = claim_file(
+        &fixture,
+        "pressure.json",
+        &artifact,
+        &digest,
+        &tree,
+        "uses_gix_for_source_identity",
+        true,
+    );
+    ok(&fixture.cbr(&["propose", "gix-decision", "--content", &accepted]));
+    ok(&fixture.cbr(&[
+        "decide",
+        "d-gix",
+        "--claim",
+        "gix-decision",
+        "--revision",
+        "1",
+        "--decision",
+        "accepted_for_use",
+        "--use",
+        "binding",
+        "--rationale",
+        "ADR 001 question 11",
+    ]));
+
+    let submit = |request: &str, capacity: &str| {
+        ok(&fixture.cbr(&[
+            "context",
+            request,
+            "--repo",
+            repository.to_str().expect("utf-8"),
+            "--repo-id",
+            "cbr",
+            "--want",
+            "readme=source:README.md",
+            "--selector",
+            "dirty_snapshot",
+            "--task",
+            "where does dirty_snapshot read the working tree, and was that decided",
+            "--capacity",
+            capacity,
+        ]))
+    };
+
+    submit("roomy", "65536");
+    let (roomy, _) = wait_for_packet(&fixture, "roomy");
+    let full = array(&roomy, &["sections"]).len();
+
+    // `dirty_snapshot` is identifier-shaped, so this request produces anchor
+    // sections as well as spans and claims. Without them the rank order
+    // could not be told from sorting by section id: `d-anchor-` sorts before
+    // `d-claim-`, and with no anchors present that inversion never showed.
+    let roomy_ids: Vec<String> = array(&roomy, &["sections"])
+        .iter()
+        .map(|section| text(section, &["section_id"]))
+        .collect();
+    assert!(
+        roomy_ids.iter().any(|id| id.starts_with("d-anchor-")),
+        "the roomy packet has anchors to lose: {roomy_ids:?}"
+    );
+
+    // About half the advisory content: the required item's own section plus
+    // the first few of what followed it, leaving the anchor and the
+    // historical claim outside.
+    submit("half", "5000");
+    let (half, _) = wait_for_packet(&fixture, "half");
+    let kept: Vec<String> = array(&half, &["sections"])
+        .iter()
+        .map(|section| text(section, &["section_id"]))
+        .collect();
+    assert!(
+        kept.len() < full && kept.len() > 1,
+        "about half fits: {} of {full}: {kept:?}",
+        kept.len()
+    );
+    assert!(
+        kept.contains(&"d-claim-gix-decision".to_string()),
+        "the binding decision outlives everything advisory: {kept:?}"
+    );
+    let spans: Vec<&String> = kept.iter().filter(|id| id.contains("d-span-")).collect();
+    assert!(
+        spans
+            .iter()
+            .any(|id| id.contains("cbr-identity/src/lib.rs")),
+        "and so does the code the question is about: {kept:?}"
+    );
+    // `context::inclusion` packs rather than truncates: it walks sections in
+    // order and keeps each one that still fits, so a small section low in
+    // the order can occupy leftover room a larger one could not use. What
+    // the order decides is therefore priority, not exclusion, and the
+    // decisive statement is which section loses when two compete.
+    //
+    // Historical material is last under this rule and near the front under
+    // the old one, where `d-claim-` sorted before `d-span-`. So: the
+    // rejected alternative goes while task evidence stays.
+    assert!(
+        !kept.contains(&"d-claim-git-binary".to_string()),
+        "historical material is the first thing to go: {kept:?}"
+    );
+    assert!(!spans.is_empty(), "while task evidence stays: {kept:?}");
+    for omission in array(&half, &["omissions"]) {
+        assert!(
+            !text(&omission, &["reason"]).is_empty(),
+            "every drop says why: {omission:?}"
+        );
+    }
+
+    provider.kill().expect("kills");
+    provider.wait().expect("reaps");
+}
+
+#[test]
+fn a_readable_claim_that_does_not_bear_on_the_request_is_omitted_with_its_reason() {
+    // Every claim in the store is not context for every request. A pilot
+    // repository with twenty-two decisions must not put all twenty-two into
+    // a packet about one of them — and what it leaves out must be counted,
+    // not silently dropped.
+    let repository = checkout();
+    let tree = git(&repository, &["rev-parse", "HEAD^{tree}"]);
+    let fixture = Fixture::new();
+    let mut provider = fixture.start(&[format!("cbr={}", repository.display())]);
+
+    let adr = repository.join(DECISION_PATH);
+    let ingested = fixture.cbr(&[
+        "ingest",
+        adr.to_str().expect("utf-8"),
+        "--media-type",
+        "text/markdown",
+        "--source-kind",
+        "human_decision_record",
+        "--repo",
+        repository.to_str().expect("utf-8"),
+    ]);
+    let artifact = field(&ingested, "artifact");
+    let digest = field(&ingested, "digest");
+    ok(&fixture.cbr(&["authority", "bind", "stack", "--authority", "owner"]));
+
+    // One claim that bears on the request: its condition names `cbr`.
+    let about = claim_file(
+        &fixture,
+        "about.json",
+        &artifact,
+        &digest,
+        &tree,
+        "uses_gix_for_source_identity",
+        true,
+    );
+    ok(&fixture.cbr(&["propose", "gix-decision", "--content", &about]));
+    ok(&fixture.cbr(&[
+        "decide",
+        "d-gix",
+        "--claim",
+        "gix-decision",
+        "--revision",
+        "1",
+        "--decision",
+        "accepted_for_use",
+        "--use",
+        "binding",
+        "--rationale",
+        "ADR 001 question 11",
+    ]));
+
+    // One that does not: another scope, another repository, and no word of
+    // it in the question.
+    let elsewhere = {
+        let path = fixture.directory.path().join("elsewhere.json");
+        std::fs::write(
+            &path,
+            format!(
+            r#"{{"plane":"normative",
+                 "statement":{{"subject":{{"kind":"kitchen.appliance","id":"toaster"}},
+                               "predicate":"browns_bread","value":true,
+                               "cardinality":"single"}},
+                 "scope":{{"id":"breakfast","qualifiers":{{}}}},
+                 "support":[{{"support_id":"s1",
+                              "evidence":{{"provider":"cbr",
+                                           "artifact":{{"kind":"evidence.artifact","id":"{artifact}"}},
+                                           "digest":"{digest}"}},
+                              "ancestry":{{"completeness":"complete",
+                                           "roots":[{{"kind":"evidence","provider":"cbr",
+                                                      "artifact":{{"kind":"evidence.artifact","id":"{artifact}"}},
+                                                      "digest":"{digest}"}}]}}}}],
+                 "derivation":{{"kind":"human","inputs":[]}},
+                 "conditions":[{{"condition_id":"at-tree","kind":"repository_tree",
+                                 "repository":"kitchen","expected":"{tree}"}}]}}"#
+            ),
+        )
+        .expect("writes");
+        path.to_str().expect("utf-8").to_string()
+    };
+    ok(&fixture.cbr(&["authority", "bind", "breakfast", "--authority", "owner"]));
+    ok(&fixture.cbr(&["propose", "toaster", "--content", &elsewhere]));
+    ok(&fixture.cbr(&[
+        "decide",
+        "d-toaster",
+        "--claim",
+        "toaster",
+        "--revision",
+        "1",
+        "--decision",
+        "accepted_for_use",
+        "--use",
+        "binding",
+        "--rationale",
+        "it does brown bread",
+    ]));
+
+    ok(&fixture.cbr(&[
+        "context",
+        "relevance",
+        "--repo",
+        repository.to_str().expect("utf-8"),
+        "--repo-id",
+        "cbr",
+        "--want",
+        "readme=source:README.md",
+        "--selector",
+        "gix",
+        "--task",
+        "why does source identity use gix rather than the git binary",
+        "--capacity",
+        "65536",
+    ]));
+    let (packet, _) = wait_for_packet(&fixture, "relevance");
+
+    let sections: Vec<String> = array(&packet, &["sections"])
+        .iter()
+        .map(|section| text(section, &["section_id"]))
+        .collect();
+    assert!(
+        sections.contains(&"d-claim-gix-decision".to_string()),
+        "the claim that bears on the request is carried: {sections:?}"
+    );
+    assert!(
+        !sections.contains(&"d-claim-toaster".to_string()),
+        "the one that does not is not: {sections:?}"
+    );
+    // And it is counted, with the reason the protocol has for it.
+    let omitted = array(&packet, &["omissions"]);
+    let toaster = omitted
+        .iter()
+        .find(|omission| text(omission, &["section_id"]) == "d-claim-toaster")
+        .unwrap_or_else(|| panic!("an irrelevant claim is omitted, not dropped: {omitted:?}"));
+    assert_eq!(text(toaster, &["reason"]), "applicability", "{toaster:?}");
 
     provider.kill().expect("kills");
     provider.wait().expect("reaps");
