@@ -9,7 +9,18 @@ license.workspace = true
 
 [dependencies]
 cbr-encoding = { path = "../cbr-encoding" }
+cbr-identity = { path = "../cbr-identity" }
 rusqlite.workspace = true
+# Code anchors (STACK section 6). Grammars version independently of the core,
+# so each is pinned explicitly and only the languages CBR claims are here:
+# Rust and Python for this repository, JavaScript and TypeScript for the
+# pilot. A core bump is a compatibility check against every one of them.
+tree-sitter = "0.27.0"
+tree-sitter-tags = "0.27.0"
+tree-sitter-rust = "0.24.2"
+tree-sitter-python = "0.25.0"
+tree-sitter-javascript = "0.25.0"
+tree-sitter-typescript = "0.23.2"
 
 [dev-dependencies]
 tempfile = "3.27.0"

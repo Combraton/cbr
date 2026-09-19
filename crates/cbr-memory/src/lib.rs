@@ -17,5 +17,7 @@
 //! the state change that caused them. That is the reason these live in
 //! SQLite at all.
 
+pub mod anchors;
 pub mod evaluator;
+pub mod index;
 pub mod lexical;

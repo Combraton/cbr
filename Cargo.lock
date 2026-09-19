@@ -115,6 +115,7 @@ name = "cbr-memory"
 version = "0.1.0"
 dependencies = [
  "cbr-encoding",
+ "cbr-identity",
  "rusqlite",
  "tempfile",
  "tree-sitter",
