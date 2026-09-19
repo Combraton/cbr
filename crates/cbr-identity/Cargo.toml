@@ -9,6 +9,15 @@ license.workspace = true
 
 [dependencies]
 cbr-encoding = { path = "../cbr-encoding" }
+# ADR 001 question 11: the `git` binary was enough while identity needed one
+# `rev-parse`; M3's retrieval reads a tree's blobs in bulk, which is the
+# trigger that decision recorded for moving to `gix`. MIT OR Apache-2.0 all
+# the way down, with no GPL C library (STACK section 6).
+gix = { version = "0.87.1", default-features = false, features = [
+    "sha1",
+    "status",
+    "revision",
+] }
 
 [dev-dependencies]
 tempfile = "3.27.0"
