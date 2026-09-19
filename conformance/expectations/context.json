@@ -1,0 +1,9 @@
+{
+  "note": "M3a claims context/1 with context.advisory, context.required_before_start, context.required_before_transition, context.shared_jobs, context.updates, context.expand and context.claims, and the context.script control, over the stdio descriptor. Derived from each fixture's declarations before implementing: all 11 declare only context, knowledge and evidence with core features and the controls clock.file, context.script and knowledge.store, so all are reachable and none is permanently unsupported. Confirmed by a run against M2's binary (39113b2) with an uncommitted scratch descriptor declaring those claims: 0 pass, 11 fail, 0 unsupported. A lower bound, as c3 showed.",
+  "suite": "context.",
+  "total": 11,
+  "pass": 11,
+  "runner_exit_status": 0,
+  "permanently_unsupported": 0,
+  "unsupported": []
+}

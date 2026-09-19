@@ -9,6 +9,7 @@
 mod barriers;
 mod clock;
 mod config;
+mod context;
 mod credentials;
 mod effects;
 mod envelope;
@@ -19,6 +20,7 @@ mod grants;
 mod jsonrpc;
 mod knowledge;
 mod outbox;
+mod peer;
 mod provider;
 mod session;
 mod socket;

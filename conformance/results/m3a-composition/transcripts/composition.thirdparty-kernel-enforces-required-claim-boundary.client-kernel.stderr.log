@@ -1,0 +1,31 @@
+[kernel] started with 8 work items
+[kernel] packet-evidence@context-1: session as kernel negotiated core/1[core.events,core.grants], evidence/1[] (dependencies from provider)
+[kernel] context@context-1: session as kernel negotiated core/1[core.events,core.grants], context/1[context.advisory,context.claims,context.required_before_start] (dependencies from provider)
+[kernel] check w-valid.1: state current, decision dispatch
+[kernel] records@records-1: session as kernel negotiated core/1[core.events,core.grants], evidence/1[] (dependencies from provider)
+[kernel] published check.w-valid.1
+[kernel] published dispatch.w-valid
+[kernel] dispatched w-valid (gap False)
+[kernel] check w-unrelated.1: state current, decision dispatch
+[kernel] published check.w-unrelated.1
+[kernel] published dispatch.w-unrelated
+[kernel] dispatched w-unrelated (gap False)
+[kernel] check w-req.1: state stale, decision withhold
+[kernel] published check.w-req.1
+[kernel] check w-adv.1: state stale, decision dispatch
+[kernel] published check.w-adv.1
+[kernel] published dispatch.w-adv
+[kernel] dispatched w-adv (gap True)
+[kernel] check w-tampered.1: state unsatisfied, decision withhold
+[kernel] published check.w-tampered.1
+[kernel] check w-altered.1: state unsatisfied, decision withhold
+[kernel] published check.w-altered.1
+[kernel] check w-marker.1: state current, decision dispatch
+[kernel] published check.w-marker.1
+[kernel] published dispatch.w-marker
+[kernel] dispatched w-marker (gap False)
+[kernel] check w-req.2: state unknown, decision withhold
+[kernel] published check.w-req.2
+[kernel] check w-unknown.1: state unknown, decision withhold
+[kernel] published check.w-unknown.1
+[kernel] input ended; exiting

@@ -13,6 +13,7 @@ under coverage limits and are never counted as passes.
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -61,7 +62,11 @@ def main():
         str(out),
     ]
     print(" ".join(command))
-    completed = subprocess.run(command, check=False)
+    # The composition suite launches the vendored client-only kernel, a Python
+    # program. Without this, Python writes __pycache__ into vendor/, and the
+    # pinned tree no longer matches its checksums.
+    environment = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
+    completed = subprocess.run(command, check=False, env=environment)
 
     manifest_path = out / "manifest.json"
     if not manifest_path.is_file():

@@ -22,6 +22,10 @@
       {
         "name": "knowledge",
         "major": 1
+      },
+      {
+        "name": "context",
+        "major": 1
       }
     ],
     "features": [
@@ -32,12 +36,20 @@
       "core.effects",
       "evidence.manifests",
       "evidence.retention_control",
-      "evidence.work_binding"
+      "evidence.work_binding",
+      "context.advisory",
+      "context.required_before_start",
+      "context.required_before_transition",
+      "context.shared_jobs",
+      "context.updates",
+      "context.expand",
+      "context.claims"
     ],
     "test_controls": [
       "clock.file",
       "evidence.store",
-      "knowledge.store"
+      "knowledge.store",
+      "context.script"
     ],
     "test_barriers": [
       "subscription.recheck.after_authorization"

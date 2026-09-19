@@ -134,6 +134,22 @@ pub struct Config {
     /// The applicability evaluator pinned in evaluations, and the
     /// `knowledge.store` test control (KNOWLEDGE section 13).
     pub knowledge: KnowledgeStore,
+    /// The `context.script` test control (CONTEXT section 12): scripted
+    /// preparation per request, and the peers a context provider reaches over
+    /// the public protocol. `Null` when absent. It holds peer credentials, so
+    /// it is never logged or echoed.
+    pub context: ContextControl,
+}
+
+/// The `context.script` control's value. Its `Debug` form names nothing it
+/// holds, because peers in it carry credentials (CORE section 18.1).
+#[derive(Clone)]
+pub struct ContextControl(pub Value);
+
+impl std::fmt::Debug for ContextControl {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("ContextControl(..)")
+    }
 }
 
 /// The evaluator identity and the knowledge test control.
@@ -210,6 +226,7 @@ impl Default for Config {
             test_barriers: None,
             evidence_store: EvidenceStore::default(),
             knowledge: KnowledgeStore::production(),
+            context: ContextControl(Value::Null),
         }
     }
 }
@@ -299,6 +316,12 @@ impl Config {
                     .map(str::to_string)
                     .collect();
             }
+        }
+        if let Some(context) = value.get("context") {
+            if !context.is_object() {
+                return Err("`context` must be an object".into());
+            }
+            config.context = ContextControl(context.clone());
         }
         if let Some(Value::Array(items)) = value.get("authority_principals") {
             config.authority_principals = items

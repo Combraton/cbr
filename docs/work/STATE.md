@@ -3,12 +3,107 @@
 This is a dated navigation snapshot. Reconcile it with Git, linked issues and current task evidence before acting. Issues own live progress; this file does not grant authority or maintain a second backlog.
 
 - **Updated:** 2026-09-17.
-- **Owner/task:** Claude Code session as implementation lead for standalone CBR. **M1 is complete**: [issue #3](https://github.com/Combraton/cbr/issues/3) is closed, and its closing record is committed as [m1/CLOSEOUT.md](m1/CLOSEOUT.md). Active task: **M2, Knowledge, [issue #12](https://github.com/Combraton/cbr/issues/12)**, on branch `m2/knowledge`, stacked on the M1 close-out and README change (branch `m1/closeout-and-readme`, PR #13, not yet merged). Parent: [issue #1](https://github.com/Combraton/cbr/issues/1). An independent reviewer session reviews this read-only.
-- **Merged:** PR #2 as `d68e9d6`, pinned to `877139f`; PR #4 as `a939446`, pinned to `630011c`; PR #5 (c1) as `8b75129`; PR #6 (c2) as `da1e650`, pinned to `b00ec49`; **PR #7 (c3) as `8ba2594`, pinned to `5b98a9f`, confirmed from `merged: true` and `merged_at: 2026-09-16T15:31:51Z`**. Earlier: PR #6 pinned to `b00ec49`, confirmed from `merged: true` and `merged_at: 2026-09-16T14:26:34Z`**, the draft marked ready first and the head re-read unchanged before merging. Every owner decision, including the ceiling, is in [ADR 001](../decisions/001-standalone-v0.1-scope-and-stack.md). **PR #8 (owner follow-ups) as `f00faaf`, pinned to `40cb30b`, `merged_at: 2026-09-16T16:57:29Z`; PR #9 (c4) as `9a7b8f5`, pinned to `5db9d7c`, `merged_at: 2026-09-16T16:57:53Z`**, in that order, each confirmed from `merged` and `merged_at`. **PR #10 (d) as `96a33f2`, pinned to `a1048e6`, `merged_at: 2026-09-16T18:17:38Z`; then PR #11 (e) as `6c63d91`, pinned to `c2a262d`, `merged_at: 2026-09-16T18:17:56Z`**. PR #11 was stacked on #10's branch, so it was retargeted to `main` after #10 merged and before its own merge; retargeting leaves the head unchanged, and `c2a262d` was re-read before merging.
+- **Owner/task:** Claude Code session as implementation lead for standalone CBR. **M1 and M2 are complete**: [issue #3](https://github.com/Combraton/cbr/issues/3) and [issue #12](https://github.com/Combraton/cbr/issues/12) are closed; M1's closing record is [m1/CLOSEOUT.md](m1/CLOSEOUT.md). Active task: **M3, [issue #15](https://github.com/Combraton/cbr/issues/15)**, in four pull requests against `main`, each reviewed at its head before merging: **m3a, the Context profile, on branch `m3a/context-profile`**; then m3b retrieval and the dependency evaluator, m3c the packet compiler on a real repository, m3d the journey-6 pilot. Parent: [issue #1](https://github.com/Combraton/cbr/issues/1). An independent reviewer session reviews this read-only.
+- **Merged:** PR #2 as `d68e9d6`, pinned to `877139f`; PR #4 as `a939446`, pinned to `630011c`; PR #5 (c1) as `8b75129`; PR #6 (c2) as `da1e650`, pinned to `b00ec49`; **PR #7 (c3) as `8ba2594`, pinned to `5b98a9f`, confirmed from `merged: true` and `merged_at: 2026-09-16T15:31:51Z`**. Earlier: PR #6 pinned to `b00ec49`, confirmed from `merged: true` and `merged_at: 2026-09-16T14:26:34Z`**, the draft marked ready first and the head re-read unchanged before merging. Every owner decision, including the ceiling, is in [ADR 001](../decisions/001-standalone-v0.1-scope-and-stack.md). **PR #8 (owner follow-ups) as `f00faaf`, pinned to `40cb30b`, `merged_at: 2026-09-16T16:57:29Z`; PR #9 (c4) as `9a7b8f5`, pinned to `5db9d7c`, `merged_at: 2026-09-16T16:57:53Z`**, in that order, each confirmed from `merged` and `merged_at`. **PR #10 (d) as `96a33f2`, pinned to `a1048e6`, `merged_at: 2026-09-16T18:17:38Z`; then PR #11 (e) as `6c63d91`, pinned to `c2a262d`, `merged_at: 2026-09-16T18:17:56Z`**. PR #11 was stacked on #10's branch, so it was retargeted to `main` after #10 merged and before its own merge; retargeting leaves the head unchanged, and `c2a262d` was re-read before merging. **PR #13 (M1 close-out, README) as `5c667ed`, pinned to `507fc77`, `merged_at: 2026-09-16T18:58:44Z`; then PR #14 (M2) as `39113b2`, pinned to `62cbb99`, `merged_at: 2026-09-16T18:59:00Z`**, #14 retargeted to `main` first.
 - **Merge rule, 2026-09-16, superseded the same day.** This session ran `gh pr merge` on PR #2 after the owner replied "you can merge PR 2" in-session, having first reported the contradicting claim with evidence and waited. It landed the exact reviewed head `877139f` and is kept. A stricter rule was then recorded, and the owner then **granted merge authority under four conditions**, now in [AGENTS.md](../../AGENTS.md): pin with `--match-head-commit`; the head's CI is green; the reviewer has seen that head; no squash. Confirm from `merged` and `merged_at` afterwards, **never `merge_commit_sha`** — GitHub populates that on an open pull request with the test-merge candidate. Tags and releases remain the owner's alone.
 - **Inspected revisions:** protocol `v0.1.0` = `cbf8e4df9df2ca8a9b50264df6acace6e4c3a0fc`; combraton `9af69ce`; pio `e65b7c0`; benchmarks `c8d5878`.
 
-## This change — M2, Knowledge
+## This change — M3a, the Context profile
+
+One pull request, five commits:
+1. two records the reviewer asked for in the M3 branch: ADR 001 question 11 (the `git` binary, not `gix`) and the M4 obligation that CBR's own producer never names a derived artifact as an ancestry root (`448534f`);
+2. the vendored client-only `minimal-executor` and its client module, and the context and composition expectations, derived before implementing (`080fca6`);
+3. the profile (`a156851`);
+4. the tests the fixtures cannot give, and capacity reserved for required content (`34568ab`);
+5. results, CI and documentation.
+
+| Command | Exit | Result |
+|---|---|---|
+| `check_docs.py` / `verify_pin.py` | 0 / 0 | 22 files, 0 errors; 433 and 420 files match their anchors |
+| `cargo fmt --all -- --check` | 0 | — |
+| `cargo clippy --workspace --all-targets --locked -- -D warnings` | 0 | — |
+| `cargo build --workspace --locked` | 0 | — |
+| `cargo test --workspace --locked` | 0 | **107 tests**: 20 encoding, 4 identity, 57 provider unit, 21 against the real provider, 5 running `cbr` against it |
+| `git diff --check` | 0 | — |
+| `run_fixtures.py --filter context.` + `check_results.py` | 0 | **11 pass, 0 unsupported, 0 fail**, stable over three runs |
+| `run_fixtures.py --filter composition.` (Unix descriptor) + `check_results.py` | 0 | **3 pass, 11 unsupported, 0 fail**, the 11 exactly as expected, stable over three runs |
+| `stream` / `core` / `socket` / `evidence` / `knowledge` + `check_results.py` | 0 | 24/24 · 130/5/0 · 11/2/0 · 16/0/0 · 10/0/0, unchanged |
+| `result_paths.py conformance/results/*/` | 0 | no machine paths, m1b to m3a |
+
+**Expected versus measured.**
+- **Derived before implementing:** context 11 / 0 / 0 (`context.json`); composition 3 pass and 11 permanently unsupported, the 11 named (`composition.json`): ten declare `execution/1` and one `verification/1`.
+- **The unimplemented run**, against M2's binary with an uncommitted scratch descriptor declaring the claims: context 0 / 11 fail / 0; composition 0 / 3 fail / 11 unsupported, the 11 exactly those.
+- **Measured:** both on the first complete run. A first-run pass proves nothing by itself, which is why every guard below has a mutant, and why the rules no fixture reaches have their own tests.
+
+### What changed
+
+- **`context.rs`**, pure rules: step-2 validation of every payload as closed objects plus the rules a schema cannot state; the features a submit needs at step 3; item results decided by each item's check; inclusion with capacity reserved for required items; claim snapshots with the record digest recomputed; the reliance table; packet compilation into canonical bytes and facts; read-time claim facts; exact excerpts.
+- **`provider/context_ops.rs`**:
+  - submit and cancel through `admit_command`, and the three queries;
+  - preparation as a per-job tick against the provider clock, applied to an in-memory batch and committed in one owner transaction with provider-origin events;
+  - local sealing, with the packet's object published and verified before its batch commits;
+  - sealing at a separate evidence provider, where a failed seal commits nothing of the step and keeps the capture instants, so the retry replays.
+- **`peer.rs`**, the provider's protocol client for evidence and knowledge peers. No failure it reports carries a credential, a socket path or a peer's error details.
+- **The store**: `commit_provider_batch`, which refuses a stale base or an event at a revision the batch did not write; and a further subject change may carry no event.
+- **The `context.script` control**, refused in production like every control, with a redacting `Debug` form because its peers carry credentials. Declared in both descriptors with `context/1` and its seven features.
+- **A barrier**, `context.packet.after_object_published`, not declared in a descriptor because no fixture awaits it.
+- **Preparation never runs for an unauthenticated connection**, since it can call peers.
+- **`run_fixtures.py`** launches the runner with `PYTHONDONTWRITEBYTECODE=1`: the composition suite runs the vendored kernel, and its bytecode cache made `verify_pin.py` fail on a local run. CI verifies the pin before any fixture runs, so CI was not affected. The committed results were recorded before this change, which alters only the environment.
+- **CI** gates the context and composition suites. Results are committed under `conformance/results/m3a-context` and `m3a-composition`.
+
+### Mutants
+
+All observed, all restored. Each fixture step is the runner's numbering. 57 distinct mutants in 67 runs. Two first runs did not build and were rerun with a corrected edit; the other eight extra runs put the same mutant against both fixtures and tests, against a second suite, or again after the inclusion change. 48 fail a fixture; 9 fail only CBR's own tests.
+
+| Mutant | Killed by | At |
+|---|---|---|
+| Check ignored | `claims-in-packets-are-negotiated-snapshots` · `items-are-satisfied-only-by-their-check` | 29 · 7 |
+| Missing required reported satisfied · required downgraded to degraded | each: `claims-in-packets` 29, `correction-during-preparation` 6, `deadline-leaves-required-unmet` 9, `expand-returns-only-authorized-citations` 11, `items-are-satisfied` 7, `limits-are-separate` 3, `request-items-are-checkable` 10 | — |
+| Scripted unmet overrides satisfied · historical claim reason unavailable | `claims-in-packets` | 36 · 36 |
+| Label promotes claim · unknown applicability marked stale · lineage revision unreported | same | 31 · 31 · 31 |
+| Claim digest unchecked · claim read names no revision | same | 29 · 29 |
+| Claim invalidation unreported: permitted use lost · invalid for target · hypothesis invalidation unreported | same | 34 · 39 · 39 |
+| Claims format without negotiation · claim members served without negotiation | same | 48 · 43 |
+| Unreadable claim carried | same | 31, as a schema violation (a null claim in `claim_changes`), not the omission |
+| Unavailable knowledge valid | `composition.thirdparty-kernel-enforces-required-claim-boundary` | 61; the context suite does not kill it |
+| Global coverage cursor · unobserved frontier claimed · authority revision dropped | `packet-is-an-exact-sealed-evidence-artifact` | 7 · 7 · 7 |
+| Local packet producer is the caller | same | 10 |
+| Unlabeled section · excerpt carries a digest | seven and eight fixtures at their first packet read, as schema violations; first `claims-in-packets` 31 | — |
+| Commit-only basis complete accepted · uncheckable item accepted · transition as advisory | `request-items-are-checkable` | 7 · 2 · 8 |
+| Obligation features ungated | `claims-in-packets` 44 · `request-items-are-checkable` 8 · `requires-core-events-and-gates-optional-features` 3 | — |
+| `context.expand` ungated | `requires-core-events` | 5, `permission_denied` instead of `unsupported_required_feature` |
+| Shared job across principals · cancel ends the job | `shared-job-survives-one-subscriber-cancelling` | 8 · 12 |
+| Corrected reason lost · stale derivation current · authority check ignores corrections | `correction-during-preparation` | 6 · 7 · 9 |
+| Capacity reason lost · mandatory refusal skipped · limits collapsed | `limits-are-separate` | 6 · 8 · 3 |
+| Capacity reservation removed | `limits-are-separate` 6 · both capacity unit tests | — |
+| Evidence check ignores digest | `items-are-satisfied` | 7 |
+| Old revision relabeled current, request · packet | `updates-are-new-revisions` | 10 · 12 |
+| Packet list replaced | `correction-during-preparation` 9 · `updates-are-new-revisions` 10 | — |
+| Deadline pass skipped · wait fallback ignored | `deadline-leaves-required-unmet` | 9 · 6 |
+| Job progress not saved | seven fixtures; first `correction-during-preparation` 9 | — |
+| Expand ignores the grant | `expand-returns-only-authorized-citations` | 18 |
+| Packet grant covers all packets | `composition.direct-fetch-needs-one-grant-per-audience` | 21; the context suite does not kill it |
+| Packet reported before seal · peer seal skipped | `composition.packets-are-sealed-at-a-separate-evidence-provider` | 15 · 9 |
+| Capture instants not kept · kept but ignored on retry | `a_publication_interrupted_at_the_evidence_provider_replays_after_the_clock_moves` | "the retried publication replays the steps that applied" |
+| Packet object never published | `a_packet_is_never_published_before_its_local_seal_commits` | the fetched bytes' digest |
+| Corrections not reported at read · `superseded_by` unreported · stale-at-addition unmarked | `a_correction_after_publication_is_reported_at_the_read_beside_supersession` | `invalidated_items` · `superseded_by` · `s-late` historical |
+| Mandatory items dropped at inclusion | `mandatory_content_is_included_past_capacity_and_advisory_content_is_omitted` | the included sections; no fixture kills it |
+| Batch base unchecked · batch event revision unchecked | `a_provider_batch_commits_whole_or_not_at_all` | the stale-base refusal · the unwritten-revision refusal |
+
+**Named honestly.**
+- **Fixtures alone left five mutants alive** in the first batch: mandatory items dropped at inclusion, unavailable knowledge valid, corrections not reported at read, `superseded_by` unreported, and packet grant covering all packets. Two die in the composition suite; the other three needed CBR's own tests, which now kill them.
+- **The mandatory-items survivor exposed an ordering gap.** With advisory content prepared before required content, the reference provider includes the required section past the output capacity. CBR now reserves capacity for required content first; no fixture orders sections that way, so this rests on a unit test.
+- **Mutant names follow the protocol reference's mutants where they match**, but each is CBR's own edit to CBR's code and is recorded as run.
+
+### Coverage limits
+
+- **Packet content is scripted.** Nothing is retrieved or compiled until m3b and m3c.
+- **No executor role.** Composition fixtures that need `execution/1` or `verification/1` are permanently out of reach, and the script step `execute` holds its job.
+- **Peer calls hold the processing lock**, bounded by a three-second timeout per frame.
+- **Packet bytes are kept by the context record too**, so purging a packet artifact ends its fetch but not its excerpt. Request retention is not implemented.
+- **Untested:** event visibility of `context.job` under a grant, skipping preparation for an unauthenticated connection, and an artifact id collision on publication.
+
+## Earlier — M2, Knowledge
 
 One pull request, four commits:
 1. the expectation, derived before implementing (`b6c0188`);

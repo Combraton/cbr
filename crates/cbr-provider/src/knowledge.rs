@@ -56,14 +56,14 @@ fn string(text: &str) -> Value {
 
 // ---- step 2: shapes and the rules a schema cannot state --------------------
 
-type Checked<T> = Result<T, ProtocolError>;
+pub(crate) type Checked<T> = Result<T, ProtocolError>;
 
 fn invalid(path: &str, reason: &str) -> ProtocolError {
     ProtocolError::invalid_envelope(path, reason)
 }
 
 /// A closed object: no member outside `allowed`, every member of `required`.
-fn closed<'a>(
+pub(crate) fn closed<'a>(
     value: Option<&'a Value>,
     path: &str,
     allowed: &[&str],
@@ -86,7 +86,12 @@ fn closed<'a>(
 }
 
 /// A string of `min..=max` code points.
-fn text_of<'a>(value: Option<&'a Value>, path: &str, min: usize, max: usize) -> Checked<&'a str> {
+pub(crate) fn text_of<'a>(
+    value: Option<&'a Value>,
+    path: &str,
+    min: usize,
+    max: usize,
+) -> Checked<&'a str> {
     match value {
         Some(Value::String(text)) if (min..=max).contains(&text.chars().count()) => Ok(text),
         _ => Err(invalid(
@@ -96,7 +101,7 @@ fn text_of<'a>(value: Option<&'a Value>, path: &str, min: usize, max: usize) -> 
     }
 }
 
-fn identifier_of<'a>(value: Option<&'a Value>, path: &str) -> Checked<&'a str> {
+pub(crate) fn identifier_of<'a>(value: Option<&'a Value>, path: &str) -> Checked<&'a str> {
     match value {
         Some(Value::String(text)) if is_identifier(text) => Ok(text),
         _ => Err(invalid(path, "not an identifier")),
@@ -105,7 +110,7 @@ fn identifier_of<'a>(value: Option<&'a Value>, path: &str) -> Checked<&'a str> {
 
 /// An algorithm-qualified lowercase-hex digest, with the known algorithms'
 /// lengths checked (CORE section 10 step 2).
-fn digest_of<'a>(value: Option<&'a Value>, path: &str) -> Checked<&'a str> {
+pub(crate) fn digest_of<'a>(value: Option<&'a Value>, path: &str) -> Checked<&'a str> {
     let Some(Value::String(text)) = value else {
         return Err(invalid(path, "not a digest"));
     };
@@ -129,28 +134,36 @@ fn digest_of<'a>(value: Option<&'a Value>, path: &str) -> Checked<&'a str> {
     }
 }
 
-fn instant_of<'a>(value: Option<&'a Value>, path: &str) -> Checked<&'a str> {
+pub(crate) fn instant_of<'a>(value: Option<&'a Value>, path: &str) -> Checked<&'a str> {
     match value {
         Some(Value::String(text)) if crate::grants::is_instant(text) => Ok(text),
         _ => Err(invalid(path, "not a UTC instant")),
     }
 }
 
-fn one_of<'a>(value: Option<&'a Value>, path: &str, allowed: &[&str]) -> Checked<&'a str> {
+pub(crate) fn one_of<'a>(
+    value: Option<&'a Value>,
+    path: &str,
+    allowed: &[&str],
+) -> Checked<&'a str> {
     match value {
         Some(Value::String(text)) if allowed.contains(&text.as_str()) => Ok(text),
         _ => Err(invalid(path, &format!("not one of {}", allowed.join(", ")))),
     }
 }
 
-fn integer_of(value: Option<&Value>, path: &str, min: i64) -> Checked<i64> {
+pub(crate) fn integer_of(value: Option<&Value>, path: &str, min: i64) -> Checked<i64> {
     match value {
         Some(Value::Int(n)) if (min..=MAX_SAFE).contains(n) => Ok(*n),
         _ => Err(invalid(path, &format!("not an integer of at least {min}"))),
     }
 }
 
-fn array_of<'a>(value: Option<&'a Value>, path: &str, max: usize) -> Checked<&'a [Value]> {
+pub(crate) fn array_of<'a>(
+    value: Option<&'a Value>,
+    path: &str,
+    max: usize,
+) -> Checked<&'a [Value]> {
     match value {
         Some(Value::Array(items)) if items.len() <= max => Ok(items),
         _ => Err(invalid(

@@ -11,6 +11,7 @@ use cbr_encoding::Value;
 use crate::config::Config;
 use crate::effects;
 
+mod context_ops;
 mod evidence_ops;
 mod knowledge_ops;
 use crate::envelope::{self, Command, Query};
@@ -60,6 +61,14 @@ const SERVED: &[Served] = &[
     // `core.events`. It depends on `evidence/1` only as a protocol dependency,
     // so negotiating it does not require evidence in the same session.
     ("knowledge", 1, &[], &[("core", &["core.events"])]),
+    // CONTEXT section 1: `context/1` depends on `core/1` with `core.events`,
+    // and on `evidence/1` only as a protocol dependency.
+    (
+        "context",
+        1,
+        &crate::context::FEATURES,
+        &[("core", &["core.events"])],
+    ),
 ];
 
 /// Profiles this provider *declares* unsupported, which is a narrower thing
@@ -112,7 +121,7 @@ const UNPROTECTED: [&str; 6] = [
 /// Every operation that is a command rather than a query. A command carries a
 /// command identity, so its step 6 runs after deduplication; a query has none,
 /// so its step 6 runs first.
-const COMMANDS: [&str; 20] = [
+const COMMANDS: [&str; 22] = [
     "core-test.subject.put",
     "core-test.authority.claim",
     "core.grant.issue",
@@ -133,6 +142,8 @@ const COMMANDS: [&str; 20] = [
     "knowledge.conflict.open",
     "knowledge.conflict.resolve",
     "knowledge.applicability.evaluate",
+    "context.request.submit",
+    "context.request.cancel",
 ];
 
 /// Which authority epoch a command is checked against at step 7, before its
@@ -558,6 +569,11 @@ impl Provider {
                 | "knowledge.conflict.open"
                 | "knowledge.conflict.resolve"
                 | "knowledge.applicability.evaluate"
+                | "context.request.submit"
+                | "context.request.cancel"
+                | "context.request.inspect"
+                | "context.packet.inspect"
+                | "context.expand"
         )
     }
 
@@ -969,6 +985,13 @@ impl Provider {
                 error.code
             );
         }
+        // Preparation can call peers, so a connection that has not yet
+        // authenticated never sets it running.
+        if self.authenticated
+            && let Err(error) = self.tick_context()
+        {
+            eprintln!("cbr-provider: context preparation failed: {}", error.code);
+        }
         if !self.known_operation(method) {
             return Err(ProtocolError::method_not_found(method));
         }
@@ -1041,6 +1064,8 @@ impl Provider {
                 "knowledge.conflict.open" => self.knowledge_conflict_open(params, command),
                 "knowledge.conflict.resolve" => self.knowledge_conflict_resolve(params, command),
                 "knowledge.applicability.evaluate" => self.knowledge_evaluate(params, command),
+                "context.request.submit" => self.context_submit(params, command),
+                "context.request.cancel" => self.context_cancel(params, command),
                 _ => Err(ProtocolError::method_not_found(method)),
             };
         }
@@ -1087,6 +1112,9 @@ impl Provider {
             "knowledge.claim.inspect" => self.knowledge_inspect(&query.payload),
             "knowledge.claim.history" => self.knowledge_history(&query.payload),
             "knowledge.authority.get" => self.knowledge_authority_get(&query.payload),
+            "context.request.inspect" => self.context_request_inspect(&query.payload),
+            "context.packet.inspect" => self.context_packet_inspect(&query.payload),
+            "context.expand" => self.context_expand(&query.payload, in_force.as_ref()),
             _ => Err(ProtocolError::method_not_found(method)),
         }
     }
@@ -1247,6 +1275,9 @@ impl Provider {
                 .is_some_and(|(_, hold)| self.hold_visible(Some(grant), &hold)),
             // KNOWLEDGE section 10: the read right over the subject.
             kind if kind.starts_with("knowledge.") => grant.may_read(key, "knowledge.read"),
+            // CONTEXT section 10: a request under `context.read`, a job when
+            // any of its requests is readable.
+            kind if kind.starts_with("context.") => self.context_visible(grant, key),
             // A kind no profile defines is never readable under a grant.
             _ => false,
         }
@@ -1291,6 +1322,27 @@ impl Provider {
                 vec![(
                     "knowledge.read",
                     Some(crate::knowledge::key(crate::knowledge::AUTHORITY, &scope)),
+                )]
+            }
+            // CONTEXT section 10, after step 2's shape and step 3's feature.
+            "context.request.inspect" => {
+                let request = crate::context::check_request_inspect_payload(&query.payload)?;
+                vec![(
+                    "context.read",
+                    Some(crate::context::key(crate::context::REQUEST, &request)),
+                )]
+            }
+            "context.packet.inspect" | "context.expand" => {
+                let expand = query.operation == "context.expand";
+                let (packet, _, _) = crate::context::check_packet_payload(&query.payload, expand)?;
+                if expand && !self.selected_feature("context.expand") {
+                    return Err(ProtocolError::unsupported_required_feature_message(
+                        Value::Array(vec![Value::String("context.expand".into())]),
+                    ));
+                }
+                vec![(
+                    "context.packet.read",
+                    Some(crate::context::key(crate::context::PACKET, &packet)),
                 )]
             }
             _ => Vec::new(),
@@ -1529,7 +1581,7 @@ impl Provider {
                 key: Grant::key(&child.id),
                 value: String::from_utf8(cbr_encoding::to_canonical(&child.to_value()))
                     .expect("canonical form is UTF-8"),
-                event: revoked_event(&command.caused_by),
+                event: Some(revoked_event(&command.caused_by)),
             });
         }
         let revoked = Value::Array(revoked);
@@ -1797,6 +1849,11 @@ impl Provider {
                 "cbr-provider: evidence retention changes failed: {}",
                 error.code
             );
+        }
+        if self.authenticated
+            && let Err(error) = self.tick_context()
+        {
+            eprintln!("cbr-provider: context preparation failed: {}", error.code);
         }
     }
 
