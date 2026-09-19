@@ -255,28 +255,23 @@ pub fn search(
     Ok(hits)
 }
 
-/// Turn a query into FTS5's syntax: each token as written, or its parts
-/// together. `getUserName` finds the identifier; `user name` finds it too.
+/// Turn a query into FTS5's syntax: every part of every token must match.
+/// A document stores each identifier as its parts as well as whole, so the
+/// parts alone are enough, and asking for them means a query for
+/// `getUserName` also finds prose that says "get user name".
 fn match_expression(query: &str) -> Option<String> {
-    let mut groups: Vec<String> = Vec::new();
+    let mut terms: Vec<String> = Vec::new();
     for token in query.split(|c: char| !c.is_alphanumeric()) {
         if token.is_empty() {
             continue;
         }
-        let whole = token.to_lowercase();
-        let parts = split_identifier(token);
-        if parts.len() > 1 {
-            let parts = parts
+        terms.extend(
+            split_identifier(token)
                 .into_iter()
-                .map(|part| format!("\"{}\"", part.to_lowercase()))
-                .collect::<Vec<_>>()
-                .join(" AND ");
-            groups.push(format!("(\"{whole}\" OR ({parts}))"));
-        } else {
-            groups.push(format!("\"{whole}\""));
-        }
+                .map(|part| format!("\"{}\"", part.to_lowercase())),
+        );
     }
-    (!groups.is_empty()).then(|| groups.join(" AND "))
+    (!terms.is_empty()).then(|| terms.join(" AND "))
 }
 
 #[cfg(test)]

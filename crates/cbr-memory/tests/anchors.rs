@@ -32,6 +32,11 @@ impl Store {
 }
 
 fn only_here() -> u8 { 7 }
+
+fn caller(cache: &Cache) {
+    cache.get("k");
+    only_here();
+}
 "#;
 
 #[test]
@@ -74,6 +79,23 @@ fn a_name_defined_twice_resolves_to_both_and_is_marked_ambiguous() {
     let absent = anchors::resolve(&connection, "t1", "never_defined").expect("resolves");
     assert!(absent.candidates.is_empty());
     assert!(!absent.ambiguous, "nothing found is not ambiguity");
+
+    // The source calls both names. A call is a reference, not a definition,
+    // and resolving a name must not offer call sites as places it is defined.
+    assert!(
+        found
+            .iter()
+            .any(|anchor| anchor.name == "get" && !anchor.is_definition),
+        "the calls are tagged as references: {found:#?}"
+    );
+    assert!(
+        resolved
+            .candidates
+            .iter()
+            .all(|candidate| candidate.kind.contains("method")
+                || candidate.kind.contains("function")),
+        "{resolved:#?}"
+    );
 }
 
 /// An anchor belongs to the tree it was taken at. Asking at another tree is

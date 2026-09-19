@@ -90,6 +90,28 @@ fn an_identifier_is_found_by_its_parts_and_whole() {
     assert_eq!(paths(&connection, "t1", "HTTPServerError"), ["src/http.rs"]);
 }
 
+/// An identifier query finds the prose that describes it, because the parts
+/// are what is searched for. This is the half of the bargain that a document
+/// storing only whole tokens could not keep.
+#[test]
+fn an_identifier_query_finds_the_words_it_is_made_of() {
+    let connection = database();
+    index(
+        &connection,
+        "t1",
+        "notes.md",
+        "The get user name path is slow.\n",
+    );
+    index(
+        &connection,
+        "t1",
+        "other.md",
+        "Unrelated prose about queues.\n",
+    );
+    assert_eq!(paths(&connection, "t1", "getUserName"), ["notes.md"]);
+    assert_eq!(paths(&connection, "t1", "get_user_name"), ["notes.md"]);
+}
+
 /// Splitting must not turn different identifiers into the same one, and there
 /// is no stemming: `flush` and `flushed` are different symbols in code.
 #[test]

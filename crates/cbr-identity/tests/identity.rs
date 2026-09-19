@@ -224,6 +224,34 @@ fn the_environment_digest_covers_declared_build_facts_and_says_so() {
     assert!(environment(&twice).is_err());
 }
 
+/// The index is half of "dirty": a change staged and then undone in the
+/// working tree still differs from `HEAD`, so the checkout is not clean.
+#[test]
+fn a_staged_change_is_dirty_even_when_the_working_tree_matches_head_again() {
+    let directory = repository();
+    let path = directory.path();
+    std::fs::write(path.join("a.txt"), "staged\n").unwrap();
+    git(path, &["add", "a.txt"]);
+    // Put the working tree back to what HEAD has; only the index differs.
+    std::fs::write(path.join("a.txt"), "alpha\n").unwrap();
+
+    let snapshot = dirty_snapshot(path)
+        .expect("snapshot")
+        .expect("a staged change is dirty");
+    let entries = snapshot
+        .document
+        .get("entries")
+        .unwrap()
+        .as_array()
+        .unwrap();
+    assert!(
+        entries
+            .iter()
+            .any(|entry| entry.as_array().unwrap()[0].as_str() == Some("a.txt")),
+        "{entries:?}"
+    );
+}
+
 /// Reading a tree's blobs in bulk is what M3's retrieval needs, and what ADR
 /// 001 question 11 named as the trigger for this crate moving to `gix`. A
 /// tree answers for its own content and no other: an anchor taken at one tree

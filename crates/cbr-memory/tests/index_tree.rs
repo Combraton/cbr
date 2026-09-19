@@ -56,6 +56,8 @@ fn indexing_a_tree_makes_it_searchable_and_anchored_and_states_what_it_missed() 
     std::fs::write(path.join("main.go"), "func GoThing() {}\n").expect("writes");
     // Not text at all.
     std::fs::write(path.join("logo.bin"), [0xff, 0xfe, 0x00, 0x01]).expect("writes");
+    // A symlink's content is a path, not text of this tree.
+    std::os::unix::fs::symlink("notes.md", path.join("link.md")).expect("symlink");
     git(path, &["add", "."]);
     git(path, &["commit", "-q", "-m", "first"]);
     let first = cbr_identity::git_basis(path, "HEAD").expect("basis");
