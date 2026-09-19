@@ -18,3 +18,4 @@
 //! SQLite at all.
 
 pub mod evaluator;
+pub mod lexical;
