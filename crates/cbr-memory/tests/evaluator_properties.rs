@@ -98,13 +98,7 @@ fn generate(seed: u64) -> Program {
     let mut rng = Rng(seed | 1);
     let input_count = 3 + rng.below(5);
     let inputs: Vec<(String, u64, Durability)> = (0..input_count)
-        .map(|index| {
-            (
-                format!("input:{index}"),
-                rng.next() % 16,
-                rng.durability(),
-            )
-        })
+        .map(|index| (format!("input:{index}"), rng.next() % 16, rng.durability()))
         .collect();
     let node_count = 4 + rng.below(12);
     let mut nodes = Vec::new();
@@ -161,7 +155,11 @@ impl Untracked {
     }
 }
 
-fn functions(program: &Program, untracked: Arc<Untracked>, executions: Arc<Mutex<u64>>) -> Functions {
+fn functions(
+    program: &Program,
+    untracked: Arc<Untracked>,
+    executions: Arc<Mutex<u64>>,
+) -> Functions {
     let program = program.clone();
     let mut functions = Functions::new();
     functions.register("node", move |session: &mut Session<'_>, argument: &str| {
@@ -182,7 +180,7 @@ fn functions(program: &Program, untracked: Arc<Untracked>, executions: Arc<Mutex
                 total % modulus
             }
             Operation::Choice { switch, even, odd } => {
-                let chosen = if number(&session.read(switch)?) % 2 == 0 {
+                let chosen = if number(&session.read(switch)?).is_multiple_of(2) {
                     even
                 } else {
                     odd
@@ -242,7 +240,7 @@ fn recompute(program: &Program, inputs: &BTreeMap<String, u64>, untracked: u64, 
                 total % modulus
             }
             Operation::Choice { switch, even, odd } => {
-                let chosen = if value(program, inputs, untracked, switch, memo) % 2 == 0 {
+                let chosen = if value(program, inputs, untracked, switch, memo).is_multiple_of(2) {
                     even
                 } else {
                     odd
@@ -297,7 +295,7 @@ impl Database {
 
 #[test]
 fn demand_driven_evaluation_always_agrees_with_a_from_scratch_recompute() {
-    for seed in 1..=120u64 {
+    for seed in 1..=200u64 {
         let program = generate(seed.wrapping_mul(0x9e37_79b9_7f4a_7c15));
         let untracked = Arc::new(Untracked::default());
         let executions = Arc::new(Mutex::new(0u64));
@@ -424,7 +422,8 @@ fn a_recomputed_value_that_did_not_change_does_not_re_execute_its_dependents() {
 
     evaluator::set_input(&database.connection, "input:a", &bytes(1), Durability::Low)
         .expect("sets an input");
-    let first = evaluator::evaluate(&database.connection, &functions, "above:y").expect("evaluates");
+    let first =
+        evaluator::evaluate(&database.connection, &functions, "above:y").expect("evaluates");
     assert_eq!(number(&first), 8);
     assert_eq!(
         *executions.lock().expect("log"),
@@ -497,7 +496,9 @@ fn the_dependents_of_an_input_are_recorded_for_invalidation() {
     let database = Database::new();
     let mut functions = Functions::new();
     functions.register("double", |session: &mut Session<'_>, argument| {
-        Ok(bytes(number(&session.read(&format!("input:{argument}"))?) * 2))
+        Ok(bytes(
+            number(&session.read(&format!("input:{argument}"))?) * 2,
+        ))
     });
     functions.register("sum", |session: &mut Session<'_>, _argument| {
         Ok(bytes(
