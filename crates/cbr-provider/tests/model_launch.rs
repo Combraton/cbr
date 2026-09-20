@@ -132,7 +132,8 @@ fn an_endpoint_in_the_configuration_refuses_the_launch_whatever_it_says() {
         ));
         assert!(!started, "{endpoint} started the launch: {message}");
         assert!(
-            message.contains("not configuration") && message.contains("api.minimax.io"),
+            message.contains("is not a member of `model_runtime`")
+                && message.contains("api.minimax.io"),
             "{endpoint}: {message}"
         );
     }
@@ -174,10 +175,25 @@ fn a_configured_model_with_no_keychain_is_a_refused_launch() {
     // environment variable, a file, or an unauthenticated call. This runs
     // where there is no Keychain, which is the only place it can be true.
     //
-    // **And it is the only test that passes `--permit-model-network`**,
-    // which is why it is gated: on a machine with a Keychain this launch
-    // would read the owner's real key. Off macOS there is nothing to read.
-    let (started, message) = launch_with(&["--permit-model-network"], CONFIGURED);
+    // **And it is the only test that passes `--permit-model-network`
+    // together with a valid model**, which is why it is gated: on a
+    // machine with a Keychain this launch reaches the credential. Off
+    // macOS there is nothing to read.
+    //
+    // It asks for the calibration, because that is now the only decision
+    // that reads a credential at all: a *serving* launch with a model
+    // configured is refused while this build has no call site to spend one
+    // at (`launch::SERVING_CALLS_A_MODEL`).
+    let (started, message) = launch_with(
+        &[
+            "--permit-model-network",
+            "--calibrate",
+            "/dev/null",
+            "--model-run-ceiling",
+            "100000",
+        ],
+        CONFIGURED,
+    );
     assert!(!started, "it started without a credential: {message}");
     assert!(
         message.contains("keychain_unavailable"),
@@ -285,6 +301,107 @@ fn permitting_the_network_with_no_model_configured_is_refused() {
     assert!(
         String::from_utf8_lossy(&output.stderr).contains("needs a configured model"),
         "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn a_model_runtime_member_that_is_not_one_of_the_three_refuses_the_launch() {
+    // **The denylist was the shape it was just named for.** m4b refused
+    // five members by name and accepted every other: `url`, `api_base` and
+    // `proxy` loaded without complaint and were silently ignored, so a
+    // configuration could say where to send the owner's credential and be
+    // believed to have said nothing.
+    //
+    // An allowlist instead: `provider`, `dialect`, `model`, and nothing
+    // else. Naming more spellings was never going to end.
+    for member in [
+        r#""url":"https://collector.example""#,
+        r#""api_base":"https://collector.example""#,
+        r#""proxy":"http://collector.example:8080""#,
+        r#""endpoint":"https://collector.example/v1""#,
+        r#""count_endpoint":"https://collector.example/count""#,
+        r#""base_url":"https://collector.example""#,
+        r#""host":"collector.example""#,
+        r#""timeout_seconds":1"#,
+        r#""Provider":"minimax""#,
+    ] {
+        let (started, message) = launch(&format!(
+            r#"{{"provider":"minimax","dialect":"openai","model":"MiniMax-M2.7",{member}}}"#
+        ));
+        assert!(!started, "{member} started the launch: {message}");
+        assert!(
+            message.contains("is not a member of `model_runtime`"),
+            "{member}: {message}"
+        );
+    }
+}
+
+#[test]
+fn a_top_level_member_that_is_not_known_refuses_the_launch() {
+    // The same shape one level up: `Config::load` read the members it knew
+    // and ignored the rest, so a misspelling was a setting that silently
+    // did nothing. An operator who writes `principle` instead of
+    // `principal` should be told, not served.
+    for member in [
+        r#""principle":"owner""#,
+        r#""model_run_ceiling":100"#,
+        r#""telemetry":{"enabled":true}"#,
+    ] {
+        let directory = tempfile::tempdir().expect("temp dir");
+        let config = directory.path().join("config.json");
+        std::fs::write(
+            &config,
+            format!(r#"{{"format":"cbr-config/1","principal":"owner",{member}}}"#),
+        )
+        .expect("config");
+        let output = Command::new(binary())
+            .arg("--data-dir")
+            .arg(directory.path().join("data"))
+            .arg("--config")
+            .arg(&config)
+            .stdin(Stdio::null())
+            .output()
+            .expect("runs");
+        let message = String::from_utf8_lossy(&output.stderr).to_string();
+        assert!(!output.status.success(), "{member} started: {message}");
+        assert!(
+            message.contains("is not a launch configuration member"),
+            "{member}: {message}"
+        );
+    }
+}
+
+#[test]
+fn every_member_the_loader_reads_is_still_accepted() {
+    // The other half, so the allowlists cannot pass by refusing
+    // everything. A configuration using the members CBR actually reads
+    // starts, and a conformance one with its controls starts too.
+    let directory = tempfile::tempdir().expect("temp dir");
+    let config = directory.path().join("config.json");
+    std::fs::write(
+        &config,
+        r#"{"format":"combraton-conformance-config/1","principal":"owner",
+            "authority_principals":["owner"],"provider_id":"conformance-provider",
+            "limits":{"max_frame_bytes":2097152},"events":{"unvouched_last":0},
+            "capabilities":{"core.events":"supported"},"credentials":[],
+            "clock":{"fixed":"2026-09-20T12:00:00Z"},"dedupe":{"retain_generations":1},
+            "evidence_store":{"corrupt":[]},"knowledge":{"serve_altered_claims":[]},
+            "context":{},"model":{"job":"j","request":"r","body":"{\"max_tokens\":8}",
+            "answer":"usage:1","generation":8}}"#,
+    )
+    .expect("config");
+    let output = Command::new(binary())
+        .arg("--data-dir")
+        .arg(directory.path().join("data"))
+        .arg("--config")
+        .arg(&config)
+        .stdin(Stdio::null())
+        .output()
+        .expect("runs");
+    assert!(
+        output.status.success(),
+        "a configuration of known members was refused: {}",
         String::from_utf8_lossy(&output.stderr)
     );
 }

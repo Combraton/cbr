@@ -197,19 +197,53 @@ fn provider_failure(read: &Json) -> Option<Unusable> {
             Unusable::ProviderError
         });
     }
-    if read.get("type").and_then(Json::as_str) == Some("error") {
-        let kind = read
-            .get("error")
-            .and_then(|error| error.get("type"))
-            .and_then(Json::as_str)
-            .unwrap_or_default();
-        return Some(if kind.contains("rate_limit") || kind.contains("quota") {
-            Unusable::ProviderExhausted
-        } else {
-            Unusable::ProviderError
-        });
+    // **A body that carries an error member is a failure, whatever the
+    // status says, in every dialect.**
+    //
+    // The first live call proved the need for it: the failure arrived as
+    // `{"error":{"message","code"}}` with a *string* code — neither the
+    // `base_resp` shape above nor Anthropic's `{"type":"error"}` — and a
+    // parser that let the HTTP status decide read it as a successful
+    // response with no content. That is the worst available reading,
+    // because everything downstream then treats emptiness as the answer.
+    //
+    // The shapes differ per dialect and will keep differing. The rule does
+    // not, so it is written once and over the member rather than over any
+    // one vendor's spelling of it.
+    match read.get("error") {
+        // `"error": null` is what a successful Responses API answer
+        // carries. Reading that as a failure turns every good answer into
+        // one, which is the opposite mistake and no better.
+        None | Some(Json::Null) => {}
+        Some(error) => {
+            return Some(if names_an_exhausted_quota(error) {
+                Unusable::ProviderExhausted
+            } else {
+                Unusable::ProviderError
+            });
+        }
     }
     None
+}
+
+/// Whether an error says the quota is gone rather than that the request was
+/// wrong. Read across the members vendors put it in — `type`, `code`,
+/// `message` — because which one carries it is the part that varies.
+fn names_an_exhausted_quota(error: &Json) -> bool {
+    let mut said = String::new();
+    for member in ["type", "code", "message"] {
+        if let Some(text) = error.get(member).and_then(Json::as_str) {
+            said.push_str(text);
+            said.push(' ');
+        }
+    }
+    if let Some(text) = error.as_str() {
+        said.push_str(text);
+    }
+    let said = said.to_ascii_lowercase();
+    ["rate_limit", "rate limit", "quota", "insufficient balance"]
+        .iter()
+        .any(|marker| said.contains(marker))
 }
 
 fn content(dialect: Dialect, read: &Json) -> Option<Content> {

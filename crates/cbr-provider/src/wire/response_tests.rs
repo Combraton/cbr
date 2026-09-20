@@ -298,3 +298,90 @@ fn a_count_body_whose_members_disagree_is_refused() {
         Some(1180)
     );
 }
+
+// --- an error member is an error, whatever the status says ---------------
+
+const OBSERVED_COUNT_ERROR: &[u8] =
+    include_bytes!("fixtures/count-invalid-request.observed-2026-09-20.json");
+
+#[test]
+fn the_error_shape_the_live_service_actually_returned_is_read_as_a_failure() {
+    // **Observed on 2026-09-20**, in the calibration's one call. Neither
+    // `base_resp.status_code` nor Anthropic's `{"type":"error"}` appeared;
+    // it is OpenAI's shape, and `code` is a string.
+    for dialect in [Dialect::OpenAi, Dialect::Anthropic] {
+        let read = read_completion(dialect, &Want::Text, OBSERVED_COUNT_ERROR);
+        assert_eq!(
+            read.reply,
+            Err(Unusable::ProviderError),
+            "{}",
+            dialect.name()
+        );
+    }
+    assert_eq!(
+        read_count(OBSERVED_COUNT_ERROR),
+        None,
+        "and it is not a count"
+    );
+}
+
+#[test]
+fn a_body_that_carries_an_error_member_is_a_failure_whatever_the_status_says() {
+    // **The general rule.** This provider reported a failure inside an HTTP
+    // 200 once already, and a parser that lets the status decide reads that
+    // as a successful response with no content — the worst possible reading,
+    // because everything downstream then treats emptiness as the answer.
+    //
+    // In **every** dialect: the shapes differ, the rule does not.
+    for dialect in [Dialect::OpenAi, Dialect::Anthropic] {
+        for body in [
+            br#"{"error":{"message":"bad request","code":"invalid_prompt"}}"#.as_slice(),
+            br#"{"error":{"message":"bad request","code":1004}}"#.as_slice(),
+            br#"{"error":"flat string error"}"#.as_slice(),
+        ] {
+            let read = read_completion(dialect, &Want::Text, body);
+            assert!(
+                matches!(read.reply, Err(Unusable::ProviderError)),
+                "{}: {} was read as {:?}",
+                dialect.name(),
+                String::from_utf8_lossy(body),
+                read.reply
+            );
+        }
+    }
+}
+
+#[test]
+fn an_error_member_naming_an_exhausted_quota_is_still_exhaustion() {
+    // The distinction the ledger depends on survives the new rule: a quota
+    // that is gone is not the same outcome as a request that was wrong.
+    for body in [
+        br#"{"error":{"message":"x","code":"rate_limit_exceeded"}}"#.as_slice(),
+        br#"{"error":{"message":"insufficient quota","code":"x"}}"#.as_slice(),
+    ] {
+        assert_eq!(
+            read_completion(Dialect::OpenAi, &Want::Text, body).reply,
+            Err(Unusable::ProviderExhausted),
+            "{}",
+            String::from_utf8_lossy(body)
+        );
+    }
+}
+
+#[test]
+fn an_error_members_own_words_still_never_reach_the_outcome() {
+    let body = br#"{"error":{"message":"ERRORMEMBER-CANARY","code":"ERRCODE-CANARY"}}"#;
+    let read = read_completion(Dialect::OpenAi, &Want::Text, body);
+    assert!(!format!("{read:?}").contains("CANARY"), "{read:?}");
+}
+
+#[test]
+fn a_null_error_member_is_not_an_error() {
+    // The Responses API carries `"error": null` on every successful
+    // response. Reading that as a failure would turn every good answer
+    // into one, which is the opposite mistake and just as bad.
+    let body = br#"{"error":null,"choices":[{"message":{"content":"hi"},
+"finish_reason":"stop"}],"usage":{"total_tokens":3}}"#;
+    let read = read_completion(Dialect::OpenAi, &Want::Text, body);
+    assert_eq!(read.reply, Ok(Reply::Text("hi".into())), "{read:?}");
+}

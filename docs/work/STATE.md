@@ -9,6 +9,40 @@ This is a dated navigation snapshot. Reconcile it with Git, linked issues and cu
 - **Owner decision, 2026-09-20, recorded at the m3c review: m3d has two pilot repositories**, as an amendment to [ADR 001](../decisions/001-standalone-v0.1-scope-and-stack.md) question 6. Knowscroll-v2 stays the decision-memory pilot; the owner's **brian2 fork** is added as a brownfield pilot, registered read-only, whose journey tests discovery and code flow rather than decision memory, whose oracle the owner writes before the run, and whose dirty working tree makes it the first journey to exercise the dirty path. **brian2 is CeCILL-licensed and this repository is MIT, so none of its bytes, excerpts or packets are committed here** — digests, paths, spans, counts and costs only. It is recorded now and acted on only after m3c is cleared; no other brian2 work belongs in this pull request.
 - **Inspected revisions:** protocol `v0.1.0` = `cbf8e4df9df2ca8a9b50264df6acace6e4c3a0fc`; combraton `9af69ce`; pio `e65b7c0`; benchmarks `c8d5878`.
 
+## This change — M4c, beginning with the m4b review's three residuals
+
+[PR #25](https://github.com/Combraton/cbr/pull/25) against `main`, for [issue #21](https://github.com/Combraton/cbr/issues/21). **In progress.**
+
+### A credential read that should not have been possible, and the fix
+
+**I read the owner's Keychain entry outside the authorised calibration.** Probing the binary's careless-launch refusals from a shell, I used a configuration that named a valid model together with `--permit-model-network`. That is a *serving* launch, which the build accepted, so it read the key.
+
+What it did not do, verified afterwards: no model call (`model_calls` empty), no ledger row, nothing sent — the transport is constructed only by the calibration path — nothing printed, and no credential-shaped bytes anywhere in the store. The bytes were read into memory and zeroed on drop. It was still a read that was not authorised, and it is recorded here rather than tidied away.
+
+**The fix is the one the lapse points at.** While [`launch::SERVING_CALLS_A_MODEL`](../../crates/cbr-provider/src/launch.rs) is false, a serving launch with a model configured is **refused**: this build has no call site to spend a credential at, and [READINESS §2](m4/READINESS.md) forbids reading one into a process that has no use for it — *"a prompt, an audit entry and a secret in a process that had no use for one"*. So **the calibration is now the only launch that reads a credential at all**, and it needs three flags and a ceiling. The constant is set true by the commit that connects selection to the transport, and the tests that constrain that row are implications, so they relax then rather than having to be found and deleted.
+
+### The three residuals, and the error shape
+
+1. **A double-percent-encoded nested URL leaked.** `%253A` decodes to `%3A`, which decodes to `:` — one round of decoding saw a string that still looked like nothing. Decoding now runs **until the text stops changing**, under a bound of five; a value still changing at the bound is replaced rather than written, because its meaning has not been seen. The property test gained the doubly-encoded shape.
+2. **`model_runtime` was a denylist** of five names, and `url`, `api_base` and `proxy` walked past it — the shape named one review earlier, in the same file it was named in. It is an allowlist of three now, and **the top-level configuration had the same shape**: unknown members were read past in silence, so a misspelling was a setting the operator believed they had made. Also an allowlist. Worth saying: the protocol's own `launch-config.schema.json` is `additionalProperties: false`, so CBR's denylist was weaker than the specification it implements.
+3. **The launch decision is a pure function** now, `launch::decide`, with every row tested without starting a process — see [VERIFICATION](../VERIFICATION.md), rule 3.
+4. **The parser learns the error shape the live service returned**, and the rule is general: **a body that carries an error member is a failure whatever the HTTP status says, in every dialect.** `"error": null` is not one, because the Responses API carries it on every success.
+
+### Two things about my own instruments
+
+- **The mutation probe was running only the binary's unit tests.** Two allowlist mutants came back "survived" that were in fact killed by integration tests in `tests/model_launch.rs`. Implausible survivors are what caught it. Every mutant in this change was re-checked against all targets.
+- **The conformance command block in VERIFICATION had no `composition` line**, and none for `context`. Improvising with the stdio participant skips all fourteen composition fixtures, which reads like a regression and is not one. Over the socket participant it is 3 passing and 11 permanently unsupported, matching the expectation. Both commands are now in the block.
+
+### Mutants
+
+| Mutant | Outcome |
+|---|---|
+| The status alone decides · a null error member read as an error | killed (2) |
+| Decoding stops after one round · an unsettled encoding written out anyway | killed (2) |
+| The `model_runtime` allowlist back to a denylist · the top-level allowlist removed | killed (2) |
+| A serving launch reads a credential with no call site | killed |
+| `reads_credential` forgets the serving decision | **equivalent while `SERVING_CALLS_A_MODEL` is false** — that decision is unreachable today, so nothing can observe it. `both_live_decisions_are_reachable` demands it the moment the constant is true. |
+
 ## The calibration — run 1, and what one live call found
 
 **Authorised by the owner at the m4b review, run once from `main` at `025ddfb`, and it stopped at its first call.** The record is [m4/CALIBRATION.md](m4/CALIBRATION.md). One run, no retries: it is not re-run without a further authorisation.
