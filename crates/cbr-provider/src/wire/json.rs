@@ -285,6 +285,52 @@ impl Reader<'_> {
 }
 
 impl Json {
+    /// Back to JSON text.
+    ///
+    /// Needed because redaction runs over **decoded** string values: an
+    /// escaped `\/` or `\u0026` hides a URL's shape from a scanner that
+    /// reads raw bytes, so the document is taken apart, redacted and put
+    /// back together rather than patched in place.
+    pub fn write(&self) -> String {
+        let mut out = String::new();
+        self.write_into(&mut out);
+        out
+    }
+
+    fn write_into(&self, out: &mut String) {
+        match self {
+            Json::Null => out.push_str("null"),
+            Json::Bool(true) => out.push_str("true"),
+            Json::Bool(false) => out.push_str("false"),
+            // As written: this reader interprets no numbers and this
+            // writer does not reformat them.
+            Json::Number(written) => out.push_str(written),
+            Json::String(text) => write_string(text, out),
+            Json::Array(items) => {
+                out.push('[');
+                for (at, item) in items.iter().enumerate() {
+                    if at > 0 {
+                        out.push(',');
+                    }
+                    item.write_into(out);
+                }
+                out.push(']');
+            }
+            Json::Object(members) => {
+                out.push('{');
+                for (at, (name, value)) in members.iter().enumerate() {
+                    if at > 0 {
+                        out.push(',');
+                    }
+                    write_string(name, out);
+                    out.push(':');
+                    value.write_into(out);
+                }
+                out.push('}');
+            }
+        }
+    }
+
     pub fn get(&self, name: &str) -> Option<&Json> {
         match self {
             Json::Object(members) => members
@@ -352,4 +398,27 @@ impl Json {
             ),
         })
     }
+}
+
+/// A JSON string, escaping exactly what has to be escaped. Non-ASCII is
+/// written as itself, because the output is UTF-8 and an escape would only
+/// give something else somewhere a place to hide.
+fn write_string(text: &str, out: &mut String) {
+    out.push('"');
+    for character in text.chars() {
+        match character {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            '\u{8}' => out.push_str("\\b"),
+            '\u{c}' => out.push_str("\\f"),
+            control if (control as u32) < 0x20 => {
+                out.push_str(&format!("\\u{:04x}", control as u32));
+            }
+            other => out.push(other),
+        }
+    }
+    out.push('"');
 }

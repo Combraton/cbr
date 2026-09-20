@@ -66,7 +66,7 @@ A provider response can carry a **third party's live credential**: one pilot rep
 - **No fixture here has been compared with the live service.** Every one is hand-written from public documentation, nothing was fetched from the provider to make them, and the word `unverified` is in each file name, each constant name and the directory's README. A passing test says CBR reads what CBR *believes* the provider sends.
 - **The count response's shape is a guess.** The parser accepts a small closed set of member names and refuses a body carrying none of them, which leaves the local estimate standing. It is named as the least verified thing in the module.
 - **Two status codes are mapped to exhaustion and that mapping is a guess.** Anything else non-zero degrades to "something failed", never to success.
-- **The transport has no call site.** m4c gives it one; `Http`, `Runtime::ask` and `Want` carry dead-code allowances until then, exactly as the fake transport did before m4a used it.
+- **The transport now has a call site**: the calibration, built here on the reviewer's instruction — *if the first live call needs new plumbing, the first live call runs code nobody reviewed*. It has not been run. The allowances that call site makes unnecessary are gone; what remains is `Role::Assistant` and two `Want` variants, each scoped to `not(test)` and each exercised by the serializer's and parser's tests, waiting for m4c's loop to construct them.
 - **Still no token count of CBR's has been compared with the provider's.** That is the calibration, [READINESS §10](m4/READINESS.md#10-the-calibration-and-what-stops-m4).
 
 ### Defects of my own, and one vacuous test
@@ -78,6 +78,26 @@ Three, all caught by tests rather than by reading:
 3. **Two of my own mutants survived, and both were the test's fault.** The proxy test asserted "no proxy" without setting one, so it held whether or not the code asked for it. The count-endpoint test used only the OpenAI endpoint, which is a prefix of the counting endpoint, so a transport deriving the count URL from the dialect passed. Both tests are fixed and both mutants now die.
 
 **One vacuous test written, then deleted rather than patched.** It took a copy of the header bytes before zeroing and asserted the copy was non-zero, which cannot fail; it also duplicated a test that already existed. This is the same failure the clippy finding in the first commit was, arriving by hand rather than by lint, which is worth recording because the lint will not always be there.
+
+### The review's two defects, and the shape they share
+
+**This is the fifth and sixth instance of the same shape**, and it is worth naming precisely because the earlier four looked different from each other: *a rule enforced at the level of a string that somebody else controls the spelling of.*
+
+- **The endpoint host was not pinned**, so "MiniMax only" was a label. Configuration accepted provider `minimax` with an endpoint at `collector.example`, at the lookalike `api.minimax.io.collector.example`, and at the userinfo form `api.minimax.io@collector.example` — each of which names the provider correctly and addresses somebody else, and each of which would have sent the owner's credential and repository text there. The rule was checked against a **string an operator's mistake or a planted configuration file writes**.
+- **Redaction read raw text**, so a JSON-escaped URL (`https:\/\/…\u0026Signature=…`) hid its own shape from the "is this a URL" test, and a percent-encoded URL nested in a parameter that named no secret hid inside one. The rule was checked against a **string the serializer controls the encoding of**.
+
+The earlier four were the same thing in other clothes: a rule written down and read by no test; a golden digest over a fixture too small to reach what it guarded; a platform-gated claim whose mutant could only die somewhere else. **The common fix is not more cases — it is to move the check to a level the other party does not choose.** The host is now parsed rather than matched, and configuration supplies no endpoint at all; redaction runs over decoded values and re-serializes, so an escape has nothing to hide behind.
+
+Two of the guards are now **types** rather than tests, joining `Redacted`: a `PinnedUrl` whose only constructor checks the host, and the `net::Permit` the transport needs. Fabricating either outside its module is a compile error.
+
+### What could not be killed, and why
+
+Three mutants survive and are recorded as survivors:
+
+- **`url_to_send` not pinning what it built**, and **the transport building its own URL** — because the URL is made of constants, so removing a check on it changes nothing a test can observe. The check exists for a future code path that builds one some other way, which is what the reviewer asked for; `PinnedUrl` makes bypassing it a visible rewrite of the call site rather than a deleted line, but it does not make it a test failure.
+- **Either `Drop` body emptied** (`Secret`, `Authorization`, `Scrubber`) — nothing in safe Rust can observe a released heap buffer. What is killed is the guard doing nothing.
+
+One mutant is **equivalent and therefore not counted**: comparing the calibration's stop condition against the *believed* count rather than the *reported* one. A count above the local bound is necessarily above the implausibility floor, so the disbelief rule never fires on the case being looked for. The distinction is real for the **table** — a count below the floor must be recorded as the provider's own figure, or the run hides exactly how loose the bound is — and that has its own test. The first version of this module claimed the distinction mattered for the stop condition; it does not, and the comment was corrected rather than left as a plausible-sounding reason.
 
 ### Mutants
 
@@ -114,6 +134,10 @@ Three, all caught by tests rather than by reading:
 | A permit available without the gate | killed |
 | The agent takes a proxy from the environment | survived, **test fixed**, now killed |
 | The count sent to the dialect's own endpoint | survived, **test fixed**, now killed |
+| Host checked as a prefix · the userinfo check removed | killed (2) |
+| The JSON path removed · the lossy path passing through · the exact-match scrub removed · the percent-decode of a URL value removed · the fail-closed check after scrubbing removed | killed (5) |
+| The calibration's stop condition removed · the table recording the believed count · the completion not capped at sixteen · the non-Latin text dropped from the corpus | killed (4) |
+| `url_to_send` not pinning what it built · the transport building its own URL | **survive**, and cannot be killed: the URL is a constant, so removing a check on it changes nothing observable. `PinnedUrl` makes bypassing it a compile error for the fabrication route and a visible rewrite for the other. |
 | `supported()` always true | **survived on macOS at first**, and would have died only in CI — a kill nobody here could observe. The platform rule is now a function of an operating system's *name* rather than of the machine running the tests, so it is **killed everywhere**, observed locally. |
 | Either `Drop` body emptied (`Secret`, `Authorization`) | **survives, and cannot be killed** — nothing in safe Rust can observe a released heap buffer. What is killed is the guard doing nothing. |
 

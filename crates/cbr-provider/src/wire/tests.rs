@@ -11,18 +11,15 @@ fn each_dialect_round_trips_its_name() {
 }
 
 #[test]
-fn both_endpoints_are_the_owners_and_both_are_https() {
-    // The two wires of one provider, recorded in ADR 001 question 3.
-    assert_eq!(
-        Dialect::OpenAi.default_endpoint(),
-        "https://api.minimax.io/v1"
-    );
-    assert_eq!(
-        Dialect::Anthropic.default_endpoint(),
-        "https://api.minimax.io/anthropic"
-    );
+fn each_dialect_lives_under_its_own_base_on_the_one_pinned_host() {
+    // The two wires of one provider, recorded in ADR 001 question 3. They
+    // are paths under a constant host rather than endpoints, so there is
+    // nothing here for a configuration to point elsewhere.
+    assert_eq!(Dialect::OpenAi.base(), "/v1");
+    assert_eq!(Dialect::Anthropic.base(), "/anthropic");
     for dialect in [Dialect::OpenAi, Dialect::Anthropic] {
-        assert!(dialect.default_endpoint().starts_with("https://"));
+        assert!(dialect.base().starts_with('/'));
+        assert!(!dialect.base().contains("//"), "not a host in disguise");
     }
 }
 

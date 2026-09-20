@@ -302,3 +302,36 @@ fn the_framed_message_count_includes_the_system_instruction() {
         );
     }
 }
+
+#[test]
+fn a_conversation_keeps_its_turns_in_order_and_in_role() {
+    // A model-assisted selection is not always one question: a repair adds
+    // a turn, and m4c's loop will add more. The roles have to survive, and
+    // an assistant turn is the one a serializer that only ever wrote `user`
+    // would get wrong without any test noticing.
+    let mut asked = request(Want::Text);
+    asked.messages.push(Message {
+        role: Role::Assistant,
+        text: "which ones are eligible?".into(),
+    });
+    asked.messages.push(Message {
+        role: Role::User,
+        text: "s1, s4".into(),
+    });
+    for dialect in BOTH {
+        let body = cbr_encoding::parse(&asked.serialize(dialect)).expect("its own body");
+        let messages = body
+            .get("messages")
+            .and_then(Value::as_array)
+            .expect("messages");
+        let roles: Vec<_> = messages
+            .iter()
+            .filter_map(|message| message.get("role").and_then(Value::as_str))
+            .collect();
+        let expected: Vec<&str> = match dialect {
+            Dialect::OpenAi => vec!["system", "user", "assistant", "user"],
+            Dialect::Anthropic => vec!["user", "assistant", "user"],
+        };
+        assert_eq!(roles, expected, "{}", dialect.name());
+    }
+}

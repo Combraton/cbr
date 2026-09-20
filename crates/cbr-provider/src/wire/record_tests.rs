@@ -50,6 +50,7 @@ fn a_credential_shaped_string_in_a_response_never_reaches_the_store() {
             request: "r",
             model: "MiniMax-M2.7",
             dialect: Dialect::OpenAi,
+            scrubber: None,
         };
         let runtime = Runtime {
             ledger: Ledger::new(&connection),
@@ -118,8 +119,8 @@ fn the_store_only_accepts_bytes_that_went_through_the_boundary() {
         crate::model::Call::Completion,
         Dialect::OpenAi,
         "MiniMax-M2.7",
-        &redact(b"sent"),
-        &redact(br#"{"api_key":"INLINECANARY"}"#),
+        &redact(b"sent", None),
+        &redact(br#"{"api_key":"INLINECANARY"}"#, None),
     )
     .expect("records");
     let recorded = rows(&connection).expect("rows");
@@ -142,6 +143,7 @@ fn what_was_sent_is_recorded_too_and_is_redacted_the_same_way() {
         request: "r",
         model: "MiniMax-M2.7",
         dialect: Dialect::OpenAi,
+        scrubber: None,
     };
     let sent = br#"{"messages":[{"content":"found sk-REQUESTCANARY0123456789 in config"}]}"#;
     crate::model::Transport::send(&recording, crate::model::Call::Count, sent);

@@ -163,6 +163,115 @@ impl Secret {
     }
 }
 
+/// What the recording boundary is given instead of the credential.
+///
+/// It holds the credential in the shapes it travels in — raw, base64 and
+/// percent-encoded — and exposes **only** [`Self::scrub`]: replace
+/// occurrences in these bytes. It cannot be read, printed, compared or
+/// taken apart, so handing one to the redactor does not widen who can see
+/// the secret, which is the whole reason it is built in this module.
+///
+/// It exists because nothing structural can catch a provider that echoes
+/// the key back in a shape with no known prefix and no parameter name:
+/// the only thing that makes those bytes a credential is that they are
+/// **this process's** credential.
+pub struct Scrubber {
+    needles: Vec<Vec<u8>>,
+}
+
+impl Scrubber {
+    /// The shapes one credential arrives in when something logged, framed
+    /// or forwarded it.
+    pub fn over(credential: &str) -> Self {
+        let mut needles = vec![
+            credential.as_bytes().to_vec(),
+            cbr_encoding::encode_base64(credential.as_bytes()).into_bytes(),
+            percent_encoded(credential).into_bytes(),
+        ];
+        // Longest first, so a shape that contains another is replaced whole
+        // rather than left holding a marker in the middle of itself.
+        needles.sort_by_key(|needle| std::cmp::Reverse(needle.len()));
+        needles.retain(|needle| !needle.is_empty());
+        Scrubber { needles }
+    }
+
+    /// Replace every occurrence of the credential with `marker`.
+    pub fn scrub(&self, bytes: Vec<u8>, marker: &str) -> Vec<u8> {
+        let mut out = bytes;
+        for needle in &self.needles {
+            out = replace(&out, needle, marker.as_bytes());
+        }
+        out
+    }
+
+    /// Whether the credential is anywhere in these bytes.
+    ///
+    /// For the caller that has to decide whether a record can be made safe
+    /// at all: a credential can be encoded in ways an exact match does not
+    /// see, and a record that still holds one after scrubbing is one to
+    /// replace rather than to write.
+    pub fn found_in(&self, bytes: &[u8]) -> bool {
+        self.needles.iter().any(|needle| {
+            bytes
+                .windows(needle.len())
+                .any(|window| window == needle.as_slice())
+        })
+    }
+}
+
+impl Drop for Scrubber {
+    fn drop(&mut self) {
+        for needle in &mut self.needles {
+            drop(Zeroed(needle));
+        }
+    }
+}
+
+impl std::fmt::Debug for Scrubber {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("Scrubber(..)")
+    }
+}
+
+/// Percent-encode everything outside the unreserved set, which is the shape
+/// a credential takes inside a query string.
+fn percent_encoded(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for byte in text.bytes() {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_' | b'~') {
+            out.push(byte as char);
+        } else {
+            out.push_str(&format!("%{byte:02X}"));
+        }
+    }
+    out
+}
+
+fn replace(haystack: &[u8], needle: &[u8], with: &[u8]) -> Vec<u8> {
+    if needle.is_empty() || needle.len() > haystack.len() {
+        return haystack.to_vec();
+    }
+    let mut out = Vec::with_capacity(haystack.len());
+    let mut at = 0;
+    while at < haystack.len() {
+        if haystack[at..].starts_with(needle) {
+            out.extend_from_slice(with);
+            at += needle.len();
+        } else {
+            out.push(haystack[at]);
+            at += 1;
+        }
+    }
+    out
+}
+
+impl Secret {
+    /// A scrubber for this credential, for the recording boundary.
+    pub fn scrubber(&self) -> Scrubber {
+        Scrubber::over(self.expose())
+    }
+}
+
 /// A header value holding the credential, zeroed when it is dropped.
 pub struct Authorization(String);
 

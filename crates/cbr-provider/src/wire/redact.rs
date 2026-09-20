@@ -89,19 +89,146 @@ impl std::fmt::Debug for Redacted {
 }
 
 /// Replace everything credential-shaped in `bytes`.
-pub fn redact(bytes: &[u8]) -> Redacted {
-    // A record is not only text. Bytes that are not UTF-8 are passed
-    // through: there is nothing here that can read them, and mangling them
-    // would corrupt a record to no purpose.
-    let Ok(text) = std::str::from_utf8(bytes) else {
-        return Redacted(bytes.to_vec());
+///
+/// # Structural, not case by case
+///
+/// Four leaks were found in the first version, and all four were the same
+/// mistake: **the scanner read a string that something else controlled the
+/// encoding of.** A JSON-escaped URL (`https:\/\/…\u0026Signature=…`) hid
+/// its own shape from the "is this a URL" test. A percent-encoded URL
+/// nested in a parameter that named no secret hid inside one. One byte that
+/// was not UTF-8 turned redaction off for the whole record. And a provider
+/// echoing the key back in a shape with no known prefix was caught by
+/// nothing at all, because what made those bytes a credential was only that
+/// they were *this process's* credential.
+///
+/// So:
+///
+/// 1. **If the bytes are JSON**, the document is taken apart and redaction
+///    runs over the **decoded** string values, then it is written back. An
+///    escape cannot hide anything from a scanner that never sees escapes.
+/// 2. **A URL-shaped value is percent-decoded once** and scanned again, so
+///    a nested URL's parameters are judged by their own names. The decoded,
+///    redacted form is what is kept, because the encoded one cannot be
+///    patched safely.
+/// 3. **Bytes that are not UTF-8** are scanned through a lossy decoding
+///    that cannot be written back, so if anything is found the record
+///    **fails closed**: it is replaced by a marker and its length.
+/// 4. **The held credential is scrubbed exactly**, last, in the shapes it
+///    travels in — and if any percent-decoding of the result still holds
+///    it, that record fails closed too.
+pub fn redact(bytes: &[u8], scrubber: Option<&crate::keychain::Scrubber>) -> Redacted {
+    let mut out = match std::str::from_utf8(bytes) {
+        Ok(text) => match super::json::read(bytes) {
+            Some(document) => redact_json(&document).write().into_bytes(),
+            None => redact_text(text).into_bytes(),
+        },
+        Err(_) => {
+            let lossy = String::from_utf8_lossy(bytes);
+            if redact_text(&lossy) != lossy {
+                closed(bytes.len())
+            } else {
+                bytes.to_vec()
+            }
+        }
     };
+    if let Some(scrubber) = scrubber {
+        out = scrubber.scrub(out, REDACTED);
+        // An exact match sees the shapes a credential is known to travel
+        // in. It does not see every encoding of it, so what is about to be
+        // written is decoded once more and checked: a record that still
+        // holds the credential cannot be made safe and is replaced.
+        let decoded = percent_decode_once(&String::from_utf8_lossy(&out));
+        if scrubber.found_in(decoded.as_bytes()) {
+            out = closed(bytes.len());
+        }
+    }
+    Redacted(out)
+}
+
+/// What replaces a record that cannot be redacted safely. Its length is
+/// kept because a record that is only a marker still says something.
+fn closed(length: usize) -> Vec<u8> {
+    format!("[redacted record: {length} bytes]").into_bytes()
+}
+
+/// One JSON value, redacted.
+fn redact_json(value: &super::json::Json) -> super::json::Json {
+    use super::json::Json;
+    match value {
+        Json::String(text) => Json::String(redact_value(text)),
+        Json::Array(items) => Json::Array(items.iter().map(redact_json).collect()),
+        Json::Object(members) => Json::Object(
+            members
+                .iter()
+                .map(|(name, held)| {
+                    // The name is the signal, as it is in a query string.
+                    let value = match (names_a_secret(name), held) {
+                        (true, Json::String(_)) => Json::String(REDACTED.into()),
+                        (_, held) => redact_json(held),
+                    };
+                    // And a name can itself be a credential, if something
+                    // built an object keyed by one.
+                    (redact_value(name), value)
+                })
+                .collect(),
+        ),
+        other => other.clone(),
+    }
+}
+
+/// One decoded string, redacted — including through one percent-decoding
+/// when it is URL-shaped.
+fn redact_value(text: &str) -> String {
+    let direct = redact_text(text);
+    if !url_shaped(text) {
+        return direct;
+    }
+    let decoded = percent_decode_once(text);
+    let redacted = redact_text(&decoded);
+    if redacted != decoded {
+        // Something was hiding in the encoding. The encoded form cannot be
+        // patched without guessing where its boundaries were, so the
+        // decoded and redacted form is what the record keeps.
+        return redacted;
+    }
+    direct
+}
+
+fn url_shaped(text: &str) -> bool {
+    text.contains("://") || text.to_ascii_uppercase().contains("%3A%2F%2F")
+}
+
+/// Percent-decode once. Once, because decoding repeatedly is how a decoder
+/// is talked into producing something the encoder never wrote.
+fn percent_decode_once(text: &str) -> String {
+    let bytes = text.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut at = 0;
+    while at < bytes.len() {
+        if bytes[at] == b'%'
+            && at + 2 < bytes.len()
+            && let Ok(pair) = std::str::from_utf8(&bytes[at + 1..at + 3])
+            && let Ok(byte) = u8::from_str_radix(pair, 16)
+        {
+            out.push(byte);
+            at += 3;
+        } else {
+            out.push(bytes[at]);
+            at += 1;
+        }
+    }
+    String::from_utf8_lossy(&out).to_string()
+}
+
+/// The whole text pipeline, for bytes that are not a JSON document and for
+/// the decoded values of one that is.
+fn redact_text(text: &str) -> String {
     let text = redact_bearer(text);
     let text = redact_named(&text, '=', is_query_boundary);
     let text = redact_named(&text, ':', is_member_boundary);
     let text = redact_prefixes(&text);
-    let text = redact_jwts(&text);
-    Redacted(text.into_bytes())
+    redact_jwts(&text)
 }
 
 /// `Bearer <token>` keeps the word and loses the token.

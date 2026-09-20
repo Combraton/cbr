@@ -26,13 +26,6 @@ pub const PROVIDER_ID: &str = "minimax";
 /// request-time investigation and image input.
 pub const MODELS: [&str; 3] = ["MiniMax-M2.7-highspeed", "MiniMax-M2.7", "MiniMax-M3"];
 
-/// Where admission counts go, for **both** dialects.
-///
-/// `POST /v1/responses/input_tokens` is MiniMax's own and belongs to
-/// neither compatibility surface, so it is not derived from the dialect's
-/// endpoint ([STACK §8.1](../../docs/work/readiness/STACK.md)).
-pub const COUNT_ENDPOINT: &str = "https://api.minimax.io/v1/responses/input_tokens";
-
 /// Which of the provider's two wires a configured model speaks.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Dialect {
@@ -51,9 +44,6 @@ impl Dialect {
         }
     }
 
-    // Recorded in every derivation record, which is m4d's; read by the
-    // tests now so that the two names cannot drift from `parse`.
-    #[allow(dead_code)]
     pub fn name(self) -> &'static str {
         match self {
             Dialect::OpenAi => "openai",
@@ -77,8 +67,6 @@ impl Dialect {
 
     /// The path this dialect's request goes to, under the configured
     /// endpoint.
-    // Read by the transport, later in this same pull request.
-    #[allow(dead_code)]
     pub fn path(self) -> &'static str {
         match self {
             Dialect::OpenAi => "/chat/completions",
@@ -86,17 +74,20 @@ impl Dialect {
         }
     }
 
-    /// The endpoint the owner recorded for this dialect. It is a **default
-    /// for configuration**, not a literal the call path reaches for: the
-    /// endpoint that is used is the one in the launch configuration.
-    pub fn default_endpoint(self) -> &'static str {
+    /// The base this dialect lives under on the pinned host.
+    ///
+    /// **Not configuration.** An endpoint that a launch could set is an
+    /// endpoint an operator's mistake or an attacker's file can move, and
+    /// "MiniMax only" would be a label rather than a rule.
+    pub fn base(self) -> &'static str {
         match self {
-            Dialect::OpenAi => "https://api.minimax.io/v1",
-            Dialect::Anthropic => "https://api.minimax.io/anthropic",
+            Dialect::OpenAi => "/v1",
+            Dialect::Anthropic => "/anthropic",
         }
     }
 }
 
+pub mod endpoint;
 pub mod http;
 pub mod json;
 pub mod net;
@@ -105,6 +96,8 @@ pub mod redact;
 pub mod request;
 pub mod response;
 
+#[cfg(test)]
+mod endpoint_tests;
 #[cfg(test)]
 mod http_tests;
 #[cfg(test)]

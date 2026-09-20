@@ -164,21 +164,8 @@ pub struct Config {
 /// conformance run and every developer running the suite are. It is
 /// ordinary configuration, not a test control: the `model` member beside it
 /// is the fake transport's control and is refused in production.
-// The serializer that reads these is the next commit's; the launch that
-// validates them is this one's, and the validation is what has to exist
-// before a credential is ever read.
-#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct ModelRuntime {
-    /// The provider id, which may only ever be [`crate::wire::PROVIDER_ID`].
-    pub provider: String,
-    /// The endpoint, from configuration rather than a literal in the call
-    /// path. Always `https`.
-    pub endpoint: String,
-    /// Where admission counts go. **Not part of either compatibility
-    /// surface**: both dialects count at MiniMax's own endpoint, so this is
-    /// configured separately rather than derived from the one above.
-    pub count_endpoint: String,
     pub dialect: crate::wire::Dialect,
     /// One of [`crate::wire::MODELS`], recorded in every derivation record.
     pub model: String,
@@ -516,6 +503,9 @@ impl Config {
         // machine, and the Keychain is never touched to discover that the
         // launch was never going to work.
         if let Some(runtime) = value.get("model_runtime") {
+            // Validated and not kept: it can only ever be the one id, and a
+            // field that can hold only one value is a field that drifts
+            // from the constant it duplicates.
             let provider = text(runtime.get("provider"))
                 .ok_or("`model_runtime` needs a `provider`".to_string())?;
             if provider != crate::wire::PROVIDER_ID {
@@ -523,6 +513,24 @@ impl Config {
                     "model provider `{provider}` is not configured; CBR admits `{}` and                      no other, which is the owner's decision rather than a default",
                     crate::wire::PROVIDER_ID
                 ));
+            }
+            // **The endpoint is not configuration.** An endpoint a launch
+            // can set is an endpoint an operator's mistake or a planted
+            // configuration file can move, and "MiniMax only" would be a
+            // label rather than a rule: `https://collector.example/v1`,
+            // `https://api.minimax.io.collector.example/v1` and
+            // `https://api.minimax.io@collector.example/v1` allname the
+            // provider correctly and address somebody else. Refused rather
+            // than ignored, so nobody believes they set one.
+            for member in ["endpoint", "count_endpoint", "host", "path", "base_url"] {
+                if runtime.get(member).is_some() {
+                    return Err(format!(
+                        "`model_runtime.{member}` is not configuration: the host is pinned to \
+                         `{}` and the path is the dialect's. A launch may choose a dialect \
+                         and not an address.",
+                        crate::wire::endpoint::HOST
+                    ));
+                }
             }
             let named = text(runtime.get("dialect"))
                 .ok_or("`model_runtime` needs a `dialect`".to_string())?;
@@ -536,24 +544,7 @@ impl Config {
                     crate::wire::MODELS.join(", ")
                 ));
             }
-            let endpoint = text(runtime.get("endpoint"))
-                .unwrap_or_else(|| dialect.default_endpoint().to_string());
-            let count_endpoint = text(runtime.get("count_endpoint"))
-                .unwrap_or_else(|| crate::wire::COUNT_ENDPOINT.to_string());
-            for named in [&endpoint, &count_endpoint] {
-                if !named.starts_with("https://") {
-                    return Err(format!(
-                        "model endpoint `{named}` is not https; repository text goes over it"
-                    ));
-                }
-            }
-            config.model_runtime = Some(ModelRuntime {
-                provider,
-                endpoint,
-                count_endpoint,
-                dialect,
-                model,
-            });
+            config.model_runtime = Some(ModelRuntime { dialect, model });
         }
         if let Some(barriers) = value.get("test_barriers") {
             let directory = barriers

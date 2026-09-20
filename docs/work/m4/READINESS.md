@@ -220,6 +220,7 @@ These are estimates, and the first thing m4e produces is the measurement that re
 - **A hard run ceiling of 100,000 tokens**, through the run-level ceiling m4a built (`--model-run-ceiling`), so the cap is enforced by the ledger rather than by intention.
 - **Every call recorded and redacted** like any other, per §6.
 - **The result is a table**: the local estimate against the provider's count, per file.
+- **It has an entry point, built and reviewed in m4b**: `cbr-provider --calibrate <path>`, which needs `--permit-model-network` and a `--model-run-ceiling` no higher than 100,000, serves nothing, and exits. It was built there rather than on the day because *if the first live call needs new plumbing, the first live call runs code nobody reviewed.* It is tested end to end against the fake transport, stop condition included, and **has not been run**.
 
 ### What ends it
 

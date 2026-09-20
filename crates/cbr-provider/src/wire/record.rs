@@ -46,6 +46,9 @@ pub struct Recording<'a> {
     pub request: &'a str,
     pub model: &'a str,
     pub dialect: Dialect,
+    /// The held credential, in the one form the boundary may have it: a
+    /// thing that can replace occurrences and do nothing else.
+    pub scrubber: Option<&'a crate::keychain::Scrubber>,
 }
 
 impl Transport for Recording<'_> {
@@ -63,8 +66,8 @@ impl Transport for Recording<'_> {
             call,
             self.dialect,
             self.model,
-            &redact(body),
-            &redact(&exchange.raw),
+            &redact(body, self.scrubber),
+            &redact(&exchange.raw, self.scrubber),
         );
         exchange
     }

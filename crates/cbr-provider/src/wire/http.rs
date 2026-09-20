@@ -28,6 +28,7 @@
 use std::time::Duration;
 
 use super::Dialect;
+use super::endpoint;
 use super::net::{self, Permit};
 use super::response;
 use crate::keychain::Secret;
@@ -39,26 +40,23 @@ pub const MAX_RESPONSE_BYTES: u64 = 8 * 1024 * 1024;
 pub struct Http<'a> {
     /// Held, not read: its existence is the point.
     permit: Permit,
-    pub endpoint: &'a str,
-    pub count_endpoint: &'a str,
     pub dialect: Dialect,
     pub credential: &'a Secret,
     pub timeout: Duration,
 }
 
 impl<'a> Http<'a> {
+    /// **There is no endpoint parameter.** The host is pinned and the path
+    /// is the dialect's, so there is nothing here for a configuration, an
+    /// operator's mistake or a planted file to point elsewhere.
     pub fn new(
         permit: Permit,
-        endpoint: &'a str,
-        count_endpoint: &'a str,
         dialect: Dialect,
         credential: &'a Secret,
         timeout: Duration,
     ) -> Self {
         Http {
             permit,
-            endpoint,
-            count_endpoint,
             dialect,
             credential,
             timeout,
@@ -68,12 +66,23 @@ impl<'a> Http<'a> {
 
 impl Transport for Http<'_> {
     fn send(&self, call: Call, body: &[u8]) -> Exchange {
-        let url = url_for(self.endpoint, self.count_endpoint, self.dialect, call);
+        // **Pinned at the last moment**, not only where configuration was
+        // read. Nothing goes past this with the credential attached.
+        let url = match endpoint::url_to_send(self.dialect, call) {
+            Ok(url) => url,
+            Err(refusal) => {
+                return Exchange {
+                    // Nothing left the process: no socket was opened.
+                    answer: Answer::NotSent(refusal.reason().into()),
+                    raw: Vec::new(),
+                };
+            }
+        };
         // The credential's one destination, in a value that zeroes itself.
         let authorization = self.credential.authorization();
         net::note_request();
         let sent = agent(self.timeout)
-            .post(&url)
+            .post(url.as_str())
             .header("Authorization", authorization.value())
             .header("Content-Type", "application/json")
             .send(body);
@@ -97,19 +106,6 @@ impl Transport for Http<'_> {
             answer: answer_for(call, self.dialect, status, &raw),
             raw,
         }
-    }
-}
-
-/// Where a call goes.
-///
-/// The completion goes to the dialect's own path under the configured
-/// endpoint. **The count does not:** admission for both dialects goes to
-/// MiniMax's own counting endpoint, which belongs to neither compatibility
-/// surface ([STACK §8.1](../../../docs/work/readiness/STACK.md)).
-pub fn url_for(endpoint: &str, count_endpoint: &str, dialect: Dialect, call: Call) -> String {
-    match call {
-        Call::Count => count_endpoint.to_string(),
-        Call::Completion => format!("{}{}", endpoint.trim_end_matches('/'), dialect.path()),
     }
 }
 

@@ -12,63 +12,6 @@ use super::Dialect;
 use super::http::*;
 use crate::model::{Answer, Call};
 
-const OPENAI: &str = "https://api.minimax.io/v1";
-const ANTHROPIC: &str = "https://api.minimax.io/anthropic";
-const COUNT: &str = "https://api.minimax.io/v1/responses/input_tokens";
-
-#[test]
-fn a_transport_cannot_be_built_without_a_permit() {
-    // Stated rather than asserted, because what is being claimed is the
-    // absence of an API: `Http::new` takes a `net::Permit`, whose only
-    // source is `net::permit()`, which answers `None` until the launch
-    // opens the gate. This test is the reminder that the line below is
-    // what enforces it, and `wire::net::tests` holds the assertions.
-    assert!(
-        crate::wire::net::permit().is_none(),
-        "a test could build a transport"
-    );
-}
-
-#[test]
-fn each_call_goes_to_the_endpoint_it_belongs_to() {
-    // The completion goes to the dialect's own path under the configured
-    // endpoint. **The count does not**: admission for both dialects goes
-    // to MiniMax's own counting endpoint, which is not part of either
-    // compatibility surface.
-    assert_eq!(
-        url_for(OPENAI, COUNT, Dialect::OpenAi, Call::Completion),
-        "https://api.minimax.io/v1/chat/completions"
-    );
-    assert_eq!(
-        url_for(ANTHROPIC, COUNT, Dialect::Anthropic, Call::Completion),
-        "https://api.minimax.io/anthropic/v1/messages"
-    );
-    // Both endpoints, because the OpenAI one is a prefix of the counting
-    // endpoint: checking only that pair lets a transport that derives the
-    // count URL from the dialect's endpoint pass, which a mutant proved.
-    for (endpoint, dialect) in [(OPENAI, Dialect::OpenAi), (ANTHROPIC, Dialect::Anthropic)] {
-        assert_eq!(
-            url_for(endpoint, COUNT, dialect, Call::Count),
-            COUNT,
-            "{}: the count is not derived from the dialect's endpoint",
-            dialect.name()
-        );
-    }
-}
-
-#[test]
-fn a_trailing_slash_on_the_endpoint_does_not_double_the_separator() {
-    assert_eq!(
-        url_for(
-            "https://api.minimax.io/v1/",
-            COUNT,
-            Dialect::OpenAi,
-            Call::Completion
-        ),
-        "https://api.minimax.io/v1/chat/completions"
-    );
-}
-
 #[test]
 fn the_agent_ignores_the_environments_proxy() {
     // **The environment is not allowed to redirect a request carrying the

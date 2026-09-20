@@ -378,6 +378,9 @@ impl Provider {
             request: &fake.request,
             model: "fake",
             dialect: fake.dialect,
+            // The fake transport is reached without a credential, so there
+            // is none to scrub. The live path passes one.
+            scrubber: None,
         };
         let runtime = Runtime {
             ledger: crate::budget::Ledger::new(self.store.connection())

@@ -20,12 +20,13 @@ use cbr_encoding::Value;
 
 use super::Dialect;
 
-// Built by m4c's selection, which is what turns a candidate set into a
-// question. This milestone builds the wire and gives it no consumer.
-#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Role {
     User,
+    // A conversation has one as soon as anything is repaired or asked
+    // again; m4c's loop builds them. Exercised by the serializer's tests
+    // now, so the roles cannot drift before there is a caller.
+    #[cfg_attr(not(test), allow(dead_code))]
     Assistant,
 }
 
@@ -46,16 +47,21 @@ pub struct Message {
 
 /// What shape the answer must take. **The provider guarantees none of
 /// these**, which is why each is something CBR checks rather than trusts.
-#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub enum Want {
     /// Free text, and prose is a valid answer.
     Text,
+    // The calibration asks only for text. These two are what m4c's
+    // selection asks for — a closed set of ids, or a call to a tool that
+    // takes them — and both halves of the wire for them are exercised by
+    // the serializer's and the parser's tests now.
     /// A JSON object. Asked for where the dialect has a field for it, and
     /// validated on the way back either way.
+    #[cfg_attr(not(test), allow(dead_code))]
     Structure { schema: Value },
     /// A named tool call. `required` is ignored by this provider, so a text
     /// answer here is an ordinary outcome to repair rather than an error.
+    #[cfg_attr(not(test), allow(dead_code))]
     Tool { name: String, schema: Value },
 }
 
