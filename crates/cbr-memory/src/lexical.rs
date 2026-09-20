@@ -30,6 +30,18 @@ use rusqlite::{Connection, params};
 /// full is a chunk whose ranking a reader cannot check.
 pub const CHUNK_BYTES: usize = 2048;
 
+/// What kind of file a path names, for reporting a coverage gap by kind.
+///
+/// The name after the last dot, unless the dot begins the file name: a
+/// `.gitignore` is a dotfile, not twelve files of kind `gitignore`.
+pub fn file_kind(path: &str) -> String {
+    let name = path.rsplit_once('/').map_or(path, |(_, name)| name);
+    match name.rsplit_once('.') {
+        Some((stem, extension)) if !stem.is_empty() => format!(".{extension}"),
+        _ => "no extension".to_string(),
+    }
+}
+
 /// A span of a blob's text, in bytes and in lines.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Chunk<'a> {

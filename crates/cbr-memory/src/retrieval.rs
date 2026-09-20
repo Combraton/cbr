@@ -278,7 +278,10 @@ pub fn migrate(connection: &Connection) -> Result<(), IndexError> {
              anchored            INTEGER NOT NULL,
              binary              INTEGER NOT NULL,
              too_large           INTEGER NOT NULL,
-             unanchored_language INTEGER NOT NULL
+             unanchored_language INTEGER NOT NULL,
+             -- `<extension> <count>` pairs, one per line. A gap of a
+             -- thousand files means nothing without its kinds.
+             unanchored_kinds    TEXT NOT NULL DEFAULT ''
          );",
     )?;
     Ok(())
@@ -288,8 +291,9 @@ pub fn record_manifest(connection: &Connection, manifest: &Manifest) -> Result<(
     connection.execute(
         "INSERT INTO build_manifest
              (repository, frontier, compiler, built_at,
-              blobs, indexed, anchored, binary, too_large, unanchored_language)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+              blobs, indexed, anchored, binary, too_large, unanchored_language,
+              unanchored_kinds)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
          ON CONFLICT (repository) DO UPDATE SET
              frontier = excluded.frontier,
              compiler = excluded.compiler,
@@ -299,7 +303,8 @@ pub fn record_manifest(connection: &Connection, manifest: &Manifest) -> Result<(
              anchored = excluded.anchored,
              binary = excluded.binary,
              too_large = excluded.too_large,
-             unanchored_language = excluded.unanchored_language",
+             unanchored_language = excluded.unanchored_language,
+             unanchored_kinds = excluded.unanchored_kinds",
         params![
             manifest.repository,
             manifest.frontier,
@@ -311,6 +316,13 @@ pub fn record_manifest(connection: &Connection, manifest: &Manifest) -> Result<(
             manifest.coverage.binary as i64,
             manifest.coverage.too_large as i64,
             manifest.coverage.unanchored_language as i64,
+            manifest
+                .coverage
+                .unanchored_by_kind
+                .iter()
+                .map(|(kind, count)| format!("{kind} {count}"))
+                .collect::<Vec<_>>()
+                .join("\n"),
         ],
     )?;
     Ok(())
@@ -320,7 +332,8 @@ pub fn manifest(connection: &Connection, repository: &str) -> Result<Option<Mani
     let row = connection
         .query_row(
             "SELECT frontier, compiler, built_at,
-                    blobs, indexed, anchored, binary, too_large, unanchored_language
+                    blobs, indexed, anchored, binary, too_large, unanchored_language,
+                    unanchored_kinds
              FROM build_manifest WHERE repository = ?1",
             params![repository],
             |row| {
@@ -336,6 +349,14 @@ pub fn manifest(connection: &Connection, repository: &str) -> Result<Option<Mani
                         binary: row.get::<_, i64>(6)? as usize,
                         too_large: row.get::<_, i64>(7)? as usize,
                         unanchored_language: row.get::<_, i64>(8)? as usize,
+                        unanchored_by_kind: row
+                            .get::<_, String>(9)?
+                            .lines()
+                            .filter_map(|line| {
+                                let (kind, count) = line.rsplit_once(' ')?;
+                                Some((kind.to_string(), count.parse().ok()?))
+                            })
+                            .collect(),
                     },
                 })
             },

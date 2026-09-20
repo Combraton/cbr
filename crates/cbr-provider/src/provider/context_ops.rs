@@ -285,7 +285,10 @@ impl Provider {
             else {
                 continue;
             };
-            let reach = self.ensure_index(&id, &checkout, &tree)?;
+            let dirty = at(repository, &["dirty", "snapshot_digest"])
+                .as_str()
+                .map(str::to_string);
+            let reach = self.ensure_index(&id, &checkout, &tree, dirty.as_deref())?;
             decided.reach.push(reach);
             trees.push(Frontier {
                 repository: id,
@@ -728,6 +731,7 @@ impl Provider {
         repository: &str,
         checkout: &std::path::Path,
         tree: &str,
+        dirty: Option<&str>,
     ) -> Result<Reach, TickError> {
         use cbr_memory::retrieval;
         let connection = self.store.connection();
@@ -757,6 +761,16 @@ impl Provider {
                         gaps.push(format!("{count} {what}"));
                     }
                 }
+                // By kind, not just by count: "991 blobs in a language with
+                // no anchors" does not tell a reader whether the gap is
+                // documentation or the Cython half of a scientific library.
+                let mut kinds: Vec<(&String, &usize)> =
+                    coverage.unanchored_by_kind.iter().collect();
+                kinds.sort_by(|left, right| right.1.cmp(left.1).then(left.0.cmp(right.0)));
+                for (kind, count) in kinds.into_iter().take(8) {
+                    gaps.push(format!("  of those, {count} are {kind}"));
+                }
+                gaps.extend(self.untracked_gap(checkout, dirty));
                 Reach {
                     repository: repository.to_string(),
                     frontier: manifest.frontier,
@@ -773,6 +787,69 @@ impl Provider {
                 gaps: vec![format!("the index could not be built: {error}")],
             },
         })
+    }
+
+    /// What a dirty working tree keeps out of the index, as a gap.
+    ///
+    /// The owner's decision for M3d is that a pilot searches the tree **as
+    /// committed**: a file that is not in any tree has no blob to cite and
+    /// no tree to anchor a citation to, so citing one would produce a
+    /// reference reproducible from a snapshot and from nothing else. So the
+    /// working tree is not read — and the count of what that leaves out is
+    /// declared rather than left for a reader to discover.
+    ///
+    /// The snapshot is recomputed here rather than taken from the basis,
+    /// which carries only its digest. That is also a check: a digest that no
+    /// longer matches means the working tree moved after the basis was
+    /// taken, which is itself a gap.
+    fn untracked_gap(&self, checkout: &std::path::Path, dirty: Option<&str>) -> Vec<String> {
+        let Some(declared) = dirty else {
+            return Vec::new();
+        };
+        let Ok(Some(snapshot)) = cbr_identity::dirty_snapshot(checkout) else {
+            return vec![format!(
+                "the basis declares a dirty snapshot {declared} that could not be recomputed"
+            )];
+        };
+        let mut gaps = Vec::new();
+        if snapshot.digest != declared {
+            gaps.push(format!(
+                "the working tree changed after this basis was taken: the basis declares \
+                 {declared} and the tree now digests to {}",
+                snapshot.digest
+            ));
+        }
+        let entries = snapshot
+            .document
+            .get("entries")
+            .and_then(Value::as_array)
+            .map(<[Value]>::to_vec)
+            .unwrap_or_default();
+        let mut untracked = 0usize;
+        let mut kinds: std::collections::BTreeMap<String, usize> =
+            std::collections::BTreeMap::new();
+        for entry in &entries {
+            let fields = entry.as_array().unwrap_or_default();
+            let path = fields.first().and_then(Value::as_str).unwrap_or_default();
+            let state = fields.get(1).and_then(Value::as_str).unwrap_or_default();
+            if state != "untracked" {
+                continue;
+            }
+            untracked += 1;
+            let kind = cbr_memory::lexical::file_kind(path);
+            *kinds.entry(kind).or_default() += 1;
+        }
+        if untracked > 0 {
+            gaps.push(format!(
+                "{untracked} files are untracked and in no tree, so they are not searched"
+            ));
+            let mut listed: Vec<(&String, &usize)> = kinds.iter().collect();
+            listed.sort_by(|left, right| right.1.cmp(left.1).then(left.0.cmp(right.0)));
+            for (kind, count) in listed.into_iter().take(6) {
+                gaps.push(format!("  of those, {count} are {kind}"));
+            }
+        }
+        gaps
     }
 
     /// One item: what satisfies it, or why nothing does.
