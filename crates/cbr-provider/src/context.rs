@@ -957,9 +957,16 @@ pub fn check_passes(item: &Value, section: &Value, record: &Value, job: &Value) 
     let check = at(item, &["check"]);
     match text(check, &["kind"]) {
         "source_included" => {
+            // Either the path the bytes are at, or the symbolic link the
+            // item named to reach them. Both are sealed in the section, so
+            // this stays a string comparison over the packet and needs no
+            // repository at read time (CONTEXT section 3: satisfaction has
+            // to be decidable).
+            let wanted = text(check, &["path"]);
             text(section, &["source", "repository"]) == text(check, &["repository"])
                 && section.get("source").is_some()
-                && text(section, &["source", "path"]) == text(check, &["path"])
+                && (text(section, &["source", "path"]) == wanted
+                    || text(section, &["source", "via"]) == wanted)
         }
         "evidence_included" => list(section, &["citations"]).iter().any(|citation| {
             same(

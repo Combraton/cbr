@@ -799,6 +799,81 @@ fn packet_bytes_for(
 }
 
 /// Propose a claim about `app` and have the owner accept it as binding.
+/// Six claims, all eligible, differing only in how much of the request's
+/// question they share. The golden packet is built over these so that
+/// `compiler::CARRIED_CLAIMS` is inside the digest: with fewer eligible
+/// claims than the cap, changing the cap would change nothing and the
+/// guard would be proving something it does not test.
+fn accept_six_claims(fixture: &Fixture, artifact: &str, digest: &str) {
+    let printed = fixture.cbr(
+        "owner",
+        &[
+            "basis",
+            "--repo",
+            fixture.checkout.to_str().expect("utf-8"),
+            "--repo-id",
+            "app",
+        ],
+    );
+    let basis = cbr_encoding::parse(lines(&printed)[0].as_bytes()).expect("canonical JSON");
+    let tree = first(&basis, "repositories", "tree");
+    ok(&fixture.cbr(
+        "owner",
+        &["authority", "bind", "app", "--authority", "owner"],
+    ));
+    for (claim, value) in [
+        (
+            "c-adapter",
+            "the compatibility adapter stays for one release",
+        ),
+        ("c-queue", "the queue keeps its ordering guarantee"),
+        ("c-naming", "a module is named after what it does"),
+        ("c-licence", "the repository is MIT"),
+        ("c-review", "a change is reviewed before it lands"),
+        ("c-release", "a release is tagged by the owner"),
+    ] {
+        let content = fixture.write(
+            &format!("{claim}.json"),
+            &format!(
+                r#"{{"plane":"normative",
+                     "statement":{{"subject":{{"kind":"app.decision","id":"{claim}"}},
+                                   "predicate":"decides","value":"{value}",
+                                   "cardinality":"single"}},
+                     "scope":{{"id":"app","qualifiers":{{}}}},
+                     "support":[{{"support_id":"s1",
+                                  "evidence":{{"provider":"cbr",
+                                               "artifact":{{"kind":"evidence.artifact","id":"{artifact}"}},
+                                               "digest":"{digest}"}},
+                                  "ancestry":{{"completeness":"complete",
+                                               "roots":[{{"kind":"evidence","provider":"cbr",
+                                                          "artifact":{{"kind":"evidence.artifact","id":"{artifact}"}},
+                                                          "digest":"{digest}"}}]}}}}],
+                     "derivation":{{"kind":"human","inputs":[]}},
+                     "conditions":[{{"condition_id":"at-tree","kind":"repository_tree",
+                                     "repository":"app","expected":"{tree}"}}]}}"#
+            ),
+        );
+        ok(&fixture.cbr("owner", &["propose", claim, "--content", &content]));
+        ok(&fixture.cbr(
+            "owner",
+            &[
+                "decide",
+                &format!("d-{claim}"),
+                "--claim",
+                claim,
+                "--revision",
+                "1",
+                "--decision",
+                "accepted_for_use",
+                "--use",
+                "binding",
+                "--rationale",
+                "the owner decided it",
+            ],
+        ));
+    }
+}
+
 fn accept_a_claim(fixture: &Fixture, artifact: &str, digest: &str) {
     let printed = fixture.cbr(
         "owner",
@@ -927,11 +1002,26 @@ fn a_repository_outside_the_grant_contributes_nothing_to_discovery() {
 /// changes; change what the compiler emits and it changes too. Either way the
 /// two are updated in the same commit or this test fails.
 const GOLDEN_PACKET_DIGEST: &str =
-    "sha256:74b0d6b175644ba4d6d270bdcba1e29b9212151ccecf55ff5240bbc47f55dfca";
+    "sha256:6cf4be87916051d932b8f765807c497df831bd05cfc9b3d2e47565a60e5312da";
 
 #[test]
 fn the_packet_a_fixed_fixture_produces_has_not_changed_without_the_compiler_string() {
-    let bytes = packet_bytes_for(|_, _, _| {}, false, false);
+    let bytes = packet_bytes_for(accept_six_claims, false, true);
+    // **An ingested artifact's id carries the instant it was ingested**
+    // (`ingest.<digest-prefix>.<nanoseconds>`), so two stores that ingest
+    // identical bytes mint different ids — and a claim citing one inherits
+    // that through its own revision digest, which is taken over a record
+    // holding the id. Two runs of this fixture are two stores, so neither
+    // the id nor any claim digest agrees between them.
+    //
+    // **That is not something the compiler decides**, and it was found by
+    // this guard rather than assumed: the first version of it pinned a
+    // digest that changed on every run. It is normalised out here, narrowly
+    // and visibly, and reported as a finding rather than fixed in this
+    // pull request. What the guard still covers is every decision the
+    // compiler makes — which claims are carried and in what order, which
+    // spans, how wide, the coverage, and the compiler string itself.
+    let bytes = stable(&bytes);
     let digest = cbr_encoding::digest_bytes(&bytes);
     assert_eq!(
         digest,
@@ -959,6 +1049,14 @@ fn the_packet_a_fixed_fixture_produces_has_not_changed_without_the_compiler_stri
         .filter(|section| text(section, &["section_id"]).starts_with("d-span-"))
         .count();
     assert_eq!(discovered, 8, "the fixture fills DISCOVERED_SPANS");
+    let claims = sections
+        .iter()
+        .filter(|section| text(section, &["section_id"]).starts_with("d-claim-"))
+        .count();
+    assert_eq!(
+        claims, 4,
+        "and carries exactly CARRIED_CLAIMS of six eligible"
+    );
     assert!(
         sections
             .iter()
@@ -969,4 +1067,82 @@ fn the_packet_a_fixed_fixture_produces_has_not_changed_without_the_compiler_stri
         String::from_utf8_lossy(&bytes).contains("cbr-context-compiler/"),
         "the sealed packet names its producer"
     );
+    // The normalisation has to have fired, or this guard is over bytes that
+    // happened to agree — and a second, independent run has to agree with
+    // the first, or the digest is pinning one run's luck.
+    assert!(
+        String::from_utf8_lossy(&bytes).contains(".<instant>")
+            && String::from_utf8_lossy(&bytes).contains("<claim revision>"),
+        "both normalisations fired, so neither is silently a no-op"
+    );
+    let again = stable(&packet_bytes_for(accept_six_claims, false, true));
+    assert_eq!(
+        cbr_encoding::digest_bytes(&again),
+        digest,
+        "two independent runs of the same fixture compile the same packet"
+    );
+}
+
+/// The packet with the two things an ingest instant reaches normalised
+/// out: the artifact id that carries it, and the claim revision digests
+/// taken over records that hold that id.
+///
+/// Deliberately narrow. A `digest` is rewritten only inside an object that
+/// also names a `claim`, and an id only where it starts `ingest.` and ends
+/// in digits, so anything else that differed between two runs still moves
+/// the result.
+fn stable(bytes: &[u8]) -> Vec<u8> {
+    fn walk(value: &Value) -> Value {
+        match value {
+            Value::Object(members) => {
+                let names_a_claim = members
+                    .iter()
+                    .any(|(name, value)| name == "claim" && value.as_str().is_some());
+                Value::Object(
+                    members
+                        .iter()
+                        .map(|(name, member)| {
+                            if names_a_claim && name == "digest" {
+                                return (name.clone(), Value::String("<claim revision>".into()));
+                            }
+                            (name.clone(), walk(member))
+                        })
+                        .collect(),
+                )
+            }
+            Value::Array(items) => Value::Array(items.iter().map(walk).collect()),
+            Value::String(text) => Value::String(normalise_ids(text)),
+            other => other.clone(),
+        }
+    }
+    let parsed = cbr_encoding::parse(bytes).expect("the sealed packet is canonical JSON");
+    cbr_encoding::to_canonical(&walk(&parsed))
+}
+
+/// Replace the nanosecond suffix of every `ingest.<prefix>.<nanos>` that
+/// occurs in `text`, wherever in the string it appears — an id occurs both
+/// as a value of its own and inside a section's prose.
+fn normalise_ids(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(start) = rest.find("ingest.") {
+        let (before, tail) = rest.split_at(start);
+        out.push_str(before);
+        let id: String = tail
+            .chars()
+            .take_while(|c| c.is_ascii_alphanumeric() || *c == '.')
+            .collect();
+        match id.rsplit_once('.') {
+            Some((head, instant))
+                if !instant.is_empty() && instant.chars().all(|c| c.is_ascii_digit()) =>
+            {
+                out.push_str(head);
+                out.push_str(".<instant>");
+            }
+            _ => out.push_str(&id),
+        }
+        rest = &tail[id.len()..];
+    }
+    out.push_str(rest);
+    out
 }

@@ -19,6 +19,8 @@
 //! if it does not, nothing of that job's step is committed and it is retried
 //! at a later tick.
 
+use std::collections::BTreeMap;
+
 use cbr_encoding::Value;
 
 use super::{Epoch, Provider, Step6, accepted};
@@ -33,6 +35,53 @@ use crate::peer::{self, PeerConfig};
 use crate::store::{Change, Commit, NewEvent, ProviderEvent, ProviderWrite, SubjectKey};
 
 /// One repository the compiler may read, at the tree the basis names.
+/// How many symbolic links are followed before the chain is refused. A
+/// link to a link is ordinary; eight of them is a loop or a trap.
+const LINK_HOPS: usize = 8;
+
+/// A symbolic link's blob holds a path. Anything longer than this is not
+/// one, and is refused without being read into memory.
+const LINK_TARGET_BYTES: u64 = 4096;
+
+/// What the path an item named turned out to be.
+enum Link {
+    /// A regular file of this tree, at the path the item named.
+    Direct,
+    /// A link whose chain ended at a regular file of this tree.
+    Followed { target: String },
+    /// A link this tree cannot resolve: out of the tree, absolute, a
+    /// loop, or pointing at something that is not a regular file.
+    Broken { link: String, target: String },
+    /// Nothing of that path in this tree at all.
+    Absent,
+}
+
+/// Resolve `target` against the directory `from` sits in, staying inside
+/// the tree. Returns `None` for an absolute path or one that climbs out,
+/// because a tree has no parent to climb into.
+fn join_in_tree(from: &str, target: &str) -> Option<String> {
+    if target.is_empty() || target.starts_with('/') {
+        return None;
+    }
+    let mut parts: Vec<&str> = from.split('/').collect();
+    parts.pop();
+    for component in target.split('/') {
+        match component {
+            "" | "." => {}
+            ".." => {
+                parts.pop()?;
+            }
+            name => parts.push(name),
+        }
+    }
+    let joined = parts.join("/");
+    if joined.is_empty() {
+        None
+    } else {
+        Some(joined)
+    }
+}
+
 struct Frontier {
     repository: String,
     tree: String,
@@ -447,22 +496,32 @@ impl Provider {
 
         let mut per_path: std::collections::BTreeMap<String, usize> =
             std::collections::BTreeMap::new();
+        // The spans this loop has already published. `decided.selections`
+        // holds what the *items* took; a discovered span has to be checked
+        // against both, because two discovered hits in one file are exactly
+        // the pair that collide.
+        let mut published: Vec<(String, i64, i64)> = decided
+            .selections
+            .iter()
+            .map(|selection| {
+                (
+                    selection.blob.clone(),
+                    selection.start_byte,
+                    selection.end_byte,
+                )
+            })
+            .collect();
         let mut taken = 0;
         for found in answer.found {
             if taken >= compiler::DISCOVERED_SPANS {
                 break;
             }
-            let seen = per_path.entry(found.path.clone()).or_default();
-            if *seen >= compiler::DISCOVERED_PER_PATH {
+            if per_path
+                .get(&found.path)
+                .is_some_and(|seen| *seen >= compiler::DISCOVERED_PER_PATH)
+            {
                 continue;
             }
-            let already = decided.selections.iter().any(|selection| {
-                selection.blob == found.blob && selection.start_byte == found.start_byte
-            });
-            if already {
-                continue;
-            }
-            *seen += 1;
             let Some(frontier) = trees
                 .iter()
                 .find(|frontier| frontier.repository == found.repository)
@@ -476,25 +535,51 @@ impl Provider {
             ) else {
                 continue;
             };
+            // Discovered spans rank by definition, so every one of them
+            // reaches its neighbours.
+            let terms = cbr_memory::lexical::query_terms(question);
+            let (start_byte, end_byte, start_line, end_line) = self.widen(
+                frontier,
+                &found.path,
+                (
+                    found.start_byte,
+                    found.end_byte,
+                    found.start_line,
+                    found.end_line,
+                ),
+                &bytes,
+                &terms,
+            );
+            // **Overlap is decided after widening, not before.** Two
+            // adjacent hits in one file widen towards each other and can
+            // land on the same bytes; the first form of this checked the
+            // hit's own start byte and published the same span twice, which
+            // brian2's rerun showed as one section repeated. A span already
+            // covered by one the packet holds adds nothing, so it is
+            // dropped and does not spend the budget.
+            let covered = published.iter().any(|(blob, from, to)| {
+                *blob == found.blob && *from < end_byte && start_byte < *to
+            });
+            if covered {
+                continue;
+            }
+            published.push((found.blob.clone(), start_byte, end_byte));
+            *per_path.entry(found.path.clone()).or_default() += 1;
             let selection = Selection {
                 item: String::new(),
+                via: None,
                 repository: found.repository.clone(),
                 tree: frontier.tree.clone(),
                 path: found.path.clone(),
                 blob: found.blob.clone(),
                 digest: cbr_encoding::digest_bytes(&bytes),
                 size: bytes.len(),
-                start_byte: found.start_byte,
-                end_byte: found.end_byte,
-                start_line: found.start_line,
-                end_line: found.end_line,
+                start_byte,
+                end_byte,
+                start_line,
+                end_line,
                 origin: "index",
-                excerpt: compiler::excerpt(
-                    &bytes,
-                    found.start_byte,
-                    found.end_byte,
-                    &cbr_memory::lexical::query_terms(question),
-                ),
+                excerpt: compiler::excerpt(&bytes, start_byte, end_byte, &terms),
             };
             self.seal_source(tick, &selection, &bytes)?;
             decided.discovered.push(compiler::Discovered {
@@ -621,7 +706,28 @@ impl Provider {
     ///    about the code this request is about; or
     /// 2. its scope or its statement shares a term with the question.
     ///
-    /// Anything else is **omitted with reason `applicability`**, one
+    /// **That is eligibility, not selection.** In a store holding one
+    /// repository the first limb is true of every claim, so it selects
+    /// nothing: M3d's Knowscroll pilot carried twenty-two of twenty-two
+    /// decisions into a packet about one of them. Among eligible claims the
+    /// compiler therefore **ranks** — by how many of the question's terms
+    /// occur in the claim's statement, its scope, and the text of the
+    /// evidence it cites — carries the top [`compiler::CARRIED_CLAIMS`],
+    /// and omits the rest.
+    ///
+    /// **A claim that does not rank is omitted, not demoted.** A `binding`
+    /// claim that ranks keeps its `BindingClaim` drop rank; one that does
+    /// not is not in the packet at all, and is counted.
+    ///
+    /// **The cited text is read at the claim's own span when it names one.**
+    /// A repository whose decisions live in one append-only file gives every
+    /// claim the same artifact and the same digest — Protocol 0.1 cannot
+    /// cite a span ([protocol#16](https://github.com/Combraton/protocol/issues/16))
+    /// — so the range lives in the claim's scope qualifiers, which is where
+    /// this reads it from. Without that, every claim over one file scores
+    /// identically and the ranking is no ranking.
+    ///
+    /// Anything ineligible is **omitted with reason `applicability`**, one
     /// omission each, so a caller counts what it did not get.
     ///
     /// A claim is labelled by what the authority permitted it for, so
@@ -652,6 +758,10 @@ impl Provider {
             .filter_map(Value::as_str)
             .map(str::to_string)
             .collect();
+        // Every eligible claim, with the score it will be ranked by. The
+        // packet is built from this afterwards, because a cap cannot be
+        // applied while the list is still being discovered.
+        let mut ranked: Vec<(usize, String, compiler::Discovered)> = Vec::new();
         for claim in readable {
             let payload = object(vec![("claim", string(&claim))]);
             let Ok(inspected) = self.knowledge_inspect(&payload) else {
@@ -662,12 +772,17 @@ impl Provider {
             let about_this_code = list(claim_record, &["conditions"]).iter().any(|condition| {
                 repositories.contains(&text(condition, &["repository"]).to_string())
             });
-            let words = cbr_memory::lexical::query_terms(&format!(
+            // **Eligibility is the m3c rule, unchanged**, and is decided
+            // from the claim itself: a claim whose cited artifact happens
+            // to mention the question is not thereby about it, and reading
+            // evidence to decide eligibility would make every claim over a
+            // large shared file eligible for every question.
+            let own = cbr_memory::lexical::query_terms(&format!(
                 "{} {}",
                 text(claim_record, &["scope", "id"]),
                 crate::context::canonical(at(claim_record, &["statement"]))
             ));
-            let shared = question.iter().filter(|term| words.contains(term)).count();
+            let shared = question.iter().filter(|term| own.contains(term)).count();
             if !about_this_code && shared == 0 {
                 decided.omitted.push(object(vec![
                     ("section_id", string(&format!("d-claim-{claim}"))),
@@ -676,6 +791,23 @@ impl Provider {
                 continue;
             }
 
+            // **Ranking is wider than eligibility**, because among claims
+            // that are all eligible the question has to be answered from
+            // somewhere: the scope's qualifiers, and the text of the
+            // evidence the claim cites at the span the claim names.
+            let mut corpus = String::new();
+            for (name, value) in Self::qualifiers(claim_record) {
+                corpus.push_str(&name);
+                corpus.push(' ');
+                corpus.push_str(&value);
+                corpus.push(' ');
+            }
+            corpus.push_str(&self.cited_text(claim_record));
+            let wider = cbr_memory::lexical::query_terms(&corpus);
+            let score = question
+                .iter()
+                .filter(|term| own.contains(term) || wider.contains(term))
+                .count();
             let findings = crate::knowledge::condition_findings(claim_record, basis, &kinds);
             let applicability = crate::knowledge::result_of(&findings);
             let state = text(&inspected, &["reliance", "state"]).to_string();
@@ -711,27 +843,103 @@ impl Provider {
                 "shares terms with the question"
             };
 
-            decided.discovered.push(compiler::Discovered {
-                id: format!("claim-{claim}"),
-                rank,
-                order: usize::MAX - shared,
-                claim: Some(at(&inspected, &["reference"]).clone()),
-                label,
-                historical: !current,
-                content: format!(
-                    "claim {claim} revision {}: {standing}\nselected because it {why}\n{}",
-                    int(&inspected, &["current_revision"]),
-                    crate::context::canonical(at(claim_record, &["statement"]))
-                ),
-                // The claim's own support, where the reader may read it: a
-                // binding statement a reader cannot check against evidence
-                // is an assertion, not a citation.
-                citation: list(claim_record, &["support"])
-                    .first()
-                    .map(|support| at(support, &["evidence"]).clone()),
-            });
+            ranked.push((
+                score,
+                claim.clone(),
+                compiler::Discovered {
+                    id: format!("claim-{claim}"),
+                    rank,
+                    order: usize::MAX - score,
+                    claim: Some(at(&inspected, &["reference"]).clone()),
+                    label,
+                    historical: !current,
+                    content: format!(
+                        "claim {claim} revision {}: {standing}\nselected because it {why}\n{}",
+                        int(&inspected, &["current_revision"]),
+                        crate::context::canonical(at(claim_record, &["statement"]))
+                    ),
+                    // The claim's own support, where the reader may read it: a
+                    // binding statement a reader cannot check against evidence
+                    // is an assertion, not a citation.
+                    citation: list(claim_record, &["support"])
+                        .first()
+                        .map(|support| at(support, &["evidence"]).clone()),
+                },
+            ));
+        }
+
+        // Rank, then cut. The tie-break is the claim id, so two claims that
+        // share the question equally are ordered by something stable rather
+        // than by the order the store happened to return them in.
+        ranked.sort_by(|left, right| right.0.cmp(&left.0).then(left.1.cmp(&right.1)));
+        for (position, (_, claim, discovered)) in ranked.into_iter().enumerate() {
+            if position < compiler::CARRIED_CLAIMS {
+                decided.discovered.push(discovered);
+            } else {
+                decided.omitted.push(object(vec![
+                    ("section_id", string(&format!("d-claim-{claim}"))),
+                    ("reason", string("applicability")),
+                ]));
+            }
         }
         Ok(())
+    }
+
+    /// A claim's scope qualifiers, as name and value pairs.
+    fn qualifiers(claim_record: &Value) -> Vec<(String, String)> {
+        let qualifiers = at(claim_record, &["scope", "qualifiers"]).clone();
+        qualifiers
+            .keys()
+            .map(str::to_string)
+            .collect::<Vec<String>>()
+            .into_iter()
+            .map(|name| {
+                let value = text(&qualifiers, &[name.as_str()]).to_string();
+                (name, value)
+            })
+            .collect()
+    }
+
+    /// The text of the evidence a claim cites, bounded, and narrowed to the
+    /// claim's own span when its scope names one.
+    ///
+    /// Protocol 0.1's evidence reference is a provider, an artifact and a
+    /// digest and nothing narrower, so a repository that keeps every
+    /// decision in one file gives every claim identical support
+    /// ([protocol#16](https://github.com/Combraton/protocol/issues/16)).
+    /// Reading the whole artifact for each of them would score them all the
+    /// same, which is the same as not ranking at all. A `lines` qualifier is
+    /// where such a claim has to put its range today, so it is read from
+    /// there — a declared qualifier, not a string parsed out of prose.
+    fn cited_text(&self, claim_record: &Value) -> String {
+        let Some(support) = list(claim_record, &["support"]).first().cloned() else {
+            return String::new();
+        };
+        let digest = text(&support, &["evidence", "digest"]).to_string();
+        let Ok(Some(bytes)) = self.store.read_object(&digest) else {
+            return String::new();
+        };
+        let bytes = &bytes[..bytes.len().min(compiler::CLAIM_TEXT_BYTES)];
+        let whole = String::from_utf8_lossy(bytes);
+        let lines = Self::qualifiers(claim_record)
+            .into_iter()
+            .find(|(name, _)| name == "lines")
+            .map(|(_, value)| value);
+        let Some(range) = lines else {
+            return whole.into_owned();
+        };
+        let Some((from, to)) = range.split_once('-') else {
+            return whole.into_owned();
+        };
+        let (Ok(from), Ok(to)) = (from.trim().parse::<usize>(), to.trim().parse::<usize>()) else {
+            return whole.into_owned();
+        };
+        whole
+            .lines()
+            .skip(from.saturating_sub(1))
+            .take(to.saturating_sub(from.saturating_sub(1)))
+            .collect::<Vec<&str>>()
+            .join("\n")
     }
 
     /// Build the index for `repository` at `tree` unless a manifest already
@@ -780,7 +988,7 @@ impl Provider {
                 for (kind, count) in kinds.into_iter().take(8) {
                     gaps.push(format!("  of those, {count} are {kind}"));
                 }
-                gaps.extend(self.untracked_gap(checkout, dirty));
+                gaps.extend(self.dirty_gaps(checkout, dirty));
                 Reach {
                     repository: repository.to_string(),
                     frontier: manifest.frontier,
@@ -812,7 +1020,22 @@ impl Provider {
     /// which carries only its digest. That is also a check: a digest that no
     /// longer matches means the working tree moved after the basis was
     /// taken, which is itself a gap.
-    fn untracked_gap(&self, checkout: &std::path::Path, dirty: Option<&str>) -> Vec<String> {
+    /// What a dirty working tree keeps out of the answer.
+    ///
+    /// The index is built at the **committed** tree, which is the right
+    /// choice — a working tree is not a basis anyone else can resolve — but
+    /// a packet that does not say so leaves a reader unable to tell
+    /// "searched and not found" from "searched a version of this file that
+    /// is no longer on disk". INTERNALS section 5 calls that a false
+    /// absence, and it is the same rule that made the untracked gap exist.
+    ///
+    /// The snapshot distinguishes three states and each gets its own line,
+    /// because they are different facts about the same tree: a file the
+    /// index never saw, a file whose bytes on disk differ from the ones it
+    /// holds, and a file that is in the tree and gone from disk. M3d's
+    /// Knowscroll pilot had twenty-one of the second and reported none of
+    /// them; brian2 had none, which is why nothing showed.
+    fn dirty_gaps(&self, checkout: &std::path::Path, dirty: Option<&str>) -> Vec<String> {
         let Some(declared) = dirty else {
             return Vec::new();
         };
@@ -835,24 +1058,49 @@ impl Provider {
             .and_then(Value::as_array)
             .map(<[Value]>::to_vec)
             .unwrap_or_default();
-        let mut untracked = 0usize;
-        let mut kinds: std::collections::BTreeMap<String, usize> =
+        // One pass, three tallies, in the order a reader cares about:
+        // what was never seen, what has moved on, and what is gone.
+        let mut counted: std::collections::BTreeMap<&str, (usize, BTreeMap<String, usize>)> =
             std::collections::BTreeMap::new();
         for entry in &entries {
             let fields = entry.as_array().unwrap_or_default();
             let path = fields.first().and_then(Value::as_str).unwrap_or_default();
             let state = fields.get(1).and_then(Value::as_str).unwrap_or_default();
-            if state != "untracked" {
-                continue;
-            }
-            untracked += 1;
-            let kind = cbr_memory::lexical::file_kind(path);
-            *kinds.entry(kind).or_default() += 1;
+            let state = match state {
+                "untracked" => "untracked",
+                "modified" => "modified",
+                "deleted" => "deleted",
+                _ => continue,
+            };
+            let tally = counted.entry(state).or_default();
+            tally.0 += 1;
+            *tally
+                .1
+                .entry(cbr_memory::lexical::file_kind(path))
+                .or_default() += 1;
         }
-        if untracked > 0 {
-            gaps.push(format!(
-                "{untracked} files are untracked and in no tree, so they are not searched"
-            ));
+        for state in ["untracked", "modified", "deleted"] {
+            let Some((count, kinds)) = counted.get(state) else {
+                continue;
+            };
+            let (noun, verb) = if *count == 1 {
+                ("file", "is")
+            } else {
+                ("files", "are")
+            };
+            gaps.push(match state {
+                "untracked" => format!(
+                    "{count} {noun} {verb} untracked and in no tree, so they are not searched"
+                ),
+                "modified" => format!(
+                    "{count} tracked {noun} {verb} modified in the working tree, so the index \
+                     holds the committed bytes and not these"
+                ),
+                _ => format!(
+                    "{count} tracked {noun} {verb} deleted in the working tree, so the index \
+                     still holds bytes that are no longer on disk"
+                ),
+            });
             let mut listed: Vec<(&String, &usize)> = kinds.iter().collect();
             listed.sort_by(|left, right| right.1.cmp(left.1).then(left.0.cmp(right.0)));
             for (kind, count) in listed.into_iter().take(6) {
@@ -887,8 +1135,41 @@ impl Provider {
                     });
                     return Ok(());
                 };
-                match self.select_source(frontier, item, &path, tick)? {
-                    Some(selection) => decided.selections.push(selection),
+                // A symbolic link never supplies content: see `follow_link`.
+                let (read, via) = match self.follow_link(frontier, &path) {
+                    Link::Direct | Link::Absent => (path.clone(), None),
+                    Link::Followed { target } => (target, Some(path.clone())),
+                    Link::Broken { link, target } => {
+                        decided.unmet.push(Unmet {
+                            item: item_id,
+                            reason: "source_is_a_link".into(),
+                        });
+                        // The reason is capped at 64 characters by CONTEXT,
+                        // so where it pointed goes where there is room for
+                        // it, beside the other things this tree could not
+                        // reach.
+                        let where_to = if target.is_empty() {
+                            "something that is not a regular file of this tree".to_string()
+                        } else {
+                            format!("{target}, which is not a regular file of this tree")
+                        };
+                        if let Some(reach) = decided
+                            .reach
+                            .iter_mut()
+                            .find(|reach| reach.repository == frontier.repository)
+                        {
+                            reach
+                                .gaps
+                                .push(format!("{link} is a symbolic link to {where_to}"));
+                        }
+                        return Ok(());
+                    }
+                };
+                match self.select_source(frontier, item, &read, tick)? {
+                    Some(mut selection) => {
+                        selection.via = via;
+                        decided.selections.push(selection);
+                    }
                     None => decided.unmet.push(Unmet {
                         item: item_id,
                         reason: "source_absent_at_basis".into(),
@@ -955,6 +1236,173 @@ impl Provider {
             }),
         }
         Ok(())
+    }
+
+    /// Extend a cited span into the chunks either side of it, while the
+    /// excerpt still fits.
+    ///
+    /// **A chunk boundary is an artefact of indexing and a reader should
+    /// not lose an answer to it.** Both M3d pilots ran into this: the span
+    /// that ranked held the question's words and the sentence that answered
+    /// them sat a few lines past its edge, on the far side of a fixed
+    /// twenty-line boundary that has nothing to do with the question.
+    ///
+    /// The rule:
+    ///
+    /// - Only a span that **ranked** is extended. A file cited because
+    ///   nothing matched in it (`first-chunk`) has no reason to prefer one
+    ///   neighbour over another.
+    /// - Chunks tile a file exactly, so the result is still **one
+    ///   contiguous byte range** of the artifact, which is what the locator
+    ///   promises and what a reader checks by fetching the citation.
+    /// - Both neighbours are taken when the whole of it stays within
+    ///   [`compiler::EXCERPT_BYTES`]. When only one fits, the side holding
+    ///   more of the query's terms is taken; on a tie the following chunk
+    ///   wins, because prose and code continue forward.
+    /// - Nothing is extended when the span already fills the budget.
+    fn widen(
+        &self,
+        frontier: &Frontier,
+        path: &str,
+        span: (i64, i64, u32, u32),
+        bytes: &[u8],
+        terms: &[String],
+    ) -> (i64, i64, u32, u32) {
+        let (start_byte, end_byte, start_line, end_line) = span;
+        let budget = compiler::EXCERPT_BYTES as i64;
+        if end_byte - start_byte >= budget {
+            return span;
+        }
+        let Ok((before, after)) = cbr_memory::lexical::neighbours(
+            self.store.connection(),
+            &frontier.tree,
+            path,
+            start_byte,
+            end_byte,
+        ) else {
+            return span;
+        };
+        let length = |one: &cbr_memory::lexical::Neighbour| one.end_byte - one.start_byte;
+        let scored = |one: &cbr_memory::lexical::Neighbour| {
+            let from = usize::try_from(one.start_byte)
+                .unwrap_or(0)
+                .min(bytes.len());
+            let to = usize::try_from(one.end_byte)
+                .unwrap_or(0)
+                .clamp(from, bytes.len());
+            let text = String::from_utf8_lossy(&bytes[from..to]).to_lowercase();
+            terms
+                .iter()
+                .filter(|term| text.contains(term.as_str()))
+                .count()
+        };
+        let room = budget - (end_byte - start_byte);
+        let fits = |one: &Option<cbr_memory::lexical::Neighbour>| {
+            one.as_ref().is_some_and(|one| length(one) <= room)
+        };
+        let take_before;
+        let take_after;
+        match (&before, &after) {
+            (Some(one), Some(two)) if length(one) + length(two) <= room => {
+                take_before = true;
+                take_after = true;
+            }
+            (Some(one), Some(two)) if fits(&before) && fits(&after) => {
+                let forward = scored(two) >= scored(one);
+                take_before = !forward;
+                take_after = forward;
+            }
+            _ => {
+                take_before = fits(&before);
+                take_after = fits(&after);
+            }
+        }
+        let mut widened = span;
+        if take_before && let Some(one) = before {
+            widened.0 = one.start_byte;
+            widened.2 = one.start_line;
+        }
+        if take_after && let Some(one) = after {
+            widened.1 = one.end_byte;
+            widened.3 = one.end_line;
+        }
+        let _ = (start_line, end_line);
+        widened
+    }
+
+    /// Where an item's bytes come from when the path it named is a
+    /// symbolic link.
+    ///
+    /// **A link never supplies content.** Its blob holds the target's
+    /// *name*, not the target's text, and citing those bytes gives a reader
+    /// a path where they asked for a file. M3d's Knowscroll pilot did
+    /// exactly that: `AGENTS.md` is mode `120000` pointing at `CLAUDE.md`,
+    /// the indexer skipped it as it should — a link's content is a path,
+    /// not text of this tree — and `select_source` read the blob anyway and
+    /// reported the item satisfied by nine bytes reading `CLAUDE.md`.
+    ///
+    /// The rule, in one piece:
+    ///
+    /// - A link is resolved **inside the same tree**, relative to its own
+    ///   directory. An absolute target, a target that climbs out of the
+    ///   tree, and a chain longer than [`LINK_HOPS`] are all refused: the
+    ///   provider answers from trees, and anything outside one is not a
+    ///   thing it can cite.
+    /// - If that resolves to a **regular file of the same tree**, the item
+    ///   is satisfied from the target and cited **at the target's path**,
+    ///   so the citation a reader fetches is the bytes they were shown. The
+    ///   locator names the link it came through.
+    /// - Otherwise the item is **unmet**. CONTEXT bounds an item reason at
+    ///   64 characters, so the reason is a code and the coverage carries
+    ///   one gap line saying which link it was and where it pointed.
+    fn follow_link(&self, frontier: &Frontier, path: &str) -> Link {
+        let Ok(entries) = cbr_identity::tree_entries(&frontier.checkout, &frontier.tree) else {
+            return Link::Absent;
+        };
+        let regular = |mode: &str| mode == "100644" || mode == "100755";
+        let mut current = path.to_string();
+        for _ in 0..LINK_HOPS {
+            let Some(entry) = entries.iter().find(|entry| entry.path == current) else {
+                return Link::Absent;
+            };
+            if regular(&entry.mode) {
+                return if current == path {
+                    Link::Direct
+                } else {
+                    Link::Followed { target: current }
+                };
+            }
+            if entry.mode != "120000" {
+                // A submodule or anything else that is not a file of this
+                // tree: there is nothing here to cite.
+                return Link::Broken {
+                    link: current,
+                    target: String::new(),
+                };
+            }
+            let Ok(Some(bytes)) =
+                cbr_identity::read_blob_bounded(&frontier.checkout, &entry.blob, LINK_TARGET_BYTES)
+            else {
+                return Link::Broken {
+                    link: current,
+                    target: String::new(),
+                };
+            };
+            let target = String::from_utf8_lossy(&bytes).trim().to_string();
+            match join_in_tree(&current, &target) {
+                Some(next) => current = next,
+                None => {
+                    return Link::Broken {
+                        link: current,
+                        target,
+                    };
+                }
+            }
+        }
+        Link::Broken {
+            link: current,
+            target: "a chain of links too long to follow".into(),
+        }
     }
 
     /// The span of `path` this item gets, and the artifact that holds it.
@@ -1054,9 +1502,26 @@ impl Provider {
             }
         };
 
+        // A ranked span reaches its neighbours; a first chunk does not.
+        let terms = cbr_memory::lexical::query_terms(&query);
+        let (start_byte, end_byte, start_line, end_line) = if origin == "first-chunk" {
+            (start_byte, end_byte, start_line, end_line)
+        } else {
+            self.widen(
+                frontier,
+                path,
+                (start_byte, end_byte, start_line, end_line),
+                &bytes,
+                &terms,
+            )
+        };
+
         let digest = cbr_encoding::digest_bytes(&bytes);
         let selection = Selection {
             item: text(item, &["item_id"]).to_string(),
+            // `decide_item` sets this when the item named a link and this
+            // is its target.
+            via: None,
             repository: frontier.repository.clone(),
             tree: frontier.tree.clone(),
             path: path.to_string(),
@@ -1068,12 +1533,7 @@ impl Provider {
             start_line,
             end_line,
             origin,
-            excerpt: compiler::excerpt(
-                &bytes,
-                start_byte,
-                end_byte,
-                &cbr_memory::lexical::query_terms(&query),
-            ),
+            excerpt: compiler::excerpt(&bytes, start_byte, end_byte, &terms),
         };
         self.seal_source(tick, &selection, &bytes)?;
         Ok(Some(selection))

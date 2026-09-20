@@ -39,7 +39,15 @@ use crate::context::{object, set, string};
 /// The provenance a compiled packet carries. Distinct from the scripted
 /// compiler by construction, and version-bearing because a change to the
 /// rules below is a change to what a packet means.
-pub const COMPILER: &str = "cbr-context-compiler/1";
+///
+/// `cbr-context-compiler/2` since M3e, which changed what a packet
+/// contains three times over: a ranked span now reaches the chunks either
+/// side of it, a symbolic link is followed to its target rather than cited
+/// for its own nine bytes, and eligible claims are ranked and capped at
+/// [`CARRIED_CLAIMS`] instead of carried whole. A packet made by `/1` over
+/// the same basis is a different answer, and saying otherwise would make
+/// two packets look comparable when they are not.
+pub const COMPILER: &str = "cbr-context-compiler/2";
 
 /// The media type a cited source file is sealed under. It is the file's own
 /// bytes, so it is a captured observation of the repository, not a
@@ -202,6 +210,12 @@ pub struct Selection {
     pub origin: &'static str,
     /// A bounded window of the cited span, carried as the section's content.
     pub excerpt: Excerpt,
+    /// The symbolic link an item named, when the bytes came from its
+    /// target. `path` is always the file the bytes are in, so a citation
+    /// resolves; this says how the request reached it, because a consumer
+    /// that asked for `AGENTS.md` should not silently be given
+    /// `CLAUDE.md` with nothing saying so.
+    pub via: Option<String>,
 }
 
 impl Selection {
@@ -221,8 +235,12 @@ impl Selection {
             "first-chunk" => "no term matched in this file; its opening chunk".to_string(),
             projection => format!("found in the {projection} projection"),
         };
+        let via = match &self.via {
+            Some(link) => format!("; reached through the symbolic link {link}"),
+            None => String::new(),
+        };
         format!(
-            "{}:{} lines {}-{} at tree {} ({how}); excerpt is bytes {}-{} of the artifact",
+            "{}:{} lines {}-{} at tree {} ({how}); excerpt is bytes {}-{} of the artifact{via}",
             self.repository,
             self.path,
             self.start_line,
@@ -308,6 +326,28 @@ pub struct EvidenceSection {
 /// advisory, so capacity drops the surplus anyway; this bounds the work of
 /// producing them.
 pub const DISCOVERED_SPANS: usize = 8;
+
+/// How many of a request's **eligible** claims a packet carries.
+///
+/// A claim is eligible when it bears on the request at all; that is a
+/// coarse test and in a one-repository store it is no test whatsoever —
+/// M3d's Knowscroll pilot put twenty-two of twenty-two decisions into a
+/// packet about one of them, every one labelled `binding`, undifferentiated.
+/// Eligibility is therefore not selection: among eligible claims the ones
+/// that share most with the question are carried and the rest are **omitted
+/// with reason `applicability` and counted**, which is the difference
+/// between a caller knowing what it did not get and a caller reading
+/// twenty-two things to find one.
+///
+/// Four, because a packet that carries every claim carries no information
+/// about which claim matters, and one that carries a single claim has no
+/// room to be wrong.
+pub const CARRIED_CLAIMS: usize = 4;
+
+/// How much of a claim's cited evidence is read when ranking it. Bounded,
+/// because ranking must not become a reason to page in every artifact a
+/// store holds.
+pub const CLAIM_TEXT_BYTES: usize = 64 << 10;
 
 /// How many discovered spans may come from one file.
 ///
@@ -423,10 +463,23 @@ pub fn steps(decided: &Decided) -> Vec<Value> {
                 ("label", string("source_inspected")),
                 ("content", string(&selection.content())),
                 (
+                    // `path` is where the bytes are; `via` is the path the
+                    // item named, when that was a symbolic link to them.
+                    // Both are here because a `source_included` check is
+                    // satisfied by either: in this tree they are the same
+                    // file, and the packet says so rather than leaving a
+                    // reader to work it out.
                     "source",
                     object(vec![
                         ("repository", string(&selection.repository)),
                         ("path", string(&selection.path)),
+                        (
+                            "via",
+                            match &selection.via {
+                                Some(link) => string(link),
+                                None => Value::Null,
+                            },
+                        ),
                     ]),
                 ),
                 (
@@ -613,6 +666,7 @@ mod tests {
     fn selection(item: &str, path: &str) -> Selection {
         Selection {
             item: item.into(),
+            via: None,
             repository: "app".into(),
             tree: "t".repeat(40),
             path: path.into(),
