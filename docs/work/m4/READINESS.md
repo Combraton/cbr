@@ -26,11 +26,11 @@ Split as M3 was, each with its gate stated before its code, each reviewed at its
 
 | | Scope | Gate |
 |---|---|---|
-| **m4a** | **The envelope, before any transport exists.** Two counters, admission over the fully serialized request, per-request and per-job ceilings, typed `budget_exhausted`. A fake transport that records what it was asked to send and never opens a socket. | Tests with the fake transport, including both counters independently. Mutant: the admission check removed. **No network code in this PR.** |
+| **m4a** | **The envelope, before any transport exists.** Two-step admission whose local step alone can refuse; a durable ledger with a reservation written before the send; per-request and per-job ceilings; `budget_exhausted` and the distinct provider-exhaustion outcome. A fake transport that records what it was asked to send and never opens a socket. | Tests with the fake transport, both counters independently, a restart between reservation and reconciliation. Mutants: the local check removed; the provider count reached for a request the local step refused; the reservation written after the send; counters lost on restart. **No network code and no credential read in this PR.** |
 | **m4b** | **The wire and the credential.** Both dialects' serializer and parser, the Keychain read at process start, redaction at the recording boundary, the four provider behaviours handled as ordinary outcomes. Still no live call. | Recorded-fixture tests for both dialects. A test that a response carrying a credential-shaped string is redacted before it reaches an artifact. |
 | **m4c** | **The bounded runtime.** Model work leaves the preparation tick; deadlines, cancellation, a concurrency bound; failure reported as an item's unmet reason. The index build's stall is resolved here. | The measured stall falls; a cancelled call leaves no partial record; a failed call leaves an unmet item with a reason and never a hang. |
 | **m4d** | **Derivation records and replay.** Every call sealed as an evidence artifact; a packet rebuilt offline from retained records. | A test rebuilds a model-assisted packet with the transport refused and compares digests. |
-| **m4e** | **The first live run, and the journeys.** J1 revisited with a model; both sealed pilot questions rerun. | Scored by the reviewer against the same oracles, with the deterministic runs as baselines and tokens, spend and latency recorded beside them. |
+| **m4e** | **The first live run, and the journeys.** J1 revisited with a model; both sealed pilot questions rerun, **under a hard cap of 5,000,000 tokens** enforced by the per-job ceiling. | Scored by the reviewer against the same oracles, with the deterministic runs as baselines and tokens, spend and latency recorded beside them. A run exceeding its estimate by more than half stops and is reported. |
 
 ## 2. The owner's standing decisions, and where each is enforced
 
@@ -41,23 +41,59 @@ Every row is the owner's, recorded before M4 and unchanged by it. The right-hand
 | **MiniMax only.** No other provider without the owner naming it. | The provider registry admits one provider id, from configuration, and a launch naming any other **refuses to start**, as an unreadable repository registration already does. |
 | **Primary wire** `https://api.minimax.io/v1`, OpenAI-compatible. **Second dialect** `https://api.minimax.io/anthropic`. | Two serializers and two parsers over one transport. The endpoint is configuration, not a literal in the call path. |
 | **Models** `MiniMax-M2.7-highspeed` (extraction, large-result projection), `MiniMax-M2.7` (ordinary derivation), `MiniMax-M3` (synthesis, request-time investigation, image input). | A model id outside the three is refused at admission, before serialization. The model id is recorded in every derivation record. |
-| **Credential:** macOS Keychain service `minimax_api_key`, **read at process start only**, never logged, never in the repository, **no other credential ever read**. | One read, in the provider's construction, into a value that is never `Debug`-printed and never serialized. A test asserts the key's bytes appear in no artifact, no event, no error and no log line, which is [CORE §18.1](https://github.com/Combraton/combraton/blob/main/docs/spec/protocol/CORE.md) applied to this credential. |
+| **Credential:** macOS Keychain service `minimax_api_key`, **read at process start only**, never logged, never in the repository, **no other credential ever read**. | One read, in the provider's construction, **and only when a model is configured** — see below. Into a value that is never `Debug`-printed and never serialized. A test asserts the key's bytes appear in no artifact, no event, no error and no log line, which is [CORE §18.1](https://github.com/Combraton/combraton/blob/main/docs/spec/protocol/CORE.md) applied to this credential. |
 | **Envelope:** 20M tokens per 5-hour window, 200M per month. Background spend zero until enabled. | §3. |
+
+**The credential is read only when a model is configured.** A launch with no model configured **never touches the Keychain** — which is what CI is, what every conformance run is, and what a developer running the suite is. A Keychain read is a prompt, an audit entry and a secret in a process that had no use for one, so "no model configured" must reach the transport layer as a configuration state rather than as a key that is fetched and then unused.
+
+**How the read is done is m4b's decision, and the tradeoff is stated now.** Either the `security` tool invoked with fixed arguments and **no shell**, which adds no dependency and puts the secret through a child process's stdout; or a Keychain crate, which keeps the secret in-process but adds a dependency to the credential path, which is the last place a dependency is cheap. Whichever is chosen: the value is **never placed in the environment**, **never passed to a child process**, and **zeroed on drop**. The `security` option conflicts with the second of those, which is the argument against it and will be recorded as such when m4b decides. **Mutant: the Keychain read with no model configured**, killed by a test that launches without one and asserts no read happened.
 
 **What CI and Linux do instead: nothing live.** The Keychain is macOS-only and the key is the owner's, so **CI never calls a model and never reads a credential**. Every CI test runs against the fake transport or recorded fixtures, and a live run happens only on the owner's machine, deliberately, with its cost recorded. A test that would need a live call is marked and skipped rather than silently passing; a suite that cannot tell the difference between "no model configured" and "model agreed with us" is not a suite. **A replayed transcript is not a live run**, and a labelled fake is fault injection, never acceptance ([MODEL-RUNTIME §7](../../spec/MODEL-RUNTIME.md)).
 
 ## 3. The budget, in code before the first call exists
 
-The quota is **shared with the owner's other tools** ([STACK §8.1](../readiness/STACK.md)), so an overspend degrades their working environment rather than merely costing money. That is why the admission check is m4a — before any transport — and why exhaustion is a typed result and never a retry.
+The quota is **shared with the owner's other tools** ([STACK §8.1](../readiness/STACK.md)), so an overspend degrades their working environment rather than merely costing money. That is why admission is m4a — before any transport — and why exhaustion is a typed result and never a retry.
 
-- **Two counters, checked independently.** A 5-hour window and a calendar month have different reset semantics, and the month can be almost untouched while the window is exhausted. Admission checks both; passing one is not passing.
-- **Counted before sending**, over the **fully serialized request** — instructions, tool schemas, messages, excerpts, tool outputs and the provider's own overhead — using MiniMax's `POST /v1/responses/input_tokens`, with reserved generation and a safety margin, per [MODEL-RUNTIME §2](../../spec/MODEL-RUNTIME.md).
-- **Reconciled after**, from the response's usage, so the counters track what was actually spent and not what was estimated. A divergence between estimate and usage is recorded, because a systematically low estimate is how an envelope leaks.
-- **A call that would exceed either counter is refused with a typed `budget_exhausted` and is never sent.** Not truncated, not retried, not queued behind a sleep. A retry loop against a shared quota is a denial of service against its owner.
+### Admission is two steps, because the count call is itself a send
+
+`POST /v1/responses/input_tokens` carries **the fully serialized request to the provider**. It is a send. An admission design that counts there first has already sent the body it was deciding whether to send, which defeats the point twice over: it spends whatever the count costs, and it puts content on the wire before anything decided that the content was permitted to go.
+
+So:
+
+1. **A local, conservative estimate decides first**, from MiniMax's published `tokenizer.json` where it applies and a byte-based upper bound otherwise. It is deliberately an over-estimate: a local step that guesses low would admit requests the provider then refuses, which is the leak in another form. **This step alone can refuse**, with `budget_exhausted`, and nothing leaves the process.
+2. **The provider count runs only for a request the local step has already admitted.** It is a model call in every respect that matters: it is **under the same view rule** as any other call (§7), it is **itself recorded** as a derivation record (§6), and **its own cost, if any, is debited** from the same two counters. A count that is free is still recorded; "free" is the provider's word, not a fact CBR should build on.
+3. **The provider's count refines the estimate** for the real send, which is admitted against the counters a third time with the accurate figure.
+
+**m4a therefore has a complete admission path with no network at all**, which is exactly what CI exercises: the local estimate, both counters, the typed refusal, and the ceilings, with a fake transport asserting it was never called.
+
+### The counters are durable, and conservative under failure
+
+- **They live in the store**, in CBR's own ledger, and **survive restart**. Counters held in memory are counters that a crash forgets, and a forgotten spend is an overspend against someone else's quota.
+- **A reservation is written before the send and reconciled after.** A crash between the two therefore leaves the spend **counted rather than forgotten** — the conservative direction. Reconciliation replaces the reservation with the response's actual usage, and a divergence between estimate and usage is recorded, because a systematically low estimate is how an envelope leaks.
+- **The window is CBR's own rolling five hours over its own ledger**, not the provider's window and not a wall-clock bucket. CBR cannot see the provider's counter, so it accounts for what it spent and nothing else.
+- **Two counters, checked independently.** A rolling five hours and a calendar month have different reset semantics, and the month can be almost untouched while the window is exhausted. Passing one is not passing.
 - **Per-request and per-job ceilings sit under the envelope**, so one runaway job cannot consume a window even when the window has room.
-- **Background spend is zero** until the owner enables it, which means no speculative call, no warming, and no prefetch.
+- **Background spend is zero** until the owner enables it: no speculative call, no warming, no prefetch.
 
-**Gate:** tests with a fake transport that asserts it was never called when admission refuses; both counters exercised separately; the reconciliation path exercised with a usage figure that differs from the estimate. **Mutant: the admission check removed**, which must fail at the assertion that the transport was not called.
+### Two different exhaustions, and neither is retried
+
+- **`budget_exhausted`** is CBR's own: the ledger says this call would exceed the window or the month. The call is **never sent**.
+- **The provider reports exhaustion while CBR's ledger has room.** This will happen, because the quota is shared with the owner's other tools and CBR only ever sees its own spending. It is a **distinct typed outcome** — the envelope was not the binding constraint, so reporting `budget_exhausted` would be a lie about which limit was hit. It is **not retried**, and it **does not corrupt the ledger**: the reservation for a call the provider refused is reconciled to what was actually spent, which for a refusal is whatever the provider says and otherwise nothing.
+
+Neither one loops. A retry loop against a shared quota is a denial of service against its owner.
+
+### Gate and mutants
+
+Tests with a fake transport that asserts it was never called when admission refuses; both counters exercised separately; the reconciliation path exercised with a usage figure that differs from the estimate; a restart between reservation and reconciliation.
+
+| Mutant | Must be killed by |
+|---|---|
+| The local admission check removed | the fake transport asserting it was never called |
+| **The provider count reached for a request the local estimate refuses** | the same assertion — the count endpoint is a send and the fake transport counts it as one |
+| One of the two counters dropped | a window-exhausted case the monthly counter alone would admit |
+| **The reservation written after the send** | a crash injected between send and reconciliation, after which the spend is still counted |
+| **Counters lost on restart** | a restart with a spend already recorded, after which the window is still exhausted |
+| Provider-reported exhaustion reported as `budget_exhausted` | the typed outcome assertion |
 
 ## 4. Provider facts that are design inputs, not discoveries
 
@@ -70,17 +106,34 @@ Four behaviours are already recorded in [STACK §8.1](../readiness/STACK.md) and
 
 The rule under all four: **nothing downstream trusts a shape the model was only asked for.** Invalid output is a **recorded failure with a bounded retry**, and the failure is in the derivation record — not swallowed, not retried until it looks right.
 
-## 5. Recording and replay
+## 5. Repository text is untrusted input
+
+A file in a repository can carry text addressed to a model. CBR reads repositories it does not own — brian2 is a third party's, and every future one will be somebody's — so this is not hypothetical, and a model that acts on such text is a model doing what the repository said rather than what the request asked.
+
+The rule is structural rather than a matter of prompting:
+
+- **Model-assisted selection chooses only among candidate ids CBR offered**, which is a **closed set** built by the deterministic path: the spans retrieval found, the anchors, the eligible claims. The model returns ids from that set and nothing else.
+- **An id outside the set is invalid output**: recorded as such and repaired within the bounded budget of §4, or dropped. It is never resolved, never looked up, never treated as a hint.
+- **The model never introduces a path, a span, a citation or a label.** Every one of those comes from the deterministic path, which is the same property that makes a packet reproducible and its citations resolvable to exact bytes.
+- **Prose the model writes enters a packet only as a section labelled `inferred`**, citing the inputs it was derived from, and **never `binding`**. `binding` is an authority's act, and nothing a model produces can be one — the same rule that already forbids a source file being promoted to `binding` in M3's J1.
+
+**Negative control 5:** a repository file is planted that instructs the model to select something outside the candidate set, to mark a claim `binding`, or to reveal content from outside the view. The packet is unchanged outside the closed set: no id that was not offered, no label the model chose, nothing from beyond the view. **Mutant: ids accepted without the closed-set check**, killed by that control.
+
+This is the least surprising part of the design and the easiest to erode later, so it is written down before there is any code to erode.
+
+## 6. Recording and replay
 
 **Every model call is an evidence artifact.** The request, the response, the model id, the token counts and the latency, sealed the way M3 seals a cited file, so a derivation can be inspected long after the call.
 
 **Redaction happens at the recording boundary**, not afterwards. A provider response can carry a third party's live credential — that is a known failure mode on one of the pilot repositories, recorded in [RELEASE-SCOPE §5](../readiness/RELEASE-SCOPE.md), not a precaution. Redaction therefore runs between the transport and the store, so an unredacted body never reaches disk, and the test is that the store contains no match rather than that the log looks clean.
 
+**A derivation record holds repository excerpts and claim text**, so it is evidence with a readable set, not a log. Its artifact is **readable only under the same view and readable claims as the job that made it**, and it is **never reachable through a packet by a reader who could not read its contents** — a citation that hands over material the citing reader was not permitted to see is the M3 leak arriving through a new door. **Gate:** the m3c byte-identity assertion, applied to derivation records — a packet prepared for a reader outside the job's view is byte-identical to one prepared in a store where the derivation never happened.
+
 **A packet built with a model is reproducible from the retained records without calling the model again**, as [INTERNALS §5](../../spec/INTERNALS.md) requires. **Gate:** a test rebuilds a model-assisted packet with the transport constructed to panic if called, and compares digests with the original.
 
 One thing already known and carried in: an ingested artifact's id embeds the instant it was ingested, and a claim's revision digest is taken over a record holding it, so **a packet citing an ingested artifact is byte-reproducible within its store and not across stores** ([JOURNEYS](../../verification/JOURNEYS.md#what-the-pilots-changed-and-what-changed-back)). M4's replay test compares within one store, and the cross-store property stays reported rather than assumed away.
 
-## 6. What may be sent
+## 7. What may be sent
 
 **Only content inside the requesting session's view and its readable claims** — the same two sets M3 already resolves **at the command, where the grant is**, and carries in the job. Nothing about a model call re-opens that question, and the model runtime never reads the store on its own authority.
 
@@ -88,7 +141,7 @@ This is the leak M3 shipped and fixed once already: discovery called an operatio
 
 **The repositories.** brian2 is CeCILL-licensed and public; Knowscroll-v2 is public. Sending their text to a provider is sending public text, and the licence still governs what CBR may **commit** — digests, paths, spans, counts and costs only, which is unchanged. **Any private repository needs the owner's explicit word before a single byte of it is sent**, and CBR has no such word today.
 
-## 7. Bounded runtime
+## 8. Bounded runtime
 
 **Model work leaves the preparation tick.** M3 measured the cost of doing long work inside it: the index build holds the tick throughout, **7.2s** on CBR's own 1,066 blobs, **12.8s** on brian2's 553 blobs and 5.3 MB, and **3.9s** on Knowscroll's 145, with every other job on that provider waiting it out. A model call is longer and less predictable than any of those, so M4 is where this is resolved — for the index build as well as for the model.
 
@@ -97,7 +150,7 @@ This is the leak M3 shipped and fixed once already: discovery called an operatio
 - **A concurrency bound** caps calls in flight, because a shared quota plus unbounded concurrency is the overspend of §3 arriving by another route.
 - **Failure is an item's unmet reason, never a hang.** A provider error, a timeout, a refusal at admission and an invalid output after bounded repair all end as a typed reason a consumer can read.
 
-## 8. How M4 is judged
+## 9. How M4 is judged
 
 **J1 revisited with a model**, against the same predeclared oracle, with the deterministic M3 run as its baseline. The question is not whether the model produces something plausible; it is whether the packet holds the facts the oracle names, and whether every citation still resolves to exact bytes at a named tree.
 
@@ -107,24 +160,48 @@ This is the leak M3 shipped and fixed once already: discovery called an operatio
 - **Knowscroll is the weaker signal**, and the caveat travels with it: its rerun passed, but the change that moved it was proposed by the reviewer, who holds the oracle. A pass under those conditions confirms that a general fix was general; it is not independent evidence of usefulness.
 - **Recorded beside each:** tokens in and out, spend against both counters, latency, the model id, and the deterministic run's packet for comparison.
 
+### The first live run has a cap before it starts
+
+Stated now, before any call, so that the number is a limit rather than a description of what happened.
+
+| | Estimate |
+|---|---:|
+| J1 revisited with a model | 150,000 tokens |
+| brian2's question | 600,000 tokens |
+| Knowscroll's question | 400,000 tokens |
+| Repair, retry and the count calls of §3, across all three | 350,000 tokens |
+| **Expected total for m4e** | **1,500,000 tokens** |
+
+**The hard cap for the whole of m4e is 5,000,000 tokens** unless the owner raises it — a little over three times the estimate, because an estimate made before the first live call has ever run is not a measurement. It is **enforced by the per-job ceiling of §3, not by intention**: m4e runs under a job whose ceiling is that number, and a call that would cross it is refused with `budget_exhausted` like any other.
+
+**Exceeding the estimate by more than half stops the run and is reported.** At 2,250,000 tokens the run halts, whatever state it is in, and what was spent and on what is reported before anything continues. A run that quietly costs three times its estimate has told you something about the estimate that you only learn if it stops.
+
+These are estimates, and the first thing m4e produces is the measurement that replaces them.
+
 ### Negative controls, stated before the runs
 
 1. **No model configured.** The same request produces today's packet, byte-identical to the golden digest. If it does not, M4 has changed the deterministic path while claiming not to.
 2. **The model refuses or returns nothing usable.** The packet is still produced, from the deterministic selection, with the failure recorded as a derivation and the item's reason stating it. Degradation is honest, not silent.
 3. **A claim outside the grant, with a model in the loop.** The packet is byte-identical to one prepared where the claim was never proposed — the m3c assertion, re-run with the model runtime present.
 4. **A replayed transcript is labelled.** A run against recorded fixtures never appears in a record as a live run.
+5. **A repository file instructs the model.** A planted file tells it to select something outside the candidate set, to mark a claim `binding`, or to reveal content from beyond the view. The packet is unchanged outside the closed set (§5).
 
 ### The mutants expected to be needed
 
 | Mutant | Must be killed by |
 |---|---|
-| The admission check removed | the fake transport asserting it was never called |
+| The local admission check removed | the fake transport asserting it was never called |
+| The provider count reached for a request the local estimate refuses | the same assertion; the count endpoint is a send |
 | One of the two counters dropped | a window-exhausted case that the monthly counter alone would admit |
+| The reservation written after the send | a crash injected between send and reconciliation |
+| Counters lost on restart | a restart with a spend already recorded |
+| Ids accepted without the closed-set check | negative control 5 |
 | The credential read on every call rather than at process start | a test that the Keychain is read exactly once |
+| The Keychain read with no model configured | a launch without one, asserting no read happened |
 | Redaction moved after the write | a store scan finding the credential-shaped string on disk |
 | A model output trusted without validation | free-form prose where a schema was requested, carried into a packet |
 | `<think>` content carried into a derivation record | the parser's refusal |
-| A repository outside the view included in a request body | the serialized-bytes assertion of §6 |
+| A repository outside the view included in a request body | the serialized-bytes assertion of §7 |
 | The replay path calling the provider | a transport that panics when called |
 | A cancelled call leaving a partial record | the record's absence |
 | An unbounded repair loop | the repair budget's ceiling |

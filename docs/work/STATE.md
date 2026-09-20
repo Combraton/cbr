@@ -17,10 +17,29 @@ The readiness document states the scope and the PR split, restates the owner's s
 
 **Both pilot rescores are recorded with it.** brian2's rerun **failed again, identically**: one of three required facts, no trap, baseline holding none. Knowscroll's rerun **passed, three of three**, with the caveat that the change which moved it was proposed by the reviewer, who holds the oracle — so it confirms a general fix was general and is **not independent evidence of usefulness**. brian2's unchanged failure is what shows nothing was tuned to pass. Both questions stay sealed and run again at M4.
 
+### The review round, and the seven additions
+
+The review's largest catch is one this session had not seen: **`POST /v1/responses/input_tokens` is itself a send.** Counting there first serialises the request and puts it on the wire *before* admission has decided whether it may go — spending whatever the count costs and defeating the check it was meant to serve. Admission is therefore two steps: a **local conservative estimate that alone can refuse**, and the provider count only for a request that step has already admitted, itself under the view rule, itself recorded, its own cost debited. That is why m4a now has a complete admission path with **no network at all**, which is what CI exercises.
+
+The other six: the counters are **durable and conservative** — in the store, surviving restart, a reservation written before the send so a crash leaves the spend counted rather than forgotten, over CBR's own rolling five hours, with provider-reported exhaustion a **distinct** typed outcome because the quota is shared and CBR only sees its own spending; **repository text is untrusted input**, so model-assisted selection chooses only among candidate ids CBR offered and never introduces a path, span, citation or label, with negative control 5 planting a file that tells it to; **a derivation record holds repository excerpts**, so it is readable only under the job's own view and is never reachable through a packet by a reader who could not read its contents; **the Keychain is touched only when a model is configured**, which CI never is, with the read mechanism a stated m4b decision and its tradeoff written down now; **m4e has a hard cap of 5,000,000 tokens** enforced by the per-job ceiling rather than by intention, with a stop at half again over the estimate; and fragment validation becomes a mechanism.
+
+### The fourth instance of a rule kept by memory
+
+`check_docs.py` did not validate anchors, so two heading changes at m3e left three links pointing at headings that no longer existed. **This session caught them by hand** — which is precisely the failure this milestone has now recorded three times before: the rule was known, applied to the case in front of it, and not made structural.
+
+| Round | The rule that existed | Where it was not applied |
+|---|---|---|
+| m3c review 1 | a packet's provenance names its compiler | the publication path passed the constant unconditionally |
+| m3c review 2 | resolve the readable set at the command | claims, added three commits later, did not |
+| m3d | a change to how an index is built changes `COMPILER` | the chunker changed and the constant did not |
+| **M4 readiness** | **a link into a heading must name a heading that exists** | **two headings were renamed and three links were fixed by memory** |
+
+`scripts/check_docs.py` now resolves fragments in Markdown links, same-file and cross-file, by GitHub's slug rule — including the case that broke, where an em dash is dropped as punctuation and the spaces either side each become a hyphen, so the anchor carries a doubled hyphen nobody would type. **The rule is itself checked on every run** against `scripts/testdata/anchor-slugs.md`; there is no flag to skip it. Two mutants, both observed: a renamed heading with the link left behind is caught as an error and exits 1, and collapsing whitespace in the slug rule fails the self-test on three of its seven cases.
+
 | Command | Exit | Result |
 |---|---|---|
-| `check_docs.py` / `verify_pin.py` | 0 / 0 | 24 files, 0 errors; 433 and 420 files match their anchors |
-| `cargo fmt` · `clippy --all-targets -- -D warnings` · `build --locked` · `test --workspace --locked` · `git diff --check` | 0 | **181 tests**, unchanged — this pull request touches no code |
+| `check_docs.py` / `verify_pin.py` | 0 / 0 | 25 files, 162 links, **27 heading anchors**, 0 errors; 433 and 420 files match |
+| `cargo fmt` · `clippy --all-targets -- -D warnings` · `build --locked` · `test --workspace --locked` · `git diff --check` | 0 | **181 tests**, unchanged — this pull request touches no crate |
 
 ## Earlier — M3, complete
 
