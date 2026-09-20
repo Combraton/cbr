@@ -269,3 +269,47 @@ fn the_pre_tokeniser_emits_the_whole_and_the_parts() {
     assert_eq!(lexical::normalise("kebab-case-name"), "kebab case name");
     assert_eq!(lexical::normalise("plain words here"), "plain words here");
 }
+
+#[test]
+fn a_chunk_is_bounded_in_bytes_as_well_as_lines() {
+    // A chunk is the unit retrieval ranks and the unit a packet excerpts.
+    // Twenty lines of a Markdown table is nearly nine kilobytes: one chunk
+    // held a whole decision table, so ranking could not tell one decision
+    // from another and no bounded excerpt of it could show the row that
+    // answered a question.
+    let row = format!("| {} |\n", "x".repeat(800));
+    let table: String = row.repeat(20);
+    let chunked = lexical::chunks(&table, 20);
+    assert!(
+        chunked.len() > 1,
+        "twenty long lines are not one chunk: {} chunk(s)",
+        chunked.len()
+    );
+    for chunk in &chunked {
+        assert!(
+            chunk.text.len() <= lexical::CHUNK_BYTES + row.len(),
+            "a chunk stops at the first line end past the cap: {} bytes",
+            chunk.text.len()
+        );
+    }
+    // Short lines still chunk by line count, unchanged.
+    let short: String = (1..=45).map(|n| format!("line {n}\n")).collect();
+    let chunked = lexical::chunks(&short, 20);
+    assert_eq!(chunked.len(), 3, "{chunked:?}");
+    assert_eq!(chunked[0].start_line, 1);
+    assert_eq!(chunked[0].end_line, 20);
+    assert_eq!(chunked[2].start_line, 41);
+
+    // And the tiling is still exact, whichever bound applied.
+    for text in [table.as_str(), short.as_str()] {
+        let mut at = 0i64;
+        let mut rebuilt = String::new();
+        for chunk in lexical::chunks(text, 20) {
+            assert_eq!(chunk.start_byte, at, "chunks tile without a gap");
+            at = chunk.end_byte;
+            rebuilt.push_str(chunk.text);
+        }
+        assert_eq!(rebuilt, text, "and reproduce the text exactly");
+        assert_eq!(at, text.len() as i64);
+    }
+}

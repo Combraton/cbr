@@ -164,3 +164,40 @@ fn indexing_a_tree_makes_it_searchable_and_anchored_and_states_what_it_missed() 
         "and the old text is not searchable at the new tree"
     );
 }
+
+#[test]
+fn a_coverage_gap_is_reported_by_kind_as_well_as_by_count() {
+    // "991 blobs in a language with no anchors" does not tell a reader
+    // whether the gap is documentation or the Cython half of a scientific
+    // library. A pilot on a brownfield repository is exactly the case where
+    // that difference decides whether a run means anything.
+    let directory = tempfile::tempdir().expect("temp dir");
+    let path = directory.path();
+    git(path, &["init", "-q", "-b", "main"]);
+    for (name, body) in [
+        ("engine.pyx", "cdef int drain(): pass\n"),
+        ("kernel.pyx", "cdef int flush(): pass\n"),
+        ("shim.cpp", "int main() { return 0; }\n"),
+        ("notes.rst", "The queue drains.\n"),
+        (".gitignore", "target\n"),
+        ("Makefile", "all:\n"),
+        ("known.rs", "pub fn drainQueue() {}\n"),
+    ] {
+        std::fs::write(path.join(name), body).expect("writes");
+    }
+    git(path, &["add", "-f", "."]);
+    git(path, &["commit", "-q", "-m", "mixed"]);
+    let tree = cbr_identity::git_basis(path, "HEAD").expect("basis").tree;
+
+    let connection = database();
+    let coverage = index::index_tree(&connection, path, &tree).expect("indexes");
+    assert_eq!(coverage.anchored, 1, "only the Rust file: {coverage:?}");
+    assert_eq!(coverage.unanchored_language, 6, "{coverage:?}");
+    let kinds = &coverage.unanchored_by_kind;
+    assert_eq!(kinds.get(".pyx"), Some(&2), "{kinds:?}");
+    assert_eq!(kinds.get(".cpp"), Some(&1), "{kinds:?}");
+    assert_eq!(kinds.get(".rst"), Some(&1), "{kinds:?}");
+    // A dotfile is a dotfile, not a file of kind `gitignore`.
+    assert_eq!(kinds.get("no extension"), Some(&2), "{kinds:?}");
+    assert_eq!(kinds.values().sum::<usize>(), coverage.unanchored_language);
+}

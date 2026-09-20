@@ -12,6 +12,7 @@
 //! Everything commits in the caller's transaction, so a half-indexed tree is
 //! not a state the store can be left in.
 
+use std::collections::BTreeMap;
 use std::path::Path;
 
 use rusqlite::Connection;
@@ -39,6 +40,10 @@ pub struct Coverage {
     pub too_large: usize,
     /// Text, indexed lexically, but in a language CBR does not anchor.
     pub unanchored_language: usize,
+    /// The same total, broken down by file extension, because "991 blobs in
+    /// a language with no anchors" does not tell a reader whether the gap is
+    /// documentation or the Cython half of a scientific library.
+    pub unanchored_by_kind: BTreeMap<String, usize>,
 }
 
 #[derive(Debug)]
@@ -132,7 +137,11 @@ pub fn index_tree(
                 anchors::record(connection, tree, &entry.path, &entry.blob, &found)?;
                 coverage.anchored += 1;
             }
-            None => coverage.unanchored_language += 1,
+            None => {
+                coverage.unanchored_language += 1;
+                let kind = crate::lexical::file_kind(&entry.path);
+                *coverage.unanchored_by_kind.entry(kind).or_default() += 1;
+            }
         }
     }
     Ok(coverage)

@@ -24,6 +24,24 @@
 
 use rusqlite::{Connection, params};
 
+/// How many bytes one indexed chunk may cover, whatever its line count.
+///
+/// Matched to `compiler::EXCERPT_BYTES`: a chunk a packet cannot show in
+/// full is a chunk whose ranking a reader cannot check.
+pub const CHUNK_BYTES: usize = 2048;
+
+/// What kind of file a path names, for reporting a coverage gap by kind.
+///
+/// The name after the last dot, unless the dot begins the file name: a
+/// `.gitignore` is a dotfile, not twelve files of kind `gitignore`.
+pub fn file_kind(path: &str) -> String {
+    let name = path.rsplit_once('/').map_or(path, |(_, name)| name);
+    match name.rsplit_once('.') {
+        Some((stem, extension)) if !stem.is_empty() => format!(".{extension}"),
+        _ => "no extension".to_string(),
+    }
+}
+
 /// A span of a blob's text, in bytes and in lines.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Chunk<'a> {
@@ -84,7 +102,21 @@ pub fn migrate(connection: &Connection) -> Result<(), rusqlite::Error> {
 /// Split `text` into chunks of at most `lines` lines, tiling it exactly:
 /// every byte is in one chunk, in order, with the line numbers to match.
 pub fn chunks(text: &str, lines: usize) -> Vec<Chunk<'_>> {
+    chunks_bounded(text, lines, CHUNK_BYTES)
+}
+
+/// Split `text` into chunks of at most `lines` lines **and** at most `bytes`
+/// bytes, tiling it exactly.
+///
+/// The byte bound is not a detail. A chunk is the unit retrieval ranks and
+/// the unit a packet excerpts, and twenty lines of a Markdown table is
+/// nearly nine kilobytes: one chunk held a whole decision table, so ranking
+/// could not tell one decision from another and an excerpt of it could not
+/// show the row that answered a question. Bounding by bytes makes the chunk
+/// the thing a reader actually reads.
+pub fn chunks_bounded(text: &str, lines: usize, bytes: usize) -> Vec<Chunk<'_>> {
     let lines = lines.max(1);
+    let bytes = bytes.max(1);
     let mut chunks = Vec::new();
     let mut start = 0usize;
     let mut start_line = 1u32;
@@ -96,7 +128,7 @@ pub fn chunks(text: &str, lines: usize) -> Vec<Chunk<'_>> {
         }
         counted += 1;
         line_end = offset + 1;
-        if counted == lines {
+        if counted == lines || line_end - start >= bytes {
             chunks.push(Chunk {
                 text: &text[start..line_end],
                 start_byte: start as i64,

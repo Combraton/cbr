@@ -684,3 +684,40 @@ fn an_index_built_by_another_compiler_is_lagging_however_current_its_tree() {
     assert_eq!(answer.sources[0].state, State::Lagging, "{answer:?}");
     assert!(answer.declares_its_gaps(), "{answer:?}");
 }
+
+#[test]
+fn an_index_built_by_the_previous_compiler_is_lagging_under_this_one() {
+    // Not a synthetic version: `cbr-index/1` is the identity this build
+    // shipped under before chunks were bounded in bytes. An index built
+    // under it holds one chunk where this build holds several, so it ranks
+    // differently and excerpts differently — it is a different index of the
+    // same tree, and must not pass as current.
+    let directory = tempfile::tempdir().expect("temp dir");
+    let path = directory.path();
+    let tree = repository(path, &[("src/queue.rs", "pub fn drainQueue() {}\n")]);
+    let connection = database();
+    let manifest = retrieval::build(&connection, "svc", path, &tree, 1).expect("builds");
+    assert_eq!(manifest.compiler, "cbr-index/2", "this build's identity");
+
+    retrieval::record_manifest(
+        &connection,
+        &retrieval::Manifest {
+            compiler: "cbr-index/1".into(),
+            ..manifest
+        },
+    )
+    .expect("records");
+    let answer = retrieval::search(
+        &connection,
+        &view("svc", path, &tree),
+        &Ask::all("drain"),
+        &Bounds::default(),
+    )
+    .expect("searches");
+    assert_eq!(
+        answer.sources[0].state,
+        State::Lagging,
+        "an index from the previous build is lagging, not complete: {answer:?}"
+    );
+    assert!(answer.declares_its_gaps(), "{answer:?}");
+}

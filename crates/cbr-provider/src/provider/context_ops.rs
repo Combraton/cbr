@@ -285,7 +285,10 @@ impl Provider {
             else {
                 continue;
             };
-            let reach = self.ensure_index(&id, &checkout, &tree)?;
+            let dirty = at(repository, &["dirty", "snapshot_digest"])
+                .as_str()
+                .map(str::to_string);
+            let reach = self.ensure_index(&id, &checkout, &tree, dirty.as_deref())?;
             decided.reach.push(reach);
             trees.push(Frontier {
                 repository: id,
@@ -486,7 +489,12 @@ impl Provider {
                 start_line: found.start_line,
                 end_line: found.end_line,
                 origin: "index",
-                excerpt: compiler::excerpt(&bytes, found.start_byte, found.end_byte),
+                excerpt: compiler::excerpt(
+                    &bytes,
+                    found.start_byte,
+                    found.end_byte,
+                    &cbr_memory::lexical::query_terms(question),
+                ),
             };
             self.seal_source(tick, &selection, &bytes)?;
             decided.discovered.push(compiler::Discovered {
@@ -528,7 +536,15 @@ impl Provider {
                 let resolution =
                     cbr_memory::anchors::resolve(self.store.connection(), &frontier.tree, name)
                         .map_err(|_| ProtocolError::new_internal_error())?;
-                if resolution.candidates.is_empty() {
+                let callers =
+                    cbr_memory::anchors::references(self.store.connection(), &frontier.tree, name)
+                        .map_err(|_| ProtocolError::new_internal_error())?;
+                // A name with uses and no definition in this tree is the
+                // third-party API case, and its use sites are exactly what
+                // "where does this repository use X" asks for. Requiring a
+                // definition first meant a question about someone else's
+                // function got nothing at all.
+                if resolution.candidates.is_empty() && callers.is_empty() {
                     continue;
                 }
                 let where_defined: Vec<String> = resolution
@@ -544,9 +560,6 @@ impl Provider {
                         )
                     })
                     .collect();
-                let callers =
-                    cbr_memory::anchors::references(self.store.connection(), &frontier.tree, name)
-                        .map_err(|_| ProtocolError::new_internal_error())?;
                 let used_at: Vec<String> = callers
                     .iter()
                     .take(16)
@@ -567,6 +580,14 @@ impl Provider {
                 } else {
                     format!("used at:\n  {}", used_at.join("\n  "))
                 };
+                let definitions = if where_defined.is_empty() {
+                    format!(
+                        "{name} is not defined in this tree; it is used here, which is what a \
+                         question about someone else's function is asking for"
+                    )
+                } else {
+                    format!("{name} defined at:\n  {}", where_defined.join("\n  "))
+                };
                 decided.discovered.push(compiler::Discovered {
                     id: format!("anchor-{}-{name}", frontier.repository),
                     rank: compiler::Rank::Anchor,
@@ -574,10 +595,7 @@ impl Provider {
                     claim: None,
                     label: "inferred",
                     historical: false,
-                    content: format!(
-                        "{name} defined at:\n  {}\n{uses}{ambiguity}",
-                        where_defined.join("\n  ")
-                    ),
+                    content: format!("{definitions}\n{uses}{ambiguity}"),
                     citation: None,
                 });
             }
@@ -723,6 +741,7 @@ impl Provider {
         repository: &str,
         checkout: &std::path::Path,
         tree: &str,
+        dirty: Option<&str>,
     ) -> Result<Reach, TickError> {
         use cbr_memory::retrieval;
         let connection = self.store.connection();
@@ -752,6 +771,16 @@ impl Provider {
                         gaps.push(format!("{count} {what}"));
                     }
                 }
+                // By kind, not just by count: "991 blobs in a language with
+                // no anchors" does not tell a reader whether the gap is
+                // documentation or the Cython half of a scientific library.
+                let mut kinds: Vec<(&String, &usize)> =
+                    coverage.unanchored_by_kind.iter().collect();
+                kinds.sort_by(|left, right| right.1.cmp(left.1).then(left.0.cmp(right.0)));
+                for (kind, count) in kinds.into_iter().take(8) {
+                    gaps.push(format!("  of those, {count} are {kind}"));
+                }
+                gaps.extend(self.untracked_gap(checkout, dirty));
                 Reach {
                     repository: repository.to_string(),
                     frontier: manifest.frontier,
@@ -768,6 +797,69 @@ impl Provider {
                 gaps: vec![format!("the index could not be built: {error}")],
             },
         })
+    }
+
+    /// What a dirty working tree keeps out of the index, as a gap.
+    ///
+    /// The owner's decision for M3d is that a pilot searches the tree **as
+    /// committed**: a file that is not in any tree has no blob to cite and
+    /// no tree to anchor a citation to, so citing one would produce a
+    /// reference reproducible from a snapshot and from nothing else. So the
+    /// working tree is not read — and the count of what that leaves out is
+    /// declared rather than left for a reader to discover.
+    ///
+    /// The snapshot is recomputed here rather than taken from the basis,
+    /// which carries only its digest. That is also a check: a digest that no
+    /// longer matches means the working tree moved after the basis was
+    /// taken, which is itself a gap.
+    fn untracked_gap(&self, checkout: &std::path::Path, dirty: Option<&str>) -> Vec<String> {
+        let Some(declared) = dirty else {
+            return Vec::new();
+        };
+        let Ok(Some(snapshot)) = cbr_identity::dirty_snapshot(checkout) else {
+            return vec![format!(
+                "the basis declares a dirty snapshot {declared} that could not be recomputed"
+            )];
+        };
+        let mut gaps = Vec::new();
+        if snapshot.digest != declared {
+            gaps.push(format!(
+                "the working tree changed after this basis was taken: the basis declares \
+                 {declared} and the tree now digests to {}",
+                snapshot.digest
+            ));
+        }
+        let entries = snapshot
+            .document
+            .get("entries")
+            .and_then(Value::as_array)
+            .map(<[Value]>::to_vec)
+            .unwrap_or_default();
+        let mut untracked = 0usize;
+        let mut kinds: std::collections::BTreeMap<String, usize> =
+            std::collections::BTreeMap::new();
+        for entry in &entries {
+            let fields = entry.as_array().unwrap_or_default();
+            let path = fields.first().and_then(Value::as_str).unwrap_or_default();
+            let state = fields.get(1).and_then(Value::as_str).unwrap_or_default();
+            if state != "untracked" {
+                continue;
+            }
+            untracked += 1;
+            let kind = cbr_memory::lexical::file_kind(path);
+            *kinds.entry(kind).or_default() += 1;
+        }
+        if untracked > 0 {
+            gaps.push(format!(
+                "{untracked} files are untracked and in no tree, so they are not searched"
+            ));
+            let mut listed: Vec<(&String, &usize)> = kinds.iter().collect();
+            listed.sort_by(|left, right| right.1.cmp(left.1).then(left.0.cmp(right.0)));
+            for (kind, count) in listed.into_iter().take(6) {
+                gaps.push(format!("  of those, {count} are {kind}"));
+            }
+        }
+        gaps
     }
 
     /// One item: what satisfies it, or why nothing does.
@@ -976,7 +1068,12 @@ impl Provider {
             start_line,
             end_line,
             origin,
-            excerpt: compiler::excerpt(&bytes, start_byte, end_byte),
+            excerpt: compiler::excerpt(
+                &bytes,
+                start_byte,
+                end_byte,
+                &cbr_memory::lexical::query_terms(&query),
+            ),
         };
         self.seal_source(tick, &selection, &bytes)?;
         Ok(Some(selection))
