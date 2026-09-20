@@ -42,7 +42,13 @@ use crate::lexical;
 /// The compiler identity this build writes into every manifest it records.
 /// A change to how an index is built is a change to this string, because a
 /// manifest that claims a build it did not get is worse than none.
-pub const COMPILER: &str = "cbr-index/1";
+///
+/// `cbr-index/2` since chunks became bounded in bytes as well as lines
+/// (`lexical::CHUNK_BYTES`). An index built under `/1` holds different rows
+/// for the same tree — one chunk where there are now several — so it ranks
+/// differently and excerpts differently. It is not this build's index, and
+/// `State::Lagging` is exactly what it is.
+pub const COMPILER: &str = "cbr-index/2";
 
 /// How much source the canonical fallback will read before it stops and says
 /// so. The fallback exists to keep an incomplete projection honest, not to

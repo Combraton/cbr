@@ -1207,12 +1207,12 @@ fn under_pressure_a_packet_loses_what_it_can_most_afford_to() {
         "the binding decision outlives everything advisory: {kept:?}"
     );
     let spans: Vec<&String> = kept.iter().filter(|id| id.contains("d-span-")).collect();
-    assert!(
-        spans
-            .iter()
-            .any(|id| id.contains("cbr-identity/src/lib.rs")),
-        "and so does the code the question is about: {kept:?}"
-    );
+    // Deliberately *not* "and the identity crate's span survives". That is a
+    // statement about ranking, and this test is about order: it failed the
+    // moment this repository's own content changed under it, which is the
+    // wrong reason for an order test to fail. J1 is where relevance is
+    // scored.
+    assert!(!spans.is_empty(), "task evidence survives at all: {kept:?}");
     // `context::inclusion` packs rather than truncates: it walks sections in
     // order and keeps each one that still fits, so a small section low in
     // the order can occupy leftover room a larger one could not use. What
@@ -1226,7 +1226,10 @@ fn under_pressure_a_packet_loses_what_it_can_most_afford_to() {
         !kept.contains(&"d-claim-git-binary".to_string()),
         "historical material is the first thing to go: {kept:?}"
     );
-    assert!(!spans.is_empty(), "while task evidence stays: {kept:?}");
+    assert!(
+        spans.len() >= 2,
+        "while more task evidence stays than anything ranked below it: {kept:?}"
+    );
     for omission in array(&half, &["omissions"]) {
         assert!(
             !text(&omission, &["reason"]).is_empty(),

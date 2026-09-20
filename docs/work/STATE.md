@@ -77,6 +77,20 @@ The reviewer probed the packet with a grant that covered repositories and nothin
 
 **Five more corrections in the same round.** A discovered claim carries its `claim` reference, so CONTEXT section 14's read-time facts see it and a later rejection shows at the read; it cites the evidence its claim rests on. Relevance is a stated rule — a condition naming a repository of the basis, or a shared term with the question — and everything else is omitted with reason `applicability` rather than silently. Drop order follows INTERNALS section 5 step 5 instead of the section id, which had let an anchor outlive a binding decision. A rejected claim's content names the decision that rejected it, because the label vocabulary has no `rejected` and `stale` alone says "was once valid". And the negative control now covers discovery: every blob any section cites is in the tree the packet names.
 
+### The third time the same rule was not applied
+
+`retrieval::COMPILER` is the identity a build writes into every manifest, and its own doc comment says a change to how an index is built is a change to that string. Bounding a chunk in bytes changed how every index is built — one chunk where there were several — and the constant still read `cbr-index/1`. An index from the previous build would have passed as `complete`.
+
+The mechanism that catches this was built one round earlier, for exactly this reason: a manifest whose compiler differs is `lagging`, with a test. **The rule existed and was not applied, again**, which is now the third instance of the same shape in this milestone:
+
+| Round | The rule that existed | Where it was not applied |
+|---|---|---|
+| m3c review 1 | a packet's provenance names its compiler | the publication path passed the constant unconditionally; no test read the field |
+| m3c review 2 | resolve the readable set at the command, carry it in the job | the repository view did this; claims, added three commits later, did not |
+| m3d | a change to how an index is built changes `COMPILER` | the chunker changed and the constant did not |
+
+The pattern is not carelessness about the rule — each time the rule was written down, deliberately, and had a test. It is that **the rule was applied to the case in front of it and not made structural**, so the next case had to remember. Two of the three were caught by review rather than by anything in the repository.
+
 ### Mutants
 
 **This round: 10 mutants, all killed.** Five survived their first run and are killed by tests written for them; each is named below with what was missing. No mutant here is a WRONG-REASON kill — every one fails at the assertion that states the rule it broke — with one exception, noted in the table.

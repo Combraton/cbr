@@ -66,6 +66,17 @@ The assessment therefore uses, in order of preference: an executable test or tra
 
 Each journey gets its own section here as it is run, using the fields in §2, and links its run artifacts. A journey that fails, or that runs only partially, keeps its record with the failure described; records are not deleted to keep this page green.
 
+### J6 pilots: the questions and the selectors, recorded before the runs
+
+The two questions are the owner's, verbatim, and are used as the task text unchanged. **The oracles are with the reviewer; this session has not seen either.** Selector terms are drawn only from words of the question, and the choice is written down here **before** the run so it cannot be adjusted after seeing a packet. A compiler change after a pilot run is reported as one and the run is repeated in full.
+
+| Pilot | Question, verbatim | Selector | Why those words |
+|---|---|---|---|
+| **brian2** | "np.concatenate on arrays with units returns a plain array with no units. Where in brian2 does the unit get lost, and what would have to change?" | `np.concatenate units` | `np.concatenate` is the **only identifier-shaped** phrase in the question, so it is the only thing anchors can resolve to a definition and its uses; the compiler splits it and also looks up `concatenate`. `units` is the one domain word that separates the unit machinery from the rest of a large library. Both are words of the question. |
+| **Knowscroll-v2** | "When a spike records a provider's response, how must URLs and credentials in it be handled, and where is that enforced?" | `credentials URLs response` | The question contains no identifier-shaped word at all, so **no anchor lookup is possible** and this pilot tests lexical discovery only — which is worth stating rather than discovering afterwards. `credentials`, `URLs` and `response` are the three content words that are not common English; `spike`, `provider`, `handled` and `enforced` are either ubiquitous in that repository or too general to narrow anything. |
+
+**A required item that is not the answer** is named in each request, as J1 does: `README.md` for brian2 and `AGENTS.md` for Knowscroll, neither of which has anything to do with its question. It exists to show that capacity is reserved for a required item before anything discovered, and its section is expected to be irrelevant to the question.
+
 ### J1: a question finds its own answer with a cited packet
 
 | Field | Record |
