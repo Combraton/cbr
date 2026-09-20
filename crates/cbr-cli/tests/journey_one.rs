@@ -350,7 +350,7 @@ fn j1_a_question_finds_its_own_answer_with_a_cited_packet() {
 
     assert_eq!(
         text(&packet, &["provenance", "compiler"]),
-        "cbr-context-compiler/1",
+        "cbr-context-compiler/2",
         "a compiled packet says which compiler made it: {packet:?}"
     );
 
@@ -410,7 +410,7 @@ fn j1_a_question_finds_its_own_answer_with_a_cited_packet() {
     assert_eq!(coverage.len(), 1, "{coverage:?}");
     assert_eq!(text(&coverage[0], &["frontier"]), tree, "{coverage:?}");
     assert!(
-        text(&coverage[0], &["producer"]).contains("cbr-context-compiler/1"),
+        text(&coverage[0], &["producer"]).contains("cbr-context-compiler/2"),
         "{coverage:?}"
     );
 
@@ -1191,7 +1191,14 @@ fn under_pressure_a_packet_loses_what_it_can_most_afford_to() {
     // About half the advisory content: the required item's own section plus
     // the first few of what followed it, leaving the anchor and the
     // historical claim outside.
-    submit("half", "5000");
+    // 8000, raised from 5000 at m3e. A ranked span now reaches the chunks
+    // either side of it, so the same capacity buys fewer and larger
+    // sections: at 5000 only one span fitted and the test could no longer
+    // tell an ordering from a truncation. The assertions below are
+    // unchanged; the budget is scaled to the sections the compiler now
+    // produces, which is the trade the widening rule makes and is recorded
+    // in STATE rather than hidden here.
+    submit("half", "8000");
     let (half, _) = wait_for_packet(&fixture, "half");
     let kept: Vec<String> = array(&half, &["sections"])
         .iter()

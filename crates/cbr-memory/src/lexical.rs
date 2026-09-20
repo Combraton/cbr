@@ -22,7 +22,7 @@
 //! tree and blob it was built from, so a hit can be checked rather than
 //! trusted, and dropping a tree's rows leaves every other tree alone.
 
-use rusqlite::{Connection, params};
+use rusqlite::{Connection, OptionalExtension as _, params};
 
 /// How many bytes one indexed chunk may cover, whatever its line count.
 ///
@@ -380,6 +380,56 @@ fn match_expression(query: &str, mode: Terms) -> Option<String> {
 /// The terms a query asks for: every part of every token, lowercased. The
 /// same rule a canonical read has to apply when the index cannot answer, so
 /// the two agree about what "matches" means.
+/// One chunk of a file, as the index holds it: where it is, never its text.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Neighbour {
+    pub start_byte: i64,
+    pub end_byte: i64,
+    pub start_line: u32,
+    pub end_line: u32,
+}
+
+/// The chunks immediately before and after `start_byte..end_byte` in one
+/// file of one tree.
+///
+/// Chunks tile a file exactly, so a neighbour is adjacent in bytes as well
+/// as in lines and a span extended into one is still a single contiguous
+/// range of the artifact — which is what a citation promises.
+pub fn neighbours(
+    connection: &Connection,
+    tree: &str,
+    path: &str,
+    start_byte: i64,
+    end_byte: i64,
+) -> Result<(Option<Neighbour>, Option<Neighbour>), rusqlite::Error> {
+    let one = |sql: &str, bound: i64| -> Result<Option<Neighbour>, rusqlite::Error> {
+        connection
+            .prepare(sql)?
+            .query_row(params![tree, path, bound], |row| {
+                Ok(Neighbour {
+                    start_byte: row.get(0)?,
+                    end_byte: row.get(1)?,
+                    start_line: row.get::<_, i64>(2)? as u32,
+                    end_line: row.get::<_, i64>(3)? as u32,
+                })
+            })
+            .optional()
+    };
+    let before = one(
+        "SELECT start_byte, end_byte, start_line, end_line FROM lexical_chunk
+         WHERE tree = ?1 AND path = ?2 AND end_byte <= ?3
+         ORDER BY end_byte DESC LIMIT 1",
+        start_byte,
+    )?;
+    let after = one(
+        "SELECT start_byte, end_byte, start_line, end_line FROM lexical_chunk
+         WHERE tree = ?1 AND path = ?2 AND start_byte >= ?3
+         ORDER BY start_byte ASC LIMIT 1",
+        end_byte,
+    )?;
+    Ok((before, after))
+}
+
 pub fn query_terms(query: &str) -> Vec<String> {
     let mut terms: Vec<String> = Vec::new();
     for token in query.split(|c: char| !c.is_alphanumeric()) {
