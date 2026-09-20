@@ -376,6 +376,106 @@ impl<'a> Runtime<'a> {
     }
 }
 
+/// How many times a repairable outcome may be asked about again.
+///
+/// **One.** The two outcomes that are repairable are the provider's own
+/// documented behaviour, so a second ask is worth its tokens; a third is a
+/// loop, and an unbounded loop against a shared quota is the overspend the
+/// envelope exists to prevent, arriving one polite retry at a time.
+// Reached by the tests, and by m4c's call site: this milestone builds the
+// wire and gives it no consumer, exactly as the fake transport had none
+// before it. The allowance goes when m4c connects selection to it.
+#[allow(dead_code)]
+pub const REPAIRS: u32 = 1;
+
+/// One question for a model, with the bounded repair that goes with it.
+#[allow(dead_code)]
+pub struct Ask<'a> {
+    pub job: &'a str,
+    pub request: &'a str,
+    pub dialect: Dialect,
+    pub body: &'a wire::request::Request,
+}
+
+/// How a question ended.
+#[allow(dead_code)]
+#[derive(Debug)]
+pub enum Outcome {
+    Answered {
+        reply: wire::response::Reply,
+        usage: u64,
+        /// How many repairs it took. Recorded, because a selection that
+        /// needed repairing is a fact about the request.
+        repairs: u32,
+    },
+    /// A typed reason, never retried past the bound above.
+    Unmet { reason: &'static str, repairs: u32 },
+    /// Refused by CBR's own envelope, before anything was sent.
+    Refused(Refusal),
+}
+
+#[allow(dead_code)]
+impl Runtime<'_> {
+    /// Serialize, send, read, and — for the two outcomes this provider's
+    /// own behaviour produces — ask once more.
+    ///
+    /// **A repair is a whole call**: its own admission, its own count, its
+    /// own reservation, debited from the same ledger. There is no separate
+    /// repair allowance, so a repair the envelope has no room for does not
+    /// happen.
+    pub fn ask(&self, now: &str, ask: &Ask<'_>, barrier: &dyn Fn(&'static str)) -> Outcome {
+        let mut body = ask.body.clone();
+        let mut repairs = 0;
+        loop {
+            let serialized = body.serialize(ask.dialect);
+            let ended = self.call(
+                now,
+                &Attempt {
+                    job: ask.job,
+                    request: ask.request,
+                    body: &serialized,
+                    messages: body.framed_messages(ask.dialect),
+                    generation: body.generation,
+                    dialect: ask.dialect,
+                },
+                barrier,
+            );
+            let (answered, usage) = match ended {
+                Ended::Completed { body, usage } => (body, usage),
+                Ended::Refused(refusal) => return Outcome::Refused(refusal),
+                Ended::Unmet(reason) => return Outcome::Unmet { reason, repairs },
+            };
+            let read = wire::response::read_completion(ask.dialect, &body.want, &answered);
+            let unusable = match read.reply {
+                Ok(reply) => {
+                    return Outcome::Answered {
+                        reply,
+                        usage: read.usage.unwrap_or(usage),
+                        repairs,
+                    };
+                }
+                Err(unusable) => unusable,
+            };
+            if !unusable.repairable() || repairs >= REPAIRS {
+                return Outcome::Unmet {
+                    reason: unusable.reason(),
+                    repairs,
+                };
+            }
+            // **The model's own answer is not sent back.** Repository text
+            // is untrusted and so is what a model made of it; echoing it
+            // into the next request gives text that arrived from a
+            // repository a second chance to be read as an instruction, and
+            // charges for the privilege. The repair is CBR's own sentence.
+            body.messages.push(wire::request::Message {
+                role: wire::request::Role::User,
+                text: wire::request::repair_instruction(&body.want).to_string(),
+            });
+            repairs += 1;
+        }
+    }
+}
+
 /// Per call, so a crash-matrix row cannot pass at the wrong boundary.
 pub const COUNT_AFTER_RESERVATION: &str = "model.count.after_reservation";
 pub const COUNT_AFTER_SEND: &str = "model.count.after_send";

@@ -180,6 +180,22 @@ impl Request {
     }
 }
 
+/// What CBR says when it asks again. **Its own words**, naming the shape
+/// rather than quoting the answer that did not have it.
+pub fn repair_instruction(want: &Want) -> &'static str {
+    match want {
+        Want::Text => "Answer in plain text.",
+        Want::Structure { .. } => {
+            "That answer was not usable. Reply with a single JSON object and nothing else: \
+             no explanation, no code fence, no text before or after it."
+        }
+        Want::Tool { .. } => {
+            "That answer was not usable. Reply by calling the tool you were given, with its \
+             arguments, and send no other content."
+        }
+    }
+}
+
 fn message(role: &str, text: &str) -> Value {
     Value::Object(vec![
         ("role".into(), Value::String(role.into())),
