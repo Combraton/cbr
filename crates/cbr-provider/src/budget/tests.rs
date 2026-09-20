@@ -90,6 +90,43 @@ fn the_estimate_counts_the_whole_body_and_not_only_its_messages() {
 }
 
 #[test]
+fn the_estimate_reserves_generation_and_margin_above_the_input_bound() {
+    // **What nothing asserted until m4b.** The estimate's parts were named
+    // in constants, documented, and never read by a test: removing the
+    // margin from it left the whole workspace green. An estimate that is
+    // only the input bound admits a request whose generation it has not
+    // accounted for, which is the same defect the completion's reservation
+    // had, one layer down.
+    for (name, bytes) in corpus() {
+        let headroom = estimate(&bytes, 0) - worst_case_tokens(&bytes);
+        assert!(
+            headroom >= RESERVED_GENERATION_TOKENS + SAFETY_MARGIN_TOKENS,
+            "{name}: the estimate leaves {headroom} above the input bound, which is less \
+             than the generation and margin it is supposed to reserve"
+        );
+    }
+}
+
+#[test]
+fn the_estimate_grows_with_the_messages_it_frames() {
+    // The provider frames each message, and the serialized body does not
+    // obviously show that framing. Dropping the term left every test green.
+    let body = b"{\"messages\":[]}";
+    // Strictly greater, not merely equal to four framings: a framing term
+    // of zero satisfies the equality and is not a framing at all, which is
+    // exactly what the surviving mutant did.
+    assert!(
+        estimate(body, 4) > estimate(body, 0),
+        "four messages cost more than none"
+    );
+    assert_eq!(
+        estimate(body, 4) - estimate(body, 0),
+        4 * MESSAGE_OVERHEAD_TOKENS,
+        "and cost four framings, not some other number"
+    );
+}
+
+#[test]
 fn an_instant_reads_as_seconds_and_an_unreadable_one_reads_as_nothing() {
     assert_eq!(epoch_seconds("1970-01-01T00:00:00Z"), Some(0));
     assert_eq!(epoch_seconds("1970-01-01T00:00:01Z"), Some(1));

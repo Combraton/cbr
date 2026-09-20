@@ -380,6 +380,60 @@ fn the_completion_reserves_its_generation_and_margin_not_the_input_count_alone()
 }
 
 #[test]
+fn the_completions_reservation_covers_the_margin_as_well_as_the_generation() {
+    // **The mutant the review found surviving.** Removing the margin from
+    // the completion's reservation passed every test at m4a's head: the
+    // reservation was asserted to be "larger than the count's", which it
+    // still was. The statement that distinguishes them is behavioural — with
+    // exactly the input count plus the generation left in the window, a
+    // reservation that omits the margin is admitted and one that includes it
+    // is not.
+    let body = body_declaring(64);
+    let local = crate::budget::estimate(&body, 1);
+    let refined = local; // the count is answered at the local figure
+    let without_margin = refined + 64;
+
+    let connection = database();
+    let ledger = Ledger::new(&connection);
+    // Leave room for the count, then exactly `without_margin` for the
+    // completion — so the margin is the whole of the difference.
+    fill_window_to(&ledger, WINDOW_TOKENS - (local + without_margin));
+
+    let transport = Recorder::new(vec![
+        Answer::Counted(refined),
+        Answer::Completed {
+            body: Vec::new(),
+            usage: 10,
+        },
+    ]);
+    let runtime = Runtime {
+        ledger: Ledger::new(&connection),
+        transport: &transport,
+    };
+    let ended = runtime.call(
+        T0,
+        &Attempt {
+            job: "job",
+            request: "r",
+            body: &body,
+            messages: 1,
+            generation: 64,
+        },
+        &no_barrier,
+    );
+    assert_eq!(
+        ended,
+        Ended::Refused(Refusal::WindowExhausted),
+        "the margin is part of what the completion reserves: {ended:?}"
+    );
+    assert_eq!(
+        transport.sent().len(),
+        1,
+        "the count went; the completion did not"
+    );
+}
+
+#[test]
 fn a_count_implausibly_below_the_local_bound_is_an_anomaly_and_the_local_figure_stands() {
     // A byte bound runs three to four times the real count for prose, so a
     // provider figure below an eighth of it is not a tighter count, it is a

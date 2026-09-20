@@ -34,7 +34,10 @@
 //! `tokenizer.json`, vendored with its digest and licence; that requires
 //! fetching it, which READINESS rules out at build and run time and which
 //! this session has no authorisation to do. **No count here has been compared
-//! with the provider's own**, and that comparison is m4b's first measurement.
+//! with the provider's own**, and **byte-level is an assumption about the
+//! provider's tokenizer rather than a fact CBR has checked**. The
+//! calibration checks it — its own step after m4b merges, on the owner's
+//! word, with one count above its local estimate stopping M4 outright.
 
 use rusqlite::{Connection, OptionalExtension as _, params};
 

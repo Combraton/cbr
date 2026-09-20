@@ -27,7 +27,8 @@ Split as M3 was, each with its gate stated before its code, each reviewed at its
 | | Scope | Gate |
 |---|---|---|
 | **m4a** | **The envelope, before any transport exists.** Two-step admission whose local step alone can refuse; a durable ledger with a reservation written before the send; per-request and per-job ceilings; `budget_exhausted` and the distinct provider-exhaustion outcome. A fake transport that records what it was asked to send and never opens a socket. | Tests with the fake transport, both counters independently, a restart between reservation and reconciliation. Mutants: the local check removed; the provider count reached for a request the local step refused; the reservation written after the send; counters lost on restart. **No network code and no credential read in this PR.** |
-| **m4b** | **The wire and the credential.** Both dialects' serializer and parser, the Keychain read at process start, redaction at the recording boundary, the four provider behaviours handled as ordinary outcomes. Still no live call. | Recorded-fixture tests for both dialects. A test that a response carrying a credential-shaped string is redacted before it reaches an artifact. |
+| **m4b** | **The wire and the credential. Fixtures only — no live call.** Both dialects' serializer and parser, the Keychain read once at construction and only when a model is configured, redaction at the recording boundary, the four provider behaviours handled as ordinary outcomes. | Recorded-fixture tests for both dialects, the fixtures written by hand from public documentation and **labelled as unverified against the live service**. A test that a credential-shaped string in a response is redacted before anything reaches the store. A test that the Keychain is read exactly once, and that a configured model with no Keychain is a **refused launch**, never a fallback. A test that no test in the suite resolves a host. |
+| **the calibration** | **The first live calls, and the only ones before m4e.** Its own step, **after m4b is reviewed and merged**, and only on the owner's explicit word at that time. [§10](#10-the-calibration-and-what-stops-m4). | One provider count above its local estimate stops M4. |
 | **m4c** | **The bounded runtime.** Model work leaves the preparation tick; deadlines, cancellation, a concurrency bound; failure reported as an item's unmet reason. The index build's stall is resolved here. | The measured stall falls; a cancelled call leaves no partial record; a failed call leaves an unmet item with a reason and never a hang. |
 | **m4d** | **Derivation records and replay.** Every call sealed as an evidence artifact; a packet rebuilt offline from retained records. | A test rebuilds a model-assisted packet with the transport refused and compares digests. |
 | **m4e** | **The first live run, and the journeys.** J1 revisited with a model; both sealed pilot questions rerun, **under a hard cap of 5,000,000 tokens** enforced by the per-job ceiling. | Scored by the reviewer against the same oracles, with the deterministic runs as baselines and tokens, spend and latency recorded beside them. A run exceeding its estimate by more than half stops and is reported. |
@@ -205,6 +206,26 @@ These are estimates, and the first thing m4e produces is the measurement that re
 | The replay path calling the provider | a transport that panics when called |
 | A cancelled call leaving a partial record | the record's absence |
 | An unbounded repair loop | the repair budget's ceiling |
+
+## 10. The calibration, and what stops M4
+
+**m4b makes no live call.** §1 says so, and an earlier draft of §3 contradicted it by calling the tokenizer comparison "m4b's first measurement". The comparison is real and necessary, and it is **its own step**: after m4b is reviewed and merged, and **only on the owner's explicit word at that time**. Having built a transport is not permission to use it.
+
+**What it is for.** The local estimate is sound by construction — a byte-level BPE emits at most one token per byte — but **byte-level is an assumption about the provider's tokenizer, not a fact CBR has checked**. The calibration checks it, and it is the only thing that can.
+
+### The protocol, fixed before the run
+
+- **Token-count calls**, on a **fixed corpus of CBR's own public source files** plus one non-Latin text — the same corpus the estimate's one-sidedness is already pinned against. Those sources are this repository's own and public, so nothing here sends anyone else's text.
+- **One completion**, with a generation limit of **16 tokens**, so the completion path is exercised once end to end and cannot cost much even if everything else is wrong.
+- **A hard run ceiling of 100,000 tokens**, through the run-level ceiling m4a built (`--model-run-ceiling`), so the cap is enforced by the ledger rather than by intention.
+- **Every call recorded and redacted** like any other, per §6.
+- **The result is a table**: the local estimate against the provider's count, per file.
+
+### What ends it
+
+**One provider count above its local estimate means the bound is unsound.** Then: **stop, report, and nothing else in M4 proceeds until it is fixed.** Not "note it and widen the margin" — the whole admission design rests on the estimate never falling below the truth, and one counter-example says it does. The fix is a different estimate, and it gets its own review.
+
+A count *below* the local estimate is the expected case and is not a finding. The bound is loose by three to four times for prose; measuring how loose is what the table is for.
 
 ## What this document does not settle
 
