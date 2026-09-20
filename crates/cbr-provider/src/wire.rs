@@ -1,0 +1,69 @@
+//! The wire: who CBR may talk to, in which dialect, and over what.
+//!
+//! **No live call is made anywhere in this milestone.** Everything here is
+//! exercised against hand-written fixtures and a transport that is shut by
+//! default; the first real call is the calibration, which is its own step
+//! after this work has been reviewed and merged
+//! ([READINESS §10](../../docs/work/m4/READINESS.md)).
+//!
+//! # Two dialects, one provider, one transport
+//!
+//! The owner's decision ([ADR 001 question 3]) is MiniMax addressed through
+//! both of its wires: an OpenAI-compatible one and an Anthropic-compatible
+//! one. They differ in how a request is framed and how a response is read,
+//! and in nothing else — so they are two serializers and two parsers over
+//! one transport rather than two clients.
+//!
+//! [ADR 001 question 3]: ../../docs/decisions/001-standalone-v0.1-scope-and-stack.md
+
+/// The only provider id CBR admits. A launch naming any other is refused
+/// before anything is opened, read or sent.
+pub const PROVIDER_ID: &str = "minimax";
+
+/// The three models the owner named, chosen per task:
+/// `MiniMax-M2.7-highspeed` for extraction and large-result projection,
+/// `MiniMax-M2.7` for ordinary derivation, `MiniMax-M3` for synthesis,
+/// request-time investigation and image input.
+pub const MODELS: [&str; 3] = ["MiniMax-M2.7-highspeed", "MiniMax-M2.7", "MiniMax-M3"];
+
+/// Which of the provider's two wires a configured model speaks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Dialect {
+    /// `https://api.minimax.io/v1`, OpenAI-compatible.
+    OpenAi,
+    /// `https://api.minimax.io/anthropic`, Anthropic-compatible.
+    Anthropic,
+}
+
+impl Dialect {
+    pub fn parse(name: &str) -> Option<Self> {
+        match name {
+            "openai" => Some(Dialect::OpenAi),
+            "anthropic" => Some(Dialect::Anthropic),
+            _ => None,
+        }
+    }
+
+    // Recorded in every derivation record, which is m4d's; read by the
+    // tests now so that the two names cannot drift from `parse`.
+    #[allow(dead_code)]
+    pub fn name(self) -> &'static str {
+        match self {
+            Dialect::OpenAi => "openai",
+            Dialect::Anthropic => "anthropic",
+        }
+    }
+
+    /// The endpoint the owner recorded for this dialect. It is a **default
+    /// for configuration**, not a literal the call path reaches for: the
+    /// endpoint that is used is the one in the launch configuration.
+    pub fn default_endpoint(self) -> &'static str {
+        match self {
+            Dialect::OpenAi => "https://api.minimax.io/v1",
+            Dialect::Anthropic => "https://api.minimax.io/anthropic",
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests;

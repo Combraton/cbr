@@ -140,6 +140,10 @@ pub struct Config {
     /// number above them changes nothing. m4e's five-million cap across
     /// three journeys is this, enforced rather than intended.
     pub model_run_ceiling: Option<u64>,
+    /// The model this launch may call, if any. **Absent is the default and
+    /// the ordinary case**; present is what makes the launch read a
+    /// credential and refuse to start if it cannot.
+    pub model_runtime: Option<ModelRuntime>,
     /// The `model.fake` test control: one scripted call through
     /// [`crate::model::Runtime`] at startup, so the ledger's crash
     /// boundaries are reachable by a process that can be killed at them.
@@ -151,6 +155,29 @@ pub struct Config {
     /// the public protocol. `Null` when absent. It holds peer credentials, so
     /// it is never logged or echoed.
     pub context: ContextControl,
+}
+
+/// A model this launch is configured to call.
+///
+/// **Its presence is the only thing that makes CBR read a credential.** A
+/// launch without it never touches the Keychain, which is what CI, every
+/// conformance run and every developer running the suite are. It is
+/// ordinary configuration, not a test control: the `model` member beside it
+/// is the fake transport's control and is refused in production.
+// The serializer that reads these is the next commit's; the launch that
+// validates them is this one's, and the validation is what has to exist
+// before a credential is ever read.
+#[allow(dead_code)]
+#[derive(Debug, Clone)]
+pub struct ModelRuntime {
+    /// The provider id, which may only ever be [`crate::wire::PROVIDER_ID`].
+    pub provider: String,
+    /// The endpoint, from configuration rather than a literal in the call
+    /// path. Always `https`.
+    pub endpoint: String,
+    pub dialect: crate::wire::Dialect,
+    /// One of [`crate::wire::MODELS`], recorded in every derivation record.
+    pub model: String,
 }
 
 /// The `model.fake` control's value: what to call with, and what the fake
@@ -250,6 +277,7 @@ impl Default for Config {
             capabilities: Vec::new(),
             credentials: Vec::new(),
             model: None,
+            model_runtime: None,
             model_run_ceiling: None,
             test_barriers: None,
             evidence_store: EvidenceStore::default(),
@@ -469,6 +497,45 @@ impl Config {
                     Some(Value::Int(generation)) => (*generation).max(0) as u64,
                     _ => 64,
                 },
+            });
+        }
+        // **Validated here, which is before any credential is read.** A
+        // configuration mistake is then refused identically on every
+        // machine, and the Keychain is never touched to discover that the
+        // launch was never going to work.
+        if let Some(runtime) = value.get("model_runtime") {
+            let provider = text(runtime.get("provider"))
+                .ok_or("`model_runtime` needs a `provider`".to_string())?;
+            if provider != crate::wire::PROVIDER_ID {
+                return Err(format!(
+                    "model provider `{provider}` is not configured; CBR admits `{}` and                      no other, which is the owner's decision rather than a default",
+                    crate::wire::PROVIDER_ID
+                ));
+            }
+            let named = text(runtime.get("dialect"))
+                .ok_or("`model_runtime` needs a `dialect`".to_string())?;
+            let dialect = crate::wire::Dialect::parse(&named)
+                .ok_or(format!("unknown model dialect `{named}`"))?;
+            let model =
+                text(runtime.get("model")).ok_or("`model_runtime` needs a `model`".to_string())?;
+            if !crate::wire::MODELS.contains(&model.as_str()) {
+                return Err(format!(
+                    "model `{model}` is outside the three the owner named: {}",
+                    crate::wire::MODELS.join(", ")
+                ));
+            }
+            let endpoint = text(runtime.get("endpoint"))
+                .unwrap_or_else(|| dialect.default_endpoint().to_string());
+            if !endpoint.starts_with("https://") {
+                return Err(format!(
+                    "model endpoint `{endpoint}` is not https; repository text goes over it"
+                ));
+            }
+            config.model_runtime = Some(ModelRuntime {
+                provider,
+                endpoint,
+                dialect,
+                model,
             });
         }
         if let Some(barriers) = value.get("test_barriers") {

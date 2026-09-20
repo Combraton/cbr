@@ -20,6 +20,7 @@ mod evidence;
 mod frames;
 mod grants;
 mod jsonrpc;
+mod keychain;
 mod knowledge;
 mod model;
 mod outbox;
@@ -29,6 +30,7 @@ mod repositories;
 mod session;
 mod socket;
 mod store;
+mod wire;
 
 use std::path::PathBuf;
 
@@ -152,6 +154,20 @@ fn run() -> Result<(), String> {
         }
         return Ok(());
     }
+    // **The one credential read, at process start, and only when a model is
+    // configured.** It happens here — before the store is opened and before
+    // anything is listened on — so that a launch which cannot read the key
+    // it was told to use refuses rather than serving and failing every
+    // model call one at a time. A launch with no model configured never
+    // reaches the Keychain at all.
+    let _credential = keychain::for_launch(config.model_runtime.is_some(), keychain::read)
+        .map_err(|refused| {
+            format!(
+                "a model is configured and its credential could not be read: {}",
+                refused.reason()
+            )
+        })?;
+
     // An unsafe socket directory refuses the start before the store is opened,
     // so a refused start writes nothing.
     if let Some(socket) = &args.socket {
