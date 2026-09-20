@@ -56,6 +56,13 @@ struct Args {
     register_repository: Vec<repositories::Registration>,
     /// A ceiling for this whole run, which can only lower the envelope.
     model_run_ceiling: Option<u64>,
+    /// **Open the network gate.** Without it no socket can be opened at
+    /// all, because the transport cannot be constructed without the permit
+    /// this produces. A configured model is not enough: calling a provider
+    /// spends the owner's quota and sends repository text to a third
+    /// party, so it is a deliberate act at the launch rather than a
+    /// consequence of having configured one.
+    permit_model_network: bool,
 }
 
 fn parse_args() -> Result<Args, String> {
@@ -68,6 +75,7 @@ fn parse_args() -> Result<Args, String> {
         issue_credential: None,
         register_repository: Vec::new(),
         model_run_ceiling: None,
+        permit_model_network: false,
     };
     let mut argv = std::env::args().skip(1);
     while let Some(flag) = argv.next() {
@@ -83,6 +91,7 @@ fn parse_args() -> Result<Args, String> {
             "--socket" => {
                 args.socket = Some(PathBuf::from(argv.next().ok_or("--socket needs a value")?));
             }
+            "--permit-model-network" => args.permit_model_network = true,
             "--rotate-credential" => args.rotate_credential = true,
             "--revoke-credential" => {
                 args.revoke_credential =
@@ -154,6 +163,21 @@ fn run() -> Result<(), String> {
         }
         return Ok(());
     }
+    // The gate to a socket, and the only thing that opens it. A launch
+    // without this flag cannot construct a transport, whatever else it is
+    // configured with, which is what makes "CI opens no socket" a property
+    // of the build rather than of the test suite's manners.
+    if args.permit_model_network {
+        if config.model_runtime.is_none() {
+            return Err(
+                "--permit-model-network needs a configured model; permitting calls to \
+                 nothing is a configuration mistake rather than a safe default"
+                    .into(),
+            );
+        }
+        wire::net::permit_network();
+    }
+
     // **The one credential read, at process start, and only when a model is
     // configured.** It happens here — before the store is opened and before
     // anything is listened on — so that a launch which cannot read the key

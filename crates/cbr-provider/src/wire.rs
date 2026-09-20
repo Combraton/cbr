@@ -26,6 +26,13 @@ pub const PROVIDER_ID: &str = "minimax";
 /// request-time investigation and image input.
 pub const MODELS: [&str; 3] = ["MiniMax-M2.7-highspeed", "MiniMax-M2.7", "MiniMax-M3"];
 
+/// Where admission counts go, for **both** dialects.
+///
+/// `POST /v1/responses/input_tokens` is MiniMax's own and belongs to
+/// neither compatibility surface, so it is not derived from the dialect's
+/// endpoint ([STACK §8.1](../../docs/work/readiness/STACK.md)).
+pub const COUNT_ENDPOINT: &str = "https://api.minimax.io/v1/responses/input_tokens";
+
 /// Which of the provider's two wires a configured model speaks.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Dialect {
@@ -90,12 +97,16 @@ impl Dialect {
     }
 }
 
+pub mod http;
 pub mod json;
+pub mod net;
 pub mod record;
 pub mod redact;
 pub mod request;
 pub mod response;
 
+#[cfg(test)]
+mod http_tests;
 #[cfg(test)]
 mod json_tests;
 #[cfg(test)]

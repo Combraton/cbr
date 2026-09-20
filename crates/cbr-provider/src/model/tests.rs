@@ -21,7 +21,7 @@ fn the_count_call_is_a_send_and_is_admitted_recorded_and_charged_like_one() {
         Answer::Counted(120),
         Answer::Completed {
             body: b"{}".to_vec(),
-            usage: 150,
+            usage: Some(150),
         },
     ]);
     let runtime = Runtime {
@@ -225,7 +225,7 @@ fn a_usage_that_differs_from_the_count_is_what_the_ledger_keeps() {
         Answer::Counted(100),
         Answer::Completed {
             body: Vec::new(),
-            usage: 900,
+            usage: Some(900),
         },
     ]);
     let runtime = Runtime {
@@ -358,7 +358,7 @@ fn the_completion_reserves_its_generation_and_margin_not_the_input_count_alone()
         Answer::Counted(1),
         Answer::Completed {
             body: Vec::new(),
-            usage: 50_000,
+            usage: Some(50_000),
         },
     ]);
     let runtime = Runtime {
@@ -418,7 +418,7 @@ fn the_completions_reservation_covers_the_margin_as_well_as_the_generation() {
         Answer::Counted(refined),
         Answer::Completed {
             body: Vec::new(),
-            usage: 10,
+            usage: Some(10),
         },
     ]);
     let runtime = Runtime {
@@ -459,7 +459,7 @@ fn a_count_implausibly_below_the_local_bound_is_an_anomaly_and_the_local_figure_
         Answer::Counted(1),
         Answer::Completed {
             body: Vec::new(),
-            usage: 10,
+            usage: Some(10),
         },
     ]);
     let runtime = Runtime {
@@ -493,7 +493,7 @@ fn usage_above_the_reservation_is_recorded_as_a_divergence() {
         Answer::Counted(200),
         Answer::Completed {
             body: Vec::new(),
-            usage: 999_999,
+            usage: Some(999_999),
         },
     ]);
     let runtime = Runtime {
@@ -694,7 +694,7 @@ fn an_answer_of_the_wrong_kind_is_a_recorded_failure_and_not_a_silent_fall_throu
     let body = body_declaring(64);
     let transport = Recorder::new(vec![Answer::Completed {
         body: Vec::new(),
-        usage: 5,
+        usage: Some(5),
     }]);
     let runtime = Runtime {
         ledger: Ledger::new(&connection),
@@ -728,7 +728,7 @@ fn the_boundaries_are_named_per_call_so_a_row_cannot_pass_at_the_wrong_one() {
         Answer::Counted(100),
         Answer::Completed {
             body: Vec::new(),
-            usage: 200,
+            usage: Some(200),
         },
     ]);
     let runtime = Runtime {
@@ -908,7 +908,7 @@ fn answered(content: &str) -> Answer {
     );
     Answer::Completed {
         body: body.into_bytes(),
-        usage: 40,
+        usage: Some(40),
     }
 }
 
@@ -1146,5 +1146,50 @@ fn a_repair_is_charged_to_the_same_ledger_as_the_call_it_repairs() {
     assert!(
         ledger.spend(T0, "job").expect("spend").job > 0,
         "and the job was charged for them"
+    );
+}
+
+#[test]
+fn a_completion_the_provider_did_not_price_settles_to_the_estimate_never_to_zero() {
+    // **The same defect the review caught at m4a, one variant along.** That
+    // one was a failure after the send settling to zero. This is a
+    // *successful* completion whose body reports no usage at all, which a
+    // real provider does whenever it omits the member CBR reads. Settling
+    // it to zero loses a spend against a quota shared with the owner's own
+    // tools; the reservation's estimate stands instead, which over-counts.
+    let connection = database();
+    let transport = Recorder::new(vec![
+        Answer::Counted(60),
+        Answer::Completed {
+            body: b"{}".to_vec(),
+            usage: None,
+        },
+    ]);
+    let runtime = Runtime {
+        ledger: Ledger::new(&connection),
+        transport: &transport,
+    };
+    let ended = runtime.call(
+        T0,
+        &Attempt {
+            job: "job",
+            request: "r",
+            body: &body_declaring(64),
+            messages: 1,
+            generation: 64,
+            dialect: Dialect::OpenAi,
+        },
+        &no_barrier,
+    );
+    let rows = Ledger::new(&connection).rows().expect("rows");
+    let completion = rows.last().expect("a completion row");
+    assert_eq!(completion.0, "unknown", "settled as unpriced: {rows:?}");
+    assert!(
+        completion.2 > 0,
+        "and the estimate stands rather than zero: {rows:?}"
+    );
+    assert!(
+        matches!(ended, Ended::Completed { usage, .. } if usage > 0),
+        "the caller is told what it is being charged: {ended:?}"
     );
 }

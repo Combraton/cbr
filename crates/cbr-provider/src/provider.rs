@@ -350,7 +350,7 @@ impl Provider {
         let completion = match fake.answer.split_once(':') {
             Some(("usage", tokens)) => Answer::Completed {
                 body: Vec::new(),
-                usage: tokens.parse().unwrap_or(0),
+                usage: tokens.parse().ok(),
             },
             _ if fake.answer == "provider_exhausted" => Answer::ProviderExhausted,
             _ if fake.answer == "failed" => Answer::Failed {
@@ -360,7 +360,7 @@ impl Provider {
             _ if fake.answer == "not_sent" => Answer::NotSent("scripted".into()),
             _ => Answer::Completed {
                 body: Vec::new(),
-                usage: 0,
+                usage: Some(0),
             },
         };
         let counted = Answer::Counted(fake.body.len() as u64);

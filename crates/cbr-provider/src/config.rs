@@ -175,6 +175,10 @@ pub struct ModelRuntime {
     /// The endpoint, from configuration rather than a literal in the call
     /// path. Always `https`.
     pub endpoint: String,
+    /// Where admission counts go. **Not part of either compatibility
+    /// surface**: both dialects count at MiniMax's own endpoint, so this is
+    /// configured separately rather than derived from the one above.
+    pub count_endpoint: String,
     pub dialect: crate::wire::Dialect,
     /// One of [`crate::wire::MODELS`], recorded in every derivation record.
     pub model: String,
@@ -534,14 +538,19 @@ impl Config {
             }
             let endpoint = text(runtime.get("endpoint"))
                 .unwrap_or_else(|| dialect.default_endpoint().to_string());
-            if !endpoint.starts_with("https://") {
-                return Err(format!(
-                    "model endpoint `{endpoint}` is not https; repository text goes over it"
-                ));
+            let count_endpoint = text(runtime.get("count_endpoint"))
+                .unwrap_or_else(|| crate::wire::COUNT_ENDPOINT.to_string());
+            for named in [&endpoint, &count_endpoint] {
+                if !named.starts_with("https://") {
+                    return Err(format!(
+                        "model endpoint `{named}` is not https; repository text goes over it"
+                    ));
+                }
             }
             config.model_runtime = Some(ModelRuntime {
                 provider,
                 endpoint,
+                count_endpoint,
                 dialect,
                 model,
             });

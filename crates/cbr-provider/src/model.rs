@@ -38,8 +38,12 @@ pub enum Call {
 pub enum Answer {
     /// The provider's own token count, from a [`Call::Count`].
     Counted(u64),
-    /// A completion, with the provider's accounting of what it cost.
-    Completed { body: Vec<u8>, usage: u64 },
+    /// A completion, with the provider's accounting of what it cost —
+    /// **when it gave one.** `None` is a successful call the provider did
+    /// not price, which settles to the reservation's estimate rather than
+    /// to zero: losing a spend against a shared quota is the one direction
+    /// that cannot be corrected later.
+    Completed { body: Vec<u8>, usage: Option<u64> },
     /// The provider says **its** quota is exhausted. Distinct from CBR's own
     /// envelope: CBR sees only its own spending and the quota is shared.
     ProviderExhausted,
@@ -115,7 +119,7 @@ impl Transport for Recorder {
                 Call::Count => Answer::Counted(body.len() as u64),
                 Call::Completion => Answer::Completed {
                     body: Vec::new(),
-                    usage: body.len() as u64,
+                    usage: Some(body.len() as u64),
                 },
             };
             return Exchange {
@@ -313,11 +317,17 @@ impl<'a> Runtime<'a> {
                 self.finish(
                     now,
                     &reservation,
-                    Settlement::Usage(usage),
+                    settlement_for(usage),
                     barrier,
                     COMPLETION_DURING_RECONCILIATION,
                 );
-                Ended::Completed { body, usage }
+                // An unpriced completion is reported at what it was
+                // reserved for, so the caller is told what it is being
+                // charged rather than told it was free.
+                Ended::Completed {
+                    body,
+                    usage: usage.unwrap_or(reservation.estimate),
+                }
             }
             Answer::ProviderExhausted => {
                 self.finish(

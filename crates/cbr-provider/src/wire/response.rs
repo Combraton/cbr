@@ -286,6 +286,19 @@ fn usage(dialect: Dialect, read: &Json) -> Option<u64> {
     }
 }
 
+/// What the transport needs to settle a reservation truthfully: what the
+/// provider said this cost, and whether the body itself reports a failure.
+///
+/// Separate from [`read_completion`] because the transport settles the
+/// ledger before anything has decided what the answer *means*, and the
+/// ledger's question is only ever "what was spent, and was the quota gone".
+pub fn accounting(dialect: Dialect, raw: &[u8]) -> (Option<u64>, Option<Unusable>) {
+    let Some(read) = json::read(raw) else {
+        return (None, Some(Unusable::Malformed));
+    };
+    (usage(dialect, &read), provider_failure(&read))
+}
+
 /// The provider's own token count, from `POST /v1/responses/input_tokens`.
 pub fn read_count(body: &[u8]) -> Option<u64> {
     let read = json::read(body)?;

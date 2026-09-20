@@ -3,8 +3,6 @@
 //! Each test names the rule it holds. Nothing here opens a socket, reads a
 //! credential or waits on a clock: time is moved, never slept through.
 
-use std::collections::BTreeMap;
-
 use super::*;
 
 /// A non-Latin text in the corpus on purpose. A character-count estimate
@@ -409,73 +407,7 @@ fn a_usage_that_differs_from_the_estimate_is_reconciled_and_the_divergence_kept(
     );
 }
 
-#[test]
-fn the_crate_has_no_network_dependency_in_its_tree() {
-    // The envelope exists before any transport, and this is what says so:
-    // nothing that can open a socket is reachable from this crate.
-    let lock = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../Cargo.lock")
-        .canonicalize()
-        .expect("the workspace lock file");
-    let text = std::fs::read_to_string(lock).expect("reads");
-    let mut dependencies: BTreeMap<String, Vec<String>> = BTreeMap::new();
-    let mut name = String::new();
-    let mut collecting = false;
-    for line in text.lines() {
-        let line = line.trim();
-        if line == "[[package]]" {
-            name.clear();
-            collecting = false;
-        } else if let Some(rest) = line.strip_prefix("name = ") {
-            name = rest.trim_matches('"').to_string();
-            dependencies.entry(name.clone()).or_default();
-        } else if line == "dependencies = [" {
-            collecting = true;
-        } else if collecting {
-            if line == "]" {
-                collecting = false;
-            } else {
-                let entry = line.trim_end_matches(',').trim_matches('"');
-                let first = entry.split_whitespace().next().unwrap_or_default();
-                if !first.is_empty() {
-                    dependencies
-                        .entry(name.clone())
-                        .or_default()
-                        .push(first.into());
-                }
-            }
-        }
-    }
-    let mut reached: BTreeMap<String, ()> = BTreeMap::new();
-    let mut stack = vec!["cbr-provider".to_string()];
-    while let Some(package) = stack.pop() {
-        if reached.insert(package.clone(), ()).is_some() {
-            continue;
-        }
-        for next in dependencies.get(&package).cloned().unwrap_or_default() {
-            stack.push(next);
-        }
-    }
-    assert!(reached.len() > 5, "the lock file parsed: {}", reached.len());
-    for forbidden in [
-        "reqwest",
-        "hyper",
-        "tokio",
-        "rustls",
-        "native-tls",
-        "openssl",
-        "curl",
-        "ureq",
-        "attohttpc",
-        "isahc",
-        "surf",
-        "h2",
-        "quinn",
-        "async-std",
-    ] {
-        assert!(
-            !reached.contains_key(forbidden),
-            "{forbidden} is reachable from cbr-provider; m4a adds no transport"
-        );
-    }
-}
+// m4a's `the_crate_has_no_network_dependency_in_its_tree` moved to
+// `wire::net::tests` when m4b gave the crate one, and became two tests
+// there: the four crates that do not need a network client still have
+// none, and the one that does names exactly what it added.

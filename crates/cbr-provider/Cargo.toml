@@ -23,6 +23,7 @@ rusqlite.workspace = true
 # Peer credentials (SO_PEERCRED, getpeereid) and the effective user id, for the
 # Unix-socket binding's same-user check. Already in the lockfile via rusqlite.
 libc = "0.2.189"
+ureq = { version = "3.4.2", default-features = false, features = ["rustls"] }
 
 [dev-dependencies]
 tempfile = "3.27.0"

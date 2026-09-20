@@ -142,12 +142,47 @@ impl Secret {
     /// The credential as text, for the **one** place it may go: the
     /// `Authorization` header of a request this process is about to make.
     /// Named so that a reader of any other call site asks why.
-    // Read by the request builder, which is the next commit's.
-    #[allow(dead_code)]
-    pub fn expose(&self) -> &str {
+    /// **Private on purpose.** The credential leaves this module in
+    /// exactly one shape, [`Authorization`], and that shape zeroes itself.
+    fn expose(&self) -> &str {
         // Validated as UTF-8 when it was read, so this cannot fail; an
         // empty string rather than a panic if that ever stops being true.
         std::str::from_utf8(&self.bytes).unwrap_or_default()
+    }
+
+    /// The `Authorization` header value, and **the only way the credential
+    /// leaves this module**.
+    ///
+    /// It is its own type because `format!("Bearer {}", …)` would put the
+    /// credential in an ordinary `String` that is dropped without being
+    /// overwritten — a second copy of the secret, with none of the care
+    /// taken over the first.
+    #[allow(dead_code)]
+    pub fn authorization(&self) -> Authorization {
+        Authorization(format!("Bearer {}", self.expose()))
+    }
+}
+
+/// A header value holding the credential, zeroed when it is dropped.
+pub struct Authorization(String);
+
+impl Authorization {
+    pub fn value(&self) -> &str {
+        &self.0
+    }
+}
+
+impl Drop for Authorization {
+    fn drop(&mut self) {
+        // Safety: the bytes are overwritten in place and the string is
+        // dropped immediately afterwards, so no code observes it as text.
+        drop(Zeroed(unsafe { self.0.as_bytes_mut() }));
+    }
+}
+
+impl std::fmt::Debug for Authorization {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("Authorization(..)")
     }
 }
 

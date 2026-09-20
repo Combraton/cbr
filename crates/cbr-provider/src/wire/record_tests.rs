@@ -37,7 +37,7 @@ fn a_credential_shaped_string_in_a_response_never_reaches_the_store() {
             (
                 Answer::Completed {
                     body: PLANTED.as_bytes().to_vec(),
-                    usage: 40,
+                    usage: Some(40),
                 },
                 PLANTED.as_bytes().to_vec(),
             ),

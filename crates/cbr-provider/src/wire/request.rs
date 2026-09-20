@@ -16,16 +16,13 @@
 //! nothing — but nothing downstream treats having asked as having received.
 //! The parser is where a shape becomes true.
 
-// Constructed by the transport, which is later in this same pull request;
-// until then only the tests below build a `Request`. This allowance is
-// removed in the commit that adds the transport, and its absence there is
-// what says the serializer is actually reached.
-#![allow(dead_code)]
-
 use cbr_encoding::Value;
 
 use super::Dialect;
 
+// Built by m4c's selection, which is what turns a candidate set into a
+// question. This milestone builds the wire and gives it no consumer.
+#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Role {
     User,
@@ -49,6 +46,7 @@ pub struct Message {
 
 /// What shape the answer must take. **The provider guarantees none of
 /// these**, which is why each is something CBR checks rather than trusts.
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub enum Want {
     /// Free text, and prose is a valid answer.

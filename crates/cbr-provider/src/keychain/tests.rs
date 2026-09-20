@@ -249,9 +249,16 @@ fn a_build_without_a_keychain_refuses_a_configured_model() {
 
 #[test]
 fn the_zeroing_guard_overwrites_the_bytes_when_it_is_dropped() {
-    // The guard is what `Secret`'s own drop delegates to, and holding it
-    // over a buffer the test owns is the only way to watch a drop zero
-    // something without reading memory that has already been freed.
+    // The guard is what both `Secret`'s drop and `Authorization`'s delegate
+    // to, and holding it over a buffer the test owns is the only way to
+    // watch a drop zero something without reading memory that has already
+    // been freed.
+    //
+    // **The gap this leaves, stated rather than papered over:** each of
+    // those two `Drop` bodies is one statement that constructs a guard, and
+    // deleting either survives every test here. Nothing in safe Rust can
+    // observe a heap buffer after it is released, so that mutant cannot be
+    // killed; what can be killed, and is, is the guard doing nothing.
     let mut buffer = *b"sk-minimax-0123456789";
     {
         let _guard = Zeroed(&mut buffer);
@@ -340,4 +347,16 @@ fn a_configured_model_whose_credential_is_unreadable_refuses_the_launch() {
     let refused = for_launch(true, || read_from(&tool, Duration::from_secs(5)))
         .expect_err("an unreadable credential refuses the launch");
     assert_eq!(refused, Refused::NotFound);
+}
+
+#[test]
+fn the_credential_leaves_this_module_as_a_header_value_and_nothing_else() {
+    // `expose` is private, so the one shape the secret can be seen in
+    // outside this module is the header value it is going into.
+    let directory = temporary();
+    let tool = fake_tool(directory.path(), "security", "printf 'sk-HEADERCANARY\\n'");
+    let secret = read_from(&tool, Duration::from_secs(5)).expect("the fake tool answered");
+    let authorization = secret.authorization();
+    assert_eq!(authorization.value(), "Bearer sk-HEADERCANARY");
+    assert!(!format!("{authorization:?}").contains("CANARY"));
 }
