@@ -3,7 +3,7 @@
 This is a dated navigation snapshot. Reconcile it with Git, linked issues and current task evidence before acting. Issues own live progress; this file does not grant authority or maintain a second backlog.
 
 - **Updated:** 2026-09-20.
-- **Owner/task:** Claude Code session as implementation lead for standalone CBR. **M1 and M2 are complete**; M1's closing record is [m1/CLOSEOUT.md](m1/CLOSEOUT.md). Active task: **M3, [issue #15](https://github.com/Combraton/cbr/issues/15)**, in four pull requests against `main`, each reviewed at its head before merging: m3a the Context profile (**merged**), m3b retrieval and the dependency evaluator (**merged**) and m3c the packet compiler on a real repository (**merged**); m3d the journey-6 pilots (**merged**) and m3e what the pilots found plus the close-out (**merged**). **M3 is complete and [issue #15](https://github.com/Combraton/cbr/issues/15) is closed.** Active task: **M4, the bounded model runtime, [issue #21](https://github.com/Combraton/cbr/issues/21)**. The readiness document and **m4a, the envelope, are merged**; **m4b, the wire, is PR #24**. No model has been called and no credential has been read. Parent: [issue #1](https://github.com/Combraton/cbr/issues/1). An independent reviewer session reviews this read-only.
+- **Owner/task:** Claude Code session as implementation lead for standalone CBR. **M1 and M2 are complete**; M1's closing record is [m1/CLOSEOUT.md](m1/CLOSEOUT.md). Active task: **M3, [issue #15](https://github.com/Combraton/cbr/issues/15)**, in four pull requests against `main`, each reviewed at its head before merging: m3a the Context profile (**merged**), m3b retrieval and the dependency evaluator (**merged**) and m3c the packet compiler on a real repository (**merged**); m3d the journey-6 pilots (**merged**) and m3e what the pilots found plus the close-out (**merged**). **M3 is complete and [issue #15](https://github.com/Combraton/cbr/issues/15) is closed.** Active task: **M4, the bounded model runtime, [issue #21](https://github.com/Combraton/cbr/issues/21)**. The readiness document and **m4a, the envelope, are merged**; **m4b, the wire, is PR #24**. No model has been called; the credential path is built and tested against an injected fake tool, and the owner's key has not been read by anything. Parent: [issue #1](https://github.com/Combraton/cbr/issues/1). An independent reviewer session reviews this read-only.
 - **Merged:** PR #2 as `d68e9d6`, pinned to `877139f`; PR #4 as `a939446`, pinned to `630011c`; PR #5 (c1) as `8b75129`; PR #6 (c2) as `da1e650`, pinned to `b00ec49`; **PR #7 (c3) as `8ba2594`, pinned to `5b98a9f`, confirmed from `merged: true` and `merged_at: 2026-09-16T15:31:51Z`**. Earlier: PR #6 pinned to `b00ec49`, confirmed from `merged: true` and `merged_at: 2026-09-16T14:26:34Z`**, the draft marked ready first and the head re-read unchanged before merging. Every owner decision, including the ceiling, is in [ADR 001](../decisions/001-standalone-v0.1-scope-and-stack.md). **PR #8 (owner follow-ups) as `f00faaf`, pinned to `40cb30b`, `merged_at: 2026-09-16T16:57:29Z`; PR #9 (c4) as `9a7b8f5`, pinned to `5db9d7c`, `merged_at: 2026-09-16T16:57:53Z`**, in that order, each confirmed from `merged` and `merged_at`. **PR #10 (d) as `96a33f2`, pinned to `a1048e6`, `merged_at: 2026-09-16T18:17:38Z`; then PR #11 (e) as `6c63d91`, pinned to `c2a262d`, `merged_at: 2026-09-16T18:17:56Z`**. PR #11 was stacked on #10's branch, so it was retargeted to `main` after #10 merged and before its own merge; retargeting leaves the head unchanged, and `c2a262d` was re-read before merging. **PR #13 (M1 close-out, README) as `5c667ed`, pinned to `507fc77`, `merged_at: 2026-09-16T18:58:44Z`; then PR #14 (M2) as `39113b2`, pinned to `62cbb99`, `merged_at: 2026-09-16T18:59:00Z`**, #14 retargeted to `main` first. **PR #16 (m3a) as `cbfaebe`, pinned to `1bd9a7a`, confirmed from `merged: true` and `merged_at: 2026-09-19T14:48:17Z`**, the draft marked ready first and the head re-read unchanged; the merge commit's second parent is `1bd9a7a`, so the reviewed head is on `main` unaltered. **PR #17 (m3b) as `c3cdf51`, pinned to `fb67250`, confirmed from `merged: true` and `merged_at: 2026-09-19T15:55:37Z`**, second parent `fb67250`. **PR #18 (m3c) as `2cf6b97`, pinned to `81c5f0e`, confirmed from `merged: true` and `merged_at: 2026-09-20T04:35:37Z`**, second parent `81c5f0e`. **PR #19 (m3d) as `17cc54c`, pinned to `52305b3`, confirmed from `merged: true` and `merged_at: 2026-09-20T07:28:00Z`**, second parent `52305b3`.
 - **Merge rule, 2026-09-16, superseded the same day.** This session ran `gh pr merge` on PR #2 after the owner replied "you can merge PR 2" in-session, having first reported the contradicting claim with evidence and waited. It landed the exact reviewed head `877139f` and is kept. A stricter rule was then recorded, and the owner then **granted merge authority under four conditions**, now in [AGENTS.md](../../AGENTS.md): pin with `--match-head-commit`; the head's CI is green; the reviewer has seen that head; no squash. Confirm from `merged` and `merged_at` afterwards, **never `merge_commit_sha`** — GitHub populates that on an open pull request with the test-merge candidate. Tags and releases remain the owner's alone.
 - **Owner decision, 2026-09-20, recorded at the m3c review: m3d has two pilot repositories**, as an amendment to [ADR 001](../decisions/001-standalone-v0.1-scope-and-stack.md) question 6. Knowscroll-v2 stays the decision-memory pilot; the owner's **brian2 fork** is added as a brownfield pilot, registered read-only, whose journey tests discovery and code flow rather than decision memory, whose oracle the owner writes before the run, and whose dirty working tree makes it the first journey to exercise the dirty path. **brian2 is CeCILL-licensed and this repository is MIT, so none of its bytes, excerpts or packets are committed here** — digests, paths, spans, counts and costs only. It is recorded now and acted on only after m3c is cleared; no other brian2 work belongs in this pull request.
@@ -11,7 +11,7 @@ This is a dated navigation snapshot. Reconcile it with Git, linked issues and cu
 
 ## This change — M4b, the wire, beginning with three mutants the suite did not kill
 
-[PR #24](https://github.com/Combraton/cbr/pull/24) against `main`, for [issue #21](https://github.com/Combraton/cbr/issues/21). **In progress.** Still no live call, no credential read at the time of writing, and no transport dependency.
+[PR #24](https://github.com/Combraton/cbr/pull/24) against `main`, for [issue #21](https://github.com/Combraton/cbr/issues/21). **No live call has been made, and none can be made by this suite**: the transport cannot be constructed without a permit that only `--permit-model-network` produces, and no test has one.
 
 ### The first commit: three constants nothing was reading
 
@@ -34,6 +34,88 @@ One of the three tests had to be rewritten after clippy called it out: `MESSAGE_
 §1 said m4b makes no live call; §3 called the tokenizer comparison "m4b's first measurement", which needs one. **m4b is fixtures only.** The comparison becomes **the calibration**, its own step after m4b is reviewed and merged and only on the owner's explicit word at that time, with its protocol written down now ([READINESS §10](m4/READINESS.md#10-the-calibration-and-what-stops-m4)): token-count calls over CBR's own public sources plus one non-Latin text, one completion capped at 16 generated tokens, a hard run ceiling of 100,000 tokens through the ledger, every call recorded and redacted, and a table of local estimate against provider count per file. **One provider count above its local estimate means the bound is unsound: stop, report, and nothing else in M4 proceeds.**
 
 The two forward references that said "m4b's first measurement" — in `budget.rs`'s module header and in m4a's limits — now say what is actually true: byte-level is an **assumption about the provider's tokenizer**, and the calibration is what checks it.
+
+
+### The credential, and ADR 001 question 12
+
+The owner resolved the constraint [READINESS §2](m4/READINESS.md) left open. **"Never passed to a child process" means the secret is never *handed to* a child** — by argument vector, environment or standard input — and reading it back from one over a private pipe is not that. So the mechanism is the `security` tool, and the decision is recorded with both reasons beyond the dependency count, the rejected alternative, and what would reopen it ([ADR 001 question 12](../decisions/001-standalone-v0.1-scope-and-stack.md)): Keychain access control is **per program**, and `cbr-provider` is unsigned and rebuilt constantly, so an in-process read means a prompt after every rebuild or an *Always Allow* on an unsigned binary; and it is how the owner's other tools already read this same key. A signed, notarised release binary reopens it.
+
+Every line of the mechanism has a test, and **every test runs against an injected fake tool**, so no test on any machine reads the owner's key. The launch member `model_runtime` is what "a model is configured" means, and it is validated — provider, dialect, model, `https` endpoints — **before** the credential is read, so a configuration mistake is refused identically on every machine and the Keychain is never touched to discover that the launch was never going to work.
+
+### The wire
+
+Both dialects' serializer and parser over one transport. Four things worth naming:
+
+- **The generation limit is bound, not mentioned.** m4a's check asked whether the figure appeared anywhere in the serialized body, which a body capped at 4,096 whose prose says "about 16 spans" satisfies. It now parses the body and reads the member the dialect's provider reads. The dialect is asked even though both surfaces name it `max_tokens` today, and a test says so rather than hiding it.
+- **Two dialect differences that degrade silently rather than erroring**, each with its own test: the OpenAI wire carries tool arguments as a **JSON string** that has to be read a second time, and the Anthropic wire reports usage as **two halves** that have to be added.
+- **A `<think>` marker is refused, not stripped.** Stripping would put CBR in the business of deciding which half of a response was the answer. The usage is still read off it, because a refused answer is still a charge.
+- **A second JSON reader, for untrusted bytes.** `cbr_encoding::parse` implements the protocol's value domain and is right to refuse `{"temperature":0.7}`; a provider's response is not a protocol value, and refusing one over a number CBR never reads would turn a good answer into a bounded repair that spends real tokens. What CBR **seals** still goes back through the protocol's domain, so the strictness stays at the point of recording.
+
+**Prose where a structure was asked for, and text where a tool call was demanded, are the only repairable outcomes**, because they are what this provider documentedly does. The bound is one repair, it is a whole call admitted and charged against the same ledger, and it does not send the model's own answer back — repository text is untrusted and so is what a model makes of it.
+
+### Redaction, and why the types carry it
+
+A provider response can carry a **third party's live credential**: one pilot repository has already seen a speech response return a presigned object-store URL with the key and signature in its query string. Redaction runs between the transport and the store, and `record` takes a `Redacted` whose only constructor is `redact`, so **"redaction moved after the write" is a compile error rather than a test failure**. The scan test opens a real store file and reads back every byte of every file it left behind, write-ahead log included.
+
+### The transport, and the dependencies
+
+`Http` cannot be built without a `net::Permit`, which only `--permit-model-network` produces. A configured model is deliberately not enough. m4a's `the_crate_has_no_network_dependency_in_its_tree` had to be made to fail; it became **two** tests rather than none — the four crates that need no network client still have none, and the one that does names in code the exact 26 packages it added. Every dependency is listed with its version, licence and reason in [STACK §8.2](readiness/STACK.md#82-what-the-transport-added-and-why-each-one-is-there), with one named cost: the trust anchors are compiled in and do not track the operator's own trust store.
+
+### What m4b does not establish
+
+- **No fixture here has been compared with the live service.** Every one is hand-written from public documentation, nothing was fetched from the provider to make them, and the word `unverified` is in each file name, each constant name and the directory's README. A passing test says CBR reads what CBR *believes* the provider sends.
+- **The count response's shape is a guess.** The parser accepts a small closed set of member names and refuses a body carrying none of them, which leaves the local estimate standing. It is named as the least verified thing in the module.
+- **Two status codes are mapped to exhaustion and that mapping is a guess.** Anything else non-zero degrades to "something failed", never to success.
+- **The transport has no call site.** m4c gives it one; `Http`, `Runtime::ask` and `Want` carry dead-code allowances until then, exactly as the fake transport did before m4a used it.
+- **Still no token count of CBR's has been compared with the provider's.** That is the calibration, [READINESS §10](m4/READINESS.md#10-the-calibration-and-what-stops-m4).
+
+### Defects of my own, and one vacuous test
+
+Three, all caught by tests rather than by reading:
+
+1. **The Keychain read could still hang.** Killing the tool does not close its pipe if it left a grandchild holding it, and the first version joined the reader unconditionally after the kill — blocking for the grandchild's whole lifetime, which is the hang the timeout exists to prevent arriving one step later. Every wait is now bounded by the same deadline and a reader still running at it is detached.
+2. **Redaction did the presigned-URL case by halves.** The first version consumed the text as it went, so the "is this inside a URL" test only saw the bytes since the last separator: it redacted the first secret parameter and then could no longer tell it was in a URL, leaving every parameter after it in the clear.
+3. **Two of my own mutants survived, and both were the test's fault.** The proxy test asserted "no proxy" without setting one, so it held whether or not the code asked for it. The count-endpoint test used only the OpenAI endpoint, which is a prefix of the counting endpoint, so a transport deriving the count URL from the dialect passed. Both tests are fixed and both mutants now die.
+
+**One vacuous test written, then deleted rather than patched.** It took a copy of the header bytes before zeroing and asserted the copy was non-zero, which cannot fail; it also duplicated a test that already existed. This is the same failure the clippy finding in the first commit was, arriving by hand rather than by lint, which is worth recording because the lint will not always be there.
+
+### Mutants
+
+| Mutant | Outcome |
+|---|---|
+| The environment is not cleared for the Keychain tool | killed |
+| The zeroing guard does not zero | killed |
+| Multi-line tool output accepted as a password | killed |
+| A non-zero exit from the tool ignored | killed |
+| The trailing newline kept as part of the secret | killed |
+| The tool found through `PATH` | killed |
+| A fallback to the environment added | killed |
+| `reasoning_split` not set | killed |
+| `stream: false` dropped | killed |
+| **The generation check reverted to m4a's textual search** | killed |
+| `framed_messages` forgets the system instruction | killed |
+| The Anthropic system instruction sent as a message | killed |
+| The think-marker refusal removed | killed |
+| The think marker checked only as a prefix | killed |
+| The Anthropic usage read as the input half only | killed |
+| The OpenAI tool arguments not read a second time | killed |
+| A non-zero `base_resp` status ignored | killed |
+| Disagreeing count members take the first | killed |
+| Redaction does nothing | killed |
+| Secret names matched exactly rather than by suffix | killed |
+| **Redaction moved after the write** | **compile error** |
+| The repair bound raised to eight | killed |
+| The repair echoes the model's own answer back | killed |
+| An unrepairable outcome repaired anyway | killed |
+| An error status turned into an error before the body is read | killed |
+| Every timeout treated as nothing having been sent | killed |
+| HTTP 429 not read as exhaustion | killed |
+| A failure drops the usage the provider reported | killed |
+| A permit available without the gate | killed |
+| The agent takes a proxy from the environment | survived, **test fixed**, now killed |
+| The count sent to the dialect's own endpoint | survived, **test fixed**, now killed |
+| `supported()` always true | **survives on macOS**; killed only by CI's Linux job, which is the only place the claim can be tested |
+| Either `Drop` body emptied (`Secret`, `Authorization`) | **survives, and cannot be killed** — nothing in safe Rust can observe a released heap buffer. What is killed is the guard doing nothing. |
 
 ## Earlier — M4a, the envelope before any transport
 

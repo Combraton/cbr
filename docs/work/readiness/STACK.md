@@ -172,6 +172,40 @@ Points 1 and 2 were first observed in a live probe run **without a grant**, whic
 
 **Capacity is not the working-set design.** The large context window these models advertise is headroom, not a plan. Normal calls stay bounded per [MODEL-RUNTIME §2](../../spec/MODEL-RUNTIME.md), and the usable headroom per model is **measured and recorded in M4**, never asserted here. A budget that quietly widens to fill the window is the failure mode the whole admission design exists to prevent.
 
+### 8.2 What the transport added, and why each one is there
+
+Added at **m4b**, which is the first stage with a wire. Every crate below arrived with one direct dependency — `ureq 3.4.2`, with default features off and `rustls` on — and each is named here because a dependency in the credential path is the last place a surprise is cheap.
+
+**Why `ureq` and not the `reqwest` §8 proposed.** Section 8's recommendation was written before M2 established that CBR is synchronous throughout: `reqwest` is async and would have brought `tokio`, which is a runtime rather than a dependency, into a process whose entire design is one thread per connection and blocking I/O ([§2](#2-concurrency-sync-core-no-tokio)). `ureq` is blocking, is the same two licences, and brings 15 crates on the platforms CBR supports rather than a runtime. The serializer and the parser are CBR's own either way, which was §8's actual load-bearing decision and is unchanged.
+
+| Crate | Version | Licence | Why |
+|---|---|---|---|
+| `ureq` | 3.4.2 | MIT OR Apache-2.0 | The direct dependency: a blocking HTTP client. |
+| `ureq-proto` | 0.6.4 | MIT OR Apache-2.0 | Its HTTP/1.1 state machine. |
+| `http` | 1.5.0 | MIT OR Apache-2.0 | The request and response types `ureq` exposes. |
+| `httparse` | 1.10.1 | MIT OR Apache-2.0 | Response header parsing. |
+| `rustls` | 0.23.45 | Apache-2.0 OR ISC OR MIT | TLS, in Rust rather than through a system library. |
+| `rustls-webpki` | 0.103.15 | ISC | Certificate path validation for the above. |
+| `rustls-pki-types` | 1.15.1 | MIT OR Apache-2.0 | Its shared certificate types. |
+| `webpki-roots` | 1.0.9 | **CDLA-Permissive-2.0** | The trust anchors. **Data, not code** — see the cost below. |
+| `ring` | 0.17.14 | Apache-2.0 AND ISC | The cryptography `rustls` is built on. Conjunctive, and both halves are permissive. |
+| `untrusted` | 0.9.0 | ISC | `ring`'s input parser. |
+| `subtle` | 2.6.1 | BSD-3-Clause | Constant-time comparison, for `ring`. |
+| `zeroize` | 1.9.0 | Apache-2.0 OR MIT | `rustls` clearing key material. **Not used by CBR's own credential path**, which zeroes with its own volatile write and takes no dependency for it. |
+| `getrandom` | 0.2.17 | MIT OR Apache-2.0 | Entropy for TLS. |
+| `base64` | 0.23.1 | MIT OR Apache-2.0 | Certificate and header encoding. |
+| `utf8-zero` | 0.8.1 | MIT OR Apache-2.0 | `ureq`'s UTF-8 validation. |
+| `wasi` | 0.11.1 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT | A `getrandom` target shim. Builds on no platform CBR supports. |
+| `windows-sys`, `windows-targets`, and nine `windows_*` shims | 0.52.x | MIT OR Apache-2.0 | Target shims. Build on no platform CBR supports. |
+
+**No copyleft**, which is the constraint §8 states. `webpki-roots`'s CDLA-Permissive-2.0 is a permissive *data* licence and is the only unusual one; it is named separately because it is the only entry that is not code.
+
+**Kept out of every crate that does not need one.** `cbr-encoding`, `cbr-identity`, `cbr-memory` and `cbr-cli` reach no network client at all, and a test asserts it by walking the lock file from each of them. A second test asserts that the crates above really are in `cbr-provider`'s tree and that the only network clients reachable anywhere are `ureq` and `rustls`, so a third cannot arrive as somebody else's transitive dependency unnoticed.
+
+**A named cost: the trust anchors are compiled in.** `webpki-roots` is Mozilla's CA bundle baked into the binary, so it does not track the operator's own trust decisions — a corporate root, a removed authority, a revocation — and it goes stale with the build rather than with the system. The alternative is `rustls-platform-verifier`, which uses the operating system's store and adds its own dependencies on each platform. Compiled-in roots are adequate for v0.1, where there is one endpoint and the only live calls happen on the owner's own machine. **Trigger to revisit:** the first of a deployment that is not the owner's machine, a second endpoint, or an operator needing a trust anchor CBR does not ship.
+
+**The socket is shut by default.** None of this can open one unless the launch was given `--permit-model-network`: the transport takes a permit that only that flag produces. CI never passes it, so CI opens no socket whatever else it is configured with.
+
 ## 9. Token admission before sending
 
 This is the one place where the specification's wording and reality need reconciling carefully, so it is worth being precise.
