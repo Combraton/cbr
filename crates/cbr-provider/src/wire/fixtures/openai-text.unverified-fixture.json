@@ -1,0 +1,18 @@
+{
+  "id": "chatcmpl-fixture-0001",
+  "object": "chat.completion",
+  "created": 1789000000,
+  "model": "MiniMax-M2.7",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "Units are dropped where np.concatenate rebuilds the array."
+      },
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": { "prompt_tokens": 1180, "completion_tokens": 42, "total_tokens": 1222 },
+  "base_resp": { "status_code": 0, "status_msg": "success" }
+}

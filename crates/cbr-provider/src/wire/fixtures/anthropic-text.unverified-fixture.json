@@ -1,0 +1,12 @@
+{
+  "id": "msg_fixture_0001",
+  "type": "message",
+  "role": "assistant",
+  "model": "MiniMax-M2.7",
+  "content": [
+    { "type": "text", "text": "Units are dropped where np.concatenate rebuilds the array." }
+  ],
+  "stop_reason": "end_turn",
+  "stop_sequence": null,
+  "usage": { "input_tokens": 1180, "output_tokens": 42 }
+}
