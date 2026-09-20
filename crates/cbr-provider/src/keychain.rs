@@ -192,7 +192,16 @@ impl std::fmt::Debug for Authorization {
 /// run time: on every other platform a configured model is refused, so there
 /// is no path on which CBR looks for the key somewhere else.
 pub fn supported() -> bool {
-    cfg!(target_os = "macos")
+    supported_on(std::env::consts::OS)
+}
+
+/// Split out from [`supported`] so that the rule is a fact about an
+/// operating system's name rather than a fact about the machine the tests
+/// happen to be running on. Written `cfg!(target_os = "macos")` inline, the
+/// mutant *always supported* survived every run on the owner's Mac and
+/// could only die in CI — a kill nobody here could observe.
+fn supported_on(operating_system: &str) -> bool {
+    operating_system == "macos"
 }
 
 /// The command, built in one place so a test can read back exactly what a

@@ -234,12 +234,22 @@ fn there_is_no_fallback_to_the_environment_when_the_tool_fails() {
 }
 
 #[test]
-fn a_build_without_a_keychain_refuses_a_configured_model() {
+fn only_macos_has_a_keychain_and_everything_else_is_a_refused_launch() {
     // macOS has the Keychain and nothing else does. On Linux and in CI a
     // configured model is a refused launch with a typed reason, never a
     // fallback to a file, an environment variable or an unauthenticated
     // call.
-    assert_eq!(supported(), cfg!(target_os = "macos"));
+    //
+    // Asserted against operating-system *names* rather than against this
+    // machine, so the rule is checked wherever the suite runs. Written as
+    // `cfg!(target_os = "macos")` it was only ever checked on whichever
+    // platform happened to be running it, and the mutant *always
+    // supported* survived every run on the owner's Mac.
+    assert!(supported_on("macos"));
+    for elsewhere in ["linux", "windows", "freebsd", "ios", ""] {
+        assert!(!supported_on(elsewhere), "{elsewhere} has no Keychain");
+    }
+    assert_eq!(supported(), cfg!(target_os = "macos"), "and this machine");
     if !supported() {
         assert_eq!(refusal(read()), Refused::NoKeychain);
     }

@@ -114,7 +114,7 @@ Three, all caught by tests rather than by reading:
 | A permit available without the gate | killed |
 | The agent takes a proxy from the environment | survived, **test fixed**, now killed |
 | The count sent to the dialect's own endpoint | survived, **test fixed**, now killed |
-| `supported()` always true | **survives on macOS**; killed only by CI's Linux job, which is the only place the claim can be tested |
+| `supported()` always true | **survived on macOS at first**, and would have died only in CI — a kill nobody here could observe. The platform rule is now a function of an operating system's *name* rather than of the machine running the tests, so it is **killed everywhere**, observed locally. |
 | Either `Drop` body emptied (`Secret`, `Authorization`) | **survives, and cannot be killed** — nothing in safe Rust can observe a released heap buffer. What is killed is the guard doing nothing. |
 
 ## Earlier — M4a, the envelope before any transport
