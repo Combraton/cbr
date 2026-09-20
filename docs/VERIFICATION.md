@@ -302,7 +302,7 @@ Issue #3's acceptance is `ingested_bytes_fetch_identically_after_sigkill_and_res
 | **No socket is opened**: the transport cannot be constructed without a permit that only `--permit-model-network` produces, one test asserts the gate has exactly one caller and that it is the launch, and two more assert that four of the five crates reach no network client at all while the fifth names in code exactly what it added | That a process given the flag behaves correctly against a real endpoint. Nothing here has run against one. |
 
 
-#### Three rules that keep the owner's key out of every test run
+#### Four rules that keep the owner's key out of every run
 
 **These are rules, not conveniences.** A reviewer or a future test that launches a valid model configuration on macOS reads the owner's real Keychain entry, and no test in this suite has any business doing that.
 
@@ -313,6 +313,8 @@ Issue #3's acceptance is `ingested_bytes_fetch_identically_after_sigkill_and_res
 3. **The launch decision is a pure function, and every row of it is tested without starting a process.** `launch::decide` takes the arguments and the configuration and returns one of four decisions; whether a credential is read is a property of the decision, and `launch::tests` states it over *every* combination of inputs rather than over a table somebody remembered to extend. Before that, rules 1 and 2 rested on **the order of statements in `main`**, checked only by process-level tests asserting that the message did not mention a keychain — an assertion that would not have noticed a successful, silent read, which is the failure that matters on the owner's own machine.
 
    The rule has teeth because of what it revealed: while `launch::SERVING_CALLS_A_MODEL` is false, **a serving launch with a model configured is refused**, because this build has no call site to spend a credential at and [READINESS §2](work/m4/READINESS.md) forbids reading one into a process with no use for it. **So the calibration is the only launch that reads a credential at all**, and it needs three flags and a ceiling. m4c sets that constant true in the commit that connects selection to the transport; the tests constraining that row are written as implications, so they stop constraining it then rather than having to be found and deleted.
+
+4. **On the owner's machine, the provider is launched only through the test suite or an authorised run.** Not by hand, not to check a refusal, not to see what a flag does. The three rules above are about what the *code* permits; this one is about what a person does with it, and it exists because the code's permission was found the hard way: the credential read that [STATE](work/STATE.md) records came from improvising a launch at a shell prompt to probe a refusal. Rule 3 now makes that particular launch impossible, which is the right kind of fix — and the habit is still the rule, because the next gap will be somewhere rule 3 does not reach. A refusal worth checking is worth a test.
 
 A change that moves either check later, that adds a second ungated test passing `--permit-model-network` with a valid model, or that sets `SERVING_CALLS_A_MODEL` true without a call site, breaks these rules. Anything needing a live launch on macOS is the owner's to run deliberately, never the suite's.
 

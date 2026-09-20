@@ -394,11 +394,22 @@ macro_rules! documented_fixture {
     };
 }
 
+macro_rules! observed_fixture {
+    ($name:literal) => {
+        include_bytes!(concat!("fixtures/", $name, ".observed-2026-09-21.json"))
+    };
+}
+
+/// Written from the published reference and **not yet seen** from the
+/// service: calibration run 2 obtained neither a completed text answer nor
+/// a tool call, because its one completion was spent on reasoning.
 const DOCUMENTED_RESPONSES_TEXT: &[u8] = documented_fixture!("responses-text");
-const DOCUMENTED_RESPONSES_INCOMPLETE: &[u8] =
-    documented_fixture!("responses-incomplete-reasoning-only");
 const DOCUMENTED_RESPONSES_TOOL_CALL: &[u8] = documented_fixture!("responses-tool-call");
-const DOCUMENTED_RESPONSES_COUNT: &[u8] = documented_fixture!("responses-input-tokens");
+
+/// **Seen from the live service on 2026-09-21**, in calibration run 2.
+const OBSERVED_RESPONSES_INCOMPLETE: &[u8] =
+    observed_fixture!("responses-incomplete-reasoning-only");
+const OBSERVED_RESPONSES_COUNT: &[u8] = observed_fixture!("responses-input-tokens");
 
 #[test]
 fn the_responses_dialect_reads_text_and_its_usage() {
@@ -423,10 +434,13 @@ fn an_incomplete_answer_with_no_text_is_an_outcome_with_usage_not_a_failure() {
     let read = read_completion(
         Dialect::Responses,
         &Want::Text,
-        DOCUMENTED_RESPONSES_INCOMPLETE,
+        OBSERVED_RESPONSES_INCOMPLETE,
     );
     assert_eq!(read.reply, Err(Unusable::Truncated), "{read:?}");
-    assert_eq!(read.usage, Some(1196), "and it cost what it cost");
+    // The figures are the ones run 2 actually came back with: sixteen
+    // output tokens, all of them reasoning, and no answer.
+    assert_eq!(read.usage, Some(44), "and it cost what it cost");
+    assert_eq!(read.input_usage, Some(28), "of which the input was 28");
     assert!(
         !Unusable::Truncated.repairable(),
         "asking again under the same limit gets the same answer"
@@ -495,11 +509,56 @@ fn the_responses_dialect_reads_a_tool_call_from_its_own_output_item() {
 }
 
 #[test]
-fn the_documented_count_response_is_read() {
-    // `{"object": "response.input_tokens", "input_tokens": N}`. The member
-    // was already in the set the parser accepts, which is the one guess
-    // m4b made that turned out right.
-    assert_eq!(read_count(DOCUMENTED_RESPONSES_COUNT), Some(1180));
+fn the_observed_count_response_is_read() {
+    // `{"object": "response.input_tokens", "input_tokens": N}`, seen seven
+    // times in calibration run 2 and carrying **no usage member**, which is
+    // why what a count costs is still the provider's silence rather than a
+    // figure. The member name was already in the set the parser accepts,
+    // which is the one guess m4b made that turned out right.
+    assert_eq!(read_count(OBSERVED_RESPONSES_COUNT), Some(1180));
+}
+
+#[test]
+fn the_observed_completion_reports_no_reasoning_breakdown() {
+    // **A documented member that the service does not send.** The
+    // reference names `usage.output_tokens_details.reasoning_tokens`; run 2
+    // received no `output_tokens_details` at all. So reasoning tokens are
+    // inside `output_tokens` and CBR cannot tell how much of a completion
+    // was reasoning — which matters, because on the M2.x models reasoning
+    // cannot be turned off and can consume the whole limit.
+    let read = super::json::read(OBSERVED_RESPONSES_INCOMPLETE).expect("reads");
+    let usage = read.get("usage").expect("usage");
+    assert!(usage.get("output_tokens").is_some());
+    assert!(
+        usage.get("output_tokens_details").is_none(),
+        "the service sent a breakdown after all; the fixture is stale"
+    );
+    // What it does send: the total, and the cached-input breakdown.
+    assert!(usage.get("total_tokens").is_some());
+    assert!(usage.get("input_tokens_details").is_some());
+}
+
+#[test]
+fn the_observed_response_echoes_the_request_back() {
+    // Thirty-seven members where the reference describes twelve, most of
+    // them the request returned. Nothing downstream may assume a response
+    // holds only what was documented — a parser that walked every member
+    // would be walking CBR's own request.
+    let read = super::json::read(OBSERVED_RESPONSES_INCOMPLETE).expect("reads");
+    for echoed in [
+        "instructions",
+        "max_output_tokens",
+        "temperature",
+        "truncation",
+    ] {
+        assert!(read.get(echoed).is_some(), "{echoed} was not echoed");
+    }
+    // And `service_tier` comes back null though `standard` was sent, so
+    // whether it was honoured is not observable from the response.
+    assert_eq!(read.get("service_tier"), Some(&super::json::Json::Null));
+    // `store` is false, which is what the owner's decision requires and
+    // what CBR cannot ask for: there is no request parameter.
+    assert_eq!(read.get("store"), Some(&super::json::Json::Bool(false)));
 }
 
 #[test]

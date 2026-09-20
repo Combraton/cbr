@@ -9,13 +9,40 @@ This is a dated navigation snapshot. Reconcile it with Git, linked issues and cu
 - **Owner decision, 2026-09-20, recorded at the m3c review: m3d has two pilot repositories**, as an amendment to [ADR 001](../decisions/001-standalone-v0.1-scope-and-stack.md) question 6. Knowscroll-v2 stays the decision-memory pilot; the owner's **brian2 fork** is added as a brownfield pilot, registered read-only, whose journey tests discovery and code flow rather than decision memory, whose oracle the owner writes before the run, and whose dirty working tree makes it the first journey to exercise the dirty path. **brian2 is CeCILL-licensed and this repository is MIT, so none of its bytes, excerpts or packets are committed here** — digests, paths, spans, counts and costs only. It is recorded now and acted on only after m3c is cleared; no other brian2 work belongs in this pull request.
 - **Inspected revisions:** protocol `v0.1.0` = `cbf8e4df9df2ca8a9b50264df6acace6e4c3a0fc`; combraton `9af69ce`; pio `e65b7c0`; benchmarks `c8d5878`.
 
-## This change — M4c, beginning with the m4b review's three residuals
+## This change — M4c, the bounded runtime
 
-[PR #25](https://github.com/Combraton/cbr/pull/25) against `main`, for [issue #21](https://github.com/Combraton/cbr/issues/21). **In progress.**
+[PR #26](https://github.com/Combraton/cbr/pull/26) against `main`, for [issue #21](https://github.com/Combraton/cbr/issues/21). **In progress.** Its first commit is the record of calibration run 2.
+
+### Calibration run 2 — the measurement, and the bound held
+
+**Authorised by the owner on 2026-09-21, run once from `main` at `dabf033`, release profile.** The record is [m4/CALIBRATION.md](m4/CALIBRATION.md).
+
+**No provider count exceeded its local estimate on any of the six files, so READINESS §10's stop condition did not fire and M4 is not stopped.** Against the input bound alone the ratios are **3.40 to 4.29**, which is what READINESS predicted; the table's own ratio column runs 5.35 to 27.82 because it includes the fixed 5,128 tokens of reserved generation and margin, and for a small input that is what it measures rather than the bound. The table should carry the input column.
+
+Four things the run found that no fixture had:
+
+- **The count response carries no usage member**, so the provider says nothing about what a count costs. CBR settles a count at the figure it counted, which is the conservative reading of silence — and **15,538 of the 15,582 tokens this run charged were CBR charging itself for seven counts the provider never priced.** An observation for the owner, not a change made here.
+- **The counting endpoint over-predicted the bill by 4.4×** on the one completion: it predicted 122 input tokens and the provider charged 28. Safe, and it means the count buys conservatism the local bound already provides, at the price of a call. One sample.
+- **`usage.output_tokens_details` does not exist.** The reference names `reasoning_tokens`; the service sends no breakdown, so **CBR cannot tell how much of a completion was reasoning** — which matters on the M2.x models, where reasoning cannot be turned off and took the whole sixteen-token limit.
+- **A response echoes the request back**: 37 members where the reference describes 12, with `service_tier` returned as `null` though `standard` was sent.
+
+**The credential appears nowhere in the store**, and every recorded request is byte-identical to the source file it was read from — checked by digest, on a corpus that is five thousand lines about credentials and redaction and which an over-eager redactor would have shredded.
+
+**And a defect in the calibration itself:** it reports `STOPPED` and exits non-zero for a *truncated* completion, which is an ordinary outcome with a cost. A run that obtained every measurement it exists for is recorded as having stopped. Fixed in this milestone.
+
+### The owner's decision on provider-side retention
+
+Recorded 2026-09-21 and closed in [READINESS §7](m4/READINESS.md): the API offers no request option to prevent retention, and the owner accepts that **for public repositories only** — CBR's own source, Knowscroll-v2 and brian2. **Any private repository still needs the owner's explicit word**, and the absence of a retention control is a reason that bar stays where it is rather than a reason to lower it. A stated limit, not a solved problem.
+
+## Earlier — the m4b follow-up: the review's residuals and the responses dialect
+
+[PR #25](https://github.com/Combraton/cbr/pull/25), **merged** as `dabf033`, pinned to `4aaa31f`, confirmed from `merged: true` and `merged_at: 2026-09-20T19:46:35Z`.
 
 ### A credential read that should not have been possible, and the fix
 
 **I read the owner's Keychain entry outside the authorised calibration.** Probing the binary's careless-launch refusals from a shell, I used a configuration that named a valid model together with `--permit-model-network`. That is a *serving* launch, which the build accepted, so it read the key.
+
+**The cause, named precisely: improvising a launch by hand.** Not a gap in a test, not a missed review — a command typed at a prompt to see what a refusal looked like, against the real binary with the real configuration. Everything that has ever protected that key is in the test suite or in an authorised run, and neither was in play. [VERIFICATION](../VERIFICATION.md) now carries that as rule 4 beside the three about what the code permits, because the fix that followed closes this particular door and the habit is what closes the next one.
 
 What it did not do, verified afterwards: no model call (`model_calls` empty), no ledger row, nothing sent — the transport is constructed only by the calibration path — nothing printed, and no credential-shaped bytes anywhere in the store. The bytes were read into memory and zeroed on drop. It was still a read that was not authorised, and it is recorded here rather than tidied away.
 

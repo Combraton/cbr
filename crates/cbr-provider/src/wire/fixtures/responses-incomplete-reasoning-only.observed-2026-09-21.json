@@ -1,0 +1,43 @@
+{
+  "id": "resp_observed_0001",
+  "object": "response",
+  "created_at": 1789200000,
+  "model": "MiniMax-M2.7-highspeed",
+  "status": "incomplete",
+  "output": [
+    {
+      "id": "rs_observed_0001",
+      "type": "reasoning",
+      "status": "completed",
+      "summary": [],
+      "content": [
+        { "type": "reasoning_text", "text": "The user asks for a single word; answer it directly." }
+      ]
+    }
+  ],
+  "output_text": null,
+  "usage": {
+    "input_tokens": 28,
+    "output_tokens": 16,
+    "total_tokens": 44,
+    "input_tokens_details": { "cached_tokens": 0 }
+  },
+  "error": null,
+  "incomplete_details": { "reason": "max_output_tokens" },
+  "instructions": "Answer in one short sentence.",
+  "tools": null,
+  "tool_choice": "auto",
+  "temperature": 1,
+  "top_p": 0.95,
+  "text": { "format": { "type": "text" } },
+  "reasoning": { "effort": null, "summary": null },
+  "max_output_tokens": 16,
+  "max_tool_calls": null,
+  "parallel_tool_calls": true,
+  "previous_response_id": null,
+  "conversation": null,
+  "store": false,
+  "service_tier": null,
+  "safety_identifier": null,
+  "truncation": "disabled"
+}

@@ -1,6 +1,133 @@
-# The calibration — run 1, 2026-09-20
+# The calibration
 
-**The run stopped at its first call. No token count was obtained, so the local byte bound is neither confirmed nor falsified.** [READINESS §10](READINESS.md#10-the-calibration-and-what-stops-m4)'s stop condition — one provider count above its local estimate — did not fire, because no provider count came back at all.
+Two runs, each on the owner's explicit authorisation, one run each, no retries.
+
+- [**Run 2, 2026-09-21**](#run-2-2026-09-21) — **the measurement. The bound held on every file.**
+- [Run 1, 2026-09-20](#run-1-2026-09-20) — stopped at its first call; no count was obtained.
+
+---
+
+## Run 2, 2026-09-21
+
+**The local byte bound was never exceeded. [READINESS §10](READINESS.md#10-the-calibration-and-what-stops-m4)'s stop condition did not fire, and M4 is not stopped.**
+
+Every one of the six files was counted, and the completion ran. The run ended with the completion reported as truncated, which is the documented behaviour of a sixteen-token limit on an M2.x model and **not** a failure — the calibration's own handling of that is a defect recorded below.
+
+### What was run
+
+| | |
+|---|---|
+| Built from | `main` at `dabf033` (the merge of [PR #25](https://github.com/Combraton/cbr/pull/25), pinned to `4aaa31f`), **release** profile |
+| Command | `cbr-provider --calibrate <table> --permit-model-network --model-run-ceiling 100000`, and nothing else — no probe, no pre-flight, no dry run |
+| Configuration | `cbr-config/1`, provider `minimax`, dialect **`responses`**, model `MiniMax-M2.7-highspeed` |
+| Data directory | fresh, outside this repository |
+| Keychain | read once at construction; no prompt appeared |
+| Calls | **8**: seven counts and one completion. All eight succeeded. |
+
+### The table: the local estimate against the provider's count
+
+| file | local estimate | of which input bound | provider | table ratio | input ratio |
+|---|---:|---:|---:|---:|---:|
+| `clock.rs` | 12,506 | 7,378 | 1,962 | 6.37 | 3.76 |
+| `keychain.rs` | 22,342 | 17,214 | 4,077 | 5.48 | 4.22 |
+| `wire/endpoint.rs` | 11,528 | 6,400 | 1,583 | 7.28 | 4.04 |
+| `wire/json.rs` | 19,743 | 14,615 | 3,410 | 5.79 | 4.29 |
+| `wire/redact.rs` | 22,324 | 17,196 | 4,174 | 5.35 | 4.12 |
+| non-Latin text | 5,843 | 715 | 210 | 27.82 | 3.40 |
+
+**No provider count exceeded its local estimate.** Largest table ratio 27.82 (the non-Latin text), smallest 5.35 (`wire/redact.rs`).
+
+**The table's own ratio column is misleading, and the extra columns say why.** The local estimate is the input bound *plus* a fixed 5,128 tokens of reserved generation and margin, so for a small input the ratio measures the fixed reservation rather than the bound. Against the input bound alone the figures are **3.40 to 4.29**, which is what [READINESS §10](READINESS.md#10-the-calibration-and-what-stops-m4) predicted — *"loose by three to four times for prose"* — and the non-Latin text, whose table ratio is 27.82, has the **tightest** input bound of the six at 3.40. The table should carry the input column; that is a change for the next run rather than a rewrite of this record.
+
+### The completion
+
+| | |
+|---|---|
+| `status` | **`incomplete`**, `incomplete_details.reason: "max_output_tokens"` |
+| `output` | **one `reasoning` item and nothing else**; `output_text` was `null` |
+| `usage` | `input_tokens: 28`, `output_tokens: 16`, `total_tokens: 44` |
+| Reasoning tokens | **not reported.** There is no `output_tokens_details` member at all. |
+
+**The sixteen-token limit was spent entirely on reasoning**, exactly as the documentation says it can be on an M2.x model: reasoning cannot be disabled, reasoning tokens are output tokens, and sixteen of them bought no answer. The parser read it as truncated and kept its usage, which is right.
+
+### The second comparison: does the count predict what is charged?
+
+| | |
+|---:|---|
+| Counting endpoint's prediction for that request | **122** input tokens |
+| What the provider then charged for it | **28** input tokens |
+| Difference | the count **over-predicted by 4.4×** |
+
+**No finding**, because the margin flags the dangerous direction — a bill *above* the prediction — and this is the opposite. But it is the more interesting result: **on this one sample the counting endpoint over-predicts the bill by more than four times.** That is conservative and therefore safe, and it means the count call buys conservatism CBR already has from its local bound, at the price of a call. One sample is not a measurement; it is a reason to make the comparison on every call of the first live run.
+
+### The ledger, and whether a count is charged
+
+| id | request | kind | tokens | estimate |
+|---:|---|---|---:|---:|
+| 1 | `clock.rs.count` | usage | 1,962 | 12,506 |
+| 2 | `keychain.rs.count` | usage | 4,077 | 22,342 |
+| 3 | `wire/endpoint.rs.count` | usage | 1,583 | 11,528 |
+| 4 | `wire/json.rs.count` | usage | 3,410 | 19,743 |
+| 5 | `wire/redact.rs.count` | usage | 4,174 | 22,324 |
+| 6 | `non-latin.count` | usage | 210 | 5,843 |
+| 7 | `completion.count` | usage | 122 | 5,376 |
+| 8 | `completion` | usage | 44 | 1,162 |
+
+**CBR's ledger charged 15,582 tokens. The provider reported usage for exactly one call, the completion, at 44.**
+
+**The count response carries no usage member at all** — it is `{"object": "response.input_tokens", "input_tokens": N}` and nothing more. So the provider said nothing about what a count costs, and CBR settles a count at the figure it counted, which is the conservative reading of silence. The consequence is stark: **15,538 of the 15,582 tokens charged in this run were CBR charging itself for seven count calls the provider never priced.** If counts are free, CBR's envelope is being consumed by nearly 400× what the run actually spent.
+
+That is an **observation for the owner**, not a change made here. The documentation says nothing about billing for this endpoint ([fixtures README](../../../crates/cbr-provider/src/wire/fixtures/README.md)), and *"unbilled because a page says so"* is what this run exists to avoid. What can be said is that the provider reports no usage, and that settling silence conservatively is expensive enough to be worth the owner's decision.
+
+### The recorded exchanges, by field name and size
+
+**The request** (the completion's, 240 bytes):
+
+| member | type | bytes |
+|---|---|---:|
+| `input` | array | 91 |
+| `instructions` | string | 31 |
+| `max_output_tokens` | int | 2 |
+| `model` | string | 24 |
+| `service_tier` | string | 10 |
+| `stream` | bool | 5 |
+
+Its count call sent the same three of those the endpoint documents — `input`, `instructions`, `model` — and none of the other three. That is the change run 1 bought.
+
+**The response** (956 bytes) carried 37 members. The ones CBR reads: `status` (10 bytes), `output` (one item: `id`, `type`, `status`, `summary`, `content`), `output_text` (null), `usage.input_tokens`, `usage.output_tokens`, `usage.total_tokens`, `usage.input_tokens_details.cached_tokens`, `error` (null), `incomplete_details.reason` (17 bytes). The rest is the request echoed back.
+
+**The credential appears nowhere.** Scanning every byte of `cbr.sqlite` (237,568), its write-ahead log (0) and its shared-memory file (32,768) for `bearer`, `authorization`, `api_key`, an `sk-` prefix and a JWT prefix gives **six matches in the database and none elsewhere — all six are CBR's own source text**, because `keychain.rs` and `wire/redact.rs` are in the corpus and those modules discuss credentials by name. The service *name* `minimax_api_key` is a public constant in a public repository; no credential value is present. The `Authorization` header is not recorded at all.
+
+**Every recorded request is byte-identical to the file it was read from**, checked by SHA-256 against each source on disk. The redactor did not touch the corpus — which is worth saying, because that corpus is five thousand lines about credentials and redaction, and an over-eager redactor would have shredded it.
+
+### How the live responses differed from the documented fixtures
+
+The fixtures were written on 2026-09-21 from the published API reference. This is what the service actually sent.
+
+| # | Documented | Observed |
+|---|---|---|
+| 1 | `usage.output_tokens_details.reasoning_tokens` | **Absent.** There is no `output_tokens_details` member. Reasoning tokens are counted in `output_tokens` and are not broken out, so **CBR cannot tell how much of a completion was reasoning.** |
+| 2 | `usage` of `input_tokens`, `output_tokens`, `total_tokens` | Confirmed, plus `input_tokens_details.cached_tokens` |
+| 3 | An output item has `type`, `content`, `summary` | Also `id` and a per-item `status` |
+| 4 | A response has 12 top-level members | **37.** The request is echoed back in full: `instructions`, `tools`, `tool_choice`, `temperature`, `top_p`, `text`, `reasoning`, `max_output_tokens`, `max_tool_calls`, `parallel_tool_calls`, `previous_response_id`, `conversation`, `store`, `service_tier`, `safety_identifier`, `truncation` |
+| 5 | `service_tier` sent as `standard` | **Echoed back as `null`**, so the field is accepted and not reflected. Whether it was honoured is unobservable from the response. |
+| 6 | `store` is a response property | Confirmed, and its value was **`false`** |
+| 7 | `status`, `incomplete_details.reason`, `error: null`, `output_text`, `reasoning_text` | All confirmed exactly |
+| 8 | `{"object": "response.input_tokens", "input_tokens": N}` | **Confirmed exactly**, on seven calls |
+
+Nothing contradicted the documentation; four things it did not mention were found, and one thing it named was missing.
+
+### A defect in the calibration itself
+
+**The run reports `STOPPED` and exits non-zero, and it should not have.** A truncated completion is an ordinary outcome with a cost — the reviewer said so before the run, and the parser implements it — but the calibration turns any non-answer into a stop. So a run that obtained every measurement it exists for is recorded as having stopped, and the table says `**STOPPED.**` above six good rows.
+
+Nothing was lost: the table, the ledger and the exchanges are all complete and are what this record is built from. It is fixed in m4c, with the completion's status carried into the report rather than collapsed into success or failure.
+
+---
+
+## Run 1, 2026-09-20
+
+**The run stopped at its first call. No token count was obtained.** Run 2 obtained them. [READINESS §10](READINESS.md#10-the-calibration-and-what-stops-m4)'s stop condition — one provider count above its local estimate — did not fire, because no provider count came back at all.
 
 One run, no retries, on the owner's explicit authorisation at the m4b review. It is not re-run without a further one.
 
