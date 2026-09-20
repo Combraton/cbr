@@ -55,7 +55,13 @@ python3 scripts/run_fixtures.py --filter evidence. --out conformance/results/m1e
 python3 scripts/check_results.py conformance/results/m1e conformance/expectations/evidence.json
 python3 scripts/run_fixtures.py --filter knowledge. --out conformance/results/m2
 python3 scripts/check_results.py conformance/results/m2 conformance/expectations/knowledge.json
+python3 scripts/run_fixtures.py --filter context. --out conformance/results/m3a
+python3 scripts/check_results.py conformance/results/m3a conformance/expectations/context.json
+python3 scripts/run_fixtures.py --filter composition. --participant conformance/participants/cbr-provider-unix.json --out conformance/results/m3a-composition
+python3 scripts/check_results.py conformance/results/m3a-composition conformance/expectations/composition.json
 ```
+
+**`composition` runs over the socket participant and only over it.** Its fixtures are separate CBR instances reaching one another over public sockets, so the stdio participant has no second role to give them: run with `cbr-provider.json` every one of the fourteen is **skipped**, which reads like a regression and is not one. The last two commands were missing from this block until m4c, which is how that mistake was made.
 
 Source identity shells out to `git`, so the tests need `git` on the path; both CI runners have it.
 
@@ -296,7 +302,7 @@ Issue #3's acceptance is `ingested_bytes_fetch_identically_after_sigkill_and_res
 | **No socket is opened**: the transport cannot be constructed without a permit that only `--permit-model-network` produces, one test asserts the gate has exactly one caller and that it is the launch, and two more assert that four of the five crates reach no network client at all while the fifth names in code exactly what it added | That a process given the flag behaves correctly against a real endpoint. Nothing here has run against one. |
 
 
-#### Two rules that keep the owner's key out of every test run
+#### Three rules that keep the owner's key out of every test run
 
 **These are rules, not conveniences.** A reviewer or a future test that launches a valid model configuration on macOS reads the owner's real Keychain entry, and no test in this suite has any business doing that.
 
@@ -304,7 +310,11 @@ Issue #3's acceptance is `ingested_bytes_fetch_identically_after_sigkill_and_res
 
 2. **A configured model requires `--permit-model-network`, and that check comes before the credential read too.** This is what makes the first rule enforceable rather than a convention: a test cannot reach the Keychain by configuring a model, because configuring one without the flag is a refused launch. **Exactly one test passes that flag**, `a_configured_model_with_no_keychain_is_a_refused_launch`, and it is gated to platforms with no Keychain — which is the only place its claim is true and the only place it is safe.
 
-A change that moves either check later, or that adds a second test passing `--permit-model-network` without gating it, breaks both rules at once. Anything needing a live launch on macOS is the owner's to run deliberately, never the suite's.
+3. **The launch decision is a pure function, and every row of it is tested without starting a process.** `launch::decide` takes the arguments and the configuration and returns one of four decisions; whether a credential is read is a property of the decision, and `launch::tests` states it over *every* combination of inputs rather than over a table somebody remembered to extend. Before that, rules 1 and 2 rested on **the order of statements in `main`**, checked only by process-level tests asserting that the message did not mention a keychain — an assertion that would not have noticed a successful, silent read, which is the failure that matters on the owner's own machine.
+
+   The rule has teeth because of what it revealed: while `launch::SERVING_CALLS_A_MODEL` is false, **a serving launch with a model configured is refused**, because this build has no call site to spend a credential at and [READINESS §2](work/m4/READINESS.md) forbids reading one into a process with no use for it. **So the calibration is the only launch that reads a credential at all**, and it needs three flags and a ceiling. m4c sets that constant true in the commit that connects selection to the transport; the tests constraining that row are written as implications, so they stop constraining it then rather than having to be found and deleted.
+
+A change that moves either check later, that adds a second ungated test passing `--permit-model-network` with a valid model, or that sets `SERVING_CALLS_A_MODEL` true without a call site, breaks these rules. Anything needing a live launch on macOS is the owner's to run deliberately, never the suite's.
 
 ### The storage crash matrix
 

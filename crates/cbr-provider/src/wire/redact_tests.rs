@@ -196,6 +196,48 @@ fn a_percent_encoded_nested_url_does_not_hide_a_credential() {
 }
 
 #[test]
+fn a_doubly_percent_encoded_nested_url_does_not_hide_a_credential_either() {
+    // One decoding was not enough. `%253A` decodes to `%3A`, which decodes
+    // to `:` — so a scanner that decodes once sees a string that still
+    // looks like nothing and stops. Whatever encoded it twice can encode
+    // it three times, so the answer is to decode **until it stops
+    // changing**, under a small bound.
+    let body = "{\"redirect\":\"https://h/go\
+?next=https%253A%252F%252Foss.example%252Fa.mp3%253FSignature%253DDOUBLECANARY%2526x%253D1\"}";
+    let seen = redacted(body);
+    assert!(!seen.contains("DOUBLECANARY"), "{seen}");
+}
+
+#[test]
+fn a_value_whose_encoding_never_settles_is_not_written_out() {
+    // A bound, because "decode until stable" against input somebody else
+    // wrote is an invitation to decode for ever. What matters is what
+    // happens **at** the bound: a value still changing there is one whose
+    // meaning this code has not seen, so it is replaced rather than
+    // written on the guess that five rounds was enough.
+    //
+    // The parameter is called `next`, which names no secret, so nothing
+    // else in the pipeline would catch it — an earlier version of this
+    // test used `token=` and passed whether or not the bound was honoured.
+    let mut buried = "https://oss.example/a?Signature=SETTLECANARY".to_string();
+    for _ in 0..PERCENT_DECODE_ROUNDS + 2 {
+        buried = buried
+            .replace('%', "%25")
+            .replace(':', "%3A")
+            .replace('/', "%2F")
+            .replace('?', "%3F")
+            .replace('=', "%3D");
+    }
+    let body = format!("{{\"url\":\"https://h/go?next={buried}\"}}");
+    let seen = redacted(&body);
+    assert!(
+        seen.contains("encoding did not settle"),
+        "the value was written out instead of refused: {seen}"
+    );
+    assert!(!seen.contains("SETTLECANARY"), "{seen}");
+}
+
+#[test]
 fn the_scrubber_catches_the_credential_in_each_encoding_it_travels_in() {
     // Raw, base64 and percent-encoded: the three shapes a credential is
     // repeated in by something that logged, framed or forwarded it.
@@ -220,7 +262,9 @@ fn a_planted_secret_never_survives_wherever_it_is_put() {
     let scrubber = scrubber_for(held);
     let base64 = cbr_encoding::encode_base64(held.as_bytes());
     let percent = held.replace('-', "%2D");
-    let shapes = [held, base64.as_str(), percent.as_str()];
+    // Encoded twice, which is the shape that survived the first version.
+    let twice = percent.replace('%', "%25");
+    let shapes = [held, base64.as_str(), percent.as_str(), twice.as_str()];
     // A fixed generator, so a failure is reproducible rather than a story
     // about a run that once happened.
     let mut seed = 0x5eed_1234_u64;

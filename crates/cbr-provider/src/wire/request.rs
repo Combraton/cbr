@@ -78,9 +78,90 @@ pub struct Request {
 impl Request {
     /// The exact bytes that go on the wire.
     ///
-    /// Canonical form, so that the count call and the completion send the
-    /// same body and the local estimate is an estimate of what was sent.
+    /// Canonical form, so that the count call and the completion are over
+    /// bytes that can be compared, and so the local estimate is an
+    /// estimate of what was sent.
     pub fn serialize(&self, dialect: Dialect) -> Vec<u8> {
+        match dialect {
+            Dialect::Responses => self.serialize_responses(false),
+            Dialect::OpenAi | Dialect::Anthropic => self.serialize_chat(dialect),
+        }
+    }
+
+    /// The body the **counting endpoint** is sent, or `None` for a dialect
+    /// it does not describe.
+    ///
+    /// It is the completion's body minus the three members the endpoint
+    /// does not document — `max_output_tokens`, `service_tier`, `stream` —
+    /// and identical in everything else. That is the whole point: a count
+    /// predicts a completion's cost only if it counts the same input, the
+    /// same instructions and the same tools.
+    pub fn serialize_count(&self, dialect: Dialect) -> Option<Vec<u8>> {
+        dialect.counted().then(|| self.serialize_responses(true))
+    }
+
+    /// `POST /v1/responses`, and its counting endpoint.
+    fn serialize_responses(&self, counting: bool) -> Vec<u8> {
+        let mut body: Vec<(String, Value)> =
+            vec![("model".into(), Value::String(self.model.clone()))];
+        if !counting {
+            body.push((
+                Dialect::Responses.generation_field().into(),
+                Value::Int(self.generation.min(i64::MAX as u64) as i64),
+            ));
+            // **Explicitly `standard`, and `priority` never.** A default is
+            // a thing that changes; and it is the owner's quota, so
+            // nothing here spends it faster on its own say-so.
+            body.push(("service_tier".into(), Value::String("standard".into())));
+            // No `[DONE]` sentinel to read a stream to the end by.
+            body.push(("stream".into(), Value::Bool(false)));
+        }
+        if let Some(system) = &self.system {
+            // Its own member here, not an item of `input`. Put in `input`
+            // it is accepted and treated as conversation.
+            body.push(("instructions".into(), Value::String(system.clone())));
+        }
+        body.push((
+            "input".into(),
+            Value::Array(
+                self.messages
+                    .iter()
+                    .map(|held| {
+                        Value::Object(vec![
+                            ("type".into(), Value::String("message".into())),
+                            ("role".into(), Value::String(held.role.name().into())),
+                            ("content".into(), Value::String(held.text.clone())),
+                        ])
+                    })
+                    .collect(),
+            ),
+        ));
+        match &self.want {
+            // `text.format.type` documents one value, `text`, so there is
+            // no structured-output member to ask in. CBR validates instead,
+            // which it does on every dialect anyway.
+            Want::Text | Want::Structure { .. } => {}
+            Want::Tool { name, schema } => {
+                body.push((
+                    "tools".into(),
+                    Value::Array(vec![Value::Object(vec![
+                        ("type".into(), Value::String("function".into())),
+                        ("name".into(), Value::String(name.clone())),
+                        ("parameters".into(), schema.clone()),
+                    ])]),
+                ));
+                // `tool_choice` documents `none` and `auto` and not
+                // `required`, so a call cannot be demanded here at all —
+                // which is why a text answer where one was wanted is an
+                // ordinary outcome rather than a surprise.
+                body.push(("tool_choice".into(), Value::String("auto".into())));
+            }
+        }
+        cbr_encoding::to_canonical(&Value::Object(body))
+    }
+
+    /// The two chat dialects, unchanged from m4b.
+    fn serialize_chat(&self, dialect: Dialect) -> Vec<u8> {
         let mut body: Vec<(String, Value)> = vec![
             ("model".into(), Value::String(self.model.clone())),
             (
@@ -102,7 +183,9 @@ impl Request {
             (Dialect::Anthropic, Some(system)) => {
                 body.push(("system".into(), Value::String(system.clone())));
             }
-            (_, None) => {}
+            // Reached only through `serialize`, which routes the Responses
+            // dialect elsewhere.
+            (Dialect::Responses, _) | (_, None) => {}
         }
         for held in &self.messages {
             messages.push(message(held.role.name(), &held.text));
@@ -111,7 +194,7 @@ impl Request {
         match &self.want {
             Want::Text => {}
             Want::Structure { schema } => {
-                if dialect == Dialect::OpenAi {
+                if dialect != Dialect::Anthropic {
                     body.push((
                         "response_format".into(),
                         Value::Object(vec![
@@ -130,7 +213,7 @@ impl Request {
                 // would be a body ignored for a second, worse reason.
             }
             Want::Tool { name, schema } => match dialect {
-                Dialect::OpenAi => {
+                Dialect::Responses | Dialect::OpenAi => {
                     body.push((
                         "tools".into(),
                         Value::Array(vec![Value::Object(vec![

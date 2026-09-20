@@ -65,6 +65,43 @@ impl Limits {
 /// configuration naming any of them is refused rather than ignored: silently
 /// dropping a control the operator wrote down would leave them believing a
 /// clock or a fault injector was in effect when it was not.
+/// **Every member a launch configuration may carry.** An allowlist, not a
+/// denylist: a member this build does not know is refused rather than
+/// ignored, because a misspelling that silently does nothing is a setting
+/// the operator believes they made.
+///
+/// The four that are declared and not read — `executor`, `evidence`,
+/// `verifier`, `faults` — are conformance controls CBR has not
+/// implemented. They are accepted and ignored under a conformance launch
+/// and refused under a production one like every other control; a fixture
+/// needing one is reported `unsupported` rather than silently passing.
+const KNOWN_MEMBERS: [&str; 20] = [
+    "format",
+    "principal",
+    "authority_principals",
+    "provider_id",
+    "limits",
+    "events",
+    "credentials",
+    "clock",
+    "dedupe",
+    "capabilities",
+    "knowledge",
+    "context",
+    "evidence_store",
+    "test_barriers",
+    "model",
+    "model_runtime",
+    "executor",
+    "evidence",
+    "verifier",
+    "faults",
+];
+
+/// Every member `model_runtime` may carry. **Three**, and an endpoint is
+/// not among them.
+const MODEL_RUNTIME_MEMBERS: [&str; 3] = ["provider", "dialect", "model"];
+
 const TEST_CONTROL_MEMBERS: [&str; 13] = [
     "model",
     "evidence_store",
@@ -303,6 +340,18 @@ impl Config {
         let value =
             cbr_encoding::parse(&bytes).map_err(|e| format!("parsing {}: {e}", path.display()))?;
 
+        // Checked before anything is read out of it, so an unknown member
+        // is refused whatever else the file says.
+        for member in value.keys() {
+            if !KNOWN_MEMBERS.contains(&member) {
+                return Err(format!(
+                    "`{member}` is not a launch configuration member; it is refused rather \
+                     than ignored, because a member that silently does nothing is a setting \
+                     the operator believes they made"
+                ));
+            }
+        }
+
         config.mode = match value.get("format").and_then(Value::as_str) {
             Some("combraton-conformance-config/1") => Mode::Conformance,
             Some("cbr-config/1") => Mode::Production,
@@ -522,12 +571,17 @@ impl Config {
             // `https://api.minimax.io@collector.example/v1` allname the
             // provider correctly and address somebody else. Refused rather
             // than ignored, so nobody believes they set one.
-            for member in ["endpoint", "count_endpoint", "host", "path", "base_url"] {
-                if runtime.get(member).is_some() {
+            //
+            // **An allowlist, because the first version was a denylist**
+            // of five names, and `url`, `api_base` and `proxy` walked
+            // past it. Naming more spellings was never going to end.
+            for member in runtime.keys() {
+                if !MODEL_RUNTIME_MEMBERS.contains(&member) {
                     return Err(format!(
-                        "`model_runtime.{member}` is not configuration: the host is pinned to \
-                         `{}` and the path is the dialect's. A launch may choose a dialect \
-                         and not an address.",
+                        "`{member}` is not a member of `model_runtime`, which takes {} and \
+                         nothing else: the host is pinned to `{}` and the path is the \
+                         dialect's, so a launch may choose a dialect and not an address",
+                        MODEL_RUNTIME_MEMBERS.join(", "),
                         crate::wire::endpoint::HOST
                     ));
                 }

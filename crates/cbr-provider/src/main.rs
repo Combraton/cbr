@@ -23,6 +23,7 @@ mod grants;
 mod jsonrpc;
 mod keychain;
 mod knowledge;
+mod launch;
 mod model;
 mod outbox;
 mod peer;
@@ -177,78 +178,34 @@ fn run() -> Result<(), String> {
         }
         return Ok(());
     }
-    // **Every refusal the calibration can be given happens here**, before
-    // the credential is read, so that a launch which was never going to run
-    // it does not touch the Keychain to find that out.
-    if let Some(table) = &args.calibrate {
-        if config.model_runtime.is_none() {
-            return Err("--calibrate needs a configured model".into());
-        }
-        if !args.permit_model_network {
-            return Err(
-                "--calibrate makes live calls and needs --permit-model-network; having built \
-                 a transport is not permission to use it"
-                    .into(),
-            );
-        }
-        match args.model_run_ceiling {
-            None => {
-                return Err(format!(
-                    "--calibrate needs --model-run-ceiling; the cap of {} tokens is enforced \
-                     by the ledger rather than by intention",
-                    calibration::CEILING
-                ));
-            }
-            Some(ceiling) if ceiling > calibration::CEILING => {
-                return Err(format!(
-                    "--model-run-ceiling {ceiling} is above the calibration's cap of {}",
-                    calibration::CEILING
-                ));
-            }
-            Some(_) => {}
-        }
-        let _ = table;
+    // **The launch decision is taken once, purely, and acted on here.**
+    // Whether a credential is read is a property of the decision rather
+    // than of the order of the statements below; `launch::tests` states
+    // every row of it without starting a process.
+    let decision = launch::decide(&launch::Launch {
+        model_configured: config.model_runtime.is_some(),
+        permit_model_network: args.permit_model_network,
+        calibrate: args.calibrate.is_some(),
+        model_run_ceiling: args.model_run_ceiling,
+    });
+    if let launch::Decision::Refuse(reason) = &decision {
+        return Err(reason.clone());
+    }
+    if decision.reads_credential() {
+        // The gate to a socket, and the only thing that opens it. A
+        // transport cannot be constructed without the permit this
+        // produces, which is what makes "CI opens no socket" a property of
+        // the build rather than of the test suite's manners.
+        wire::net::permit_network();
     }
 
-    // The gate to a socket, and the only thing that opens it. A launch
-    // without this flag cannot construct a transport, whatever else it is
-    // configured with, which is what makes "CI opens no socket" a property
-    // of the build rather than of the test suite's manners.
-    //
-    // **The two go together in both directions.** Permitting calls with no
-    // model configured is a configuration mistake rather than a safe
-    // default. And a configured model without the flag would serve while
-    // failing every model call — so it is refused *here*, which is before
-    // the credential is read, and that is what makes the Keychain
-    // unreachable without a deliberate act. A test that does not pass this
-    // flag cannot read the owner's key, whatever else it configures.
-    match (args.permit_model_network, config.model_runtime.is_some()) {
-        (true, false) => {
-            return Err(
-                "--permit-model-network needs a configured model; permitting calls to \
-                 nothing is a configuration mistake rather than a safe default"
-                    .into(),
-            );
-        }
-        (false, true) => {
-            return Err(
-                "a model is configured and --permit-model-network was not given; a process \
-                 that would fail every model call is refused rather than started"
-                    .into(),
-            );
-        }
-        (true, true) => wire::net::permit_network(),
-        (false, false) => {}
-    }
-
-    // **The one credential read, at process start, and only when a model is
-    // configured.** It happens here — before the store is opened and before
-    // anything is listened on — so that a launch which cannot read the key
-    // it was told to use refuses rather than serving and failing every
-    // model call one at a time. A launch with no model configured never
-    // reaches the Keychain at all.
-    let _credential = keychain::for_launch(config.model_runtime.is_some(), keychain::read)
-        .map_err(|refused| {
+    // **The one credential read, at process start, and only when the
+    // decision says so.** It happens before the store is opened and before
+    // anything is listened on, so a launch that cannot read the key it was
+    // told to use refuses rather than serving and failing every model call
+    // one at a time.
+    let credential =
+        keychain::for_launch(decision.reads_credential(), keychain::read).map_err(|refused| {
             format!(
                 "a model is configured and its credential could not be read: {}",
                 refused.reason()
@@ -257,11 +214,13 @@ fn run() -> Result<(), String> {
 
     // The calibration serves nothing: it runs, writes its table and exits.
     if let Some(table) = args.calibrate {
+        // The decision above already refused every launch without
+        // these; what is left is the acting on it.
         let runtime = config
             .model_runtime
             .clone()
             .ok_or("--calibrate needs a configured model")?;
-        let credential = _credential.ok_or("--calibrate needs a credential")?;
+        let credential = credential.ok_or("--calibrate needs a credential")?;
         let permit = wire::net::permit().ok_or("--calibrate needs --permit-model-network")?;
         let store = store::Store::open(&data_dir)
             .map_err(|error| format!("opening the store at {}: {error}", data_dir.display()))?;

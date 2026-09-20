@@ -224,3 +224,26 @@ fn an_errors_own_text_never_reaches_the_answer() {
     let answer = answer_for_error(&error);
     assert!(!format!("{answer:?}").contains("CANARY"), "{answer:?}");
 }
+
+#[test]
+fn a_two_hundred_carrying_an_error_member_is_not_a_completion() {
+    // **The defect the calibration exposed, one layer up.** The transport
+    // asked the status first and the body second, so a failure reported
+    // inside an HTTP 200 became `Completed` with an empty body and no
+    // usage — a successful call that answered nothing.
+    let body = br#"{"error":{"message":"bad request","code":"invalid_prompt"}}"#;
+    let answer = answer_for(Call::Completion, Dialect::OpenAi, 200, body);
+    assert!(
+        matches!(answer, Answer::Failed { .. }),
+        "read as {answer:?}"
+    );
+    assert!(
+        !matches!(answer, Answer::Completed { .. }),
+        "an error body is never a completion"
+    );
+    // And a count is not a count either.
+    assert!(matches!(
+        answer_for(Call::Count, Dialect::OpenAi, 200, body),
+        Answer::Failed { .. }
+    ));
+}

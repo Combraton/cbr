@@ -104,6 +104,12 @@ pub struct Read {
     /// when the reply is unusable**, because an unusable answer is still a
     /// charge against a shared quota.
     pub usage: Option<u64>,
+    /// What the provider said the **input** cost, separately.
+    ///
+    /// The calibration compares it against the counting endpoint's
+    /// prediction for the same request, which is the measurement that says
+    /// whether making the count is worth anything.
+    pub input_usage: Option<u64>,
 }
 
 /// One text part and one optional tool call, however the dialect carries
@@ -119,24 +125,29 @@ pub fn read_completion(dialect: Dialect, want: &Want, body: &[u8]) -> Read {
         return Read {
             reply: Err(Unusable::Malformed),
             usage: None,
+            input_usage: None,
         };
     };
     let usage = usage(dialect, &read);
+    let input_usage = input_usage(&read);
     if let Some(failure) = provider_failure(&read) {
         return Read {
             reply: Err(failure),
             usage,
+            input_usage,
         };
     }
     let Some(content) = content(dialect, &read) else {
         return Read {
             reply: Err(Unusable::Malformed),
             usage,
+            input_usage,
         };
     };
     Read {
         reply: interpret(want, content),
         usage,
+        input_usage,
     }
 }
 
@@ -197,23 +208,116 @@ fn provider_failure(read: &Json) -> Option<Unusable> {
             Unusable::ProviderError
         });
     }
-    if read.get("type").and_then(Json::as_str) == Some("error") {
-        let kind = read
-            .get("error")
-            .and_then(|error| error.get("type"))
-            .and_then(Json::as_str)
-            .unwrap_or_default();
-        return Some(if kind.contains("rate_limit") || kind.contains("quota") {
-            Unusable::ProviderExhausted
-        } else {
-            Unusable::ProviderError
-        });
+    // **A body that carries an error member is a failure, whatever the
+    // status says, in every dialect.**
+    //
+    // The first live call proved the need for it: the failure arrived as
+    // `{"error":{"message","code"}}` with a *string* code — neither the
+    // `base_resp` shape above nor Anthropic's `{"type":"error"}` — and a
+    // parser that let the HTTP status decide read it as a successful
+    // response with no content. That is the worst available reading,
+    // because everything downstream then treats emptiness as the answer.
+    //
+    // The shapes differ per dialect and will keep differing. The rule does
+    // not, so it is written once and over the member rather than over any
+    // one vendor's spelling of it.
+    // The Responses API reports a failure in `status` as well as in
+    // `error`, and the two do not always both appear.
+    if read.get("status").and_then(Json::as_str) == Some("failed") {
+        return Some(Unusable::ProviderError);
+    }
+    match read.get("error") {
+        // `"error": null` is what a successful Responses API answer
+        // carries. Reading that as a failure turns every good answer into
+        // one, which is the opposite mistake and no better.
+        None | Some(Json::Null) => {}
+        Some(error) => {
+            return Some(if names_an_exhausted_quota(error) {
+                Unusable::ProviderExhausted
+            } else {
+                Unusable::ProviderError
+            });
+        }
     }
     None
 }
 
+/// Whether an error says the quota is gone rather than that the request was
+/// wrong. Read across the members vendors put it in — `type`, `code`,
+/// `message` — because which one carries it is the part that varies.
+fn names_an_exhausted_quota(error: &Json) -> bool {
+    let mut said = String::new();
+    for member in ["type", "code", "message"] {
+        if let Some(text) = error.get(member).and_then(Json::as_str) {
+            said.push_str(text);
+            said.push(' ');
+        }
+    }
+    if let Some(text) = error.as_str() {
+        said.push_str(text);
+    }
+    let said = said.to_ascii_lowercase();
+    ["rate_limit", "rate limit", "quota", "insufficient balance"]
+        .iter()
+        .any(|marker| said.contains(marker))
+}
+
 fn content(dialect: Dialect, read: &Json) -> Option<Content> {
     match dialect {
+        Dialect::Responses => {
+            let output = read.get("output")?.as_array()?;
+            // `incomplete` is an ordinary outcome with a cost, not a
+            // fault: reasoning tokens are output tokens and cannot be
+            // disabled on the M2.x models, so a small limit can be spent
+            // entirely on reasoning and end with no text at all.
+            let truncated = read.get("status").and_then(Json::as_str) == Some("incomplete");
+            let mut text = read
+                .get("output_text")
+                .and_then(Json::as_str)
+                .map(str::to_string);
+            let mut tool = None;
+            for item in output {
+                match item.get("type").and_then(Json::as_str) {
+                    // Reasoning is its own item here, which is what
+                    // `reasoning_split` asks the chat dialects for. It is
+                    // **never** read as the answer.
+                    Some("reasoning") => {}
+                    Some("message") if text.is_none() => {
+                        text = item
+                            .get("content")
+                            .and_then(Json::as_array)
+                            .and_then(|parts| {
+                                parts
+                                    .iter()
+                                    .find(|part| {
+                                        part.get("type").and_then(Json::as_str)
+                                            == Some("output_text")
+                                    })
+                                    .and_then(|part| part.get("text"))
+                                    .and_then(Json::as_str)
+                            })
+                            .map(str::to_string);
+                    }
+                    // As on the chat dialect, the arguments are a JSON
+                    // **string** and are read a second time.
+                    Some("function_call") => {
+                        if let (Some(name), Some(written)) = (
+                            item.get("name").and_then(Json::as_str),
+                            item.get("arguments").and_then(Json::as_str),
+                        ) && let Some(input) = json::read(written.as_bytes())
+                        {
+                            tool = Some((name.to_string(), input));
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            Some(Content {
+                text,
+                tool,
+                truncated,
+            })
+        }
         Dialect::OpenAi => {
             let choice = read.get("choices")?.as_array()?.first()?;
             let message = choice.get("message")?;
@@ -272,10 +376,21 @@ fn content(dialect: Dialect, read: &Json) -> Option<Content> {
     }
 }
 
+/// The input half of the usage, which every dialect spells the same way.
+fn input_usage(read: &Json) -> Option<u64> {
+    let usage = read.get("usage")?;
+    usage
+        .get("input_tokens")
+        .or_else(|| usage.get("prompt_tokens"))
+        .and_then(Json::as_u64)
+}
+
 fn usage(dialect: Dialect, read: &Json) -> Option<u64> {
     let usage = read.get("usage")?;
     match dialect {
-        Dialect::OpenAi => usage.get("total_tokens").and_then(Json::as_u64),
+        // `total_tokens` is the whole charge, reasoning included, so
+        // reading it needs no arithmetic and cannot forget a part.
+        Dialect::Responses | Dialect::OpenAi => usage.get("total_tokens").and_then(Json::as_u64),
         // Reported as two halves, which CBR adds: a parser reading one of
         // them charges a shared quota for less than it spent.
         Dialect::Anthropic => {

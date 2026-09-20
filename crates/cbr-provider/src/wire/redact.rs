@@ -37,6 +37,17 @@
 /// What replaces a credential.
 pub const REDACTED: &str = "[redacted]";
 
+/// How many times a value is percent-decoded before the scan gives up.
+///
+/// **Once was not enough.** `%253A` decodes to `%3A`, which decodes to
+/// `:` — so a scanner that decodes once sees a string that still looks
+/// like nothing and stops. Whatever encoded a credential twice can encode
+/// it three times, so decoding runs until the text stops changing. The
+/// bound is here because "until stable" against input somebody else wrote
+/// is an invitation to decode for ever, and a value still changing at the
+/// bound is one this code cannot show to be safe.
+pub const PERCENT_DECODE_ROUNDS: usize = 5;
+
 /// Query-parameter and member names whose value is a credential. Matched
 /// case-insensitively, and by suffix where the vendor prefix varies.
 const SECRET_NAMES: [&str; 12] = [
@@ -138,7 +149,7 @@ pub fn redact(bytes: &[u8], scrubber: Option<&crate::keychain::Scrubber>) -> Red
         // in. It does not see every encoding of it, so what is about to be
         // written is decoded once more and checked: a record that still
         // holds the credential cannot be made safe and is replaced.
-        let decoded = percent_decode_once(&String::from_utf8_lossy(&out));
+        let (decoded, _) = percent_decode_to_stable(&String::from_utf8_lossy(&out));
         if scrubber.found_in(decoded.as_bytes()) {
             out = closed(bytes.len());
         }
@@ -184,8 +195,13 @@ fn redact_value(text: &str) -> String {
     if !url_shaped(text) {
         return direct;
     }
-    let decoded = percent_decode_once(text);
+    let (decoded, stable) = percent_decode_to_stable(text);
     let redacted = redact_text(&decoded);
+    if !stable {
+        // Still changing at the bound, so what this value decodes to is
+        // not something this code has seen. It is not written out.
+        return UNSETTLED.to_string();
+    }
     if redacted != decoded {
         // Something was hiding in the encoding. The encoded form cannot be
         // patched without guessing where its boundaries were, so the
@@ -195,12 +211,33 @@ fn redact_value(text: &str) -> String {
     direct
 }
 
+/// What replaces a value whose decoding never settled.
+const UNSETTLED: &str = "[redacted: encoding did not settle]";
+
 fn url_shaped(text: &str) -> bool {
-    text.contains("://") || text.to_ascii_uppercase().contains("%3A%2F%2F")
+    let upper = text.to_ascii_uppercase();
+    // The encoded forms of `://`, at one and at two rounds. A value that
+    // is a URL only after two decodings is exactly the case that got past
+    // the first version of this.
+    text.contains("://") || upper.contains("%3A%2F%2F") || upper.contains("%253A%252F%252F")
 }
 
-/// Percent-decode once. Once, because decoding repeatedly is how a decoder
-/// is talked into producing something the encoder never wrote.
+/// Percent-decode until the text stops changing, up to
+/// [`PERCENT_DECODE_ROUNDS`] times. Returns the settled text and whether
+/// it had settled by then.
+fn percent_decode_to_stable(text: &str) -> (String, bool) {
+    let mut settled = text.to_string();
+    for _ in 0..PERCENT_DECODE_ROUNDS {
+        let next = percent_decode_once(&settled);
+        if next == settled {
+            return (settled, true);
+        }
+        settled = next;
+    }
+    (settled.clone(), percent_decode_once(&settled) == settled)
+}
+
+/// One round of percent-decoding.
 fn percent_decode_once(text: &str) -> String {
     let bytes = text.as_bytes();
     let mut out = Vec::with_capacity(bytes.len());

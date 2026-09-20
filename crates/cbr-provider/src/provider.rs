@@ -393,6 +393,11 @@ impl Provider {
                 job: &fake.job,
                 request: &fake.request,
                 body: fake.body.as_bytes(),
+                // The fake counts the same body it completes. It is a
+                // fault injector, and its job is to reach the count
+                // boundaries the crash matrix kills at — which a dialect
+                // that skips the count call would never do.
+                count_body: Some(fake.body.as_bytes()),
                 messages: 1,
                 generation: fake.generation,
                 dialect: fake.dialect,

@@ -29,15 +29,22 @@ pub const MODELS: [&str; 3] = ["MiniMax-M2.7-highspeed", "MiniMax-M2.7", "MiniMa
 /// Which of the provider's two wires a configured model speaks.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Dialect {
-    /// `https://api.minimax.io/v1`, OpenAI-compatible.
+    /// **The primary wire.** `POST /v1/responses`, the OpenAI *Responses*
+    /// API. It is primary because it is the **only dialect the counting
+    /// endpoint describes**: `POST /v1/responses/input_tokens` takes a
+    /// Responses-shaped request, and a count of one serialization says
+    /// nothing about the cost of another.
+    Responses,
+    /// `POST /v1/chat/completions`, OpenAI chat-completions. Secondary.
     OpenAi,
-    /// `https://api.minimax.io/anthropic`, Anthropic-compatible.
+    /// `POST /anthropic/v1/messages`, Anthropic-compatible. Secondary.
     Anthropic,
 }
 
 impl Dialect {
     pub fn parse(name: &str) -> Option<Self> {
         match name {
+            "responses" => Some(Dialect::Responses),
             "openai" => Some(Dialect::OpenAi),
             "anthropic" => Some(Dialect::Anthropic),
             _ => None,
@@ -46,20 +53,32 @@ impl Dialect {
 
     pub fn name(self) -> &'static str {
         match self {
+            Dialect::Responses => "responses",
             Dialect::OpenAi => "openai",
             Dialect::Anthropic => "anthropic",
         }
     }
 
+    /// Whether the counting endpoint describes this dialect's request.
+    ///
+    /// **Only one does.** For the others the local byte bound alone
+    /// admits, which is what it was built to be able to do: sending a
+    /// chat-completions body to an endpoint that documents a Responses one
+    /// is how the first calibration run ended.
+    pub fn counted(self) -> bool {
+        matches!(self, Dialect::Responses)
+    }
+
     /// The member this dialect's provider reads the generation limit from.
     ///
-    /// **Both are `max_tokens` today**, and they are asked for separately
-    /// anyway: the guard that refuses to send a body whose limit is not
-    /// bound to this field asks the dialect, so the day one surface moves
-    /// to `max_completion_tokens` one constant changes and the guard
-    /// follows it.
+    /// **They are not all the same**, which is the case the guard was
+    /// written for: the two chat dialects read `max_tokens` and the
+    /// Responses dialect reads `max_output_tokens`. m4b noted that asking
+    /// the dialect cost nothing while both answers agreed; one milestone
+    /// later they do not.
     pub fn generation_field(self) -> &'static str {
         match self {
+            Dialect::Responses => "max_output_tokens",
             Dialect::OpenAi => "max_tokens",
             Dialect::Anthropic => "max_tokens",
         }
@@ -69,6 +88,7 @@ impl Dialect {
     /// endpoint.
     pub fn path(self) -> &'static str {
         match self {
+            Dialect::Responses => "/responses",
             Dialect::OpenAi => "/chat/completions",
             Dialect::Anthropic => "/v1/messages",
         }
@@ -81,7 +101,7 @@ impl Dialect {
     /// "MiniMax only" would be a label rather than a rule.
     pub fn base(self) -> &'static str {
         match self {
-            Dialect::OpenAi => "/v1",
+            Dialect::Responses | Dialect::OpenAi => "/v1",
             Dialect::Anthropic => "/anthropic",
         }
     }
