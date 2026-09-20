@@ -77,6 +77,30 @@ The two questions are the owner's, verbatim, and are used as the task text uncha
 
 **A required item that is not the answer** is named in each request, as J1 does: `README.md` for brian2 and `AGENTS.md` for Knowscroll, neither of which has anything to do with its question. It exists to show that capacity is reserved for a required item before anything discovered, and its section is expected to be irrelevant to the question.
 
+### J6 pilot, brian2: a brownfield repository, no model
+
+**Labelled a pilot throughout.** It is a steer, not evidence, and may not be cited as downstream-task evidence for any gate ([JOURNEYS §1](#1-rules-this-document-enforces), ADR 001 question 6). It is scored by the reviewer against an oracle the owner wrote before the run; this session has not seen it.
+
+| Field | Record |
+|---|---|
+| Intent and acceptance | Ask a brownfield repository a question about a third-party function and see what a packet finds. Acceptance is not this session's to judge: the owner wrote the facts a correct packet must contain and at least one trap, the reviewer scores the packet against them, and this record reports only what the packet contained and how each part was found. |
+| Entry point | `cbr context`, `cbr request`, `cbr packet` over the provider's Unix socket. The repository is registered read-only at launch by `--register-repository`; its path never crosses the wire. |
+| Prerequisites and inputs | The owner's brian2 fork, `Legend101Zz/brian2`, at `HEAD` tree `375bd477…`: 7,065 commits, 553 tracked files, **5,345,464 bytes** in the tree. A fresh data directory, cold. **CBR read it and changed nothing in it.** |
+| Question, verbatim | "np.concatenate on arrays with units returns a plain array with no units. Where in brian2 does the unit get lost, and what would have to change?" |
+| Selector | `np.concatenate units`, chosen and [recorded above](#j6-pilots-the-questions-and-the-selectors-recorded-before-the-runs) before the run. |
+| Model and provider | `none` |
+| Code and environment basis | One repository at tree `375bd477…`, `workspace: dirty`, snapshot digest `sha256:1bfec9ed…`. The working tree holds 130 untracked files and **no modified tracked file**, so by the owner's decision the pilot searches the tree as committed and declares what that leaves out. |
+| Path taken | register → submit → index built at the basis → discovery: ranked retrieval over the view from the task, anchors for the one identifier-shaped phrase, claims (none: brian2 has no decision records) → publish → read. |
+| Packet identity | One revision. **10 sections, 0 omissions**, 10,837 bytes of section content against 65,536 of capacity. Nine source spans and one anchor section; no claim sections, because this repository has none. |
+| Coverage, as the packet states it | frontier `375bd477…`; **22 blobs were not text**; **220 blobs are in a language with no anchors** — of those 67 `.rst`, 25 `.cpp`, 25 no extension, 23 `.pyx`, 19 `.py_`, 11 `.txt`, 7 `.md`, 6 `.h`; and **130 files are untracked and in no tree, so they are not searched** — of those 44 `.lock`, 22 `.json`, 17 `.py`, 14 `.o`, 11 `.md`, 7 `.cpp`. |
+| Baseline | `git grep -w` at the same tree for the selector's terms, ranked by how many distinct terms a file holds, top ten. The reviewer scores it against the same oracle. This is the simple lexical baseline INTERNALS §7 names; the strong native-context baseline is M7's. |
+| Durable result | The packet and its cited artifacts survive in the store and re-read by identity. **No byte, excerpt or packet of brian2 is committed to this repository**: it is CeCILL-licensed and this repository is MIT, so the record carries digests, paths, spans, counts and costs only. |
+| Reproduction | The exact commands are in the pull request. They register the checkout by path, so they reproduce only on a machine that has it. |
+| Cost | Model calls 0, tokens 0, spend 0. **553 blobs, 5,345,464 bytes indexed. Index build and compile 12.6s. Time to first packet 14.8s.** Store after the run **19.6 MB**. The index build holds the preparation tick throughout, so every other job on that provider waits those 12.6 seconds — the known limit recorded in [VERIFICATION](../VERIFICATION.md), to be resolved in M4's bounded runtime. |
+| Simulated or untested | Nothing is simulated. **Untested here:** the dirty-bytes path, which this checkout cannot exercise because it has no modified tracked file; decision memory, which brian2 has none of; and any second repository in one basis. |
+| A compiler change after the run, declared | The first run produced **9 sections and no anchor section at all**: `concatenate` has five call sites in this tree and no definition, because it is numpy's, and the compiler emitted an anchor section only when a definition existed. A question about someone else's function therefore got nothing from the half of discovery meant to answer it. That is a general defect, not a property of this question — it holds for every third-party symbol in every repository — and it was fixed and **the run repeated in full**, as the review's protocol requires. The second run is the one recorded here; the only difference is section 10. |
+| Properties and limits | **This establishes nothing about usefulness by itself.** The packet is scored by someone who has the oracle and did not produce the packet. What the run does establish is mechanical and worth having: a 553-file, 7,065-commit repository was indexed cold and answered in under fifteen seconds with no model; every span cites an artifact and a byte range; the coverage names every gap by count and kind; and the working tree's 130 untracked files are declared rather than silently skipped. **Lexical discovery finds only what shares vocabulary with the question** — nine of ten sections came from term overlap alone, and the single anchor section is the only part that used structure. |
+
 ### J1: a question finds its own answer with a cited packet
 
 | Field | Record |

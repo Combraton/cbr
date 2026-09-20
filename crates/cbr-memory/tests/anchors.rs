@@ -203,3 +203,28 @@ fn source_that_does_not_parse_yields_what_it_can() {
         "{found:#?}"
     );
 }
+
+#[test]
+fn a_name_used_but_not_defined_here_still_has_its_uses_recorded() {
+    // The third-party case: `np.concatenate` is numpy's, so a repository
+    // that calls it has five call sites and no definition. Those call sites
+    // are exactly what "where does this repository use X" asks for, and a
+    // rule that required a definition first answered such a question with
+    // nothing at all.
+    let connection = database();
+    let source = b"import numpy as np\n\ndef stack(a, b):\n    return np.concatenate([a, b])\n\ndef pile(a, b):\n    return np.concatenate((a, b))\n";
+    let found = anchors::anchors(anchors::Language::Python, source).expect("parses");
+    anchors::record(&connection, "tree-1", "lib.py", "blob-1", &found).expect("records");
+
+    let defined = anchors::resolve(&connection, "tree-1", "concatenate").expect("resolves");
+    assert!(
+        defined.candidates.is_empty(),
+        "it is defined elsewhere: {defined:?}"
+    );
+    let used = anchors::references(&connection, "tree-1", "concatenate").expect("references");
+    assert_eq!(used.len(), 2, "and used twice here: {used:?}");
+    assert!(used.iter().all(|use_site| use_site.path == "lib.py"));
+    // The definitions this file does have are still definitions.
+    let stack = anchors::resolve(&connection, "tree-1", "stack").expect("resolves");
+    assert_eq!(stack.candidates.len(), 1, "{stack:?}");
+}

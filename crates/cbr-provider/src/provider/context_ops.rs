@@ -536,7 +536,15 @@ impl Provider {
                 let resolution =
                     cbr_memory::anchors::resolve(self.store.connection(), &frontier.tree, name)
                         .map_err(|_| ProtocolError::new_internal_error())?;
-                if resolution.candidates.is_empty() {
+                let callers =
+                    cbr_memory::anchors::references(self.store.connection(), &frontier.tree, name)
+                        .map_err(|_| ProtocolError::new_internal_error())?;
+                // A name with uses and no definition in this tree is the
+                // third-party API case, and its use sites are exactly what
+                // "where does this repository use X" asks for. Requiring a
+                // definition first meant a question about someone else's
+                // function got nothing at all.
+                if resolution.candidates.is_empty() && callers.is_empty() {
                     continue;
                 }
                 let where_defined: Vec<String> = resolution
@@ -552,9 +560,6 @@ impl Provider {
                         )
                     })
                     .collect();
-                let callers =
-                    cbr_memory::anchors::references(self.store.connection(), &frontier.tree, name)
-                        .map_err(|_| ProtocolError::new_internal_error())?;
                 let used_at: Vec<String> = callers
                     .iter()
                     .take(16)
@@ -575,6 +580,14 @@ impl Provider {
                 } else {
                     format!("used at:\n  {}", used_at.join("\n  "))
                 };
+                let definitions = if where_defined.is_empty() {
+                    format!(
+                        "{name} is not defined in this tree; it is used here, which is what a \
+                         question about someone else's function is asking for"
+                    )
+                } else {
+                    format!("{name} defined at:\n  {}", where_defined.join("\n  "))
+                };
                 decided.discovered.push(compiler::Discovered {
                     id: format!("anchor-{}-{name}", frontier.repository),
                     rank: compiler::Rank::Anchor,
@@ -582,10 +595,7 @@ impl Provider {
                     claim: None,
                     label: "inferred",
                     historical: false,
-                    content: format!(
-                        "{name} defined at:\n  {}\n{uses}{ambiguity}",
-                        where_defined.join("\n  ")
-                    ),
+                    content: format!("{definitions}\n{uses}{ambiguity}"),
                     citation: None,
                 });
             }
