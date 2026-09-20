@@ -486,7 +486,12 @@ impl Provider {
                 start_line: found.start_line,
                 end_line: found.end_line,
                 origin: "index",
-                excerpt: compiler::excerpt(&bytes, found.start_byte, found.end_byte),
+                excerpt: compiler::excerpt(
+                    &bytes,
+                    found.start_byte,
+                    found.end_byte,
+                    &cbr_memory::lexical::query_terms(question),
+                ),
             };
             self.seal_source(tick, &selection, &bytes)?;
             decided.discovered.push(compiler::Discovered {
@@ -976,7 +981,12 @@ impl Provider {
             start_line,
             end_line,
             origin,
-            excerpt: compiler::excerpt(&bytes, start_byte, end_byte),
+            excerpt: compiler::excerpt(
+                &bytes,
+                start_byte,
+                end_byte,
+                &cbr_memory::lexical::query_terms(&query),
+            ),
         };
         self.seal_source(tick, &selection, &bytes)?;
         Ok(Some(selection))

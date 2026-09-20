@@ -386,6 +386,26 @@ fn j1_a_question_finds_its_own_answer_with_a_cited_packet() {
         spans.iter().map(|(path, ..)| path).collect::<Vec<_>>()
     );
 
+    // And the excerpt a reader actually sees holds it too. The decision
+    // record's chunk is twenty table rows and far larger than the excerpt
+    // cap, so a window taken from the span's start stopped several rows
+    // before the answer: the citation resolved and the packet still did not
+    // show it.
+    let shown = |path: &str, needle: &str| {
+        sections.iter().any(|section| {
+            let content = text(section, &["content"]);
+            content.contains(path) && content.contains(needle)
+        })
+    };
+    assert!(
+        shown(DECISION_PATH, "How source identity reaches git"),
+        "the excerpt of the decision record shows question 11, not just the span around it"
+    );
+    assert!(
+        shown(CODE_PATH, "gix"),
+        "and the excerpt of the code shows `gix`"
+    );
+
     // 4. The packet says what it searched.
     assert_eq!(coverage.len(), 1, "{coverage:?}");
     assert_eq!(text(&coverage[0], &["frontier"]), tree, "{coverage:?}");
@@ -429,26 +449,28 @@ fn j1_a_question_finds_its_own_answer_with_a_cited_packet() {
         "a rejected claim names the decision that rejected it: {standing}"
     );
 
-    // Every excerpt is the cited artifact's own bytes, starting at the line
-    // the locator names. Not "contains": at the line, byte for byte.
+    // Every excerpt is exactly the byte range of the cited artifact that its
+    // own locator names. Not "contains", not "starts at the line": those
+    // bytes.
     for (path, bytes, section) in &spans {
         let content = text(section, &["content"]);
         let (locator, excerpt) = content
             .split_once('\n')
             .unwrap_or_else(|| panic!("a section carries a locator and then bytes: {content}"));
-        let start_line: usize = locator
-            .split_once(" lines ")
-            .and_then(|(_, rest)| rest.split_once('-'))
-            .and_then(|(first, _)| first.parse().ok())
-            .unwrap_or_else(|| panic!("no line range in {locator}"));
-        let offset: usize = bytes
-            .split_inclusive(|byte| *byte == b'\n')
-            .take(start_line - 1)
-            .map(<[u8]>::len)
-            .sum();
+        let (from, to) = locator
+            .split_once("excerpt is bytes ")
+            .and_then(|(_, rest)| rest.split_once(" of the artifact"))
+            .and_then(|(range, _)| range.split_once('-'))
+            .and_then(|(from, to)| Some((from.parse::<usize>().ok()?, to.parse::<usize>().ok()?)))
+            .unwrap_or_else(|| panic!("no byte range in {locator}"));
         assert!(
-            bytes[offset..].starts_with(excerpt.as_bytes()),
-            "the excerpt of {path} is not the artifact's bytes at line {start_line}"
+            to <= bytes.len() && from <= to,
+            "the range {from}-{to} of {path} is not inside the artifact"
+        );
+        assert_eq!(
+            &bytes[from..to],
+            excerpt.as_bytes(),
+            "the excerpt of {path} is not bytes {from}-{to} of the artifact it cites"
         );
     }
 
