@@ -20,6 +20,17 @@ fn database() -> Connection {
     connection
 }
 
+/// A Responses-shaped completion carrying `total_tokens`.
+fn responses_completion(total: u64) -> Vec<u8> {
+    format!(
+        "{{\"object\":\"response\",\"status\":\"completed\",\"output\":[{{\"type\":\"message\",\
+         \"role\":\"assistant\",\"content\":[{{\"type\":\"output_text\",\"text\":\"calibrated.\"}}]}}],\
+         \"output_text\":\"calibrated.\",\"error\":null,\"usage\":{{\"input_tokens\":1,\
+         \"output_tokens\":1,\"total_tokens\":{total}}}}}"
+    )
+    .into_bytes()
+}
+
 /// A provider that answers every count with a quarter of the local bound,
 /// which is what a real tokenizer does to prose, and the completion with
 /// sixteen tokens.
@@ -31,7 +42,7 @@ fn believable() -> Recorder {
     // The completion is a count and then the completion itself.
     answers.push(Answer::Counted(64));
     answers.push(Answer::Completed {
-        body: br#"{"choices":[{"message":{"content":"ok"},"finish_reason":"stop"}],"usage":{"total_tokens":80}}"#.to_vec(),
+        body: responses_completion(80),
         usage: Some(80),
     });
     Recorder::new(answers)
@@ -83,7 +94,7 @@ fn the_run_counts_every_file_and_completes_once() {
         T0,
         Ledger::new(&connection).with_run_ceiling(Some(CEILING)),
         &transport,
-        Dialect::OpenAi,
+        Dialect::Responses,
         "MiniMax-M2.7",
     );
     assert_eq!(report.rows.len(), corpus().len(), "one row per file");
@@ -105,7 +116,7 @@ fn every_row_carries_the_local_estimate_and_the_provider_count() {
         T0,
         Ledger::new(&connection).with_run_ceiling(Some(CEILING)),
         &transport,
-        Dialect::OpenAi,
+        Dialect::Responses,
         "MiniMax-M2.7",
     );
     for row in &report.rows {
@@ -143,7 +154,7 @@ fn a_provider_count_above_its_local_estimate_stops_the_run() {
         T0,
         Ledger::new(&connection).with_run_ceiling(Some(CEILING)),
         &transport,
-        Dialect::OpenAi,
+        Dialect::Responses,
         "MiniMax-M2.7",
     );
     assert!(!report.completed(), "and did not go on to the completion");
@@ -178,14 +189,14 @@ fn every_exchange_is_recorded_through_the_redaction_boundary() {
         job: "calibration",
         request: "count",
         model: "MiniMax-M2.7",
-        dialect: Dialect::OpenAi,
+        dialect: Dialect::Responses,
         scrubber: None,
     };
     let report = run(
         T0,
         Ledger::new(&connection).with_run_ceiling(Some(CEILING)),
         &recording,
-        Dialect::OpenAi,
+        Dialect::Responses,
         "MiniMax-M2.7",
     );
     assert!(report.stopped.is_none());
@@ -208,14 +219,14 @@ fn the_completion_is_capped_at_sixteen_generated_tokens() {
         T0,
         Ledger::new(&connection).with_run_ceiling(Some(CEILING)),
         &transport,
-        Dialect::OpenAi,
+        Dialect::Responses,
         "MiniMax-M2.7",
     );
     let sent = transport.sent();
     let completion = String::from_utf8_lossy(&sent[sent.len() - 1].1).to_string();
     let body = cbr_encoding::parse(completion.as_bytes()).expect("its own body");
     assert_eq!(
-        body.get("max_tokens"),
+        body.get("max_output_tokens"),
         Some(&cbr_encoding::Value::Int(16)),
         "{completion}"
     );
@@ -231,7 +242,7 @@ fn the_run_is_bounded_by_the_ceiling_it_was_given() {
         T0,
         Ledger::new(&connection).with_run_ceiling(Some(1_000)),
         &transport,
-        Dialect::OpenAi,
+        Dialect::Responses,
         "MiniMax-M2.7",
     );
     let stopped = report.stopped.expect("the ceiling stopped it");
@@ -252,7 +263,7 @@ fn a_count_below_the_implausibility_floor_is_still_reported_as_the_providers_own
         .map(|_| Answer::Counted(1))
         .collect();
     answers.push(Answer::Completed {
-        body: br#"{"choices":[{"message":{"content":"ok"},"finish_reason":"stop"}],"usage":{"total_tokens":8}}"#.to_vec(),
+        body: responses_completion(8),
         usage: Some(8),
     });
     let transport = Recorder::new(answers);
@@ -260,7 +271,7 @@ fn a_count_below_the_implausibility_floor_is_still_reported_as_the_providers_own
         T0,
         Ledger::new(&connection).with_run_ceiling(Some(CEILING)),
         &transport,
-        Dialect::OpenAi,
+        Dialect::Responses,
         "MiniMax-M2.7",
     );
     assert!(report.stopped.is_none(), "{:?}", report.stopped);
@@ -279,4 +290,105 @@ fn a_count_below_the_implausibility_floor_is_still_reported_as_the_providers_own
         rows.iter().any(|(kind, _, _)| kind == "anomaly"),
         "the disbelief is a recorded fact: {rows:?}"
     );
+}
+
+// --- the second comparison: does the count predict what is charged? ------
+
+/// A Responses completion whose usage reports `input` input tokens.
+fn responses_completion_costing(input: u64, total: u64) -> Vec<u8> {
+    format!(
+        "{{\"object\":\"response\",\"status\":\"completed\",\"error\":null,\
+         \"output\":[{{\"type\":\"message\",\"role\":\"assistant\",\
+         \"content\":[{{\"type\":\"output_text\",\"text\":\"calibrated.\"}}]}}],\
+         \"output_text\":\"calibrated.\",\"usage\":{{\"input_tokens\":{input},\
+         \"output_tokens\":1,\"total_tokens\":{total}}}}}"
+    )
+    .into_bytes()
+}
+
+/// A run whose completion is counted at `counted` and charged `input` for
+/// the same request.
+fn run_with_completion(counted: u64, input: u64) -> Report {
+    let connection = database();
+    let mut answers: Vec<Answer> = corpus()
+        .iter()
+        .map(|(_, text)| Answer::Counted((text.len() / 4) as u64))
+        .collect();
+    answers.push(Answer::Counted(counted));
+    answers.push(Answer::Completed {
+        body: responses_completion_costing(input, input + 1),
+        usage: Some(input + 1),
+    });
+    let transport = Recorder::new(answers);
+    run(
+        T0,
+        Ledger::new(&connection).with_run_ceiling(Some(CEILING)),
+        &transport,
+        Dialect::Responses,
+        "MiniMax-M2.7",
+    )
+}
+
+#[test]
+fn the_completion_compares_its_count_against_what_its_input_actually_cost() {
+    // **The measurement that says whether the count endpoint predicts what
+    // is charged.** The local bound against the provider's count is one
+    // question; the provider's count against the provider's own bill for
+    // the same request is a different one, and only the second says the
+    // count is worth making.
+    let report = run_with_completion(1_000, 1_000);
+    let table = report.table();
+    let completion = report.completion.expect("the completion ran");
+    assert_eq!(completion.counted, Some(1_000), "what was predicted");
+    assert_eq!(completion.input_usage, Some(1_000), "what was charged");
+    assert!(completion.prediction_finding.is_none(), "and they agree");
+    assert!(table.contains("counted"), "the table carries both: {table}");
+    assert!(table.contains("input charged"), "{table}");
+}
+
+#[test]
+fn an_input_charged_above_its_count_beyond_the_margin_is_a_finding_not_a_stop() {
+    // **Reported, not stopping.** The stop condition is the local bound
+    // being wrong, because the whole admission design rests on it. A count
+    // that under-predicts the bill is a fact about the count endpoint, and
+    // it is reported so the owner can decide what it means.
+    let over = 1_000 + 1_000 * PREDICTION_MARGIN_PERCENT / 100 + 1;
+    let report = run_with_completion(1_000, over);
+    let table = report.table();
+    let stopped = report.stopped.clone();
+    let completion = report.completion.expect("the completion ran");
+    let finding = completion
+        .prediction_finding
+        .expect("a finding was recorded");
+    assert!(finding.contains("1000"), "naming the count: {finding}");
+    assert!(
+        finding.contains(&over.to_string()),
+        "and the charge: {finding}"
+    );
+    assert!(
+        stopped.is_none(),
+        "it is a finding and not a stop: {stopped:?}"
+    );
+    assert!(table.contains("FINDING"), "{table}");
+}
+
+#[test]
+fn an_input_charged_within_the_margin_is_not_a_finding() {
+    // The negative control: a margin that flags everything reports nothing.
+    let within = 1_000 + 1_000 * PREDICTION_MARGIN_PERCENT / 100;
+    let report = run_with_completion(1_000, within);
+    let completion = report.completion.expect("the completion ran");
+    assert!(
+        completion.prediction_finding.is_none(),
+        "{:?}",
+        completion.prediction_finding
+    );
+    // And an input charged *below* its count is the expected direction.
+    let report = run_with_completion(1_000, 400);
+    assert!(report.completion.expect("ran").prediction_finding.is_none());
+}
+
+#[test]
+fn the_margin_is_a_stated_number() {
+    assert_eq!(PREDICTION_MARGIN_PERCENT, 2);
 }

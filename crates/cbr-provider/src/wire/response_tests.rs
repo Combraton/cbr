@@ -385,3 +385,128 @@ fn a_null_error_member_is_not_an_error() {
     let read = read_completion(Dialect::OpenAi, &Want::Text, body);
     assert_eq!(read.reply, Ok(Reply::Text("hi".into())), "{read:?}");
 }
+
+// --- the responses dialect -----------------------------------------------
+
+macro_rules! documented_fixture {
+    ($name:literal) => {
+        include_bytes!(concat!("fixtures/", $name, ".documented-2026-09-21.json"))
+    };
+}
+
+const DOCUMENTED_RESPONSES_TEXT: &[u8] = documented_fixture!("responses-text");
+const DOCUMENTED_RESPONSES_INCOMPLETE: &[u8] =
+    documented_fixture!("responses-incomplete-reasoning-only");
+const DOCUMENTED_RESPONSES_TOOL_CALL: &[u8] = documented_fixture!("responses-tool-call");
+const DOCUMENTED_RESPONSES_COUNT: &[u8] = documented_fixture!("responses-input-tokens");
+
+#[test]
+fn the_responses_dialect_reads_text_and_its_usage() {
+    let read = read_completion(Dialect::Responses, &Want::Text, DOCUMENTED_RESPONSES_TEXT);
+    assert_eq!(
+        read.reply,
+        Ok(Reply::Text(
+            "Units are dropped where np.concatenate rebuilds the array.".into()
+        ))
+    );
+    // `total_tokens` is the whole charge, reasoning included.
+    assert_eq!(read.usage, Some(1222));
+}
+
+#[test]
+fn an_incomplete_answer_with_no_text_is_an_outcome_with_usage_not_a_failure() {
+    // **Reasoning tokens are output tokens and cannot be disabled on the
+    // M2.x models.** So a sixteen-token limit can be spent entirely on
+    // reasoning and end with no text at all. That is the provider doing
+    // what it documents, not a fault: it has a cost, it has a reason, and
+    // reporting it as a transport failure would lose both.
+    let read = read_completion(
+        Dialect::Responses,
+        &Want::Text,
+        DOCUMENTED_RESPONSES_INCOMPLETE,
+    );
+    assert_eq!(read.reply, Err(Unusable::Truncated), "{read:?}");
+    assert_eq!(read.usage, Some(1196), "and it cost what it cost");
+    assert!(
+        !Unusable::Truncated.repairable(),
+        "asking again under the same limit gets the same answer"
+    );
+    assert_eq!(Unusable::Truncated.reason(), "model_answer_truncated");
+}
+
+#[test]
+fn reasoning_is_a_separate_output_item_and_is_never_the_answer() {
+    // It arrives as its own item rather than inside the content, which is
+    // what `reasoning_split` was asking for on the chat dialects. Here it
+    // is the documented shape, and the parser must not read it as text —
+    // sealing a model's private reasoning as its output is a correctness
+    // problem, not a cosmetic one.
+    //
+    // A **completed** response carrying both items, because the
+    // incomplete fixture ends as `Truncated` whatever the parser does with
+    // its reasoning, so it cannot tell the two apart. A mutant proved
+    // that by surviving the first version of this test.
+    let both = br#"{"object":"response","status":"completed","error":null,"output":[
+{"type":"reasoning","content":[{"type":"reasoning_text","text":"REASONING-NOT-THE-ANSWER"}],
+"summary":[]},
+{"type":"message","role":"assistant","content":[{"type":"output_text","text":"the answer"}]}],
+"usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}"#;
+    let read = read_completion(Dialect::Responses, &Want::Text, both);
+    assert_eq!(read.reply, Ok(Reply::Text("the answer".into())), "{read:?}");
+    assert!(
+        !format!("{read:?}").contains("REASONING-NOT-THE-ANSWER"),
+        "{read:?}"
+    );
+
+    // And when reasoning is the *only* output, there is no answer at all —
+    // not the reasoning standing in for one.
+    let only = br#"{"object":"response","status":"completed","error":null,"output":[
+{"type":"reasoning","content":[{"type":"reasoning_text","text":"REASONING-NOT-THE-ANSWER"}],
+"summary":[]}],"usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}"#;
+    let read = read_completion(Dialect::Responses, &Want::Text, only);
+    assert_eq!(read.reply, Err(Unusable::Malformed), "{read:?}");
+    assert!(
+        !format!("{read:?}").contains("REASONING-NOT-THE-ANSWER"),
+        "{read:?}"
+    );
+}
+
+#[test]
+fn the_responses_dialect_reads_a_tool_call_from_its_own_output_item() {
+    let read = read_completion(
+        Dialect::Responses,
+        &Want::Tool {
+            name: "choose_spans".into(),
+            schema: schema(),
+        },
+        DOCUMENTED_RESPONSES_TOOL_CALL,
+    );
+    assert_eq!(
+        read.reply,
+        Ok(Reply::Tool {
+            name: "choose_spans".into(),
+            input: Value::Object(vec![(
+                "ids".into(),
+                Value::Array(vec![Value::String("s1".into()), Value::String("s4".into())])
+            )]),
+        })
+    );
+    assert_eq!(read.usage, Some(1204));
+}
+
+#[test]
+fn the_documented_count_response_is_read() {
+    // `{"object": "response.input_tokens", "input_tokens": N}`. The member
+    // was already in the set the parser accepts, which is the one guess
+    // m4b made that turned out right.
+    assert_eq!(read_count(DOCUMENTED_RESPONSES_COUNT), Some(1180));
+}
+
+#[test]
+fn a_failed_status_is_a_failure_even_with_no_error_member() {
+    let body = br#"{"object":"response","status":"failed","output":[],
+"usage":{"input_tokens":5,"output_tokens":0,"total_tokens":5}}"#;
+    let read = read_completion(Dialect::Responses, &Want::Text, body);
+    assert_eq!(read.reply, Err(Unusable::ProviderError), "{read:?}");
+    assert_eq!(read.usage, Some(5), "and it still cost something");
+}

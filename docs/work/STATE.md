@@ -33,6 +33,22 @@ What it did not do, verified afterwards: no model call (`model_calls` empty), no
 - **The mutation probe was running only the binary's unit tests.** Two allowlist mutants came back "survived" that were in fact killed by integration tests in `tests/model_launch.rs`. Implausible survivors are what caught it. Every mutant in this change was re-checked against all targets.
 - **The conformance command block in VERIFICATION had no `composition` line**, and none for `context`. Improvising with the stdio participant skips all fourteen composition fixtures, which reads like a regression and is not one. Over the socket participant it is 3 passing and 11 permanently unsupported, matching the expectation. Both commands are now in the block.
 
+### The responses dialect, and the design change it forced
+
+**The counting endpoint counts a Responses-shaped request**, confirmed against the provider's published API reference read on 2026-09-21 under the reviewer's authorisation. A count of one serialization says nothing about the cost of another, so the count only means something if the completion goes to `/v1/responses` with the same `input`, `instructions` and `tools`. The **Responses API is now the primary wire** ([ADR 001 question 13](../decisions/001-standalone-v0.1-scope-and-stack.md)); chat-completions and Anthropic stay exactly as built, as secondary, and **neither is counted by an endpoint that does not describe it** — for those the local bound alone admits, which is what it was built to be able to do.
+
+Three things followed, each with its own test:
+
+- **The generation limit binds to `max_output_tokens`** there. m4b noted that asking the dialect cost nothing while every answer agreed; one milestone later they do not, which is the case the guard was written for.
+- **Reasoning tokens are output tokens and cannot be disabled on the M2.x models**, so a sixteen-token limit can be spent entirely on reasoning and end `status: incomplete` with no text. That is an ordinary outcome carrying a real cost, reported with its usage rather than as a failure — and reasoning is its own output item, never read as the answer.
+- **`service_tier` is sent as `standard` explicitly and `priority` never.** It is the owner's quota.
+
+**Two of the reviewer's pointers did not survive checking**, and are recorded as corrections rather than carried forward: the counting endpoint is **not** documented as unbilled or quota-exempt — the page says nothing about billing — so its cost stays reserved and settled like any other send until a live run says otherwise; and **`store` is a response property, not a request one**, so CBR sends none and whether the provider retains repository text is now an open question for the owner in [READINESS §7](m4/READINESS.md).
+
+**Fixtures now carry three labels** — `documented`, `observed`, `guessed` — with each source page and its retrieval date cited. m4b had one label, which was honest about confidence and silent about provenance, and that silence is what cost a calibration run.
+
+**The calibration gained its second comparison**: the counting endpoint's prediction for the completion's request against the `usage.input_tokens` the provider then charged for the same request. The first says whether CBR's bound is sound; the second says whether making the count is worth anything. A charge above the prediction by more than 2% is a **finding**, never a stop — the stop condition is the local bound being wrong, and the two must not be confused.
+
 ### Mutants
 
 | Mutant | Outcome |
@@ -41,6 +57,8 @@ What it did not do, verified afterwards: no model call (`model_calls` empty), no
 | Decoding stops after one round · an unsettled encoding written out anyway | killed (2) |
 | The `model_runtime` allowlist back to a denylist · the top-level allowlist removed | killed (2) |
 | A serving launch reads a credential with no call site | killed |
+| The responses limit binds to `max_tokens` · every dialect treated as counted · the count body carries the completion-only members · the service tier is `priority` · an incomplete status read as complete | killed (5) |
+| Reasoning read as the answer | **survived**, and the mutant was equivalent: both arms did nothing. Rewritten as a mutant that really assigns the reasoning to the answer, and the test rewritten too — it had used the `incomplete` fixture, which ends `Truncated` whatever the parser does with its reasoning. Now killed. |
 | `reads_credential` forgets the serving decision | **equivalent while `SERVING_CALLS_A_MODEL` is false** — that decision is unreachable today, so nothing can observe it. `both_live_decisions_are_reachable` demands it the moment the constant is true. |
 
 ## The calibration — run 1, and what one live call found

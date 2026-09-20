@@ -40,7 +40,7 @@ Every row is the owner's, recorded before M4 and unchanged by it. The right-hand
 | Constraint | Enforced at |
 |---|---|
 | **MiniMax only.** No other provider without the owner naming it. | The provider registry admits one provider id, from configuration, and a launch naming any other **refuses to start**, as an unreadable repository registration already does. |
-| **Primary wire** `https://api.minimax.io/v1`, OpenAI-compatible. **Second dialect** `https://api.minimax.io/anthropic`. | Two serializers and two parsers over one transport. The endpoint is configuration, not a literal in the call path. |
+| **Primary wire** `https://api.minimax.io/v1`, OpenAI-compatible. **Second dialect** `https://api.minimax.io/anthropic`. | **Three** serializers and parsers over one transport, and the host is a **constant** rather than configuration — an endpoint a launch can set is one a mistake or a planted file can move. Which OpenAI-compatible surface under `/v1` is primary was settled by [ADR 001 question 13](../../decisions/001-standalone-v0.1-scope-and-stack.md) after the first calibration run: the **Responses** API, because it is the only dialect the counting endpoint describes. Chat-completions and Anthropic are secondary and are admitted by the local bound alone. |
 | **Models** `MiniMax-M2.7-highspeed` (extraction, large-result projection), `MiniMax-M2.7` (ordinary derivation), `MiniMax-M3` (synthesis, request-time investigation, image input). | A model id outside the three is refused at admission, before serialization. The model id is recorded in every derivation record. |
 | **Credential:** macOS Keychain service `minimax_api_key`, **read at process start only**, never logged, never in the repository, **no other credential ever read**. | One read, in the provider's construction, **and only when a model is configured** — see below. Into a value that is never `Debug`-printed and never serialized. A test asserts the key's bytes appear in no artifact, no event, no error and no log line, which is [CORE §18.1](https://github.com/Combraton/combraton/blob/main/docs/spec/protocol/CORE.md) applied to this credential. |
 | **Envelope:** 20M tokens per 5-hour window, 200M per month. Background spend zero until enabled. | §3. |
@@ -140,6 +140,8 @@ One thing already known and carried in: an ingested artifact's id embeds the ins
 
 This is the leak M3 shipped and fixed once already: discovery called an operation body whose authorization was step 6 of a command that had not run, and every claim in the store went into every packet. **Gate:** a test proves that a repository or a claim outside the submitting grant's view appears nowhere in a request body — asserted over the serialized bytes the fake transport received, not over the selection that preceded it.
 
+**Open question for the owner: does the provider retain what is sent?** The Responses API's published schema has a `store` field on the **response** and not on the request, so there is no documented request parameter by which CBR can say *"do not retain this"*. CBR sends none, because sending an undocumented member is what ended the first calibration run. **Whether the provider retains repository text is the owner's decision and the default must be no**, so this is recorded as unanswered rather than settled by silence. If a request parameter exists and is simply undocumented, CBR should send `false`; if retention is governed by an account setting instead, that is the owner's to set. Read 2026-09-21 from the published OpenAPI schema; not confirmed against a live response.
+
 **The repositories.** brian2 is CeCILL-licensed and public; Knowscroll-v2 is public. Sending their text to a provider is sending public text, and the licence still governs what CBR may **commit** — digests, paths, spans, counts and costs only, which is unchanged. **Any private repository needs the owner's explicit word before a single byte of it is sent**, and CBR has no such word today.
 
 ## 8. Bounded runtime
@@ -220,6 +222,7 @@ These are estimates, and the first thing m4e produces is the measurement that re
 - **A hard run ceiling of 100,000 tokens**, through the run-level ceiling m4a built (`--model-run-ceiling`), so the cap is enforced by the ledger rather than by intention.
 - **Every call recorded and redacted** like any other, per §6.
 - **The result is a table**: the local estimate against the provider's count, per file.
+- **And one more comparison, for the single completion**: the counting endpoint's prediction for that request against the `usage.input_tokens` the provider then charged for the same request. The first comparison says whether CBR's bound is sound; **this one says whether making the count is worth anything at all**. A charge above the prediction by more than **2%** is reported as a finding.
 - **It has an entry point, built and reviewed in m4b**: `cbr-provider --calibrate <path>`, which needs `--permit-model-network` and a `--model-run-ceiling` no higher than 100,000, serves nothing, and exits. It was built there rather than on the day because *if the first live call needs new plumbing, the first live call runs code nobody reviewed.* It is tested end to end against the fake transport, stop condition included, and **has not been run**.
 
 ### What ends it
@@ -227,6 +230,12 @@ These are estimates, and the first thing m4e produces is the measurement that re
 **One provider count above its local estimate means the bound is unsound.** Then: **stop, report, and nothing else in M4 proceeds until it is fixed.** Not "note it and widen the margin" — the whole admission design rests on the estimate never falling below the truth, and one counter-example says it does. The fix is a different estimate, and it gets its own review.
 
 A count *below* the local estimate is the expected case and is not a finding. The bound is loose by three to four times for prose; measuring how loose is what the table is for.
+
+**The second comparison is a finding, never a stop.** A bill above the count endpoint's prediction says the prediction is not reliable, which is a fact about the count endpoint for the owner to weigh; it does not falsify the local bound, which is the thing every admission rests on. The two must not be confused, which is why they have different consequences written down before the run.
+
+### What run 1 established, and what it did not
+
+**Run 1 stopped at its first call** and is recorded in [CALIBRATION.md](CALIBRATION.md). It sent the counting endpoint a chat-completions body; the endpoint documents a Responses-shaped one and refused it. So **no count was obtained, the bound is neither confirmed nor falsified, and the protocol above is unchanged** — except that the primary wire is now the Responses dialect ([ADR 001 question 13](../../decisions/001-standalone-v0.1-scope-and-stack.md)), which is what makes the count comparable to the completion it predicts. A second run needs the owner's word again.
 
 ## What this document does not settle
 

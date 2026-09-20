@@ -12,7 +12,12 @@ use cbr_encoding::Value;
 use super::Dialect;
 use super::request::*;
 
+/// The two chat dialects, which share a shape. The Responses dialect has
+/// its own tests below, because it does not.
 const BOTH: [Dialect; 2] = [Dialect::OpenAi, Dialect::Anthropic];
+
+/// Every dialect, for the rules that hold across all of them.
+const EVERY: [Dialect; 3] = [Dialect::Responses, Dialect::OpenAi, Dialect::Anthropic];
 
 fn schema() -> Value {
     Value::Object(vec![
@@ -318,20 +323,185 @@ fn a_conversation_keeps_its_turns_in_order_and_in_role() {
         role: Role::User,
         text: "s1, s4".into(),
     });
-    for dialect in BOTH {
+    for dialect in EVERY {
         let body = cbr_encoding::parse(&asked.serialize(dialect)).expect("its own body");
-        let messages = body
-            .get("messages")
-            .and_then(Value::as_array)
-            .expect("messages");
-        let roles: Vec<_> = messages
+        // Each dialect keeps the turns under its own member, which is the
+        // first thing a serializer written for one of them gets wrong
+        // about another.
+        let member = if dialect == Dialect::Responses {
+            "input"
+        } else {
+            "messages"
+        };
+        let turns = body.get(member).and_then(Value::as_array).expect("turns");
+        let roles: Vec<_> = turns
             .iter()
-            .filter_map(|message| message.get("role").and_then(Value::as_str))
+            .filter_map(|turn| turn.get("role").and_then(Value::as_str))
             .collect();
         let expected: Vec<&str> = match dialect {
             Dialect::OpenAi => vec!["system", "user", "assistant", "user"],
-            Dialect::Anthropic => vec!["user", "assistant", "user"],
+            Dialect::Anthropic | Dialect::Responses => vec!["user", "assistant", "user"],
         };
         assert_eq!(roles, expected, "{}", dialect.name());
+    }
+}
+
+// --- the responses dialect, and why the count needs one ------------------
+
+#[test]
+fn the_responses_dialect_is_the_primary_wire_and_the_only_counted_one() {
+    // **A count of one serialization says nothing about the cost of
+    // another.** The counting endpoint takes a Responses-shaped request,
+    // so a count only means something if the completion goes to
+    // `/v1/responses` with the same input. The other two dialects stay as
+    // built, as secondary, and are admitted by the local bound alone
+    // rather than by an endpoint that does not describe them.
+    assert!(Dialect::Responses.counted());
+    assert!(!Dialect::OpenAi.counted());
+    assert!(!Dialect::Anthropic.counted());
+    assert_eq!(Dialect::Responses.base(), "/v1");
+    assert_eq!(Dialect::Responses.path(), "/responses");
+    assert_eq!(Dialect::parse("responses"), Some(Dialect::Responses));
+}
+
+fn responses_body(want: Want) -> Value {
+    let bytes = request(want).serialize(Dialect::Responses);
+    cbr_encoding::parse(&bytes).expect("its own body is inside the protocol's domain")
+}
+
+#[test]
+fn the_responses_request_carries_input_rather_than_messages() {
+    // The shape the live service asked for on 2026-09-20:
+    // `binding: expr_path=input, cause=missing required parameter`.
+    let body = responses_body(Want::Text);
+    assert!(body.get("messages").is_none(), "no `messages` member");
+    let input = body
+        .get("input")
+        .and_then(Value::as_array)
+        .expect("`input`");
+    assert_eq!(
+        input.len(),
+        1,
+        "the system instruction is not an input item"
+    );
+    assert_eq!(
+        input[0].get("type").and_then(Value::as_str),
+        Some("message")
+    );
+    assert_eq!(input[0].get("role").and_then(Value::as_str), Some("user"));
+    assert_eq!(
+        input[0].get("content").and_then(Value::as_str),
+        Some("which spans")
+    );
+}
+
+#[test]
+fn the_system_instruction_is_the_instructions_member() {
+    // Each dialect keeps it somewhere different, and each one silently
+    // treats it as conversation if it is put in the wrong place.
+    assert_eq!(
+        responses_body(Want::Text)
+            .get("instructions")
+            .and_then(Value::as_str),
+        Some("Choose only among the ids offered.")
+    );
+}
+
+#[test]
+fn the_generation_limit_binds_to_max_output_tokens_on_the_responses_dialect() {
+    assert_eq!(Dialect::Responses.generation_field(), "max_output_tokens");
+    let body = responses_body(Want::Text);
+    assert_eq!(body.get("max_output_tokens"), Some(&Value::Int(16)));
+    assert!(body.get("max_tokens").is_none(), "not the other name");
+    assert!(declares_generation(
+        Dialect::Responses,
+        &request(Want::Text).serialize(Dialect::Responses),
+        16
+    ));
+}
+
+#[test]
+fn the_service_tier_is_standard_and_the_word_priority_appears_nowhere() {
+    // Sent explicitly rather than left to a default, because a default is
+    // a thing that changes. `priority` is never sent: it is the owner's
+    // quota, and nothing here gets to spend it faster on its own say-so.
+    let body = responses_body(Want::Text);
+    assert_eq!(
+        body.get("service_tier").and_then(Value::as_str),
+        Some("standard")
+    );
+    let bytes = request(Want::Text).serialize(Dialect::Responses);
+    assert!(
+        !String::from_utf8_lossy(&bytes).contains("priority"),
+        "the word appears in the body"
+    );
+}
+
+#[test]
+fn the_responses_request_does_not_stream() {
+    assert_eq!(
+        responses_body(Want::Text).get("stream"),
+        Some(&Value::Bool(false))
+    );
+}
+
+// --- the count request ---------------------------------------------------
+
+#[test]
+fn the_count_request_is_the_completion_minus_what_the_endpoint_does_not_take() {
+    // **The point of the exercise.** The count is only a prediction of the
+    // completion's cost if it counts the same input, instructions and
+    // tools. What it must not carry is what the counting endpoint does not
+    // document — `max_output_tokens`, `service_tier`, `stream` — because a
+    // member it does not know is what ended the first calibration run.
+    let asked = request(Want::Text);
+    let count = asked
+        .serialize_count(Dialect::Responses)
+        .expect("the responses dialect is counted");
+    let body = cbr_encoding::parse(&count).expect("its own body");
+    let completion = responses_body(Want::Text);
+    for shared in ["model", "input", "instructions"] {
+        assert_eq!(
+            body.get(shared),
+            completion.get(shared),
+            "{shared} differs between the count and the completion it predicts"
+        );
+    }
+    for absent in ["max_output_tokens", "service_tier", "stream"] {
+        assert!(
+            body.get(absent).is_none(),
+            "{absent} is not a member the counting endpoint documents"
+        );
+    }
+}
+
+#[test]
+fn the_count_request_carries_the_tools_the_completion_carries() {
+    // Tool schemas are often the largest fixed cost in a request, so a
+    // count that leaves them out is the under-estimate the whole admission
+    // design exists to prevent.
+    let asked = request(Want::Tool {
+        name: "choose_spans".into(),
+        schema: schema(),
+    });
+    let count = cbr_encoding::parse(&asked.serialize_count(Dialect::Responses).expect("counted"))
+        .expect("its own body");
+    let completion =
+        cbr_encoding::parse(&asked.serialize(Dialect::Responses)).expect("its own body");
+    assert_eq!(count.get("tools"), completion.get("tools"));
+    assert!(count.get("tools").is_some(), "and there are tools");
+}
+
+#[test]
+fn a_dialect_the_counting_endpoint_does_not_describe_is_not_counted() {
+    // Neither secondary dialect is counted by an endpoint that does not
+    // describe it. For those the local bound alone admits, which it is
+    // built to be able to do.
+    for dialect in [Dialect::OpenAi, Dialect::Anthropic] {
+        assert!(
+            request(Want::Text).serialize_count(dialect).is_none(),
+            "{}",
+            dialect.name()
+        );
     }
 }

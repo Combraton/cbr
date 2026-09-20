@@ -82,10 +82,26 @@ pub struct Row {
     pub provider: Option<u64>,
 }
 
+/// The margin by which the provider's bill for a request's input may
+/// exceed the counting endpoint's prediction for the same request before
+/// it is worth reporting.
+///
+/// **A finding, not a stop.** The stop condition is the *local* bound being
+/// wrong, because the whole admission design rests on it. A count that
+/// under-predicts the bill is a fact about the count endpoint, reported so
+/// the owner can decide what it means.
+pub const PREDICTION_MARGIN_PERCENT: u64 = 2;
+
 /// What the one completion cost, and what it took.
 pub struct Completion {
     /// What the provider said it cost, when it said anything.
     pub usage: Option<u64>,
+    /// What the provider said the **input** cost.
+    pub input_usage: Option<u64>,
+    /// What the counting endpoint predicted for that same input.
+    pub counted: Option<u64>,
+    /// Set when the bill exceeded the prediction by more than the margin.
+    pub prediction_finding: Option<String>,
     /// How many repairs it needed. Recorded, because a completion that
     /// needed repairing is a fact about the request rather than noise.
     pub repairs: u32,
@@ -134,16 +150,33 @@ pub fn run(
     model: &str,
 ) -> Report {
     let runtime = Runtime { ledger, transport };
+    // **Counting a dialect the endpoint does not describe measures
+    // nothing.** The whole exercise is the local bound against the
+    // provider's own count of the same request, and there is no such count
+    // for the two secondary dialects.
+    if !dialect.counted() {
+        return Report {
+            rows: Vec::new(),
+            completion: None,
+            stopped: Some(format!(
+                "the {} dialect is not counted by the counting endpoint, so there is \
+                 nothing for this run to compare",
+                dialect.name()
+            )),
+        };
+    }
     let mut rows = Vec::new();
     for (name, text) in corpus() {
         let request = asking(model, text);
         let body = request.serialize(dialect);
+        let counting = request.serialize_count(dialect);
         let counted = runtime.count(
             now,
             &Attempt {
                 job: "calibration",
                 request: name,
                 body: &body,
+                count_body: counting.as_deref(),
                 messages: request.framed_messages(dialect),
                 generation: GENERATION,
                 dialect,
@@ -204,16 +237,40 @@ pub fn run(
         Outcome::Answered {
             reply,
             usage,
+            input_usage,
+            counted,
             repairs,
-        } => Report {
-            rows,
-            completion: Some(Completion {
-                usage: Some(usage),
-                repairs,
-                answer: first_line(&reply),
-            }),
-            stopped: None,
-        },
+        } => {
+            // **The second comparison.** The local bound against the
+            // provider's count is one question; the provider's count
+            // against the provider's own bill for the same request is a
+            // different one, and only the second says whether making the
+            // count is worth anything.
+            let prediction_finding = match (counted, input_usage) {
+                (Some(counted), Some(charged))
+                    if charged > counted + counted * PREDICTION_MARGIN_PERCENT / 100 =>
+                {
+                    Some(format!(
+                        "the counting endpoint predicted {counted} input tokens and the \
+                         provider charged {charged} for the same request, which is more \
+                         than the stated margin of {PREDICTION_MARGIN_PERCENT}%"
+                    ))
+                }
+                _ => None,
+            };
+            Report {
+                rows,
+                completion: Some(Completion {
+                    usage: Some(usage),
+                    input_usage,
+                    counted,
+                    prediction_finding,
+                    repairs,
+                    answer: first_line(&reply),
+                }),
+                stopped: None,
+            }
+        }
         Outcome::Unmet { reason, repairs } => Report {
             rows,
             completion: None,
@@ -274,15 +331,23 @@ impl Report {
                 out.push_str(
                     "Every count was at or below its local estimate, and the completion ran.\n\n",
                 );
-                out.push_str("| completion | usage | repairs | answer |\n|---|---:|---:|---|\n");
+                let figure =
+                    |held: Option<u64>| held.map_or_else(|| "-".to_string(), |n| n.to_string());
+                out.push_str(
+                    "| completion | counted | input charged | total | repairs | answer |\n\
+                     |---|---:|---:|---:|---:|---|\n",
+                );
                 out.push_str(&format!(
-                    "| 16-token | {} | {} | {} |\n",
-                    completion
-                        .usage
-                        .map_or_else(|| "-".to_string(), |usage| usage.to_string()),
+                    "| 16-token | {} | {} | {} | {} | {} |\n",
+                    figure(completion.counted),
+                    figure(completion.input_usage),
+                    figure(completion.usage),
                     completion.repairs,
                     completion.answer
                 ));
+                if let Some(finding) = &completion.prediction_finding {
+                    out.push_str(&format!("\n**FINDING.** {finding}\n"));
+                }
             }
             (None, None) => out.push_str("The counts finished; the completion did not run.\n"),
         }

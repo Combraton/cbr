@@ -138,6 +138,8 @@ pub enum Ended {
     Completed {
         body: Vec<u8>,
         usage: u64,
+        /// What the counting endpoint predicted, when there was one.
+        counted: Option<u64>,
     },
     /// Refused by CBR's own envelope or a ceiling, before anything was sent.
     Refused(Refusal),
@@ -170,6 +172,14 @@ pub struct Attempt<'a> {
     pub request: &'a str,
     pub body: &'a [u8],
     pub messages: usize,
+    /// The body the **counting endpoint** is sent, when there is one.
+    ///
+    /// `None` for a dialect the counting endpoint does not describe: the
+    /// local bound alone admits those, which is what it was built to be
+    /// able to do. It is a separate body because the two differ — a count
+    /// of one serialization says nothing about the cost of another, and
+    /// the counting endpoint documents fewer members than the completion.
+    pub count_body: Option<&'a [u8]>,
     /// The generation limit the body declares and the reservation covers.
     pub generation: u64,
     /// Which dialect framed `body`, and therefore which member the limit
@@ -225,7 +235,16 @@ impl<'a> Runtime<'a> {
         barrier(COMPLETION_AFTER_RESERVATION);
         let answer = self.transport.send(Call::Completion, body).answer;
         barrier(COMPLETION_AFTER_SEND);
-        self.settle_completion(now, job, request, &reservation, answer, barrier, wanted)
+        self.settle_completion(
+            now,
+            job,
+            request,
+            &reservation,
+            answer,
+            barrier,
+            wanted,
+            counted.reported,
+        )
     }
 
     /// **The count half alone**, which is a complete send in its own right:
@@ -241,6 +260,7 @@ impl<'a> Runtime<'a> {
             job,
             request,
             body,
+            count_body,
             messages,
             generation,
             dialect,
@@ -255,6 +275,16 @@ impl<'a> Runtime<'a> {
             return Err(Ended::Unmet("generation_limit_not_declared"));
         }
         let local = budget::estimate(body, messages);
+        // No counting endpoint for this dialect, so nothing is sent and
+        // the local bound stands. Admission is complete without it, which
+        // is the property the byte bound exists for.
+        let Some(count_body) = count_body else {
+            return Ok(Counted {
+                local,
+                reported: None,
+                believed: local,
+            });
+        };
 
         // Step 1: the count call is a send, so it is admitted first.
         let counting = match self
@@ -266,7 +296,7 @@ impl<'a> Runtime<'a> {
             Err(_) => return Err(Ended::Unmet("ledger_unavailable")),
         };
         barrier(COUNT_AFTER_RESERVATION);
-        let counted = self.transport.send(Call::Count, body).answer;
+        let counted = self.transport.send(Call::Count, count_body).answer;
         barrier(COUNT_AFTER_SEND);
         let counted = match counted {
             Answer::Counted(tokens) => {
@@ -274,7 +304,7 @@ impl<'a> Runtime<'a> {
                 // count.** The bound runs three to four times the real
                 // figure for prose; below an eighth of it, the local figure
                 // stands and the anomaly is recorded.
-                let floor = budget::worst_case_tokens(body) / budget::IMPLAUSIBLE_RATIO;
+                let floor = budget::worst_case_tokens(count_body) / budget::IMPLAUSIBLE_RATIO;
                 let believed = if tokens < floor {
                     let _ = self
                         .ledger
@@ -362,6 +392,7 @@ impl<'a> Runtime<'a> {
         answer: Answer,
         barrier: &dyn Fn(&'static str),
         wanted: u64,
+        counted: Option<u64>,
     ) -> Ended {
         match answer {
             Answer::Completed { body, usage } => {
@@ -378,6 +409,7 @@ impl<'a> Runtime<'a> {
                 Ended::Completed {
                     body,
                     usage: usage.unwrap_or(reservation.estimate),
+                    counted,
                 }
             }
             Answer::ProviderExhausted => {
@@ -476,6 +508,13 @@ pub enum Outcome {
     Answered {
         reply: wire::response::Reply,
         usage: u64,
+        /// What the provider said the **input** cost.
+        input_usage: Option<u64>,
+        /// What the counting endpoint predicted for the same request, when
+        /// the dialect is one it describes. The calibration compares the
+        /// two: that is the measurement saying whether the count is worth
+        /// making at all.
+        counted: Option<u64>,
         /// How many repairs it took. Recorded, because a selection that
         /// needed repairing is a fact about the request.
         repairs: u32,
@@ -499,20 +538,26 @@ impl Runtime<'_> {
         let mut repairs = 0;
         loop {
             let serialized = body.serialize(ask.dialect);
+            let counting = body.serialize_count(ask.dialect);
             let ended = self.call(
                 now,
                 &Attempt {
                     job: ask.job,
                     request: ask.request,
                     body: &serialized,
+                    count_body: counting.as_deref(),
                     messages: body.framed_messages(ask.dialect),
                     generation: body.generation,
                     dialect: ask.dialect,
                 },
                 barrier,
             );
-            let (answered, usage) = match ended {
-                Ended::Completed { body, usage } => (body, usage),
+            let (answered, usage, counted) = match ended {
+                Ended::Completed {
+                    body,
+                    usage,
+                    counted,
+                } => (body, usage, counted),
                 Ended::Refused(refusal) => return Outcome::Refused(refusal),
                 Ended::Unmet(reason) => return Outcome::Unmet { reason, repairs },
             };
@@ -522,6 +567,8 @@ impl Runtime<'_> {
                     return Outcome::Answered {
                         reply,
                         usage: read.usage.unwrap_or(usage),
+                        input_usage: read.input_usage,
+                        counted,
                         repairs,
                     };
                 }

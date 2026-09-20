@@ -34,6 +34,7 @@ fn the_count_call_is_a_send_and_is_admitted_recorded_and_charged_like_one() {
             job: "job",
             request: "r",
             body: &body_declaring(64),
+            count_body: Some(&body_declaring(64)),
             messages: 1,
             generation: 64,
             dialect: Dialect::OpenAi,
@@ -86,6 +87,7 @@ fn a_request_the_local_estimate_refuses_never_reaches_the_count_endpoint() {
             job: "job",
             request: "r",
             body: &huge,
+            count_body: Some(&huge),
             messages: 1,
             generation: 64,
             dialect: Dialect::OpenAi,
@@ -146,6 +148,7 @@ fn an_exhausted_envelope_refuses_before_the_count_call() {
             job: "fresh",
             request: "r",
             body: &body_declaring(64),
+            count_body: Some(&body_declaring(64)),
             messages: 1,
             generation: 64,
             dialect: Dialect::OpenAi,
@@ -171,6 +174,7 @@ fn provider_exhaustion_reaches_the_caller_as_its_own_reason_and_is_not_retried()
             job: "job",
             request: "r",
             body: &body_declaring(64),
+            count_body: Some(&body_declaring(64)),
             messages: 1,
             generation: 64,
             dialect: Dialect::OpenAi,
@@ -208,6 +212,7 @@ fn a_failed_call_reaches_the_caller_as_an_unmet_reason_and_never_hangs() {
             job: "job",
             request: "r",
             body: &body_declaring(64),
+            count_body: Some(&body_declaring(64)),
             messages: 1,
             generation: 64,
             dialect: Dialect::OpenAi,
@@ -238,6 +243,7 @@ fn a_usage_that_differs_from_the_count_is_what_the_ledger_keeps() {
             job: "job",
             request: "r",
             body: &body_declaring(64),
+            count_body: Some(&body_declaring(64)),
             messages: 1,
             generation: 64,
             dialect: Dialect::OpenAi,
@@ -290,6 +296,7 @@ fn every_crash_boundary_is_reached_in_order() {
             job: "job",
             request: "r",
             body: &body_declaring(64),
+            count_body: Some(&body_declaring(64)),
             messages: 1,
             generation: 64,
             dialect: Dialect::OpenAi,
@@ -372,6 +379,7 @@ fn the_completion_reserves_its_generation_and_margin_not_the_input_count_alone()
             job: "job",
             request: "r",
             body: &body,
+            count_body: Some(&body),
             messages: 1,
             generation: 4_096,
             dialect: Dialect::OpenAi,
@@ -431,6 +439,7 @@ fn the_completions_reservation_covers_the_margin_as_well_as_the_generation() {
             job: "job",
             request: "r",
             body: &body,
+            count_body: Some(&body),
             messages: 1,
             generation: 64,
             dialect: Dialect::OpenAi,
@@ -473,6 +482,7 @@ fn a_count_implausibly_below_the_local_bound_is_an_anomaly_and_the_local_figure_
             job: "job",
             request: "r",
             body: &body,
+            count_body: Some(&body),
             messages: 1,
             generation: 16,
             dialect: Dialect::OpenAi,
@@ -507,6 +517,7 @@ fn usage_above_the_reservation_is_recorded_as_a_divergence() {
             job: "job",
             request: "r",
             body: &body,
+            count_body: Some(&body),
             messages: 1,
             generation: 64,
             dialect: Dialect::OpenAi,
@@ -540,6 +551,7 @@ fn a_limit_the_body_only_mentions_is_not_a_limit_the_body_declares() {
             job: "job",
             request: "r",
             body: br#"{"max_tokens":4096,"messages":[{"content":"about 16 spans"}]}"#,
+            count_body: Some(br#"{"max_tokens":4096,"messages":[{"content":"about 16 spans"}]}"#),
             messages: 1,
             generation: 16,
             dialect: Dialect::OpenAi,
@@ -567,6 +579,7 @@ fn a_request_that_does_not_declare_its_generation_limit_is_never_sent() {
             job: "job",
             request: "r",
             body: b"{\"messages\":[]}",
+            count_body: Some(b"{\"messages\":[]}"),
             messages: 1,
             generation: 4_096,
             dialect: Dialect::OpenAi,
@@ -601,6 +614,7 @@ fn a_failure_after_the_send_keeps_the_estimate_because_the_provider_may_have_cha
             job: "job",
             request: "r",
             body: &body,
+            count_body: Some(&body),
             messages: 1,
             generation: 64,
             dialect: Dialect::OpenAi,
@@ -630,6 +644,7 @@ fn a_failure_before_anything_left_the_process_spends_nothing() {
             job: "job",
             request: "r",
             body: &body,
+            count_body: Some(&body),
             messages: 1,
             generation: 64,
             dialect: Dialect::OpenAi,
@@ -668,6 +683,7 @@ fn a_failure_that_reports_usage_settles_to_what_it_reported() {
             job: "job",
             request: "r",
             body: &body,
+            count_body: Some(&body),
             messages: 1,
             generation: 64,
             dialect: Dialect::OpenAi,
@@ -706,6 +722,7 @@ fn an_answer_of_the_wrong_kind_is_a_recorded_failure_and_not_a_silent_fall_throu
             job: "job",
             request: "r",
             body: &body,
+            count_body: Some(&body),
             messages: 1,
             generation: 64,
             dialect: Dialect::OpenAi,
@@ -742,6 +759,7 @@ fn the_boundaries_are_named_per_call_so_a_row_cannot_pass_at_the_wrong_one() {
             job: "job",
             request: "r",
             body: &body,
+            count_body: Some(&body),
             messages: 1,
             generation: 64,
             dialect: Dialect::OpenAi,
@@ -896,15 +914,22 @@ fn structure() -> Want {
     }
 }
 
-/// A completion carrying `content`, in the OpenAI dialect's shape.
+/// A completion carrying `content`, in the **Responses** dialect's shape.
+///
+/// The repair tests run on the primary wire, because that is the one m4c
+/// will use and the only one the counting endpoint describes — so they
+/// exercise the two-step admission as well as the repair.
 fn answered(content: &str) -> Answer {
     let quoted = String::from_utf8(cbr_encoding::to_canonical(&cbr_encoding::Value::String(
         content.into(),
     )))
     .expect("canonical form is utf-8");
     let body = format!(
-        "{{\"choices\":[{{\"message\":{{\"role\":\"assistant\",\"content\":{quoted}}},\
-         \"finish_reason\":\"stop\"}}],\"usage\":{{\"total_tokens\":40}}}}"
+        "{{\"object\":\"response\",\"status\":\"completed\",\"error\":null,\
+         \"output\":[{{\"type\":\"message\",\"role\":\"assistant\",\
+         \"content\":[{{\"type\":\"output_text\",\"text\":{quoted}}}]}}],\
+         \"output_text\":{quoted},\"usage\":{{\"input_tokens\":1,\"output_tokens\":1,\
+         \"total_tokens\":40}}}}"
     );
     Answer::Completed {
         body: body.into_bytes(),
@@ -936,7 +961,7 @@ fn prose_where_a_structure_was_asked_for_is_repaired_once_and_then_answered() {
         &Ask {
             job: "job",
             request: "r",
-            dialect: Dialect::OpenAi,
+            dialect: Dialect::Responses,
             body: &asking(structure()),
         },
         &no_barrier,
@@ -977,7 +1002,7 @@ fn the_repair_is_bounded_and_the_outcome_is_reported_rather_than_chased() {
         &Ask {
             job: "job",
             request: "r",
-            dialect: Dialect::OpenAi,
+            dialect: Dialect::Responses,
             body: &asking(structure()),
         },
         &no_barrier,
@@ -1016,7 +1041,7 @@ fn an_outcome_that_is_not_repairable_is_reported_without_a_second_call() {
         &Ask {
             job: "job",
             request: "r",
-            dialect: Dialect::OpenAi,
+            dialect: Dialect::Responses,
             body: &asking(Want::Text),
         },
         &no_barrier,
@@ -1056,7 +1081,7 @@ fn a_repair_asks_again_without_repeating_what_the_model_said() {
         &Ask {
             job: "job",
             request: "r",
-            dialect: Dialect::OpenAi,
+            dialect: Dialect::Responses,
             body: &asking(structure()),
         },
         &no_barrier,
@@ -1085,8 +1110,8 @@ fn a_repair_the_envelope_has_no_room_for_does_not_happen() {
     // repair had been refused when it had simply run out of script.
     let connection = database();
     let asked = asking(structure());
-    let first = asked.serialize(Dialect::OpenAi);
-    let estimate = crate::budget::estimate(&first, asked.framed_messages(Dialect::OpenAi));
+    let first = asked.serialize(Dialect::Responses);
+    let estimate = crate::budget::estimate(&first, asked.framed_messages(Dialect::Responses));
     let transport = Recorder::new(vec![counted(), answered("prose")]);
     let runtime = Runtime {
         ledger: Ledger::new(&connection).with_run_ceiling(Some(estimate + 16)),
@@ -1097,7 +1122,7 @@ fn a_repair_the_envelope_has_no_room_for_does_not_happen() {
         &Ask {
             job: "repair-job",
             request: "r",
-            dialect: Dialect::OpenAi,
+            dialect: Dialect::Responses,
             body: &asked,
         },
         &no_barrier,
@@ -1131,7 +1156,7 @@ fn a_repair_is_charged_to_the_same_ledger_as_the_call_it_repairs() {
         &Ask {
             job: "job",
             request: "r",
-            dialect: Dialect::OpenAi,
+            dialect: Dialect::Responses,
             body: &asking(structure()),
         },
         &no_barrier,
@@ -1175,6 +1200,7 @@ fn a_completion_the_provider_did_not_price_settles_to_the_estimate_never_to_zero
             job: "job",
             request: "r",
             body: &body_declaring(64),
+            count_body: Some(&body_declaring(64)),
             messages: 1,
             generation: 64,
             dialect: Dialect::OpenAi,
@@ -1191,5 +1217,135 @@ fn a_completion_the_provider_did_not_price_settles_to_the_estimate_never_to_zero
     assert!(
         matches!(ended, Ended::Completed { usage, .. } if usage > 0),
         "the caller is told what it is being charged: {ended:?}"
+    );
+}
+
+// --- the count is over the body the counting endpoint is sent ------------
+
+#[test]
+fn the_count_call_sends_the_count_body_and_the_completion_sends_its_own() {
+    // They are **different bodies** now: the counting endpoint documents
+    // no `max_output_tokens`, `service_tier` or `stream`, and sending it a
+    // member it does not know is what ended the first calibration run.
+    let connection = database();
+    let transport = Recorder::new(vec![
+        Answer::Counted(60),
+        Answer::Completed {
+            body: b"{}".to_vec(),
+            usage: Some(70),
+        },
+    ]);
+    let runtime = Runtime {
+        ledger: Ledger::new(&connection),
+        transport: &transport,
+    };
+    let asked = asking(Want::Text);
+    let body = asked.serialize(Dialect::Responses);
+    let counting = asked
+        .serialize_count(Dialect::Responses)
+        .expect("the responses dialect is counted");
+    assert_ne!(body, counting, "the two bodies differ");
+    runtime.call(
+        T0,
+        &Attempt {
+            job: "job",
+            request: "r",
+            body: &body,
+            count_body: Some(&counting),
+            messages: 1,
+            generation: 64,
+            dialect: Dialect::Responses,
+        },
+        &no_barrier,
+    );
+    let sent = transport.sent();
+    assert_eq!(sent.len(), 2);
+    assert_eq!(sent[0].0, Call::Count);
+    assert_eq!(sent[0].1, counting, "the count got the count body");
+    assert_eq!(sent[1].0, Call::Completion);
+    assert_eq!(sent[1].1, body, "and the completion got its own");
+}
+
+#[test]
+fn a_dialect_the_counting_endpoint_does_not_describe_sends_no_count_call() {
+    // For the two secondary dialects the local bound alone admits, which
+    // is what it was built to be able to do. Sending a chat-completions
+    // body to an endpoint that documents a Responses one buys nothing and
+    // costs a call.
+    let connection = database();
+    let transport = Recorder::new(vec![Answer::Completed {
+        body: b"{}".to_vec(),
+        usage: Some(70),
+    }]);
+    let runtime = Runtime {
+        ledger: Ledger::new(&connection),
+        transport: &transport,
+    };
+    let ended = runtime.call(
+        T0,
+        &Attempt {
+            job: "job",
+            request: "r",
+            body: &body_declaring(64),
+            count_body: None,
+            messages: 1,
+            generation: 64,
+            dialect: Dialect::OpenAi,
+        },
+        &no_barrier,
+    );
+    let sent = transport.sent();
+    assert_eq!(
+        sent.len(),
+        1,
+        "one send, and it is the completion: {sent:?}"
+    );
+    assert_eq!(sent[0].0, Call::Completion);
+    assert!(matches!(ended, Ended::Completed { .. }), "{ended:?}");
+    // And the ledger holds one call rather than two.
+    let rows = Ledger::new(&connection).rows().expect("rows");
+    assert_eq!(
+        rows.iter().filter(|(kind, _, _)| kind == "usage").count(),
+        1,
+        "{rows:?}"
+    );
+}
+
+#[test]
+fn an_uncounted_dialect_reserves_the_completion_against_the_local_bound() {
+    // With no provider count there is nothing to refine the estimate with,
+    // so the conservative local figure is what the completion is reserved
+    // against — over-reserving rather than guessing.
+    let connection = database();
+    let transport = Recorder::new(vec![Answer::Completed {
+        body: b"{}".to_vec(),
+        usage: None,
+    }]);
+    let runtime = Runtime {
+        ledger: Ledger::new(&connection),
+        transport: &transport,
+    };
+    let body = body_declaring(64);
+    let local = crate::budget::estimate(&body, 1);
+    runtime.call(
+        T0,
+        &Attempt {
+            job: "job",
+            request: "r",
+            body: &body,
+            count_body: None,
+            messages: 1,
+            generation: 64,
+            dialect: Dialect::OpenAi,
+        },
+        &no_barrier,
+    );
+    let rows = Ledger::new(&connection).rows().expect("rows");
+    let settled = rows.last().expect("a row");
+    assert_eq!(settled.0, "unknown", "{rows:?}");
+    assert!(
+        settled.2 >= local,
+        "reserved {} against a local bound of {local}: {rows:?}",
+        settled.2
     );
 }

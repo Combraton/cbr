@@ -1,0 +1,29 @@
+{
+  "id": "resp_fixture_0001",
+  "object": "response",
+  "created_at": 1789100000,
+  "model": "MiniMax-M2.7-highspeed",
+  "status": "completed",
+  "output": [
+    {
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        { "type": "output_text", "text": "Units are dropped where np.concatenate rebuilds the array." }
+      ]
+    }
+  ],
+  "output_text": "Units are dropped where np.concatenate rebuilds the array.",
+  "error": null,
+  "incomplete_details": null,
+  "parallel_tool_calls": false,
+  "store": false,
+  "truncation": "disabled",
+  "usage": {
+    "input_tokens": 1180,
+    "input_tokens_details": { "cached_tokens": 0 },
+    "output_tokens": 42,
+    "output_tokens_details": { "reasoning_tokens": 0 },
+    "total_tokens": 1222
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "id": "resp_fixture_0003",
+  "object": "response",
+  "created_at": 1789100002,
+  "model": "MiniMax-M2.7",
+  "status": "completed",
+  "output": [
+    {
+      "type": "function_call",
+      "call_id": "call_fixture_1",
+      "name": "choose_spans",
+      "arguments": "{\"ids\": [\"s1\", \"s4\"]}"
+    }
+  ],
+  "output_text": null,
+  "error": null,
+  "usage": {
+    "input_tokens": 1180,
+    "output_tokens": 24,
+    "output_tokens_details": { "reasoning_tokens": 0 },
+    "total_tokens": 1204
+  }
+}

@@ -62,6 +62,7 @@ fn a_credential_shaped_string_in_a_response_never_reaches_the_store() {
                 job: "job",
                 request: "r",
                 body: &body(),
+                count_body: Some(&body()),
                 messages: 1,
                 generation: 64,
                 dialect: Dialect::OpenAi,
