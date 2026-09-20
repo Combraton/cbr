@@ -350,7 +350,7 @@ impl Provider {
         let completion = match fake.answer.split_once(':') {
             Some(("usage", tokens)) => Answer::Completed {
                 body: Vec::new(),
-                usage: tokens.parse().unwrap_or(0),
+                usage: tokens.parse().ok(),
             },
             _ if fake.answer == "provider_exhausted" => Answer::ProviderExhausted,
             _ if fake.answer == "failed" => Answer::Failed {
@@ -360,16 +360,32 @@ impl Provider {
             _ if fake.answer == "not_sent" => Answer::NotSent("scripted".into()),
             _ => Answer::Completed {
                 body: Vec::new(),
-                usage: 0,
+                usage: Some(0),
             },
         };
         let counted = Answer::Counted(fake.body.len() as u64);
         let transport = Recorder::new(vec![counted, completion]);
         let now = self.clock.now();
+        // **Wrapped in the recording boundary**, so the only path in this
+        // build that reaches a transport reaches it the same way a live
+        // one will: everything it exchanges is redacted and written before
+        // the answer gets back to the caller.
+        let recording = crate::wire::record::Recording {
+            inner: &transport,
+            store: self.store.connection(),
+            now: &now,
+            job: &fake.job,
+            request: &fake.request,
+            model: "fake",
+            dialect: fake.dialect,
+            // The fake transport is reached without a credential, so there
+            // is none to scrub. The live path passes one.
+            scrubber: None,
+        };
         let runtime = Runtime {
             ledger: crate::budget::Ledger::new(self.store.connection())
                 .with_run_ceiling(self.config.model_run_ceiling),
-            transport: &transport,
+            transport: &recording,
         };
         runtime.call(
             &now,
@@ -379,6 +395,7 @@ impl Provider {
                 body: fake.body.as_bytes(),
                 messages: 1,
                 generation: fake.generation,
+                dialect: fake.dialect,
             },
             &|name| crate::barriers::pause(name),
         );

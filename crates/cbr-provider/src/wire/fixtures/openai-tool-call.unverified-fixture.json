@@ -1,0 +1,28 @@
+{
+  "id": "chatcmpl-fixture-0002",
+  "object": "chat.completion",
+  "created": 1789000001,
+  "model": "MiniMax-M2.7",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": null,
+        "tool_calls": [
+          {
+            "id": "call_fixture_1",
+            "type": "function",
+            "function": {
+              "name": "choose_spans",
+              "arguments": "{\"ids\": [\"s1\", \"s4\"]}"
+            }
+          }
+        ]
+      },
+      "finish_reason": "tool_calls"
+    }
+  ],
+  "usage": { "prompt_tokens": 1180, "completion_tokens": 24, "total_tokens": 1204 },
+  "base_resp": { "status_code": 0, "status_msg": "success" }
+}

@@ -1,0 +1,15 @@
+{
+  "id": "msg_fixture_0003",
+  "type": "message",
+  "role": "assistant",
+  "model": "MiniMax-M3",
+  "content": [
+    {
+      "type": "text",
+      "text": "<think>The question is about unit propagation.</think>Units are dropped where np.concatenate rebuilds the array."
+    }
+  ],
+  "stop_reason": "end_turn",
+  "stop_sequence": null,
+  "usage": { "input_tokens": 1180, "output_tokens": 96 }
+}

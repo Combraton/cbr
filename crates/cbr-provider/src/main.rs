@@ -8,6 +8,7 @@
 
 mod barriers;
 mod budget;
+mod calibration;
 mod clock;
 mod compiler;
 mod config;
@@ -20,6 +21,7 @@ mod evidence;
 mod frames;
 mod grants;
 mod jsonrpc;
+mod keychain;
 mod knowledge;
 mod model;
 mod outbox;
@@ -29,6 +31,7 @@ mod repositories;
 mod session;
 mod socket;
 mod store;
+mod wire;
 
 use std::path::PathBuf;
 
@@ -54,6 +57,19 @@ struct Args {
     register_repository: Vec<repositories::Registration>,
     /// A ceiling for this whole run, which can only lower the envelope.
     model_run_ceiling: Option<u64>,
+    /// **Open the network gate.** Without it no socket can be opened at
+    /// all, because the transport cannot be constructed without the permit
+    /// this produces. A configured model is not enough: calling a provider
+    /// spends the owner's quota and sends repository text to a third
+    /// party, so it is a deliberate act at the launch rather than a
+    /// consequence of having configured one.
+    permit_model_network: bool,
+    /// **Run the calibration** of [READINESS §10] and write its table here,
+    /// then exit. Needs `--permit-model-network` and a run ceiling, and
+    /// serves nothing.
+    ///
+    /// [READINESS §10]: ../../docs/work/m4/READINESS.md
+    calibrate: Option<PathBuf>,
 }
 
 fn parse_args() -> Result<Args, String> {
@@ -66,6 +82,8 @@ fn parse_args() -> Result<Args, String> {
         issue_credential: None,
         register_repository: Vec::new(),
         model_run_ceiling: None,
+        permit_model_network: false,
+        calibrate: None,
     };
     let mut argv = std::env::args().skip(1);
     while let Some(flag) = argv.next() {
@@ -80,6 +98,13 @@ fn parse_args() -> Result<Args, String> {
             }
             "--socket" => {
                 args.socket = Some(PathBuf::from(argv.next().ok_or("--socket needs a value")?));
+            }
+            "--permit-model-network" => args.permit_model_network = true,
+            "--calibrate" => {
+                args.calibrate = Some(PathBuf::from(
+                    argv.next()
+                        .ok_or("--calibrate needs a path to write its table to")?,
+                ));
             }
             "--rotate-credential" => args.rotate_credential = true,
             "--revoke-credential" => {
@@ -152,6 +177,135 @@ fn run() -> Result<(), String> {
         }
         return Ok(());
     }
+    // **Every refusal the calibration can be given happens here**, before
+    // the credential is read, so that a launch which was never going to run
+    // it does not touch the Keychain to find that out.
+    if let Some(table) = &args.calibrate {
+        if config.model_runtime.is_none() {
+            return Err("--calibrate needs a configured model".into());
+        }
+        if !args.permit_model_network {
+            return Err(
+                "--calibrate makes live calls and needs --permit-model-network; having built \
+                 a transport is not permission to use it"
+                    .into(),
+            );
+        }
+        match args.model_run_ceiling {
+            None => {
+                return Err(format!(
+                    "--calibrate needs --model-run-ceiling; the cap of {} tokens is enforced \
+                     by the ledger rather than by intention",
+                    calibration::CEILING
+                ));
+            }
+            Some(ceiling) if ceiling > calibration::CEILING => {
+                return Err(format!(
+                    "--model-run-ceiling {ceiling} is above the calibration's cap of {}",
+                    calibration::CEILING
+                ));
+            }
+            Some(_) => {}
+        }
+        let _ = table;
+    }
+
+    // The gate to a socket, and the only thing that opens it. A launch
+    // without this flag cannot construct a transport, whatever else it is
+    // configured with, which is what makes "CI opens no socket" a property
+    // of the build rather than of the test suite's manners.
+    //
+    // **The two go together in both directions.** Permitting calls with no
+    // model configured is a configuration mistake rather than a safe
+    // default. And a configured model without the flag would serve while
+    // failing every model call — so it is refused *here*, which is before
+    // the credential is read, and that is what makes the Keychain
+    // unreachable without a deliberate act. A test that does not pass this
+    // flag cannot read the owner's key, whatever else it configures.
+    match (args.permit_model_network, config.model_runtime.is_some()) {
+        (true, false) => {
+            return Err(
+                "--permit-model-network needs a configured model; permitting calls to \
+                 nothing is a configuration mistake rather than a safe default"
+                    .into(),
+            );
+        }
+        (false, true) => {
+            return Err(
+                "a model is configured and --permit-model-network was not given; a process \
+                 that would fail every model call is refused rather than started"
+                    .into(),
+            );
+        }
+        (true, true) => wire::net::permit_network(),
+        (false, false) => {}
+    }
+
+    // **The one credential read, at process start, and only when a model is
+    // configured.** It happens here — before the store is opened and before
+    // anything is listened on — so that a launch which cannot read the key
+    // it was told to use refuses rather than serving and failing every
+    // model call one at a time. A launch with no model configured never
+    // reaches the Keychain at all.
+    let _credential = keychain::for_launch(config.model_runtime.is_some(), keychain::read)
+        .map_err(|refused| {
+            format!(
+                "a model is configured and its credential could not be read: {}",
+                refused.reason()
+            )
+        })?;
+
+    // The calibration serves nothing: it runs, writes its table and exits.
+    if let Some(table) = args.calibrate {
+        let runtime = config
+            .model_runtime
+            .clone()
+            .ok_or("--calibrate needs a configured model")?;
+        let credential = _credential.ok_or("--calibrate needs a credential")?;
+        let permit = wire::net::permit().ok_or("--calibrate needs --permit-model-network")?;
+        let store = store::Store::open(&data_dir)
+            .map_err(|error| format!("opening the store at {}: {error}", data_dir.display()))?;
+        let transport = wire::http::Http::new(
+            permit,
+            runtime.dialect,
+            &credential,
+            std::time::Duration::from_secs(120),
+        );
+        let now = clock.now();
+        let scrubber = credential.scrubber();
+        // Recorded and redacted like any other call: a measurement is not
+        // exempt from READINESS section 6.
+        let recording = wire::record::Recording {
+            inner: &transport,
+            store: store.connection(),
+            now: &now,
+            job: "calibration",
+            request: "calibration",
+            model: &runtime.model,
+            dialect: runtime.dialect,
+            scrubber: Some(&scrubber),
+        };
+        let report = calibration::run(
+            &now,
+            budget::Ledger::new(store.connection()).with_run_ceiling(config.model_run_ceiling),
+            &recording,
+            runtime.dialect,
+            &runtime.model,
+        );
+        std::fs::write(&table, report.table())
+            .map_err(|error| format!("writing {}: {error}", table.display()))?;
+        eprintln!(
+            "cbr-provider: calibration wrote {} ({} files, {} tokens estimated locally)",
+            table.display(),
+            report.rows.len(),
+            report.local_total()
+        );
+        if let Some(stopped) = report.stopped {
+            return Err(format!("calibration stopped: {stopped}"));
+        }
+        return Ok(());
+    }
+
     // An unsafe socket directory refuses the start before the store is opened,
     // so a refused start writes nothing.
     if let Some(socket) = &args.socket {

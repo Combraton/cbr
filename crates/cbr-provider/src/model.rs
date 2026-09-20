@@ -22,6 +22,7 @@
 use std::sync::Mutex;
 
 use crate::budget::{self, Ledger, Refusal, Reservation, Settlement};
+use crate::wire::{self, Dialect};
 
 /// Which of the two calls a send is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -37,8 +38,12 @@ pub enum Call {
 pub enum Answer {
     /// The provider's own token count, from a [`Call::Count`].
     Counted(u64),
-    /// A completion, with the provider's accounting of what it cost.
-    Completed { body: Vec<u8>, usage: u64 },
+    /// A completion, with the provider's accounting of what it cost —
+    /// **when it gave one.** `None` is a successful call the provider did
+    /// not price, which settles to the reservation's estimate rather than
+    /// to zero: losing a spend against a shared quota is the one direction
+    /// that cannot be corrected later.
+    Completed { body: Vec<u8>, usage: Option<u64> },
     /// The provider says **its** quota is exhausted. Distinct from CBR's own
     /// envelope: CBR sees only its own spending and the quota is shared.
     ProviderExhausted,
@@ -49,9 +54,21 @@ pub enum Answer {
     NotSent(String),
 }
 
-/// The one thing that could open a socket, and does not.
+/// What one send produced: the typed answer, and **the exact bytes the
+/// provider sent back**.
+///
+/// The raw bytes travel with the answer because the record is the exchange
+/// rather than CBR's reading of it, and because the recording boundary sits
+/// between the transport and the store and has nothing else to redact.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Exchange {
+    pub answer: Answer,
+    pub raw: Vec<u8>,
+}
+
+/// The one thing that could open a socket.
 pub trait Transport {
-    fn send(&self, call: Call, body: &[u8]) -> Answer;
+    fn send(&self, call: Call, body: &[u8]) -> Exchange;
 }
 
 /// The fake. It records the exact bytes it was asked to send, counts a count
@@ -59,7 +76,7 @@ pub trait Transport {
 #[derive(Debug, Default)]
 pub struct Recorder {
     sent: Mutex<Vec<(Call, Vec<u8>)>>,
-    answers: Mutex<Vec<Answer>>,
+    answers: Mutex<Vec<(Answer, Vec<u8>)>>,
 }
 
 impl Recorder {
@@ -67,6 +84,13 @@ impl Recorder {
     /// answered as a count of the body's byte length, which is what a
     /// provider that agreed exactly with the local bound would say.
     pub fn new(answers: Vec<Answer>) -> Self {
+        Recorder::answering_with_bytes(answers.into_iter().map(|a| (a, Vec::new())).collect())
+    }
+
+    /// Scripted answers **with the bytes they came in**, for the tests that
+    /// care what reached the recording boundary rather than what CBR made
+    /// of it.
+    pub fn answering_with_bytes(answers: Vec<(Answer, Vec<u8>)>) -> Self {
         Recorder {
             sent: Mutex::new(Vec::new()),
             answers: Mutex::new(answers),
@@ -84,22 +108,27 @@ impl Recorder {
 }
 
 impl Transport for Recorder {
-    fn send(&self, call: Call, body: &[u8]) -> Answer {
+    fn send(&self, call: Call, body: &[u8]) -> Exchange {
         self.sent
             .lock()
             .expect("not poisoned")
             .push((call, body.to_vec()));
         let mut answers = self.answers.lock().expect("not poisoned");
         if answers.is_empty() {
-            return match call {
+            let answer = match call {
                 Call::Count => Answer::Counted(body.len() as u64),
                 Call::Completion => Answer::Completed {
                     body: Vec::new(),
-                    usage: body.len() as u64,
+                    usage: Some(body.len() as u64),
                 },
             };
+            return Exchange {
+                answer,
+                raw: Vec::new(),
+            };
         }
-        answers.remove(0)
+        let (answer, raw) = answers.remove(0);
+        Exchange { answer, raw }
     }
 }
 
@@ -143,6 +172,9 @@ pub struct Attempt<'a> {
     pub messages: usize,
     /// The generation limit the body declares and the reservation covers.
     pub generation: u64,
+    /// Which dialect framed `body`, and therefore which member the limit
+    /// has to be bound to for this request to be allowed out.
+    pub dialect: Dialect,
 }
 
 /// One model call, from admission to settlement.
@@ -166,17 +198,61 @@ impl<'a> Runtime<'a> {
             job,
             request,
             body,
+            generation,
+            ..
+        } = *attempt;
+        // The guard on the generation limit lives in `count`, which is the
+        // first thing that could send anything, so both callers get it.
+        let counted = match self.count(now, attempt, barrier) {
+            Ok(counted) => counted,
+            Err(ended) => return ended,
+        };
+        let refined = counted.believed;
+
+        // Step 3: the completion, reserved for **everything it can cost** —
+        // the refined input count, the generation the request asked for, and
+        // the margin. Reserving the input count alone drops the two parts
+        // that are not in it and trusts the provider's figure to bound a
+        // cost the provider has not incurred yet.
+        let wanted = refined
+            .saturating_add(generation)
+            .saturating_add(budget::SAFETY_MARGIN_TOKENS);
+        let reservation = match self.ledger.admit(now, job, request, wanted) {
+            Ok(Ok(reservation)) => reservation,
+            Ok(Err(refusal)) => return Ended::Refused(refusal),
+            Err(_) => return Ended::Unmet("ledger_unavailable"),
+        };
+        barrier(COMPLETION_AFTER_RESERVATION);
+        let answer = self.transport.send(Call::Completion, body).answer;
+        barrier(COMPLETION_AFTER_SEND);
+        self.settle_completion(now, job, request, &reservation, answer, barrier, wanted)
+    }
+
+    /// **The count half alone**, which is a complete send in its own right:
+    /// the local estimate decides first, then the provider count is
+    /// admitted, sent and settled like anything else.
+    pub fn count(
+        &self,
+        now: &str,
+        attempt: &Attempt<'_>,
+        barrier: &dyn Fn(&'static str),
+    ) -> Result<Counted, Ended> {
+        let Attempt {
+            job,
+            request,
+            body,
             messages,
             generation,
+            dialect,
         } = *attempt;
         // **The reservation covers a generation the request actually asks
-        // for.** A body that does not declare its limit could spend more
-        // than was reserved, so it does not leave the process. This checks
-        // that the figure is in the body, not that it is bound to the right
-        // field — m4b's serializer owns that, and this is what stops m4b
-        // building one that forgets.
-        if !declares_generation(body, generation) {
-            return Ended::Unmet("generation_limit_not_declared");
+        // for.** A body that does not bind its limit could spend more than
+        // was reserved, so it does not leave the process. m4a asked only
+        // whether the figure appeared in the body, which a body capped at
+        // 4,096 that mentions 16 in prose satisfies; this parses the body
+        // and reads the member the dialect's provider reads.
+        if !wire::request::declares_generation(dialect, body, generation) {
+            return Err(Ended::Unmet("generation_limit_not_declared"));
         }
         let local = budget::estimate(body, messages);
 
@@ -186,13 +262,13 @@ impl<'a> Runtime<'a> {
             .admit(now, job, &format!("{request}.count"), local)
         {
             Ok(Ok(reservation)) => reservation,
-            Ok(Err(refusal)) => return Ended::Refused(refusal),
-            Err(_) => return Ended::Unmet("ledger_unavailable"),
+            Ok(Err(refusal)) => return Err(Ended::Refused(refusal)),
+            Err(_) => return Err(Ended::Unmet("ledger_unavailable")),
         };
         barrier(COUNT_AFTER_RESERVATION);
-        let counted = self.transport.send(Call::Count, body);
+        let counted = self.transport.send(Call::Count, body).answer;
         barrier(COUNT_AFTER_SEND);
-        let refined = match counted {
+        let counted = match counted {
             Answer::Counted(tokens) => {
                 // **A count far below the local bound is not a tighter
                 // count.** The bound runs three to four times the real
@@ -214,7 +290,11 @@ impl<'a> Runtime<'a> {
                     barrier,
                     COUNT_DURING_RECONCILIATION,
                 );
-                believed
+                Counted {
+                    local,
+                    reported: Some(tokens),
+                    believed,
+                }
             }
             Answer::ProviderExhausted => {
                 self.finish(
@@ -224,7 +304,9 @@ impl<'a> Runtime<'a> {
                     barrier,
                     COUNT_DURING_RECONCILIATION,
                 );
-                return Ended::Unmet(Settlement::ProviderExhausted.reason().unwrap_or("unknown"));
+                return Err(Ended::Unmet(
+                    Settlement::ProviderExhausted.reason().unwrap_or("unknown"),
+                ));
             }
             Answer::NotSent(_) => {
                 self.finish(
@@ -234,7 +316,9 @@ impl<'a> Runtime<'a> {
                     barrier,
                     COUNT_DURING_RECONCILIATION,
                 );
-                return Ended::Unmet(Settlement::NothingSpent.reason().unwrap_or("unknown"));
+                return Err(Ended::Unmet(
+                    Settlement::NothingSpent.reason().unwrap_or("unknown"),
+                ));
             }
             Answer::Failed { usage, .. } => {
                 self.finish(
@@ -244,7 +328,9 @@ impl<'a> Runtime<'a> {
                     barrier,
                     COUNT_DURING_RECONCILIATION,
                 );
-                return Ended::Unmet(Settlement::UsageUnknown.reason().unwrap_or("unknown"));
+                return Err(Ended::Unmet(
+                    Settlement::UsageUnknown.reason().unwrap_or("unknown"),
+                ));
             }
             // A completion answered to a count is not a transport error, it
             // is a transport that does not do what it says. Silently taking
@@ -259,41 +345,45 @@ impl<'a> Runtime<'a> {
                     barrier,
                     COUNT_DURING_RECONCILIATION,
                 );
-                return Ended::Unmet("model_answer_mismatched");
+                return Err(Ended::Unmet("model_answer_mismatched"));
             }
         };
+        Ok(counted)
+    }
 
-        // Step 3: the completion, reserved for **everything it can cost** —
-        // the refined input count, the generation the request asked for, and
-        // the margin. Reserving the input count alone drops the two parts
-        // that are not in it and trusts the provider's figure to bound a
-        // cost the provider has not incurred yet.
-        let wanted = refined
-            .saturating_add(generation)
-            .saturating_add(budget::SAFETY_MARGIN_TOKENS);
-        let reservation = match self.ledger.admit(now, job, request, wanted) {
-            Ok(Ok(reservation)) => reservation,
-            Ok(Err(refusal)) => return Ended::Refused(refusal),
-            Err(_) => return Ended::Unmet("ledger_unavailable"),
-        };
-        barrier(COMPLETION_AFTER_RESERVATION);
-        let answer = self.transport.send(Call::Completion, body);
-        barrier(COMPLETION_AFTER_SEND);
+    /// What a completion's answer settles to, and what the caller is told.
+    #[allow(clippy::too_many_arguments)]
+    fn settle_completion(
+        &self,
+        now: &str,
+        job: &str,
+        request: &str,
+        reservation: &Reservation,
+        answer: Answer,
+        barrier: &dyn Fn(&'static str),
+        wanted: u64,
+    ) -> Ended {
         match answer {
             Answer::Completed { body, usage } => {
                 self.finish(
                     now,
-                    &reservation,
-                    Settlement::Usage(usage),
+                    reservation,
+                    settlement_for(usage),
                     barrier,
                     COMPLETION_DURING_RECONCILIATION,
                 );
-                Ended::Completed { body, usage }
+                // An unpriced completion is reported at what it was
+                // reserved for, so the caller is told what it is being
+                // charged rather than told it was free.
+                Ended::Completed {
+                    body,
+                    usage: usage.unwrap_or(reservation.estimate),
+                }
             }
             Answer::ProviderExhausted => {
                 self.finish(
                     now,
-                    &reservation,
+                    reservation,
                     Settlement::ProviderExhausted,
                     barrier,
                     COMPLETION_DURING_RECONCILIATION,
@@ -303,7 +393,7 @@ impl<'a> Runtime<'a> {
             Answer::NotSent(_) => {
                 self.finish(
                     now,
-                    &reservation,
+                    reservation,
                     Settlement::NothingSpent,
                     barrier,
                     COMPLETION_DURING_RECONCILIATION,
@@ -313,7 +403,7 @@ impl<'a> Runtime<'a> {
             Answer::Failed { usage, .. } => {
                 self.finish(
                     now,
-                    &reservation,
+                    reservation,
                     settlement_for(usage),
                     barrier,
                     COMPLETION_DURING_RECONCILIATION,
@@ -324,7 +414,7 @@ impl<'a> Runtime<'a> {
                 let _ = self.ledger.note(now, job, request, "mismatch", 0, wanted);
                 self.finish(
                     now,
-                    &reservation,
+                    reservation,
                     Settlement::UsageUnknown,
                     barrier,
                     COMPLETION_DURING_RECONCILIATION,
@@ -347,6 +437,116 @@ impl<'a> Runtime<'a> {
     }
 }
 
+/// What the count half of a call produced.
+///
+/// Split out because the calibration needs the provider's **reported**
+/// figure rather than the one the call path goes on to believe: the whole
+/// comparison is between the local bound and what the provider said, and
+/// the disbelief rule that protects the call path would hide exactly the
+/// case the calibration exists to find.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Counted {
+    /// The local, conservative bound. It alone can refuse.
+    pub local: u64,
+    /// What the provider said, when it said anything.
+    pub reported: Option<u64>,
+    /// What the call path goes on to reserve against.
+    pub believed: u64,
+}
+
+/// How many times a repairable outcome may be asked about again.
+///
+/// **One.** The two outcomes that are repairable are the provider's own
+/// documented behaviour, so a second ask is worth its tokens; a third is a
+/// loop, and an unbounded loop against a shared quota is the overspend the
+/// envelope exists to prevent, arriving one polite retry at a time.
+pub const REPAIRS: u32 = 1;
+
+/// One question for a model, with the bounded repair that goes with it.
+pub struct Ask<'a> {
+    pub job: &'a str,
+    pub request: &'a str,
+    pub dialect: Dialect,
+    pub body: &'a wire::request::Request,
+}
+
+/// How a question ended.
+#[derive(Debug)]
+pub enum Outcome {
+    Answered {
+        reply: wire::response::Reply,
+        usage: u64,
+        /// How many repairs it took. Recorded, because a selection that
+        /// needed repairing is a fact about the request.
+        repairs: u32,
+    },
+    /// A typed reason, never retried past the bound above.
+    Unmet { reason: &'static str, repairs: u32 },
+    /// Refused by CBR's own envelope, before anything was sent.
+    Refused(Refusal),
+}
+
+impl Runtime<'_> {
+    /// Serialize, send, read, and — for the two outcomes this provider's
+    /// own behaviour produces — ask once more.
+    ///
+    /// **A repair is a whole call**: its own admission, its own count, its
+    /// own reservation, debited from the same ledger. There is no separate
+    /// repair allowance, so a repair the envelope has no room for does not
+    /// happen.
+    pub fn ask(&self, now: &str, ask: &Ask<'_>, barrier: &dyn Fn(&'static str)) -> Outcome {
+        let mut body = ask.body.clone();
+        let mut repairs = 0;
+        loop {
+            let serialized = body.serialize(ask.dialect);
+            let ended = self.call(
+                now,
+                &Attempt {
+                    job: ask.job,
+                    request: ask.request,
+                    body: &serialized,
+                    messages: body.framed_messages(ask.dialect),
+                    generation: body.generation,
+                    dialect: ask.dialect,
+                },
+                barrier,
+            );
+            let (answered, usage) = match ended {
+                Ended::Completed { body, usage } => (body, usage),
+                Ended::Refused(refusal) => return Outcome::Refused(refusal),
+                Ended::Unmet(reason) => return Outcome::Unmet { reason, repairs },
+            };
+            let read = wire::response::read_completion(ask.dialect, &body.want, &answered);
+            let unusable = match read.reply {
+                Ok(reply) => {
+                    return Outcome::Answered {
+                        reply,
+                        usage: read.usage.unwrap_or(usage),
+                        repairs,
+                    };
+                }
+                Err(unusable) => unusable,
+            };
+            if !unusable.repairable() || repairs >= REPAIRS {
+                return Outcome::Unmet {
+                    reason: unusable.reason(),
+                    repairs,
+                };
+            }
+            // **The model's own answer is not sent back.** Repository text
+            // is untrusted and so is what a model made of it; echoing it
+            // into the next request gives text that arrived from a
+            // repository a second chance to be read as an instruction, and
+            // charges for the privilege. The repair is CBR's own sentence.
+            body.messages.push(wire::request::Message {
+                role: wire::request::Role::User,
+                text: wire::request::repair_instruction(&body.want).to_string(),
+            });
+            repairs += 1;
+        }
+    }
+}
+
 /// Per call, so a crash-matrix row cannot pass at the wrong boundary.
 pub const COUNT_AFTER_RESERVATION: &str = "model.count.after_reservation";
 pub const COUNT_AFTER_SEND: &str = "model.count.after_send";
@@ -362,23 +562,6 @@ fn settlement_for(usage: Option<u64>) -> Settlement {
         Some(usage) => Settlement::Usage(usage),
         None => Settlement::UsageUnknown,
     }
-}
-
-/// Whether `body` declares the generation limit it was reserved for.
-///
-/// A textual check, and deliberately a narrow one: it says the figure is in
-/// the body, not that it is bound to the field the provider reads. m4b's
-/// serializer owns that; this exists so m4b cannot build a body that leaves
-/// the limit out altogether, which would let a completion spend more than
-/// its reservation covers.
-fn declares_generation(body: &[u8], generation: u64) -> bool {
-    let body = String::from_utf8_lossy(body);
-    let wanted = generation.to_string();
-    body.match_indices(&wanted).any(|(at, _)| {
-        let before = body[..at].chars().next_back();
-        let after = body[at + wanted.len()..].chars().next();
-        !before.is_some_and(|c| c.is_ascii_digit()) && !after.is_some_and(|c| c.is_ascii_digit())
-    })
 }
 
 /// No barrier at all, which is every path but the crash matrix.

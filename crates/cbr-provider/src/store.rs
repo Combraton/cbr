@@ -561,6 +561,10 @@ impl Store {
             crate::budget::LedgerError::Storage(error) => StoreError::Sqlite(error),
             _ => StoreError::Sqlite(rusqlite::Error::InvalidQuery),
         })?;
+        // The recorded exchanges, under the same durability. Everything
+        // written here has been through the redaction boundary, which is
+        // enforced by the type the write takes rather than by this call.
+        crate::wire::record::migrate(&self.connection).map_err(StoreError::Sqlite)?;
         Ok(())
     }
 

@@ -1,0 +1,15 @@
+{
+  "id": "chatcmpl-fixture-0004",
+  "object": "chat.completion",
+  "created": 1789000003,
+  "model": "MiniMax-M2.7",
+  "choices": [
+    {
+      "index": 0,
+      "message": { "role": "assistant", "content": "{\"ids\": [\"s1\", \"s" },
+      "finish_reason": "length"
+    }
+  ],
+  "usage": { "prompt_tokens": 1180, "completion_tokens": 16, "total_tokens": 1196 },
+  "base_resp": { "status_code": 0, "status_msg": "success" }
+}

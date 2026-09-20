@@ -1,0 +1,17 @@
+{
+  "id": "msg_fixture_0002",
+  "type": "message",
+  "role": "assistant",
+  "model": "MiniMax-M2.7",
+  "content": [
+    {
+      "type": "tool_use",
+      "id": "toolu_fixture_1",
+      "name": "choose_spans",
+      "input": { "ids": ["s1", "s4"] }
+    }
+  ],
+  "stop_reason": "tool_use",
+  "stop_sequence": null,
+  "usage": { "input_tokens": 1180, "output_tokens": 24 }
+}

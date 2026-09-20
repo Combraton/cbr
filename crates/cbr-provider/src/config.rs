@@ -140,6 +140,10 @@ pub struct Config {
     /// number above them changes nothing. m4e's five-million cap across
     /// three journeys is this, enforced rather than intended.
     pub model_run_ceiling: Option<u64>,
+    /// The model this launch may call, if any. **Absent is the default and
+    /// the ordinary case**; present is what makes the launch read a
+    /// credential and refuse to start if it cannot.
+    pub model_runtime: Option<ModelRuntime>,
     /// The `model.fake` test control: one scripted call through
     /// [`crate::model::Runtime`] at startup, so the ledger's crash
     /// boundaries are reachable by a process that can be killed at them.
@@ -151,6 +155,20 @@ pub struct Config {
     /// the public protocol. `Null` when absent. It holds peer credentials, so
     /// it is never logged or echoed.
     pub context: ContextControl,
+}
+
+/// A model this launch is configured to call.
+///
+/// **Its presence is the only thing that makes CBR read a credential.** A
+/// launch without it never touches the Keychain, which is what CI, every
+/// conformance run and every developer running the suite are. It is
+/// ordinary configuration, not a test control: the `model` member beside it
+/// is the fake transport's control and is refused in production.
+#[derive(Debug, Clone)]
+pub struct ModelRuntime {
+    pub dialect: crate::wire::Dialect,
+    /// One of [`crate::wire::MODELS`], recorded in every derivation record.
+    pub model: String,
 }
 
 /// The `model.fake` control's value: what to call with, and what the fake
@@ -165,6 +183,9 @@ pub struct FakeModel {
     pub answer: String,
     /// The generation limit the body declares and the reservation covers.
     pub generation: u64,
+    /// Which dialect the scripted body is framed in, so that the guard on
+    /// the generation limit reads the member that dialect binds it to.
+    pub dialect: crate::wire::Dialect,
 }
 
 /// The `context.script` control's value. Its `Debug` form names nothing it
@@ -250,6 +271,7 @@ impl Default for Config {
             capabilities: Vec::new(),
             credentials: Vec::new(),
             model: None,
+            model_runtime: None,
             model_run_ceiling: None,
             test_barriers: None,
             evidence_store: EvidenceStore::default(),
@@ -469,7 +491,60 @@ impl Config {
                     Some(Value::Int(generation)) => (*generation).max(0) as u64,
                     _ => 64,
                 },
+                dialect: model
+                    .get("dialect")
+                    .and_then(Value::as_str)
+                    .and_then(crate::wire::Dialect::parse)
+                    .unwrap_or(crate::wire::Dialect::OpenAi),
             });
+        }
+        // **Validated here, which is before any credential is read.** A
+        // configuration mistake is then refused identically on every
+        // machine, and the Keychain is never touched to discover that the
+        // launch was never going to work.
+        if let Some(runtime) = value.get("model_runtime") {
+            // Validated and not kept: it can only ever be the one id, and a
+            // field that can hold only one value is a field that drifts
+            // from the constant it duplicates.
+            let provider = text(runtime.get("provider"))
+                .ok_or("`model_runtime` needs a `provider`".to_string())?;
+            if provider != crate::wire::PROVIDER_ID {
+                return Err(format!(
+                    "model provider `{provider}` is not configured; CBR admits `{}` and                      no other, which is the owner's decision rather than a default",
+                    crate::wire::PROVIDER_ID
+                ));
+            }
+            // **The endpoint is not configuration.** An endpoint a launch
+            // can set is an endpoint an operator's mistake or a planted
+            // configuration file can move, and "MiniMax only" would be a
+            // label rather than a rule: `https://collector.example/v1`,
+            // `https://api.minimax.io.collector.example/v1` and
+            // `https://api.minimax.io@collector.example/v1` allname the
+            // provider correctly and address somebody else. Refused rather
+            // than ignored, so nobody believes they set one.
+            for member in ["endpoint", "count_endpoint", "host", "path", "base_url"] {
+                if runtime.get(member).is_some() {
+                    return Err(format!(
+                        "`model_runtime.{member}` is not configuration: the host is pinned to \
+                         `{}` and the path is the dialect's. A launch may choose a dialect \
+                         and not an address.",
+                        crate::wire::endpoint::HOST
+                    ));
+                }
+            }
+            let named = text(runtime.get("dialect"))
+                .ok_or("`model_runtime` needs a `dialect`".to_string())?;
+            let dialect = crate::wire::Dialect::parse(&named)
+                .ok_or(format!("unknown model dialect `{named}`"))?;
+            let model =
+                text(runtime.get("model")).ok_or("`model_runtime` needs a `model`".to_string())?;
+            if !crate::wire::MODELS.contains(&model.as_str()) {
+                return Err(format!(
+                    "model `{model}` is outside the three the owner named: {}",
+                    crate::wire::MODELS.join(", ")
+                ));
+            }
+            config.model_runtime = Some(ModelRuntime { dialect, model });
         }
         if let Some(barriers) = value.get("test_barriers") {
             let directory = barriers
