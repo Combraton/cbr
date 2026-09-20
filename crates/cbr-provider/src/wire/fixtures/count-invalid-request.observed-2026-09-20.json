@@ -1,0 +1,6 @@
+{
+  "error": {
+    "message": "Failed to parse or validate request parameters. Please check JSON field names, types and required fields: binding: expr_path=input, cause=missing required parameter",
+    "code": "invalid_prompt"
+  }
+}
