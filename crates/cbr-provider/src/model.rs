@@ -50,9 +50,21 @@ pub enum Answer {
     NotSent(String),
 }
 
-/// The one thing that could open a socket, and does not.
+/// What one send produced: the typed answer, and **the exact bytes the
+/// provider sent back**.
+///
+/// The raw bytes travel with the answer because the record is the exchange
+/// rather than CBR's reading of it, and because the recording boundary sits
+/// between the transport and the store and has nothing else to redact.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Exchange {
+    pub answer: Answer,
+    pub raw: Vec<u8>,
+}
+
+/// The one thing that could open a socket.
 pub trait Transport {
-    fn send(&self, call: Call, body: &[u8]) -> Answer;
+    fn send(&self, call: Call, body: &[u8]) -> Exchange;
 }
 
 /// The fake. It records the exact bytes it was asked to send, counts a count
@@ -60,7 +72,7 @@ pub trait Transport {
 #[derive(Debug, Default)]
 pub struct Recorder {
     sent: Mutex<Vec<(Call, Vec<u8>)>>,
-    answers: Mutex<Vec<Answer>>,
+    answers: Mutex<Vec<(Answer, Vec<u8>)>>,
 }
 
 impl Recorder {
@@ -68,6 +80,13 @@ impl Recorder {
     /// answered as a count of the body's byte length, which is what a
     /// provider that agreed exactly with the local bound would say.
     pub fn new(answers: Vec<Answer>) -> Self {
+        Recorder::answering_with_bytes(answers.into_iter().map(|a| (a, Vec::new())).collect())
+    }
+
+    /// Scripted answers **with the bytes they came in**, for the tests that
+    /// care what reached the recording boundary rather than what CBR made
+    /// of it.
+    pub fn answering_with_bytes(answers: Vec<(Answer, Vec<u8>)>) -> Self {
         Recorder {
             sent: Mutex::new(Vec::new()),
             answers: Mutex::new(answers),
@@ -85,22 +104,27 @@ impl Recorder {
 }
 
 impl Transport for Recorder {
-    fn send(&self, call: Call, body: &[u8]) -> Answer {
+    fn send(&self, call: Call, body: &[u8]) -> Exchange {
         self.sent
             .lock()
             .expect("not poisoned")
             .push((call, body.to_vec()));
         let mut answers = self.answers.lock().expect("not poisoned");
         if answers.is_empty() {
-            return match call {
+            let answer = match call {
                 Call::Count => Answer::Counted(body.len() as u64),
                 Call::Completion => Answer::Completed {
                     body: Vec::new(),
                     usage: body.len() as u64,
                 },
             };
+            return Exchange {
+                answer,
+                raw: Vec::new(),
+            };
         }
-        answers.remove(0)
+        let (answer, raw) = answers.remove(0);
+        Exchange { answer, raw }
     }
 }
 
@@ -195,7 +219,7 @@ impl<'a> Runtime<'a> {
             Err(_) => return Ended::Unmet("ledger_unavailable"),
         };
         barrier(COUNT_AFTER_RESERVATION);
-        let counted = self.transport.send(Call::Count, body);
+        let counted = self.transport.send(Call::Count, body).answer;
         barrier(COUNT_AFTER_SEND);
         let refined = match counted {
             Answer::Counted(tokens) => {
@@ -282,7 +306,7 @@ impl<'a> Runtime<'a> {
             Err(_) => return Ended::Unmet("ledger_unavailable"),
         };
         barrier(COMPLETION_AFTER_RESERVATION);
-        let answer = self.transport.send(Call::Completion, body);
+        let answer = self.transport.send(Call::Completion, body).answer;
         barrier(COMPLETION_AFTER_SEND);
         match answer {
             Answer::Completed { body, usage } => {

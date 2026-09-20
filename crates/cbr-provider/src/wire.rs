@@ -91,11 +91,17 @@ impl Dialect {
 }
 
 pub mod json;
+pub mod record;
+pub mod redact;
 pub mod request;
 pub mod response;
 
 #[cfg(test)]
 mod json_tests;
+#[cfg(test)]
+mod record_tests;
+#[cfg(test)]
+mod redact_tests;
 #[cfg(test)]
 mod request_tests;
 #[cfg(test)]

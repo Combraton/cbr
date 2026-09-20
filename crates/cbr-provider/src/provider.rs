@@ -366,10 +366,23 @@ impl Provider {
         let counted = Answer::Counted(fake.body.len() as u64);
         let transport = Recorder::new(vec![counted, completion]);
         let now = self.clock.now();
+        // **Wrapped in the recording boundary**, so the only path in this
+        // build that reaches a transport reaches it the same way a live
+        // one will: everything it exchanges is redacted and written before
+        // the answer gets back to the caller.
+        let recording = crate::wire::record::Recording {
+            inner: &transport,
+            store: self.store.connection(),
+            now: &now,
+            job: &fake.job,
+            request: &fake.request,
+            model: "fake",
+            dialect: fake.dialect,
+        };
         let runtime = Runtime {
             ledger: crate::budget::Ledger::new(self.store.connection())
                 .with_run_ceiling(self.config.model_run_ceiling),
-            transport: &transport,
+            transport: &recording,
         };
         runtime.call(
             &now,
