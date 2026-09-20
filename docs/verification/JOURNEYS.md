@@ -77,6 +77,27 @@ The two questions are the owner's, verbatim, and are used as the task text uncha
 
 **A required item that is not the answer** is named in each request, as J1 does: `README.md` for brian2 and `AGENTS.md` for Knowscroll, neither of which has anything to do with its question. It exists to show that capacity is reserved for a required item before anything discovered, and its section is expected to be irrelevant to the question.
 
+### J6 pilot, Knowscroll-v2: decisions ingested and proposed, waiting on the owner
+
+**Labelled a pilot throughout**, on the same terms as brian2. **This pilot has not run.** Its decisions are ingested and proposed; which are accepted, as what use, and which are superseded is the owner's to decide, and the question is asked only after they have.
+
+Recorded here in the same shape as brian2's: digests, paths, spans, counts and costs, and no content of that repository.
+
+| Field | Record |
+|---|---|
+| Intent | Decision memory: ingest the repository's own decision records, let the owner decide their standing, and then ask a question whose answer depends on which decisions are current. |
+| Entry point | `cbr ingest`, `cbr authority bind`, `cbr propose` over the socket. Registered read-only at launch; the path never crosses the wire. |
+| Prerequisites and inputs | `Legend101Zz/Knowscroll-v2` at `HEAD` tree `10692a77…`, 18 commits, 145 tracked files. |
+| Question, verbatim | "When a spike records a provider's response, how must URLs and credentials in it be handled, and where is that enforced?" — **not yet asked.** |
+| Selector | `credentials URLs response`, chosen and [recorded above](#j6-pilots-the-questions-and-the-selectors-recorded-before-the-runs) before the run. That question contains **no identifier-shaped word**, so no anchor lookup is possible and this pilot tests lexical discovery alone. |
+| Evidence ingested | One artifact: `steering/DECISIONS.md`, **38,831 bytes**, digest `sha256:4dad54e7…`, anchored to tree `10692a77…` and its commit. |
+| Claims proposed | **22, one per decision, all `proposed` and none decided.** Each cites that one artifact, and carries its decision id and its line range in the claim's scope qualifiers and in the statement, so a reader can find the decision inside the file. Support class `single_lineage` for all 22. |
+| **A protocol limitation this exposed** | **Protocol 0.1 has no way for a claim to cite a *span* of an artifact.** `check_evidence_reference` admits a provider, an artifact and a digest, and nothing narrower. All 22 decisions live in one append-only file, so all 22 claims cite the same 38,831 bytes with the same digest, and the line range that distinguishes them is carried in the claim's own scope rather than in its evidence reference — where a reader would look for it, and where a verifier could check it. This is the same shape as gap G1 and belongs with it. |
+| What is waiting | The owner decides, for each of the 22: accepted for use and at what permitted use, rejected, or left proposed; and which supersede which. The file is append-only with a `Supersedes` field, and **only 2 of the 22 carry one** — both reading `—`, that is, superseding nothing. The other 20 have no such field at all. Nothing about acceptance is proposed here. |
+| Model and provider | `none` |
+| Cost so far | Model calls 0. One artifact of 38,831 bytes ingested; 22 claims proposed. No index has been built for this repository yet, because no context request has been made. |
+| Properties and limits | Nothing about usefulness is established or claimed: the run has not happened. What exists is the write path, exercised end to end on a real repository's real decision records through the public client. |
+
 ### J6 pilot, brian2: a brownfield repository, no model
 
 **Labelled a pilot throughout.** It is a steer, not evidence, and may not be cited as downstream-task evidence for any gate ([JOURNEYS §1](#1-rules-this-document-enforces), ADR 001 question 6). It is scored by the reviewer against an oracle the owner wrote before the run; this session has not seen it.
