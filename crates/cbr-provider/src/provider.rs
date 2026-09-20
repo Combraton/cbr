@@ -327,6 +327,21 @@ pub struct Provider {
 impl Provider {
     /// Open the provider over its data directory, advancing the deduplication
     /// generation for this process.
+    /// Register every repository the launch named, in order. Refusing here
+    /// is deliberate: a registration whose checkout cannot be read would
+    /// otherwise look, to every later search, like a repository with nothing
+    /// in it.
+    pub fn register_repositories(
+        &mut self,
+        registrations: &[crate::repositories::Registration],
+    ) -> Result<(), String> {
+        let now = self.clock.now();
+        for registration in registrations {
+            crate::repositories::register(&mut self.store, registration, &now)?;
+        }
+        Ok(())
+    }
+
     pub fn open(
         config: Config,
         clock: crate::clock::Clock,

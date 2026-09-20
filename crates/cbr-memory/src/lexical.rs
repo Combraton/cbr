@@ -217,6 +217,34 @@ pub fn remove_tree(connection: &Connection, tree: &str) -> Result<(), rusqlite::
     Ok(())
 }
 
+/// A keyset position inside one tree's results, in the order
+/// `(score, path, start_byte)`. `include_equal_score` is how a caller
+/// merging several trees says whether rows tying the cursor's score belong
+/// before or after it in the wider order it is imposing.
+#[derive(Debug, Clone, PartialEq)]
+pub struct After {
+    pub score: f64,
+    pub path: String,
+    pub start_byte: i64,
+    pub include_equal_score: bool,
+}
+
+/// What a multi-term query means.
+///
+/// The ladder is recorded rather than implied, because a selector of several
+/// words is the common case and the two readings differ sharply: `All` finds
+/// only chunks holding every term, which is precise and often empty, while
+/// `Any` finds the best partial match, which is what a caller wants when the
+/// precise reading returned nothing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Terms {
+    /// Every part of every token must be in the chunk.
+    All,
+    /// Any part may match; BM25 ranks the chunk with the most, and the
+    /// rarest, of them first.
+    Any,
+}
+
 /// Search one tree. Every query token must match, as itself or as its parts;
 /// an empty query matches nothing rather than everything.
 pub fn search(
@@ -225,29 +253,75 @@ pub fn search(
     query: &str,
     limit: usize,
 ) -> Result<Vec<Hit>, rusqlite::Error> {
-    let Some(expression) = match_expression(query) else {
+    search_after(connection, tree, query, None, None, Terms::All, limit)
+}
+
+/// Search one tree, continuing after a keyset position. The position is
+/// applied in SQL rather than by the caller, because a caller that filters
+/// after the fact is filtering a page that was already truncated — it sees
+/// the same top rows on every page and the walk stops early.
+pub fn search_after(
+    connection: &Connection,
+    tree: &str,
+    query: &str,
+    within: Option<&str>,
+    after: Option<&After>,
+    terms: Terms,
+    limit: usize,
+) -> Result<Vec<Hit>, rusqlite::Error> {
+    let Some(expression) = match_expression(query, terms) else {
         return Ok(Vec::new());
     };
+    let (score, path, start_byte, equal) = match after {
+        Some(after) => (
+            after.score,
+            after.path.clone(),
+            after.start_byte,
+            after.include_equal_score,
+        ),
+        None => (0.0, String::new(), 0, false),
+    };
     let mut statement = connection.prepare(
-        "SELECT c.path, c.blob, c.start_byte, c.end_byte, c.start_line, c.end_line,
-                bm25(lexical_search) AS score
-         FROM lexical_search
-         JOIN lexical_chunk c ON c.id = lexical_search.rowid
-         WHERE lexical_search MATCH ?1 AND c.tree = ?2
-         ORDER BY score, c.path, c.start_byte
+        "SELECT path, blob, start_byte, end_byte, start_line, end_line, score FROM (
+             SELECT c.path AS path, c.blob AS blob, c.start_byte AS start_byte,
+                    c.end_byte AS end_byte, c.start_line AS start_line,
+                    c.end_line AS end_line, bm25(lexical_search) AS score
+             FROM lexical_search
+             JOIN lexical_chunk c ON c.id = lexical_search.rowid
+             WHERE lexical_search MATCH ?1 AND c.tree = ?2
+               AND (?9 IS NULL OR c.path = ?9)
+         )
+         WHERE ?4 = 0
+            OR score > ?5
+            OR (?7 = 1 AND score = ?5
+                AND (path > ?6 OR (path = ?6 AND start_byte > ?8)))
+         ORDER BY score, path, start_byte
          LIMIT ?3",
     )?;
-    let rows = statement.query_map(params![expression, tree, limit as i64], |row| {
-        Ok(Hit {
-            path: row.get(0)?,
-            blob: row.get(1)?,
-            start_byte: row.get(2)?,
-            end_byte: row.get(3)?,
-            start_line: row.get(4)?,
-            end_line: row.get(5)?,
-            score: row.get(6)?,
-        })
-    })?;
+    let rows = statement.query_map(
+        params![
+            expression,
+            tree,
+            limit as i64,
+            i64::from(after.is_some()),
+            score,
+            path,
+            i64::from(equal),
+            start_byte,
+            within
+        ],
+        |row| {
+            Ok(Hit {
+                path: row.get(0)?,
+                blob: row.get(1)?,
+                start_byte: row.get(2)?,
+                end_byte: row.get(3)?,
+                start_line: row.get(4)?,
+                end_line: row.get(5)?,
+                score: row.get(6)?,
+            })
+        },
+    )?;
     let mut hits = Vec::new();
     for row in rows {
         hits.push(row?);
@@ -259,7 +333,22 @@ pub fn search(
 /// A document stores each identifier as its parts as well as whole, so the
 /// parts alone are enough, and asking for them means a query for
 /// `getUserName` also finds prose that says "get user name".
-fn match_expression(query: &str) -> Option<String> {
+fn match_expression(query: &str, mode: Terms) -> Option<String> {
+    let terms: Vec<String> = query_terms(query)
+        .into_iter()
+        .map(|term| format!("\"{term}\""))
+        .collect();
+    let joiner = match mode {
+        Terms::All => " AND ",
+        Terms::Any => " OR ",
+    };
+    (!terms.is_empty()).then(|| terms.join(joiner))
+}
+
+/// The terms a query asks for: every part of every token, lowercased. The
+/// same rule a canonical read has to apply when the index cannot answer, so
+/// the two agree about what "matches" means.
+pub fn query_terms(query: &str) -> Vec<String> {
     let mut terms: Vec<String> = Vec::new();
     for token in query.split(|c: char| !c.is_alphanumeric()) {
         if token.is_empty() {
@@ -268,10 +357,10 @@ fn match_expression(query: &str) -> Option<String> {
         terms.extend(
             split_identifier(token)
                 .into_iter()
-                .map(|part| format!("\"{}\"", part.to_lowercase())),
+                .map(|part| part.to_lowercase()),
         );
     }
-    (!terms.is_empty()).then(|| terms.join(" AND "))
+    terms
 }
 
 #[cfg(test)]
@@ -289,6 +378,19 @@ mod tests {
 
     #[test]
     fn an_empty_query_matches_nothing() {
-        assert_eq!(match_expression("   ...  "), None);
+        assert_eq!(match_expression("   ...  ", Terms::All), None);
+        assert_eq!(match_expression("   ...  ", Terms::Any), None);
+    }
+
+    #[test]
+    fn the_two_readings_of_a_multi_term_query_are_different_expressions() {
+        assert_eq!(
+            match_expression("drainQueue now", Terms::All).expect("an expression"),
+            "\"drain\" AND \"queue\" AND \"now\""
+        );
+        assert_eq!(
+            match_expression("drainQueue now", Terms::Any).expect("an expression"),
+            "\"drain\" OR \"queue\" OR \"now\""
+        );
     }
 }

@@ -3,14 +3,154 @@
 This is a dated navigation snapshot. Reconcile it with Git, linked issues and current task evidence before acting. Issues own live progress; this file does not grant authority or maintain a second backlog.
 
 - **Updated:** 2026-09-19.
-- **Owner/task:** Claude Code session as implementation lead for standalone CBR. **M1 and M2 are complete**; M1's closing record is [m1/CLOSEOUT.md](m1/CLOSEOUT.md). Active task: **M3, [issue #15](https://github.com/Combraton/cbr/issues/15)**, in four pull requests against `main`, each reviewed at its head before merging: m3a the Context profile (**merged**); **m3b retrieval and the dependency evaluator (PR #17, open)**; then m3c the packet compiler on a real repository, m3d the journey-6 pilot. Parent: [issue #1](https://github.com/Combraton/cbr/issues/1). An independent reviewer session reviews this read-only.
-- **Merged:** PR #2 as `d68e9d6`, pinned to `877139f`; PR #4 as `a939446`, pinned to `630011c`; PR #5 (c1) as `8b75129`; PR #6 (c2) as `da1e650`, pinned to `b00ec49`; **PR #7 (c3) as `8ba2594`, pinned to `5b98a9f`, confirmed from `merged: true` and `merged_at: 2026-09-16T15:31:51Z`**. Earlier: PR #6 pinned to `b00ec49`, confirmed from `merged: true` and `merged_at: 2026-09-16T14:26:34Z`**, the draft marked ready first and the head re-read unchanged before merging. Every owner decision, including the ceiling, is in [ADR 001](../decisions/001-standalone-v0.1-scope-and-stack.md). **PR #8 (owner follow-ups) as `f00faaf`, pinned to `40cb30b`, `merged_at: 2026-09-16T16:57:29Z`; PR #9 (c4) as `9a7b8f5`, pinned to `5db9d7c`, `merged_at: 2026-09-16T16:57:53Z`**, in that order, each confirmed from `merged` and `merged_at`. **PR #10 (d) as `96a33f2`, pinned to `a1048e6`, `merged_at: 2026-09-16T18:17:38Z`; then PR #11 (e) as `6c63d91`, pinned to `c2a262d`, `merged_at: 2026-09-16T18:17:56Z`**. PR #11 was stacked on #10's branch, so it was retargeted to `main` after #10 merged and before its own merge; retargeting leaves the head unchanged, and `c2a262d` was re-read before merging. **PR #13 (M1 close-out, README) as `5c667ed`, pinned to `507fc77`, `merged_at: 2026-09-16T18:58:44Z`; then PR #14 (M2) as `39113b2`, pinned to `62cbb99`, `merged_at: 2026-09-16T18:59:00Z`**, #14 retargeted to `main` first. **PR #16 (m3a) as `cbfaebe`, pinned to `1bd9a7a`, confirmed from `merged: true` and `merged_at: 2026-09-19T14:48:17Z`**, the draft marked ready first and the head re-read unchanged; the merge commit's second parent is `1bd9a7a`, so the reviewed head is on `main` unaltered.
+- **Owner/task:** Claude Code session as implementation lead for standalone CBR. **M1 and M2 are complete**; M1's closing record is [m1/CLOSEOUT.md](m1/CLOSEOUT.md). Active task: **M3, [issue #15](https://github.com/Combraton/cbr/issues/15)**, in four pull requests against `main`, each reviewed at its head before merging: m3a the Context profile (**merged**) and m3b retrieval and the dependency evaluator (**merged**); **m3c the packet compiler on a real repository (PR #18, open)**; then m3d the journey-6 pilot. Parent: [issue #1](https://github.com/Combraton/cbr/issues/1). An independent reviewer session reviews this read-only.
+- **Merged:** PR #2 as `d68e9d6`, pinned to `877139f`; PR #4 as `a939446`, pinned to `630011c`; PR #5 (c1) as `8b75129`; PR #6 (c2) as `da1e650`, pinned to `b00ec49`; **PR #7 (c3) as `8ba2594`, pinned to `5b98a9f`, confirmed from `merged: true` and `merged_at: 2026-09-16T15:31:51Z`**. Earlier: PR #6 pinned to `b00ec49`, confirmed from `merged: true` and `merged_at: 2026-09-16T14:26:34Z`**, the draft marked ready first and the head re-read unchanged before merging. Every owner decision, including the ceiling, is in [ADR 001](../decisions/001-standalone-v0.1-scope-and-stack.md). **PR #8 (owner follow-ups) as `f00faaf`, pinned to `40cb30b`, `merged_at: 2026-09-16T16:57:29Z`; PR #9 (c4) as `9a7b8f5`, pinned to `5db9d7c`, `merged_at: 2026-09-16T16:57:53Z`**, in that order, each confirmed from `merged` and `merged_at`. **PR #10 (d) as `96a33f2`, pinned to `a1048e6`, `merged_at: 2026-09-16T18:17:38Z`; then PR #11 (e) as `6c63d91`, pinned to `c2a262d`, `merged_at: 2026-09-16T18:17:56Z`**. PR #11 was stacked on #10's branch, so it was retargeted to `main` after #10 merged and before its own merge; retargeting leaves the head unchanged, and `c2a262d` was re-read before merging. **PR #13 (M1 close-out, README) as `5c667ed`, pinned to `507fc77`, `merged_at: 2026-09-16T18:58:44Z`; then PR #14 (M2) as `39113b2`, pinned to `62cbb99`, `merged_at: 2026-09-16T18:59:00Z`**, #14 retargeted to `main` first. **PR #16 (m3a) as `cbfaebe`, pinned to `1bd9a7a`, confirmed from `merged: true` and `merged_at: 2026-09-19T14:48:17Z`**, the draft marked ready first and the head re-read unchanged; the merge commit's second parent is `1bd9a7a`, so the reviewed head is on `main` unaltered. **PR #17 (m3b) as `c3cdf51`, pinned to `fb67250`, confirmed from `merged: true` and `merged_at: 2026-09-19T15:55:37Z`**, second parent `fb67250`.
 - **Merge rule, 2026-09-16, superseded the same day.** This session ran `gh pr merge` on PR #2 after the owner replied "you can merge PR 2" in-session, having first reported the contradicting claim with evidence and waited. It landed the exact reviewed head `877139f` and is kept. A stricter rule was then recorded, and the owner then **granted merge authority under four conditions**, now in [AGENTS.md](../../AGENTS.md): pin with `--match-head-commit`; the head's CI is green; the reviewer has seen that head; no squash. Confirm from `merged` and `merged_at` afterwards, **never `merge_commit_sha`** — GitHub populates that on an open pull request with the test-merge candidate. Tags and releases remain the owner's alone.
+- **Owner decision, 2026-09-20, recorded at the m3c review: m3d has two pilot repositories**, as an amendment to [ADR 001](../decisions/001-standalone-v0.1-scope-and-stack.md) question 6. Knowscroll-v2 stays the decision-memory pilot; the owner's **brian2 fork** is added as a brownfield pilot, registered read-only, whose journey tests discovery and code flow rather than decision memory, whose oracle the owner writes before the run, and whose dirty working tree makes it the first journey to exercise the dirty path. **brian2 is CeCILL-licensed and this repository is MIT, so none of its bytes, excerpts or packets are committed here** — digests, paths, spans, counts and costs only. It is recorded now and acted on only after m3c is cleared; no other brian2 work belongs in this pull request.
 - **Inspected revisions:** protocol `v0.1.0` = `cbf8e4df9df2ca8a9b50264df6acace6e4c3a0fc`; combraton `9af69ce`; pio `e65b7c0`; benchmarks `c8d5878`.
 
-## This change — M3b, retrieval and the dependency evaluator
+## This change — M3c, the deterministic packet compiler
 
-[PR #17](https://github.com/Combraton/cbr/pull/17) against `main`, **rebased onto `main` after PR #16 landed**, so every hash below is the rebased one. Eleven commits:
+[PR #18](https://github.com/Combraton/cbr/pull/18) against `main`, in the order the review asked for, each gate stated before its code. Four commits: `10e8f61`, `b8e9856`, `0958a25`, `ef521a0`.
+1. **the five rules a retrieval answer owes its caller**, each with its test, before any packet is compiled;
+2. **a registered checkout, and the view a grant makes of it**;
+3. **the deterministic packet compiler, and J1** on this repository, with its negative control;
+4. **J8, the journey records and this one**;
+5. **the first review round**: five corrections, and the owner's m3d amendment recorded in ADR 001 question 6;
+6. **the second review round**: the authorization leak discovery opened, and five more corrections.
+
+| Command | Exit | Result |
+|---|---|---|
+| `check_docs.py` / `verify_pin.py` | 0 / 0 | 22 files, 0 errors; 433 and 420 files match their anchors |
+| `cargo fmt --all -- --check` | 0 | — |
+| `cargo clippy --workspace --all-targets --locked -- -D warnings` | 0 | — |
+| `cargo build --workspace --locked` | 0 | — |
+| `cargo test --workspace --locked` | 0 | **171 tests** (166 and 156 at the two reviews, 132 on `main`) |
+| `git diff --check` | 0 | — |
+| all seven suites + `check_results.py` | 0 | `stream` 24/24 · `core` 130/5/0 · `socket` 11/2/0 · `evidence` 16/0/0 · `knowledge` 10/0/0 · `context` 11/0/0 · `composition` 3 pass, 11 unsupported — **unchanged** |
+
+**The gate, before the code.** The eight retrieval tests were written and run against a `retrieval` module whose every function was `unimplemented!()`: **0 passed, 7 failed**, the eighth and ninth added afterwards for two mutants the first seven did not kill. The compiler's own gate is J1's oracle, declared in the test file's header before the run.
+
+### What changed
+
+- **`cbr_memory::retrieval`**, the rules an index alone does not give: a build manifest with the source frontier, the compiler and the coverage; `complete` / `lagging` / `unavailable` against the basis actually asked about; the false-absence rule with a bounded canonical fallback; a view that is the authorization step made into a type; and three separate bounds with a keyset cursor. A lagging projection is not consulted at all — its rows describe a different tree, so a hit in it would cite the wrong bytes.
+- **`repositories`**, in the provider: registration as launch configuration (`--register-repository <id>=<path>`), a `cbr.repository` subject that never carries the path, and `view`, which turns a session's grant into the repositories it may read. A registration whose checkout cannot be read **refuses the launch**.
+- **`compiler`**, the deterministic packet compiler. Its provenance is `cbr-context-compiler/1`, distinct from `cbr-context-script` by construction. It produces a *script*, spliced in place of its own marker step, so everything downstream is m3a's already-tested path — and the script is ordered by item, by repository and by item again, never by the order things were found in, which is what makes the packet reproducible.
+- **Cited files are sealed as evidence** under their blob id, with the tree, the repository and the path as capture anchors, so a citation resolves to an exact span at a named tree and J1 checks it against `git cat-file blob`.
+- **`cbr context`, `cbr request`, `cbr packet`**, so a journey has a public entry point. The client negotiates every `context/1` feature as optional and resolves the basis locally; no path crosses the socket.
+- **The provider now depends on `cbr-identity` and `cbr-memory`.** Until M2 only the client ever resolved a basis.
+- **Compiling is production-only.** A conformance launch is a test harness, and there a request with no script is still a request nothing prepares, which is what every context fixture was measured against.
+
+### Journeys
+
+**J1 and J8 both pass, with no model**, and both are recorded in [JOURNEYS](../verification/JOURNEYS.md) with the full field set.
+
+- **J1 runs against this repository**, registered at launch. Its oracle was declared before the run: the decision record and the code it is about must both be in the packet, the coverage must name the frontier, and nothing read from source may be labelled `binding`. Measured: **8.0s to the first packet, 6.1s of it the index build over 1,015 blobs**, one coverage gap declared. Every citation was fetched and compared with the blob at the named tree.
+- **J1's negative control is hermetic** — it has to move a repository, and moving this one would tie the test to its own branch's history. It has a positive half as well as a negative one: a compiler that simply cached the first tree would pass the negative half and fail the step where a request at the new tree must get the new bytes.
+- **J8** separates the two fallbacks at one instant: `proceed_with_gap` publishes rather than waiting, `wait_until_deadline` holds the publication while an advisory item is unsatisfied. At the deadline the required item is `unmet` with `deadline_passed` and the advisory one `degraded` with the same reason, and the packet it publishes **cites nothing, includes nothing and satisfies nothing**.
+
+### The review round, and what it corrected
+
+The reviewer ran J1 by hand against a registered checkout and read the packet. Five things were wrong or thin; all five are fixed in this pull request, and the record says how each got past what was already there.
+
+**The packet's provenance said `cbr-context-script`.** The publication path passed that constant unconditionally and never read the job's own `compiler` field, so the "distinct by construction" this branch reported was true of two constants and not of any packet. **How it passed 21 mutants: no test read the field.** The mutant that swapped the two constants was killed only by the coverage line, which is built from a different one, so it looked covered and was not. Both halves are asserted now — a compiled packet in J1, a scripted packet in the m3a test — and a mutant reverting the line is killed by the first.
+
+**Span selection missed the answer.** `select_source` searched the whole repository and filtered by path afterwards, so a named file's own best span lost to every other file's and the packet cited a file's opening twenty lines while the answer was on line 24. The search is scoped to the path **in SQL** now, and a multi-term selector has a written ladder: every term in one chunk, else the best ranked partial match, else the opening chunk, marked `first-chunk` rather than the old `whole-file`, which said twenty lines were a file.
+
+**A question is prose and a selector is chosen words.** Asking for every term of "why does source identity use gix rather than the git binary" returns only chunks that quote the question — in this repository, the test that asks it. Discovery uses the ranked partial reading; `select_source`, given a path, keeps the strict one.
+
+**J1 was a partial and did not say so.** The request named both answer files by exact path, so two of its three oracle facts could not fail; the task text was never read; no decision was ingested as a claim; anchors were unused; and sections carried a locator line and no content, 281 bytes in all. The journey is redone: the request names **no path that answers it**, the ADR is ingested and accepted as a claim, a rejected claim is planted as a second trap, and the compiler has to find the rest. The record now reports 11 sections and 9 citations, and says what it still does not establish.
+
+**Discovery, and what a section carries.** Beyond item-bound sections the compiler adds sections with no `item_id` (CONTEXT section 6): spans the question finds across the view, at most two per file so one file cannot take the budget; anchors for the **identifier-shaped** names only, because ordinary words of a task are function names somewhere in any large repository and pulled in every helper called `git`; and every claim judged against the basis, labelled by what an authority permitted, with rejected and inapplicable ones carried as `stale` and historical. A section now carries a **bounded excerpt** of the span it cites, so the output capacity counts what a consumer reads.
+
+**Four smaller corrections.** A manifest built by a different compiler version is `lagging`, not `complete`. `may_join` compares the view, so a request under a narrower grant never joins a job compiled under a wider one. A blob's size is read from the object header before the blob is read, in all three read paths. And the index build inside the preparation tick is recorded in [VERIFICATION](../VERIFICATION.md) as a known limit with its measured cost, to be resolved in M4's bounded runtime rather than papered over with an unsupervised thread now.
+
+### The second review round: a leak discovery opened
+
+The reviewer probed the packet with a grant that covered repositories and nothing of knowledge, and got back a binding section carrying another principal's claim id, its state and its full statement.
+
+**The cause.** `discover_claims` walked every claim subject in the store and called `knowledge_inspect`, which authorizes nothing — it is the body of an operation whose step 6 ran before it, in the command that normally calls it. Preparation calls it directly, on the provider's own authority, so nothing stood between a claim and any packet.
+
+**How it shipped.** The repository view had exactly this shape from the first commit of this branch — resolve at the command, carry the ids in the job, compare them in `may_join` — and it had a test. Claims were added three commits later and got none of it. **The view test covered repositories, and nothing covered claims.** The same sentence as the provenance defect one round earlier: a rule nothing reads is a rule nothing holds, and here the rule existed and was simply not applied to the second thing that needed it.
+
+**The fix, and its test.** The job carries `readable_claims`, resolved at submit from the grant with `knowledge.read`, `may_join` compares the set, and preparation reads nothing outside it. The test does not check that the section was labelled carefully: it asserts the packet is **byte-identical** to one prepared in a store where the claim was never proposed. The same test exists for a repository outside the view.
+
+**Five more corrections in the same round.** A discovered claim carries its `claim` reference, so CONTEXT section 14's read-time facts see it and a later rejection shows at the read; it cites the evidence its claim rests on. Relevance is a stated rule — a condition naming a repository of the basis, or a shared term with the question — and everything else is omitted with reason `applicability` rather than silently. Drop order follows INTERNALS section 5 step 5 instead of the section id, which had let an anchor outlive a binding decision. A rejected claim's content names the decision that rejected it, because the label vocabulary has no `rejected` and `stale` alone says "was once valid". And the negative control now covers discovery: every blob any section cites is in the tree the packet names.
+
+### Mutants
+
+**This round: 10 mutants, all killed.** Five survived their first run and are killed by tests written for them; each is named below with what was missing. No mutant here is a WRONG-REASON kill — every one fails at the assertion that states the rule it broke — with one exception, noted in the table.
+
+| Mutant | Killed by | At |
+|---|---|---|
+| **Discovery reads every claim in the store** — the leak itself | `a_claim_the_grant_does_not_cover_is_absent_from_the_packet_byte_for_byte` | "a claim outside the grant is identical to a claim that never existed" |
+| Discovery reads every registered repository | `a_request_naming_a_repository_outside_the_grant_is_answered_only_from_the_view` **and** `a_repository_outside_the_grant_contributes_nothing_to_discovery` | the item's unmet reason, and the byte-identity of the packet. **The first is arguably a WRONG-REASON kill for discovery**: it catches the guard through the item path, not through discovery, which is why the second was written |
+| A discovered claim carries no reference | `a_discovered_claim_is_a_claim_section_and_a_later_rejection_shows_at_the_read` | "a discovered claim carries its reference, so a reader can check it" |
+| **A discovered claim cites nothing** | same test, **after a citation assertion was added** | "a claim section cites its support" |
+| **Every readable claim goes into every packet** | `a_readable_claim_that_does_not_bear_on_the_request_is_omitted_with_its_reason`, **written for it** | the toaster claim appears among the sections |
+| **An irrelevant claim is dropped silently** | same test, **written for it** | "an irrelevant claim is omitted, not dropped: []" |
+| **Discovered sections are ordered by their id** | `under_pressure_a_packet_loses_what_it_can_most_afford_to`, **after the test was given anchors to lose** | "and so does the code the question is about" |
+| **The drop order is reversed** | same test, same repair | "the binding decision outlives everything advisory" |
+| A rejected claim does not name its decision | `j1_a_question_finds_its_own_answer_with_a_cited_packet` | "a rejected claim names the decision that rejected it: … no longer current" |
+| A job is joined whatever claims it could read | `context::tests::a_job_is_joined_only_by_a_request_with_the_same_view` | "a request that may read more claims never joins a narrower job" |
+
+**Why five survived, in one sentence each.** Every claim in every test was relevant and accepted, so the relevance rule, its omission and the claim's evidence citation were written and never executed. And the drop-order test used a selector that produces no anchors, at a capacity where everything fit, so "anchors go before spans" passed with no anchors present.
+
+**One claim I had made was wrong and is corrected in the test.** `context::inclusion` **packs** rather than truncates: it walks sections in order and keeps each that still fits, so a small low-priority section can occupy room a larger one could not use. What the order decides is priority, not exclusion. The assertion now pins the statement that is true and that distinguishes the two orderings — historical material is the first thing to go while task evidence stays.
+
+**The round before: 12 mutants, all killed.** They exist because the round's first lesson was that a rule nothing reads is a rule nothing holds — `provenance.compiler` was wrong under 21 green mutants because no test read the field.
+
+| Mutant | Killed by |
+|---|---|
+| **The packet forgets which compiler made it** — the defect itself | J1, on `provenance.compiler` |
+| **The search is not scoped to the named path** | J1, where a cited span stops being the named file's bytes at the named line |
+| A partial match still requires every term | `a_multi_term_query_can_ask_for_every_term_or_for_the_best_partial_match` |
+| A question is read as every term | J1: the answer stops being found, because only chunks quoting the question match |
+| **A section carries only its locator** | `an_excerpt_is_what_the_output_capacity_counts` · J1 |
+| An excerpt is taken from the start of the file | J1, at the excerpt-equals-the-artifact-at-this-line check |
+| Discovery adds nothing | `an_excerpt_is_what_the_output_capacity_counts` · J1 |
+| A rejected claim is served as current | J1's second trap |
+| **One file may take the whole discovery budget** | `discovery_covers_more_than_one_file_however_loud_a_single_file_is`, **written for it**: it survived its first run, because the decision record still landed inside the top eight by score with the cap removed, so the cap improved the packet while nothing pinned it |
+| A manifest from another compiler is still complete | `an_index_built_by_another_compiler_is_lagging_however_current_its_tree` |
+| A narrower request joins a wider job | `a_job_is_joined_only_by_a_request_with_the_same_view` |
+| A blob is read before its size is checked | `a_blob_is_measured_before_it_is_read` |
+
+From the first round: all observed, all restored. **21 distinct mutants, all killed**: 12 against the retrieval rules, 9 against the compiler and its provider glue. Five of them survived their first batch and are killed by tests written for them, named below.
+
+| Mutant | Killed by |
+|---|---|
+| **The false-absence rule removed** — the review's named mutant | `a_lagging_projection_falls_back_to_the_canonical_records_and_never_answers_nothing_found` and `an_unavailable_projection_states_why_rather_than_answering_empty`, both at `declares_its_gaps` |
+| An empty fallback says nothing · an unreadable fallback says nothing | `an_unavailable_projection_states_why_rather_than_answering_empty`; **the first needed a third case written for it** |
+| A lagging projection answers from its stale index | the frontier and state assertions of `an_index_records_the_frontier_and_the_compiler_it_was_built_with` |
+| The view is not the search scope | `a_principal_without_read_sees_nothing_from_that_repository_and_cannot_tell_it_apart_from_no_match` |
+| The row cap is not applied · the cursor is never owed · the keyset is applied after the page | `a_page_is_bounded_by_rows_and_its_cursor_walks_every_hit_exactly_once` |
+| A tie at the cursor score is always taken | `a_page_walks_two_repositories_that_tie_on_score_without_repeating_either`, **written for it** |
+| One read is not capped · a batch is not capped | `one_read_is_bounded_by_its_span_and_a_batch_by_its_total` |
+| The digest includes insertion order | `a_rebuilt_index_is_identical_to_the_one_maintained_incrementally` |
+| **The basis is ignored and the checkout's `HEAD` is read** — the control's own mutant | **J1's negative control**, at the step where a request at the old tree must still get the old bytes |
+| **Source read from a repository is served as `binding`** | **J1's trap** |
+| A compiled packet claims the scripted compiler | J1, at the coverage producer |
+| Coverage is never reported | J1, at the coverage assertion |
+| A citation names another blob of the same tree | J1, at “the cited artifact is the blob at the named tree, exactly” |
+| The compiled script follows the order things were found in | `the_script_is_ordered_by_item_whatever_order_the_compiler_decided_in`, **after an ascending-order assertion was added**: the first form of that test compared two orderings of the same reversal and passed |
+| A projection that cannot be built is silently complete | `a_projection_that_cannot_be_built_is_reported_unavailable_rather_than_empty`, **written for it** |
+| The view is not consulted at preparation | `a_request_naming_a_repository_outside_the_grant_is_answered_only_from_the_view`, **written for it** |
+
+**Two mutations are recorded rather than counted, because neither was a fair test.**
+- **One was equivalent as first written.** Guarding the view check with `&& !view.is_empty()` behaves identically for every view a session can actually hold, so it could never fail. It was corrected to remove the check outright before it was counted.
+- **One was replaced.** Sealing a cited file under a digest that does not match its bytes makes `publish_object` refuse the object, so preparation never publishes and the journey times out instead of failing at the citation check. A timeout is not a clean kill and the integrity check upstream makes that mutation unreachable, so it was replaced by one that seals a *consistent* digest of a different blob of the same tree — which is what the citation comparison is there to catch.
+
+### Coverage limits
+
+- **Determinism is a property of the build, not of the content.** INTERNALS section 4 is explicit that a structurally consistent build is not a claim that what it selected is right. J1's oracle is a predeclared list of facts, not a measurement of whether a session did better with the packet; that is J6.
+- **The request names the files.** Retrieval chooses which span of a named file to cite, not which file to look at. Ranking is still BM25 and still unevaluated.
+- **The canonical fallback's read budget has no test.** Nothing in the suite reads the 8 MiB it allows before it stops and says so.
+- **One repository per journey.** A basis naming several repositories is supported and untested end to end.
+- **No model anywhere.** Model-assisted selection is M4, and a compiled packet must not be described as model-assisted.
+
+## Earlier — M3b, retrieval and the dependency evaluator
+
+[PR #17](https://github.com/Combraton/cbr/pull/17), merged as `c3cdf51` pinned to `fb67250`. Rebased onto `main` after PR #16 landed, so every hash below is the rebased one. Eleven commits:
 1. the evaluator's gate, written and run against an unimplemented evaluator (`2af15f0`);
 2. the evaluator, and the bug its harness found (`15a5a87`);
 3. the lexical index and its pre-tokeniser (`89dedbd`);

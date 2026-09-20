@@ -131,6 +131,8 @@ name = "cbr-provider"
 version = "0.1.0"
 dependencies = [
  "cbr-encoding",
+ "cbr-identity",
+ "cbr-memory",
  "libc",
  "rusqlite",
  "tempfile",

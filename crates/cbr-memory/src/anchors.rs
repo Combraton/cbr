@@ -228,13 +228,33 @@ pub fn remove_tree(connection: &Connection, tree: &str) -> Result<(), AnchorErro
 
 /// Every definition of `name` at `tree`. Two candidates stay two candidates.
 pub fn resolve(connection: &Connection, tree: &str, name: &str) -> Result<Resolution, AnchorError> {
+    anchored(connection, tree, name, true)
+}
+
+/// Every *reference* to `name` at `tree`: where it is used rather than where
+/// it is defined. Tags say a name appears here, not which definition it
+/// means, so this is a list of places to look, never a call graph.
+pub fn references(
+    connection: &Connection,
+    tree: &str,
+    name: &str,
+) -> Result<Vec<Candidate>, AnchorError> {
+    Ok(anchored(connection, tree, name, false)?.candidates)
+}
+
+fn anchored(
+    connection: &Connection,
+    tree: &str,
+    name: &str,
+    definitions: bool,
+) -> Result<Resolution, AnchorError> {
     let mut statement = connection.prepare(
         "SELECT path, blob, kind, name, start_byte, end_byte, start_line, end_line
          FROM anchor
-         WHERE tree = ?1 AND name = ?2 AND is_definition = 1
+         WHERE tree = ?1 AND name = ?2 AND is_definition = ?3
          ORDER BY path, start_byte",
     )?;
-    let rows = statement.query_map(params![tree, name], |row| {
+    let rows = statement.query_map(params![tree, name, i64::from(definitions)], |row| {
         Ok(Candidate {
             path: row.get(0)?,
             blob: row.get(1)?,

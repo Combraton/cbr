@@ -144,6 +144,34 @@ pub fn tree_entries(repository: &Path, tree: &str) -> Result<Vec<TreeEntry>, Ide
 }
 
 /// One blob's bytes, by object id.
+/// A blob's size without reading it.
+///
+/// The header is enough, and asking for it first is the difference between
+/// refusing an oversized blob and allocating it in order to refuse it. Every
+/// read path here is fed by a repository nobody in this process controls.
+pub fn blob_size(repository: &Path, blob: &str) -> Result<u64, IdentityError> {
+    let repository = open(repository)?;
+    let id = repository
+        .rev_parse_single(blob)
+        .map_err(|error| IdentityError::Git(format!("resolving blob {blob}: {error}")))?;
+    let header = repository
+        .find_header(id)
+        .map_err(|error| IdentityError::Git(format!("reading the header of {blob}: {error}")))?;
+    Ok(header.size())
+}
+
+/// Read a blob, refusing one larger than `limit` bytes before it is read.
+pub fn read_blob_bounded(
+    repository: &Path,
+    blob: &str,
+    limit: u64,
+) -> Result<Option<Vec<u8>>, IdentityError> {
+    if blob_size(repository, blob)? > limit {
+        return Ok(None);
+    }
+    read_blob(repository, blob).map(Some)
+}
+
 pub fn read_blob(repository: &Path, blob: &str) -> Result<Vec<u8>, IdentityError> {
     let repository = open(repository)?;
     let object = repository

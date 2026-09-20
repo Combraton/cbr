@@ -434,17 +434,32 @@ mod tests {
         // The measured ending, for the test log.
         eprintln!("{}", record.record());
 
-        // Time. Declared at the room deadline, closed within the notice
-        // budget after that, so within 2x the budget of the stall's start.
+        // Time, in the two phases CORE section 11 actually bounds: declared
+        // at the room deadline, then closed within the notice budget of
+        // *being declared*. Each phase gets its own scheduling slack.
+        //
+        // This was one bound on the sum with a single slack, and it failed
+        // on a loaded CI runner at 861ms against 850: the product had done
+        // exactly the right thing -- declared at 420ms, closed 441ms later
+        // -- and two independent scheduling delays had added up while the
+        // one slack did not. Per phase, the same two bounds hold and the
+        // sum is their honest composition.
         let slack = Duration::from_millis(250);
         let to_declared = record.declared.duration_since(record.stall_started);
+        let declared_to_closed = record.closed.duration_since(record.declared);
         let to_closed = record.closed.duration_since(record.stall_started);
         assert!(
             to_declared >= notice && to_declared < notice + slack,
             "declared too slow at the room deadline: {to_declared:?}"
         );
         assert!(
-            to_closed < 2 * notice + slack,
+            declared_to_closed < notice + slack,
+            "closed within the notice budget of being declared: \
+             {declared_to_closed:?}; {}",
+            record.record()
+        );
+        assert!(
+            to_closed < 2 * (notice + slack),
             "closed within 2x the notice budget of the stall: {to_closed:?}; {}",
             record.record()
         );
