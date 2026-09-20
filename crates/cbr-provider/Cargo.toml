@@ -27,3 +27,7 @@ libc = "0.2.189"
 [dev-dependencies]
 tempfile = "3.27.0"
 cbr-encoding = { path = "../cbr-encoding" }
+# The crash matrix reads the ledger the provider wrote, which is the only way
+# to check a counter after the process that held it was killed. Already in the
+# tree as a normal dependency; declared here so `tests/` can see it.
+rusqlite.workspace = true

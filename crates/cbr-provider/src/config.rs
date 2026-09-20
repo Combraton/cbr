@@ -65,7 +65,8 @@ impl Limits {
 /// configuration naming any of them is refused rather than ignored: silently
 /// dropping a control the operator wrote down would leave them believing a
 /// clock or a fault injector was in effect when it was not.
-const TEST_CONTROL_MEMBERS: [&str; 12] = [
+const TEST_CONTROL_MEMBERS: [&str; 13] = [
+    "model",
     "evidence_store",
     "clock",
     "capabilities",
@@ -134,11 +135,36 @@ pub struct Config {
     /// The applicability evaluator pinned in evaluations, and the
     /// `knowledge.store` test control (KNOWLEDGE section 13).
     pub knowledge: KnowledgeStore,
+    /// A ceiling for this whole run, from the launch. It can only **lower**
+    /// the owner's envelope: it is checked after the two counters, so a
+    /// number above them changes nothing. m4e's five-million cap across
+    /// three journeys is this, enforced rather than intended.
+    pub model_run_ceiling: Option<u64>,
+    /// The `model.fake` test control: one scripted call through
+    /// [`crate::model::Runtime`] at startup, so the ledger's crash
+    /// boundaries are reachable by a process that can be killed at them.
+    /// `None` in production, where the member is refused outright — there is
+    /// no transport in this build and nothing else may pretend there is.
+    pub model: Option<FakeModel>,
     /// The `context.script` test control (CONTEXT section 12): scripted
     /// preparation per request, and the peers a context provider reaches over
     /// the public protocol. `Null` when absent. It holds peer credentials, so
     /// it is never logged or echoed.
     pub context: ContextControl,
+}
+
+/// The `model.fake` control's value: what to call with, and what the fake
+/// transport should answer.
+#[derive(Debug, Clone)]
+pub struct FakeModel {
+    pub job: String,
+    pub request: String,
+    pub body: String,
+    /// `usage:<n>`, `provider_exhausted`, `failed` or `not_sent`. It is the
+    /// **completion's** answer; the count is always answered as a count.
+    pub answer: String,
+    /// The generation limit the body declares and the reservation covers.
+    pub generation: u64,
 }
 
 /// The `context.script` control's value. Its `Debug` form names nothing it
@@ -223,6 +249,8 @@ impl Default for Config {
             clock: crate::clock::Source::System,
             capabilities: Vec::new(),
             credentials: Vec::new(),
+            model: None,
+            model_run_ceiling: None,
             test_barriers: None,
             evidence_store: EvidenceStore::default(),
             knowledge: KnowledgeStore::production(),
@@ -414,6 +442,34 @@ impl Config {
                 staging_timeout_seconds: int(store.get("staging_timeout_seconds")),
                 deletion_delay_seconds: int(store.get("deletion_delay_seconds")),
             };
+        }
+        if let Some(model) = value.get("model") {
+            config.model = Some(FakeModel {
+                job: model
+                    .get("job")
+                    .and_then(Value::as_str)
+                    .unwrap_or("model-fake")
+                    .to_string(),
+                request: model
+                    .get("request")
+                    .and_then(Value::as_str)
+                    .unwrap_or("call")
+                    .to_string(),
+                body: model
+                    .get("body")
+                    .and_then(Value::as_str)
+                    .unwrap_or("{\"max_tokens\":64}")
+                    .to_string(),
+                answer: model
+                    .get("answer")
+                    .and_then(Value::as_str)
+                    .unwrap_or("usage:64")
+                    .to_string(),
+                generation: match model.get("generation") {
+                    Some(Value::Int(generation)) => (*generation).max(0) as u64,
+                    _ => 64,
+                },
+            });
         }
         if let Some(barriers) = value.get("test_barriers") {
             let directory = barriers

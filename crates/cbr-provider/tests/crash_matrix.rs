@@ -744,3 +744,237 @@ fn a_second_provider_over_the_same_data_directory_refuses_to_start() {
     ));
     provider.kill();
 }
+
+// ---------------------------------------------------------------------------
+// The envelope's own rows (m4a)
+// ---------------------------------------------------------------------------
+//
+// **Six rows, not three.** A call is two sends — the count and the
+// completion — and the first version of this scripted one answer, which the
+// count consumed, so the process paused at the count's first boundary in
+// every row while the test believed it had reached the completion. Each row
+// now names its call, and each asserts **which call's reservation is on
+// disk, by request id**, so a row cannot pass at the wrong boundary again.
+//
+// | Row | Boundary | Test |
+// |---|---|---|
+// | Count reserved, nothing sent | `model.count.after_reservation` | [`a_kill_after_the_count_reservation_leaves_the_spend_counted`] |
+// | Count sent, not reconciled | `model.count.after_send` | [`a_kill_after_the_count_send_leaves_the_estimate_counted`] |
+// | Inside the count's reconciliation | `model.count.during_reconciliation` | [`a_kill_during_the_count_reconciliation_counts_once`] |
+// | Completion reserved, nothing sent | `model.completion.after_reservation` | [`a_kill_after_the_completion_reservation_leaves_both_counted`] |
+// | Completion sent, not reconciled | `model.completion.after_send` | [`a_kill_after_the_completion_send_leaves_the_estimate_counted`] |
+// | Inside the completion's reconciliation | `model.completion.during_reconciliation` | [`a_kill_during_the_completion_reconciliation_counts_once`] |
+//
+// The property after every one is the same and is deliberately one-sided:
+// **the spend is counted at least once and is never zero.** A ledger that
+// forgets a spend overspends somebody else's quota; one that counts it twice
+// only refuses a call it could have allowed.
+
+/// Launch a provider whose `model.fake` control makes it perform one call
+/// through the ledger, pausing at `barrier`. It pauses before it serves, so
+/// nothing negotiates with it: the test waits for the marker and kills it.
+fn start_paused_at(data: &Data, barrier: &str) -> Child {
+    let barrier_dir = data.path().join("barriers");
+    let config = data.path().join("model-config.json");
+    std::fs::write(
+        &config,
+        format!(
+            r#"{{"format":"combraton-conformance-config/1","principal":"owner","authority_principals":["owner"],"test_barriers":{{"directory":"{}","enabled":["{barrier}"]}},"model":{{"job":"m4a","request":"call","body":"{{\"max_tokens\":64}}","answer":"usage:5000","generation":64}}}}"#,
+            barrier_dir.display()
+        ),
+    )
+    .expect("config");
+    Command::new(binary())
+        .arg("--data-dir")
+        .arg(data.path().join("data"))
+        .arg("--config")
+        .arg(&config)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("provider starts")
+}
+
+fn wait_for_marker(data: &Data, barrier: &str) {
+    let marker = data
+        .path()
+        .join("barriers")
+        .join(format!("{barrier}.reached"));
+    let started = Instant::now();
+    while !marker.exists() {
+        assert!(
+            started.elapsed() < Duration::from_secs(20),
+            "the provider never reached {barrier}"
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+/// What the ledger says, read from the store the killed process left behind:
+/// the request id, the kind, the tokens and the estimate.
+fn ledger_rows(data: &Data) -> Vec<(String, String, i64, i64)> {
+    let connection = rusqlite::Connection::open(data.path().join("data").join("cbr.sqlite"))
+        .expect("opens the store");
+    let mut statement = connection
+        .prepare("SELECT request, kind, tokens, estimate FROM model_ledger ORDER BY id")
+        .expect("prepares");
+    let rows = statement
+        .query_map([], |row| {
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+        })
+        .expect("queries");
+    rows.map(|row| row.expect("row")).collect()
+}
+
+/// Every row that counts as spend, and their total.
+fn counted(rows: &[(String, String, i64, i64)]) -> i64 {
+    rows.iter()
+        .filter(|(_, kind, _, _)| {
+            matches!(
+                kind.as_str(),
+                "reservation" | "usage" | "unknown" | "provider_exhausted" | "not_sent"
+            )
+        })
+        .map(|(_, _, tokens, _)| tokens)
+        .sum()
+}
+
+fn kill(mut child: Child) {
+    child.kill().expect("kills");
+    child.wait().expect("reaps");
+}
+
+/// Run one row: kill at `barrier` and hand the rows back.
+fn row(barrier: &str) -> Vec<(String, String, i64, i64)> {
+    let data = Data::new();
+    let child = start_paused_at(&data, barrier);
+    wait_for_marker(&data, barrier);
+    kill(child);
+    let rows = ledger_rows(&data);
+    assert!(
+        counted(&rows) > 0,
+        "the spend is counted, never zero, at {barrier}: {rows:?}"
+    );
+    rows
+}
+
+#[test]
+fn a_kill_after_the_count_reservation_leaves_the_spend_counted() {
+    // The reservation is written *before* anything is sent, so this is the
+    // moment the design exists for: the process dies holding a reservation
+    // for a call that never happened, and the spend is still counted.
+    let rows = row("model.count.after_reservation");
+    assert_eq!(rows.len(), 1, "only the count has been reserved: {rows:?}");
+    assert_eq!(rows[0].0, "call.count", "and it is the count's: {rows:?}");
+    assert_eq!(rows[0].1, "reservation", "nothing settled it: {rows:?}");
+}
+
+#[test]
+fn a_kill_after_the_count_send_leaves_the_estimate_counted() {
+    let rows = row("model.count.after_send");
+    assert_eq!(rows.len(), 1, "{rows:?}");
+    assert_eq!(rows[0].0, "call.count");
+    assert_eq!(rows[0].1, "reservation", "still holding its estimate");
+    assert_eq!(rows[0].2, rows[0].3, "which is what it reserved");
+}
+
+#[test]
+fn a_kill_during_the_count_reconciliation_counts_once() {
+    let rows = row("model.count.during_reconciliation");
+    let spends = rows
+        .iter()
+        .filter(|(_, kind, _, _)| kind == "reservation" || kind == "usage")
+        .count();
+    assert_eq!(spends, 1, "counted once, not twice and not none: {rows:?}");
+    assert_eq!(rows[0].0, "call.count");
+}
+
+#[test]
+fn a_kill_after_the_completion_reservation_leaves_both_counted() {
+    // The row the first version of this could never reach: the count has
+    // settled and the completion is reserved and unsent.
+    let rows = row("model.completion.after_reservation");
+    assert_eq!(rows.len(), 2, "the count and the completion: {rows:?}");
+    assert_eq!(rows[0].0, "call.count");
+    assert_eq!(rows[0].1, "usage", "the count settled: {rows:?}");
+    assert_eq!(rows[1].0, "call", "the completion is reserved: {rows:?}");
+    assert_eq!(rows[1].1, "reservation");
+    assert!(
+        rows[1].2 > rows[0].2,
+        "and its reservation covers the generation, so it is the larger: {rows:?}"
+    );
+}
+
+#[test]
+fn a_kill_after_the_completion_send_leaves_the_estimate_counted() {
+    let rows = row("model.completion.after_send");
+    assert_eq!(rows.len(), 2, "{rows:?}");
+    assert_eq!(rows[1].0, "call");
+    assert_eq!(rows[1].1, "reservation", "sent, not reconciled");
+    assert_eq!(rows[1].2, rows[1].3, "the estimate stands, over-counting");
+}
+
+#[test]
+fn a_kill_during_the_completion_reconciliation_counts_once() {
+    let rows = row("model.completion.during_reconciliation");
+    let completion: Vec<_> = rows
+        .iter()
+        .filter(|(request, ..)| request == "call")
+        .collect();
+    assert_eq!(
+        completion.len(),
+        1,
+        "the completion is one row, never two: {rows:?}"
+    );
+    assert!(
+        matches!(completion[0].1.as_str(), "reservation" | "usage"),
+        "either still its estimate or already its usage: {rows:?}"
+    );
+}
+
+#[test]
+fn with_no_model_configured_nothing_is_reserved_and_the_ledger_stays_empty() {
+    // **Negative control 1, at m4a rather than at m4e.** The golden packet
+    // digest already says the deterministic path is unchanged when no model
+    // is configured; this says the envelope is untouched too. A ledger row
+    // written without a model would mean a call happened that nobody asked
+    // for, which is what "background spend is zero" forbids.
+    let data = Data::new();
+    let provider = data.start(&[]);
+    drop(provider);
+    assert!(
+        ledger_rows(&data).is_empty(),
+        "no model, no reservation: {:?}",
+        ledger_rows(&data)
+    );
+}
+
+#[test]
+fn a_production_configuration_refuses_the_model_control() {
+    // The fake transport is the only transport in this build, and it must be
+    // unreachable outside a conformance launch. Refused, not ignored:
+    // silently dropping it would leave an operator believing a model was
+    // configured when none was.
+    let data = Data::new();
+    let config = data.path().join("production.json");
+    std::fs::write(
+        &config,
+        r#"{"format":"cbr-config/1","principal":"owner","model":{"job":"j","request":"r","body":"{}","answer":"usage:1"}}"#,
+    )
+    .expect("config");
+    let output = Command::new(binary())
+        .arg("--data-dir")
+        .arg(data.path().join("data"))
+        .arg("--config")
+        .arg(&config)
+        .stdin(Stdio::null())
+        .output()
+        .expect("runs");
+    assert!(!output.status.success(), "a production launch refuses it");
+    let message = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        message.contains("model"),
+        "and says which control it refused: {message}"
+    );
+}

@@ -553,6 +553,14 @@ impl Store {
         // unavailable, and the compiler would have to say so on every read.
         cbr_memory::index::migrate(&self.connection).map_err(memory_failed)?;
         cbr_memory::retrieval::migrate(&self.connection).map_err(memory_failed)?;
+        // The envelope's ledger lives here too, under the same WAL,
+        // `synchronous=FULL` and `BEGIN IMMEDIATE` discipline as the records
+        // it guards. A ledger with weaker durability than the thing it
+        // protects would be the weakest link in the protection.
+        crate::budget::Ledger::migrate(&self.connection).map_err(|error| match error {
+            crate::budget::LedgerError::Storage(error) => StoreError::Sqlite(error),
+            _ => StoreError::Sqlite(rusqlite::Error::InvalidQuery),
+        })?;
         Ok(())
     }
 

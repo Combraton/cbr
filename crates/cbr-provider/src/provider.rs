@@ -331,6 +331,59 @@ impl Provider {
     /// is deliberate: a registration whose checkout cannot be read would
     /// otherwise look, to every later search, like a repository with nothing
     /// in it.
+    /// One call through [`crate::model::Runtime`] against the fake
+    /// transport, so the ledger's three crash boundaries belong to a running
+    /// process the crash matrix can kill at.
+    ///
+    /// **It selects nothing.** No packet changes because of it; it exists to
+    /// make the envelope's own failure modes reachable under `SIGKILL`.
+    /// Reached only when `model.fake` is configured, which a production
+    /// launch configuration refuses.
+    pub fn run_fake_model_call(&mut self, fake: &crate::config::FakeModel) {
+        use crate::model::{Answer, Recorder, Runtime};
+        // **Both answers are scripted.** A single scripted answer was
+        // consumed by the count call, and a `Completed` returned to a count
+        // took the failure arm, so the process paused at the count's first
+        // boundary in every row while the test believed it had reached the
+        // completion. The count is answered as a count; the control's own
+        // answer is the completion's.
+        let completion = match fake.answer.split_once(':') {
+            Some(("usage", tokens)) => Answer::Completed {
+                body: Vec::new(),
+                usage: tokens.parse().unwrap_or(0),
+            },
+            _ if fake.answer == "provider_exhausted" => Answer::ProviderExhausted,
+            _ if fake.answer == "failed" => Answer::Failed {
+                reason: "scripted".into(),
+                usage: None,
+            },
+            _ if fake.answer == "not_sent" => Answer::NotSent("scripted".into()),
+            _ => Answer::Completed {
+                body: Vec::new(),
+                usage: 0,
+            },
+        };
+        let counted = Answer::Counted(fake.body.len() as u64);
+        let transport = Recorder::new(vec![counted, completion]);
+        let now = self.clock.now();
+        let runtime = Runtime {
+            ledger: crate::budget::Ledger::new(self.store.connection())
+                .with_run_ceiling(self.config.model_run_ceiling),
+            transport: &transport,
+        };
+        runtime.call(
+            &now,
+            &crate::model::Attempt {
+                job: &fake.job,
+                request: &fake.request,
+                body: fake.body.as_bytes(),
+                messages: 1,
+                generation: fake.generation,
+            },
+            &|name| crate::barriers::pause(name),
+        );
+    }
+
     pub fn register_repositories(
         &mut self,
         registrations: &[crate::repositories::Registration],
