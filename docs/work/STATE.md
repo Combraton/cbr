@@ -2,14 +2,77 @@
 
 This is a dated navigation snapshot. Reconcile it with Git, linked issues and current task evidence before acting. Issues own live progress; this file does not grant authority or maintain a second backlog.
 
-- **Updated:** 2026-09-19.
-- **Owner/task:** Claude Code session as implementation lead for standalone CBR. **M1 and M2 are complete**; M1's closing record is [m1/CLOSEOUT.md](m1/CLOSEOUT.md). Active task: **M3, [issue #15](https://github.com/Combraton/cbr/issues/15)**, in four pull requests against `main`, each reviewed at its head before merging: m3a the Context profile (**merged**) and m3b retrieval and the dependency evaluator (**merged**); **m3c the packet compiler on a real repository (PR #18, open)**; then m3d the journey-6 pilot. Parent: [issue #1](https://github.com/Combraton/cbr/issues/1). An independent reviewer session reviews this read-only.
-- **Merged:** PR #2 as `d68e9d6`, pinned to `877139f`; PR #4 as `a939446`, pinned to `630011c`; PR #5 (c1) as `8b75129`; PR #6 (c2) as `da1e650`, pinned to `b00ec49`; **PR #7 (c3) as `8ba2594`, pinned to `5b98a9f`, confirmed from `merged: true` and `merged_at: 2026-09-16T15:31:51Z`**. Earlier: PR #6 pinned to `b00ec49`, confirmed from `merged: true` and `merged_at: 2026-09-16T14:26:34Z`**, the draft marked ready first and the head re-read unchanged before merging. Every owner decision, including the ceiling, is in [ADR 001](../decisions/001-standalone-v0.1-scope-and-stack.md). **PR #8 (owner follow-ups) as `f00faaf`, pinned to `40cb30b`, `merged_at: 2026-09-16T16:57:29Z`; PR #9 (c4) as `9a7b8f5`, pinned to `5db9d7c`, `merged_at: 2026-09-16T16:57:53Z`**, in that order, each confirmed from `merged` and `merged_at`. **PR #10 (d) as `96a33f2`, pinned to `a1048e6`, `merged_at: 2026-09-16T18:17:38Z`; then PR #11 (e) as `6c63d91`, pinned to `c2a262d`, `merged_at: 2026-09-16T18:17:56Z`**. PR #11 was stacked on #10's branch, so it was retargeted to `main` after #10 merged and before its own merge; retargeting leaves the head unchanged, and `c2a262d` was re-read before merging. **PR #13 (M1 close-out, README) as `5c667ed`, pinned to `507fc77`, `merged_at: 2026-09-16T18:58:44Z`; then PR #14 (M2) as `39113b2`, pinned to `62cbb99`, `merged_at: 2026-09-16T18:59:00Z`**, #14 retargeted to `main` first. **PR #16 (m3a) as `cbfaebe`, pinned to `1bd9a7a`, confirmed from `merged: true` and `merged_at: 2026-09-19T14:48:17Z`**, the draft marked ready first and the head re-read unchanged; the merge commit's second parent is `1bd9a7a`, so the reviewed head is on `main` unaltered. **PR #17 (m3b) as `c3cdf51`, pinned to `fb67250`, confirmed from `merged: true` and `merged_at: 2026-09-19T15:55:37Z`**, second parent `fb67250`.
+- **Updated:** 2026-09-20.
+- **Owner/task:** Claude Code session as implementation lead for standalone CBR. **M1 and M2 are complete**; M1's closing record is [m1/CLOSEOUT.md](m1/CLOSEOUT.md). Active task: **M3, [issue #15](https://github.com/Combraton/cbr/issues/15)**, in four pull requests against `main`, each reviewed at its head before merging: m3a the Context profile (**merged**), m3b retrieval and the dependency evaluator (**merged**) and m3c the packet compiler on a real repository (**merged**); **m3d the journey-6 pilots (PR #19, open)**. Parent: [issue #1](https://github.com/Combraton/cbr/issues/1). An independent reviewer session reviews this read-only.
+- **Merged:** PR #2 as `d68e9d6`, pinned to `877139f`; PR #4 as `a939446`, pinned to `630011c`; PR #5 (c1) as `8b75129`; PR #6 (c2) as `da1e650`, pinned to `b00ec49`; **PR #7 (c3) as `8ba2594`, pinned to `5b98a9f`, confirmed from `merged: true` and `merged_at: 2026-09-16T15:31:51Z`**. Earlier: PR #6 pinned to `b00ec49`, confirmed from `merged: true` and `merged_at: 2026-09-16T14:26:34Z`**, the draft marked ready first and the head re-read unchanged before merging. Every owner decision, including the ceiling, is in [ADR 001](../decisions/001-standalone-v0.1-scope-and-stack.md). **PR #8 (owner follow-ups) as `f00faaf`, pinned to `40cb30b`, `merged_at: 2026-09-16T16:57:29Z`; PR #9 (c4) as `9a7b8f5`, pinned to `5db9d7c`, `merged_at: 2026-09-16T16:57:53Z`**, in that order, each confirmed from `merged` and `merged_at`. **PR #10 (d) as `96a33f2`, pinned to `a1048e6`, `merged_at: 2026-09-16T18:17:38Z`; then PR #11 (e) as `6c63d91`, pinned to `c2a262d`, `merged_at: 2026-09-16T18:17:56Z`**. PR #11 was stacked on #10's branch, so it was retargeted to `main` after #10 merged and before its own merge; retargeting leaves the head unchanged, and `c2a262d` was re-read before merging. **PR #13 (M1 close-out, README) as `5c667ed`, pinned to `507fc77`, `merged_at: 2026-09-16T18:58:44Z`; then PR #14 (M2) as `39113b2`, pinned to `62cbb99`, `merged_at: 2026-09-16T18:59:00Z`**, #14 retargeted to `main` first. **PR #16 (m3a) as `cbfaebe`, pinned to `1bd9a7a`, confirmed from `merged: true` and `merged_at: 2026-09-19T14:48:17Z`**, the draft marked ready first and the head re-read unchanged; the merge commit's second parent is `1bd9a7a`, so the reviewed head is on `main` unaltered. **PR #17 (m3b) as `c3cdf51`, pinned to `fb67250`, confirmed from `merged: true` and `merged_at: 2026-09-19T15:55:37Z`**, second parent `fb67250`. **PR #18 (m3c) as `2cf6b97`, pinned to `81c5f0e`, confirmed from `merged: true` and `merged_at: 2026-09-20T04:35:37Z`**, second parent `81c5f0e`.
 - **Merge rule, 2026-09-16, superseded the same day.** This session ran `gh pr merge` on PR #2 after the owner replied "you can merge PR 2" in-session, having first reported the contradicting claim with evidence and waited. It landed the exact reviewed head `877139f` and is kept. A stricter rule was then recorded, and the owner then **granted merge authority under four conditions**, now in [AGENTS.md](../../AGENTS.md): pin with `--match-head-commit`; the head's CI is green; the reviewer has seen that head; no squash. Confirm from `merged` and `merged_at` afterwards, **never `merge_commit_sha`** — GitHub populates that on an open pull request with the test-merge candidate. Tags and releases remain the owner's alone.
 - **Owner decision, 2026-09-20, recorded at the m3c review: m3d has two pilot repositories**, as an amendment to [ADR 001](../decisions/001-standalone-v0.1-scope-and-stack.md) question 6. Knowscroll-v2 stays the decision-memory pilot; the owner's **brian2 fork** is added as a brownfield pilot, registered read-only, whose journey tests discovery and code flow rather than decision memory, whose oracle the owner writes before the run, and whose dirty working tree makes it the first journey to exercise the dirty path. **brian2 is CeCILL-licensed and this repository is MIT, so none of its bytes, excerpts or packets are committed here** — digests, paths, spans, counts and costs only. It is recorded now and acted on only after m3c is cleared; no other brian2 work belongs in this pull request.
 - **Inspected revisions:** protocol `v0.1.0` = `cbf8e4df9df2ca8a9b50264df6acace6e4c3a0fc`; combraton `9af69ce`; pio `e65b7c0`; benchmarks `c8d5878`.
 
-## This change — M3c, the deterministic packet compiler
+## This change — M3d, the journey-6 pilots
+
+[PR #19](https://github.com/Combraton/cbr/pull/19) against `main`. Two pilot repositories, neither of them this one, and the guard the milestone's own failures argued for.
+
+| Command | Exit | Result |
+|---|---|---|
+| `check_docs.py` / `verify_pin.py` | 0 / 0 | 22 files, 0 errors; 433 and 420 files match their anchors |
+| `cargo fmt --all -- --check` | 0 | — |
+| `cargo clippy --workspace --all-targets --locked -- -D warnings` | 0 | — |
+| `cargo build --workspace --locked` | 0 | — |
+| `cargo test --workspace --locked` | 0 | **177 tests** (175 at the previous head, 171 at m3c, 132 on `main` before M3) |
+| `git diff --check` | 0 | — |
+| all seven suites + `check_results.py` | 0 | `stream` 24/24 · `core` 130/5/0 · `socket` 11/2/0 · `evidence` 16/0/0 · `knowledge` 10/0/0 · `context` 11/0/0 · `composition` 3 pass, 11 unsupported — **unchanged** |
+
+### What changed
+
+- **Two pilots ran, and both records are in [JOURNEYS](../verification/JOURNEYS.md).** brian2, a 553-file brownfield repository with a question about a third-party function; Knowscroll-v2, 22 owner decisions over one append-only file with a question about how a recorded provider response must be handled. Each was asked the owner's question verbatim, with the selector written down before the run. **Neither packet was scored by this session**, which has seen neither oracle.
+- **brian2 was scored by the reviewer and failed.** Of three required facts it holds one — its coverage, including the untracked files. It avoided the trap; the `git grep` baseline holds none of the three and its top hit is what the trap warns against. **The packet beat the baseline and did not meet the oracle.** Which facts were missing is not recorded, because the same question runs again at M4 with a model and that rerun has to be fair. **The compiler was not changed in response.**
+- **Knowscroll's 22 decisions were applied as the owner decided them**, through the public client, each with the rationale `owner decision, 2026-09-20, m3d pilot`: 21 accepted for use as `binding`, D-019 as `evidence` because it records what a spike verified. Nothing rejected, nothing superseded, nothing left proposed.
+- **A golden index digest**, `retrieval::GOLDEN_FIXTURE_DIGEST`, beside `retrieval::COMPILER`. It covers the chunk rows, the anchor rows, the coverage report and a fixed set of query results over a fixture tree written byte for byte in the test, **together with `COMPILER` itself** — so a build change with no version bump fails, and a version bump with no build change fails too. Ranking order is deliberately outside it: BM25 is unevaluated and a guard that fails on a tie gets switched off rather than fixed.
+- **A golden packet digest**, on the same shape, answering the question the review asked. See below.
+- **One issue filed on the protocol repository** and nothing else touched there: [Combraton/protocol#16](https://github.com/Combraton/protocol/issues/16), the case where a claim's support cannot cite a span of an artifact. It describes the case and the measurement and **proposes nothing normative**. Linked from [VERIFICATION](../VERIFICATION.md).
+
+### Was the golden shape worth applying to the packet compiler? Yes, and it is done
+
+The review asked for the index version and for a statement about the packet compiler's. The statement is: **it is cheap and it is in**, as `GOLDEN_PACKET_DIGEST` in `crates/cbr-cli/tests/registration_and_decisions.rs`, over the packet the existing fixture already produces.
+
+Three things are worth recording about it, because they differ from the index case.
+
+1. **The constant is not beside `compiler::COMPILER`, and cannot be.** `cbr-provider` is a binary-only crate with no library target, so nothing outside it can import that constant and every test of the compiler drives the built binary. The guard still binds the version, because **the compiler string is inside the bytes it digests**: a sealed packet's coverage names its producer. Bumping `compiler::COMPILER` moves the digest.
+2. **The fixture had to grow before the guard meant anything.** As it stood, the fixture repository produced fewer spans than `DISCOVERED_SPANS` allows and no excerpt near `EXCERPT_BYTES`, so mutating either bound left the packet byte-identical — the guard would have passed a real change to both. Six more source files were added to the fixture, which now fills the discovery cap exactly and carries excerpts over 1 KiB, and the test asserts both so the next person cannot quietly shrink it back.
+3. **The packet compiler was already better guarded than the index was**, which is why this is a regression detector rather than a hole being closed. A packet states its producer to every consumer; an index's manifest could claim `complete` under a string that had gone stale, which is the defect this milestone actually shipped.
+
+### What the pilots found about the tool, reported and not fixed
+
+Both are recorded in [JOURNEYS](../verification/JOURNEYS.md#j6-pilot-knowscroll-v2-decision-memory-no-model) and neither is changed in this pull request: a compiler change after a pilot run must be declared and the run repeated in full, and the review's instruction for this round was to go no further than the golden-digest work.
+
+1. **A dirty working tree's modified tracked files are not named in the coverage.** `untracked_gap` reports untracked files, and reports a snapshot that no longer matches; it says nothing about tracked files that are modified. Knowscroll-v2 has 21 of them, so 21 files were searched at their committed bytes with no gap stated. brian2 could not have shown this — it had 130 untracked files and no modified tracked file. Measured against the false-absence rule of INTERNALS §5, this is a gap that is not stated.
+2. **A required item was satisfied from a symlink.** `AGENTS.md` in that tree is mode `120000`, a link to `CLAUDE.md`. The indexer skips symlinks on purpose; `select_source` reads the blob directly and cited its nine bytes — the link target's name — as the item's content, reporting the item `satisfied`. The locator says exactly what it cited, so nothing is misreported; a consumer asking for `AGENTS.md` still got a path.
+
+### Mutants
+
+**This round: 6 mutants, all killed, all observed.** Each was killed by the golden test written for it, run alone so that no other test's failure could be mistaken for the guard working.
+
+| Mutant | Killed by | At |
+|---|---|---|
+| `index::CHUNK_LINES` 20 → 25 | `the_index_a_fixed_tree_produces_has_not_changed_without_the_compiler_string` | the chunk rows move and the digest with them |
+| `lexical::CHUNK_BYTES` 2048 → 4096 | same | `wide.md` stops splitting — the fixture file that exists so this is a row change and not only a recorded parameter |
+| `retrieval::COMPILER` `cbr-index/2` → `/3`, with no build change | same | the version is inside the digest, so a bump nobody earned fails |
+| `compiler::COMPILER` `cbr-context-compiler/1` → `/2`, with no build change | `the_packet_a_fixed_fixture_produces_has_not_changed_without_the_compiler_string` | the sealed packet names its producer |
+| `compiler::DISCOVERED_SPANS` 8 → 6 | same | two discovered spans disappear |
+| `compiler::EXCERPT_BYTES` 2048 → 1024 | same | every long excerpt is cut |
+
+**Two of these survived their first run and are recorded as such.** `DISCOVERED_SPANS` and `EXCERPT_BYTES` were **equivalent on the fixture as it stood** — the packet did not change, because the fixture never reached either bound. That is the same failure the milestone keeps producing in a new place: a guard fitted to the case in front of it. The fixture was enlarged, both mutants were re-run, and both now fail the golden test; the assertions that keep the fixture at that size are in the test.
+
+### Coverage limits
+
+- **A pilot is a steer, not evidence.** Neither packet may be cited as downstream-task evidence for any gate. brian2's failure is a scored result against an oracle; Knowscroll's packet has not been scored at the time of writing.
+- **Neither pilot measures a session.** No agent used either packet for any work, so nothing here shows whether work went better with it. That is J6 proper, at M7, and it still needs thresholds fixed before its confirmatory run.
+- **The golden digests cover output, not correctness.** They fail when the build changes without its version; they say nothing about whether the index or the packet is any good.
+- **Ranking is still BM25 and still unevaluated**, and deliberately outside the index golden.
+- **No model anywhere.** Model calls are M4.
+
+## Earlier — M3c, the deterministic packet compiler
 
 [PR #18](https://github.com/Combraton/cbr/pull/18) against `main`, in the order the review asked for, each gate stated before its code. Four commits: `10e8f61`, `b8e9856`, `0958a25`, `ef521a0`.
 1. **the five rules a retrieval answer owes its caller**, each with its test, before any packet is compiled;

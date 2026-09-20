@@ -40,7 +40,7 @@ A journey is the *journey* layer of the shared evidence ladder. Lower layers —
 | J3 | A source or requirement changes during preparation; the next delivery exposes the correction and the earlier packet and its history survive | M5 | yes | no | **Correction swallowed:** an older derivation must not become the current result for a corrected item. Removing the `corrected_during_preparation` path must make the journey fail. The earlier packet revision must still fetch its original bytes and report `current: false`. | — |
 | J4 | CBR is restarted during model-assisted work; it resumes from durable state without duplicate commits or fabricated completion | M5 | yes | no | **Duplicate commit:** kill the process between the model response and the commit, restart, and require exactly one committed revision. Disable command deduplication and the control must produce two. Separately: a job whose checkpoint is intact must not report a finding it never derived. | — |
 | J5 | Conflicting branches or stale evidence do not leak into another task as current truth | M5 | yes | no | **Branch leakage:** a requirement accepted only on branch B must never appear as binding in a packet scoped to branch A. Remove the scope filter and the control must catch it. | — |
-| J6 | A fresh agent session uses a CBR packet on a realistic refactoring task; measure whether it preserves constraints and reduces repeated investigation. Relevance is measured by **counting downstream re-investigation of content the packet already contained**, not by self-reported prediction, and is diagnostic only — never a gate criterion (ADR 001, question 9). A labelled **pilot** of this journey runs at M3 with no model, as a steer rather than evidence. | M7 | **yes** | no | **Unsupported-assertion acceptance:** plant a claim whose cited evidence does not support it, and require either that it is not carried as `binding` or that the downstream session is not led into the error. Compared against a strong native-context baseline, a disciplined-notes baseline and a plain-search baseline. | — |
+| J6 | A fresh agent session uses a CBR packet on a realistic refactoring task; measure whether it preserves constraints and reduces repeated investigation. Relevance is measured by **counting downstream re-investigation of content the packet already contained**, not by self-reported prediction, and is diagnostic only — never a gate criterion (ADR 001, question 9). A labelled **pilot** of this journey runs at M3 with no model, as a steer rather than evidence. | M7 | **yes** | no | **Unsupported-assertion acceptance:** plant a claim whose cited evidence does not support it, and require either that it is not carried as `binding` or that the downstream session is not led into the error. Compared against a strong native-context baseline, a disciplined-notes baseline and a plain-search baseline. | journey **unrun**; two labelled pilots ran at m3d with no model — brian2 **failed** its oracle ([record](#j6-pilot-brian2-a-brownfield-repository-no-model--failed)), Knowscroll-v2 awaits its score ([record](#j6-pilot-knowscroll-v2-decision-memory-no-model)). Neither is evidence, and [neither measures a session](#what-neither-pilot-establishes). |
 | J7 | Real public-protocol investigation and consumption with PIO, while standalone no-PIO operation still works | after M5, gated on PIO | yes | **yes** | **Recursive enrichment and reservation deadlock:** a CBR-initiated investigation must not be re-enriched through the same path, and preparation must not wait on a slot its own consumer holds. Both must be shown to fail when the guard is removed. | — |
 
 | J8 | A required item is still unmet when the deadline passes; it stays unmet, while advisory items follow their declared fallback | M3 | **no** | no | **Required silently downgraded:** remove the guard and a required item must be reported `satisfied` at deadline, or reported under an obligation it was not submitted with. Both are failures. The live behaviour must instead be `unmet` with reason `deadline_passed`, and an advisory item under `proceed_with_gap` must be `degraded` with its reason while one under `wait_until_deadline` waits. Deadline expiry must supply no evidence and no consent. | **pass**, M3c, model `none` ([record](#j8-a-deadline-leaves-required-items-unmet-and-advisory-items-at-their-fallback)) |
@@ -51,7 +51,7 @@ A journey is the *journey* layer of the shared evidence ladder. Lower layers —
 
 J7 cannot run today and will not be simulated. **J6 was unblocked on 2026-09-16** and is now a scheduling question rather than a permission one.
 
-- **J6** needed a granted model provider and a permitted spend. Both now exist — MiniMax on the owner's subscription quota, with a bounded envelope debited before every call ([RELEASE-SCOPE §5](../work/readiness/RELEASE-SCOPE.md)). What J6 still needs is **pre-agreed thresholds derived from pilot variance**, and those must be fixed *before* the confirmatory run. A threshold chosen after seeing the result is not a threshold, so J6 stays unrun until the M3 pilot has produced the variance it is derived from.
+- **J6** needed a granted model provider and a permitted spend. Both now exist — MiniMax on the owner's subscription quota, with a bounded envelope debited before every call ([RELEASE-SCOPE §5](../work/readiness/RELEASE-SCOPE.md)). What J6 still needs is **pre-agreed thresholds derived from pilot variance**, and those must be fixed *before* the confirmatory run. A threshold chosen after seeing the result is not a threshold. **The two m3d pilots have now run**, one scored and failed against its oracle and one awaiting its score; the thresholds are still to be fixed, and until they are, J6 proper stays unrun.
 - **J7** needs a PIO standalone service. PIO is being built in parallel and has no release. CBR must not depend on its unreleased work.
 
 J8, J9 and J10 need no model at all and are reachable inside the milestones that introduce them. J2, J3, J4 and J5 each need a model for their full form; with the grant in place that is now reachable at M4 and M5. Their fault-injection halves still run against a **labelled fake model**, which remains the right tool for fault injection and the wrong one for acceptance — the row stays `simulated` until a live run replaces it, and the existence of a budget does not change that.
@@ -77,30 +77,78 @@ The two questions are the owner's, verbatim, and are used as the task text uncha
 
 **A required item that is not the answer** is named in each request, as J1 does: `README.md` for brian2 and `AGENTS.md` for Knowscroll, neither of which has anything to do with its question. It exists to show that capacity is reserved for a required item before anything discovered, and its section is expected to be irrelevant to the question.
 
-### J6 pilot, Knowscroll-v2: decisions ingested and proposed, waiting on the owner
+### J6 pilot, Knowscroll-v2: decision memory, no model
 
-**Labelled a pilot throughout**, on the same terms as brian2. **This pilot has not run.** Its decisions are ingested and proposed; which are accepted, as what use, and which are superseded is the owner's to decide, and the question is asked only after they have.
+**Labelled a pilot throughout**, on the same terms as brian2. It is a steer, not evidence, and may not be cited as downstream-task evidence for any gate ([JOURNEYS §1](#1-rules-this-document-enforces), ADR 001 question 6). It is scored by the reviewer against an oracle the owner wrote; this session has not seen it.
 
-Recorded here in the same shape as brian2's: digests, paths, spans, counts and costs, and no content of that repository.
+Recorded in the same shape as brian2's: digests, paths, spans, counts and costs, and no content of that repository.
 
 | Field | Record |
 |---|---|
-| Intent | Decision memory: ingest the repository's own decision records, let the owner decide their standing, and then ask a question whose answer depends on which decisions are current. |
-| Entry point | `cbr ingest`, `cbr authority bind`, `cbr propose` over the socket. Registered read-only at launch; the path never crosses the wire. |
-| Prerequisites and inputs | `Legend101Zz/Knowscroll-v2` at `HEAD` tree `10692a77…`, 18 commits, 145 tracked files. |
-| Question, verbatim | "When a spike records a provider's response, how must URLs and credentials in it be handled, and where is that enforced?" — **not yet asked.** |
-| Selector | `credentials URLs response`, chosen and [recorded above](#j6-pilots-the-questions-and-the-selectors-recorded-before-the-runs) before the run. That question contains **no identifier-shaped word**, so no anchor lookup is possible and this pilot tests lexical discovery alone. |
-| Evidence ingested | One artifact: `steering/DECISIONS.md`, **38,831 bytes**, digest `sha256:4dad54e7…`, anchored to tree `10692a77…` and its commit. |
-| Claims proposed | **22, one per decision, all `proposed` and none decided.** Each cites that one artifact, and carries its decision id and its line range in the claim's scope qualifiers and in the statement, so a reader can find the decision inside the file. Support class `single_lineage` for all 22. |
-| **A protocol limitation this exposed** | **Protocol 0.1 has no way for a claim to cite a *span* of an artifact.** `check_evidence_reference` admits a provider, an artifact and a digest, and nothing narrower. All 22 decisions live in one append-only file, so all 22 claims cite the same 38,831 bytes with the same digest, and the line range that distinguishes them is carried in the claim's own scope rather than in its evidence reference — where a reader would look for it, and where a verifier could check it. This is the same shape as gap G1 and belongs with it. |
-| What is waiting | The owner decides, for each of the 22: accepted for use and at what permitted use, rejected, or left proposed; and which supersede which. The file is append-only with a `Supersedes` field, and **only 2 of the 22 carry one** — both reading `—`, that is, superseding nothing. The other 20 have no such field at all. Nothing about acceptance is proposed here. |
+| Intent and acceptance | Decision memory: ingest a repository's own decision records, let the owner decide their standing, then ask a question whose answer depends on which of them are current. Acceptance is not this session's to judge; this record reports what the packet contained and how each part was found. |
+| Entry point | `cbr ingest`, `cbr authority bind`, `cbr propose`, `cbr decide`, `cbr context`, `cbr request`, `cbr packet` and `cbr fetch` over the provider's Unix socket. The repository is registered read-only at launch by `--register-repository`; its path never crosses the wire. |
+| Prerequisites and inputs | `Legend101Zz/Knowscroll-v2` at `HEAD` `3e8991e`, 18 commits, tree `10692a77…`: **145 entries, 6,743,819 bytes** — 141 regular files, 3 executable, 1 symlink. A fresh data directory, cold. **CBR read it and changed nothing in it.** |
+| Question, verbatim | "When a spike records a provider's response, how must URLs and credentials in it be handled, and where is that enforced?" |
+| Selector | `credentials URLs response`, chosen and [recorded above](#j6-pilots-the-questions-and-the-selectors-recorded-before-the-runs) before the run. |
 | Model and provider | `none` |
-| Cost so far | Model calls 0. One artifact of 38,831 bytes ingested; 22 claims proposed. No index has been built for this repository yet, because no context request has been made. |
-| Properties and limits | Nothing about usefulness is established or claimed: the run has not happened. What exists is the write path, exercised end to end on a real repository's real decision records through the public client. |
+| Code and environment basis | One repository at tree `10692a77…`, `workspace: dirty`, snapshot digest `sha256:fea8bb96…`. The working tree holds **21 modified tracked files and 9 untracked files**; by the owner's decision the pilot searches the tree as committed. |
+| Decisions applied | **22, through the public client as owner**, each with rationale `owner decision, 2026-09-20, m3d pilot`: D-001–D-018 and D-020–D-022 **accepted for use as `binding` (21)**; D-019 **accepted for use as `evidence` (1)**, because it records what a spike verified, which is an observation rather than a rule. None rejected, none superseded, none left proposed. Verified afterwards over all 22: `binding=21 evidence=1`, nothing else. |
+| Path taken | register → ingest the decisions file → bind the scope → propose 22 claims → decide all 22 → submit → index built at the basis → discovery: ranked retrieval over the view from the task, anchors for the identifier-shaped selector terms, and every claim judged against the request basis → publish → read → fetch a citation. |
+| Packet identity | One revision. **31 sections, 0 omissions**, 22,205 bytes of section content against 65,536 of capacity; sealed packet 43,410 bytes, `packet.knowscroll-pilot.1`, digest `sha256:69a877b0…`. One item section, 22 claim sections, 8 discovered spans, and **no anchor section**. |
+| Sections, how each was found | Below. |
+| Coverage, as the packet states it | frontier `10692a77…`; **2 blobs were over the size cap** (two `.jpg` renders of 1,393,819 and 1,501,849 bytes, against a cap of 1 MiB); **117 blobs are in a language with no anchors** — of those 69 `.md`, 23 `.json`, 8 `.html`, 7 no extension, 3 `.sh`, 3 `.svg`, 2 `.txt`, 2 `.yaml`; and **9 files are untracked and in no tree, so they are not searched** — of those 8 `.md`, 1 `.html`. Behind that: 144 blobs considered (the symlink is not a blob of this tree), 142 indexed, 2,191 chunks over 138 files, 25 files in an anchored language (15 `.mjs`, 9 `.ts`, 1 `.cjs`) of which 23 produced anchors, 965 anchors in total. |
+| Baseline | `git grep -w -i` at the same tree for the selector's terms, ranked by how many distinct terms a file holds. Below. The reviewer scores it against the same oracle. This is the simple lexical baseline INTERNALS §7 names; the strong native-context baseline is M7's. |
+| Durable result | The packet and its cited artifacts survive in the store and re-read by identity. `cbr fetch src.2af0e8e4… --digest sha256:46b09eda…` returned 35,986 bytes **byte-identical to `git cat-file blob 2af0e8e4…`** at the named tree. |
+| Reproduction | The exact commands are in the pull request. They register the checkout by path, so they reproduce only on a machine that has it. |
+| Cost | Model calls 0, tokens 0, spend 0. **Submit 0.1s; index build and compile 4.7s; time to first packet 4.9s.** Store after the run **10.6 MB**, holding the ingested artifact, 22 claims, 22 decisions, the index and the packet. |
+| Simulated or untested | Nothing is simulated. **Untested here:** the dirty-bytes path — the working tree has 21 modified tracked files and the pilot searched the committed tree by the owner's decision, so the modified bytes were never read; a second repository in one basis; and any model-assisted selection, which is M4. |
+| Properties and limits | **This establishes nothing about usefulness by itself**, and nothing at all about whether a session worked better with the packet — see the statement below. What it does establish is mechanical: a repository's 22 decisions were ingested, decided by the owner through the public client, and carried into a packet with their permitted use and deciding decision attached, next to eight spans found by retrieval alone; every span cites an artifact and a byte range; and 21 `binding` sections are distinguished from 1 `observation` by the owner's decision rather than by anything the compiler inferred. **Lexical discovery finds only what shares vocabulary with the question** — all eight spans came from term overlap, and this question produced **no anchor section at all**: of the three names looked up, `credentials`, `URLs` and `response`, none is a definition or a use anchored at this tree. The anchor table's nearest entry is a different name, `URL`, a class with two rows. That was predicted in the selector table before the run and it held. |
 
-### J6 pilot, brian2: a brownfield repository, no model
+**Sections, in packet order.** Rank is the drop order of [INTERNALS §5 step 5](https://github.com/Combraton/combraton/blob/main/docs/architecture/INTERNALS.md). Nothing here says whether a section is relevant: that is the oracle's to say.
 
-**Labelled a pilot throughout.** It is a steer, not evidence, and may not be cited as downstream-task evidence for any gate ([JOURNEYS §1](#1-rules-this-document-enforces), ADR 001 question 6). It is scored by the reviewer against an oracle the owner wrote before the run; this session has not seen it.
+| # | Section | Rank | How found | Bytes |
+|---:|---|---|---|---:|
+| 1 | `AGENTS.md`, lines 1–1, bytes 0–9 | required item, before anything discovered | named by the request; no selector term matched in the file, so its opening chunk | 177 |
+| 2–22 | claims `d-001`–`d-018`, `d-020`–`d-022` | `BindingClaim` | the claim names a repository of this basis | 277–279 each |
+| 23 | claim `d-019` | `CurrentClaim`, labelled `observation` | the same | 280 |
+| 24 | `docs/founding/video-harness/03-HOW-IT-WORKS.md` lines 161–180, bytes 8206–9084 | `Span` | ranked partial match on the task, over the whole view | 1,075 |
+| 25 | `docs/founding/PROMPT_SESSION_00.md` lines 436–450, bytes 63196–65244 | `Span` | the same | 2,235 |
+| 26 | `scripts/spikes/_spike.mjs` lines 1–20, bytes 0–1101 | `Span` | the same | 1,271 |
+| 27 | `docs/founding/video-harness/research/03-agentic-video-generation-continuity-eval.md` lines 466–479, bytes 92875–94923 | `Span` | the same | 2,284 |
+| 28 | `docs/research/extracts/minimax-h3.md` lines 116–124, bytes 10599–12647 | `Span` | the same | 2,237 |
+| 29 | `docs/founding/video-harness/CUTROOM-EXPLAINER.html` lines 501–518, bytes 45315–47363 | `Span` | the same | 2,251 |
+| 30 | `docs/founding/video-harness/research/01-agent-harnesses.md` lines 372–382, bytes 87251–89299 | `Span` | the same | 2,259 |
+| 31 | `docs/founding/video-harness/research/03-agentic-video-generation-continuity-eval.md` lines 480–494, bytes 95139–97187 | `Span` | the same | 2,284 |
+
+**The `git grep` baseline at the same tree**, for the selector's three terms, word-matched and case-insensitive, ranked by how many distinct terms a file holds and then by line count. 46 files match at least one term.
+
+| Distinct terms | Lines | Path |
+|---:|---:|---|
+| 3 | 9 | `docs/founding/video-harness/research/01-agent-harnesses.md` |
+| 3 | 8 | `docs/founding/PROMPT_SESSION_00.md` |
+| 3 | 8 | `docs/research/minimax-h3.md` |
+| 3 | 6 | `docs/research/extracts/minimax-h3.md` |
+| 3 | 4 | `docs/founding/video-harness/03-HOW-IT-WORKS.md` |
+| 2 | 16 | `docs/research/steering-systems.md` |
+| 2 | 8 | `docs/founding/video-harness/research/03-agentic-video-generation-continuity-eval.md` |
+| 2 | 4 | `docs/founding/ARCHITECTURE.md` |
+| 2 | 3 | `docs/design/kiosk-set.standalone.html` |
+| 2 | 3 | `docs/founding/video-harness/CUTROOM-EXPLAINER.html` |
+
+One structural difference between the two, stated without claiming it helped: **the decisions file is nearly invisible to the baseline and is 22 sections of the packet.** `steering/DECISIONS.md` holds one of the three terms — `response`, on five lines — and neither `credentials` nor `URLs`, so it ranks near the bottom of a term-overlap list. The packet carries all 22 of its decisions, with their permitted use, because they arrived through the decision path rather than through retrieval. Whether the decision that answers the question is among them is the oracle's to say.
+
+**Two things this run found about the tool, neither of them fixed here.** Both are reported rather than acted on: a compiler change after a pilot run has to be declared and the run repeated in full, and the review's instruction for this pull request was to go no further than the golden-digest work.
+
+1. **A dirty working tree's modified files are not named in the coverage.** `untracked_gap` reports untracked files and the case where the declared snapshot no longer matches; it says nothing about **tracked files that are modified**. This tree has 21 of them, so 21 files were searched at their committed bytes and the packet's coverage does not say so. brian2 could not have shown this: it had 130 untracked files and no modified tracked file. Against the false-absence rule of INTERNALS §5 this is a gap that is not stated.
+2. **A required item was satisfied from a symlink.** `AGENTS.md` in this tree is mode `120000`, a symlink to `CLAUDE.md`. The indexer skips symlinks deliberately — a symlink's content is a path, not text of the tree — but `select_source` reads the blob directly and cited its nine bytes, `CLAUDE.md`, as the item's content. The locator is honest about what it cited and the item is reported `satisfied`. A consumer asking for `AGENTS.md` got the link target's name.
+
+### J6 pilot, brian2: a brownfield repository, no model — **failed**
+
+**Labelled a pilot throughout.** It is a steer, not evidence, and may not be cited as downstream-task evidence for any gate ([JOURNEYS §1](#1-rules-this-document-enforces), ADR 001 question 6). It was scored by the reviewer against an oracle the owner wrote before the run; this session has not seen it.
+
+**Scored: FAILED.** Of the three facts a correct packet had to hold, the packet holds one — its coverage, stated well, including the untracked files. It did not fall into the trap: the use sites are labelled inferred and nothing in the packet claims the defect is there. The `git grep` baseline holds none of the three, and its top hit is what the trap warns against. **The packet beat the baseline and did not meet the oracle.** Which facts were missing is deliberately not recorded here: the same question runs again at M4 with a model, and that rerun has to be fair.
+
+This is the **measured instance of the limit J1 already states**: lexical discovery finds what shares vocabulary with the question. J1 recorded it as a property; this is what it costs on a real question in a real repository. **The compiler was not changed in response** — tuning it against a question after seeing the result would make the M4 rerun meaningless.
 
 | Field | Record |
 |---|---|
@@ -121,6 +169,12 @@ Recorded here in the same shape as brian2's: digests, paths, spans, counts and c
 | Simulated or untested | Nothing is simulated. **Untested here:** the dirty-bytes path, which this checkout cannot exercise because it has no modified tracked file; decision memory, which brian2 has none of; and any second repository in one basis. |
 | A compiler change after the run, declared | The first run produced **9 sections and no anchor section at all**: `concatenate` has five call sites in this tree and no definition, because it is numpy's, and the compiler emitted an anchor section only when a definition existed. A question about someone else's function therefore got nothing from the half of discovery meant to answer it. That is a general defect, not a property of this question — it holds for every third-party symbol in every repository — and it was fixed and **the run repeated in full**, as the review's protocol requires. The second run is the one recorded here; the only difference is section 10. |
 | Properties and limits | **This establishes nothing about usefulness by itself.** The packet is scored by someone who has the oracle and did not produce the packet. What the run does establish is mechanical and worth having: a 553-file, 7,065-commit repository was indexed cold and answered in under fifteen seconds with no model; every span cites an artifact and a byte range; the coverage names every gap by count and kind; and the working tree's 130 untracked files are declared rather than silently skipped. **Lexical discovery finds only what shares vocabulary with the question** — nine of ten sections came from term overlap alone, and the single anchor section is the only part that used structure. |
+
+### What neither pilot establishes
+
+Both records above measure a packet. **Neither measures a session.** No agent session used either packet for any task: nothing here shows that work went better with one, or that a constraint was preserved that would otherwise have been lost, or that investigation was not repeated. That is J6 proper, and it is M7's — with pre-agreed thresholds derived from these pilots' variance, fixed before the confirmatory run, against a strong native-context baseline, a disciplined-notes baseline and a plain-search baseline.
+
+What the pilots are for is narrower and worth having on its own: they are the first runs of the write path and the read path over repositories this session did not write, at sizes and in shapes the fixtures do not reach — 5.3 MB and 553 files in one, 22 owner decisions over one append-only file in the other — and they produced the variance M7's thresholds will be derived from, one packet scored against an oracle and one awaiting its score.
 
 ### J1: a question finds its own answer with a cited packet
 
