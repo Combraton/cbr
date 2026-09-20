@@ -22,6 +22,7 @@
 use std::sync::Mutex;
 
 use crate::budget::{self, Ledger, Refusal, Reservation, Settlement};
+use crate::wire::{self, Dialect};
 
 /// Which of the two calls a send is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -143,6 +144,9 @@ pub struct Attempt<'a> {
     pub messages: usize,
     /// The generation limit the body declares and the reservation covers.
     pub generation: u64,
+    /// Which dialect framed `body`, and therefore which member the limit
+    /// has to be bound to for this request to be allowed out.
+    pub dialect: Dialect,
 }
 
 /// One model call, from admission to settlement.
@@ -168,14 +172,15 @@ impl<'a> Runtime<'a> {
             body,
             messages,
             generation,
+            dialect,
         } = *attempt;
         // **The reservation covers a generation the request actually asks
-        // for.** A body that does not declare its limit could spend more
-        // than was reserved, so it does not leave the process. This checks
-        // that the figure is in the body, not that it is bound to the right
-        // field — m4b's serializer owns that, and this is what stops m4b
-        // building one that forgets.
-        if !declares_generation(body, generation) {
+        // for.** A body that does not bind its limit could spend more than
+        // was reserved, so it does not leave the process. m4a asked only
+        // whether the figure appeared in the body, which a body capped at
+        // 4,096 that mentions 16 in prose satisfies; this parses the body
+        // and reads the member the dialect's provider reads.
+        if !wire::request::declares_generation(dialect, body, generation) {
             return Ended::Unmet("generation_limit_not_declared");
         }
         let local = budget::estimate(body, messages);
@@ -362,23 +367,6 @@ fn settlement_for(usage: Option<u64>) -> Settlement {
         Some(usage) => Settlement::Usage(usage),
         None => Settlement::UsageUnknown,
     }
-}
-
-/// Whether `body` declares the generation limit it was reserved for.
-///
-/// A textual check, and deliberately a narrow one: it says the figure is in
-/// the body, not that it is bound to the field the provider reads. m4b's
-/// serializer owns that; this exists so m4b cannot build a body that leaves
-/// the limit out altogether, which would let a completion spend more than
-/// its reservation covers.
-fn declares_generation(body: &[u8], generation: u64) -> bool {
-    let body = String::from_utf8_lossy(body);
-    let wanted = generation.to_string();
-    body.match_indices(&wanted).any(|(at, _)| {
-        let before = body[..at].chars().next_back();
-        let after = body[at + wanted.len()..].chars().next();
-        !before.is_some_and(|c| c.is_ascii_digit()) && !after.is_some_and(|c| c.is_ascii_digit())
-    })
 }
 
 /// No barrier at all, which is every path but the crash matrix.

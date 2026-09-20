@@ -379,6 +379,7 @@ impl Provider {
                 body: fake.body.as_bytes(),
                 messages: 1,
                 generation: fake.generation,
+                dialect: fake.dialect,
             },
             &|name| crate::barriers::pause(name),
         );

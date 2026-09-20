@@ -54,6 +54,31 @@ impl Dialect {
         }
     }
 
+    /// The member this dialect's provider reads the generation limit from.
+    ///
+    /// **Both are `max_tokens` today**, and they are asked for separately
+    /// anyway: the guard that refuses to send a body whose limit is not
+    /// bound to this field asks the dialect, so the day one surface moves
+    /// to `max_completion_tokens` one constant changes and the guard
+    /// follows it.
+    pub fn generation_field(self) -> &'static str {
+        match self {
+            Dialect::OpenAi => "max_tokens",
+            Dialect::Anthropic => "max_tokens",
+        }
+    }
+
+    /// The path this dialect's request goes to, under the configured
+    /// endpoint.
+    // Read by the transport, later in this same pull request.
+    #[allow(dead_code)]
+    pub fn path(self) -> &'static str {
+        match self {
+            Dialect::OpenAi => "/chat/completions",
+            Dialect::Anthropic => "/v1/messages",
+        }
+    }
+
     /// The endpoint the owner recorded for this dialect. It is a **default
     /// for configuration**, not a literal the call path reaches for: the
     /// endpoint that is used is the one in the launch configuration.
@@ -65,5 +90,9 @@ impl Dialect {
     }
 }
 
+pub mod request;
+
+#[cfg(test)]
+mod request_tests;
 #[cfg(test)]
 mod tests;

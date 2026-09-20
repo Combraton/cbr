@@ -192,6 +192,9 @@ pub struct FakeModel {
     pub answer: String,
     /// The generation limit the body declares and the reservation covers.
     pub generation: u64,
+    /// Which dialect the scripted body is framed in, so that the guard on
+    /// the generation limit reads the member that dialect binds it to.
+    pub dialect: crate::wire::Dialect,
 }
 
 /// The `context.script` control's value. Its `Debug` form names nothing it
@@ -497,6 +500,11 @@ impl Config {
                     Some(Value::Int(generation)) => (*generation).max(0) as u64,
                     _ => 64,
                 },
+                dialect: model
+                    .get("dialect")
+                    .and_then(Value::as_str)
+                    .and_then(crate::wire::Dialect::parse)
+                    .unwrap_or(crate::wire::Dialect::OpenAi),
             });
         }
         // **Validated here, which is before any credential is read.** A

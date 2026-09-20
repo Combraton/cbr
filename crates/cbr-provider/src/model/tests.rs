@@ -4,6 +4,7 @@ use rusqlite::Connection;
 
 use super::*;
 use crate::budget::{PER_REQUEST_TOKENS, Refusal, WINDOW_TOKENS};
+use crate::wire::Dialect;
 
 const T0: &str = "2026-09-20T12:00:00Z";
 
@@ -35,6 +36,7 @@ fn the_count_call_is_a_send_and_is_admitted_recorded_and_charged_like_one() {
             body: &body_declaring(64),
             messages: 1,
             generation: 64,
+            dialect: Dialect::OpenAi,
         },
         &no_barrier,
     );
@@ -70,8 +72,14 @@ fn a_request_the_local_estimate_refuses_never_reaches_the_count_endpoint() {
         ledger: Ledger::new(&connection),
         transport: &transport,
     };
-    let mut huge = body_declaring(64);
-    huge.extend(std::iter::repeat_n(b'x', PER_REQUEST_TOKENS as usize + 1));
+    // Padded **inside** the body rather than after it: the guard that
+    // reads the generation limit parses the body, so a request that is
+    // merely enormous must still be a request.
+    let huge = format!(
+        "{{\"max_tokens\":64,\"messages\":[{{\"content\":\"{}\"}}]}}",
+        "x".repeat(PER_REQUEST_TOKENS as usize + 1)
+    )
+    .into_bytes();
     let ended = runtime.call(
         T0,
         &Attempt {
@@ -80,6 +88,7 @@ fn a_request_the_local_estimate_refuses_never_reaches_the_count_endpoint() {
             body: &huge,
             messages: 1,
             generation: 64,
+            dialect: Dialect::OpenAi,
         },
         &no_barrier,
     );
@@ -139,6 +148,7 @@ fn an_exhausted_envelope_refuses_before_the_count_call() {
             body: &body_declaring(64),
             messages: 1,
             generation: 64,
+            dialect: Dialect::OpenAi,
         },
         &no_barrier,
     );
@@ -163,6 +173,7 @@ fn provider_exhaustion_reaches_the_caller_as_its_own_reason_and_is_not_retried()
             body: &body_declaring(64),
             messages: 1,
             generation: 64,
+            dialect: Dialect::OpenAi,
         },
         &no_barrier,
     );
@@ -199,6 +210,7 @@ fn a_failed_call_reaches_the_caller_as_an_unmet_reason_and_never_hangs() {
             body: &body_declaring(64),
             messages: 1,
             generation: 64,
+            dialect: Dialect::OpenAi,
         },
         &no_barrier,
     );
@@ -228,6 +240,7 @@ fn a_usage_that_differs_from_the_count_is_what_the_ledger_keeps() {
             body: &body_declaring(64),
             messages: 1,
             generation: 64,
+            dialect: Dialect::OpenAi,
         },
         &no_barrier,
     );
@@ -279,6 +292,7 @@ fn every_crash_boundary_is_reached_in_order() {
             body: &body_declaring(64),
             messages: 1,
             generation: 64,
+            dialect: Dialect::OpenAi,
         },
         &|name| {
             // **What is true at each boundary, not merely that it was reached.**
@@ -360,6 +374,7 @@ fn the_completion_reserves_its_generation_and_margin_not_the_input_count_alone()
             body: &body,
             messages: 1,
             generation: 4_096,
+            dialect: Dialect::OpenAi,
         },
         &no_barrier,
     );
@@ -418,6 +433,7 @@ fn the_completions_reservation_covers_the_margin_as_well_as_the_generation() {
             body: &body,
             messages: 1,
             generation: 64,
+            dialect: Dialect::OpenAi,
         },
         &no_barrier,
     );
@@ -459,6 +475,7 @@ fn a_count_implausibly_below_the_local_bound_is_an_anomaly_and_the_local_figure_
             body: &body,
             messages: 1,
             generation: 16,
+            dialect: Dialect::OpenAi,
         },
         &no_barrier,
     );
@@ -492,6 +509,7 @@ fn usage_above_the_reservation_is_recorded_as_a_divergence() {
             body: &body,
             messages: 1,
             generation: 64,
+            dialect: Dialect::OpenAi,
         },
         &no_barrier,
     );
@@ -500,6 +518,36 @@ fn usage_above_the_reservation_is_recorded_as_a_divergence() {
         rows.iter().any(|(kind, _, _)| kind == "divergence"),
         "spending more than was reserved is a recorded fact: {rows:?}"
     );
+}
+
+#[test]
+fn a_limit_the_body_only_mentions_is_not_a_limit_the_body_declares() {
+    // **The defect m4a's placeholder left.** That check asked whether the
+    // number appeared anywhere in the serialized body. This body caps
+    // generation at 4,096 and says "16" in a message, so it passed — and a
+    // reservation made for 16 would have paid for a request asking 4,096.
+    // The check now parses the body and reads the member the dialect's
+    // provider reads, so a mention is no longer a declaration.
+    let connection = database();
+    let transport = Recorder::new(vec![]);
+    let runtime = Runtime {
+        ledger: Ledger::new(&connection),
+        transport: &transport,
+    };
+    let ended = runtime.call(
+        T0,
+        &Attempt {
+            job: "job",
+            request: "r",
+            body: br#"{"max_tokens":4096,"messages":[{"content":"about 16 spans"}]}"#,
+            messages: 1,
+            generation: 16,
+            dialect: Dialect::OpenAi,
+        },
+        &no_barrier,
+    );
+    assert_eq!(ended.reason(), Some("generation_limit_not_declared"));
+    assert!(transport.sent().is_empty(), "and nothing was sent");
 }
 
 #[test]
@@ -521,6 +569,7 @@ fn a_request_that_does_not_declare_its_generation_limit_is_never_sent() {
             body: b"{\"messages\":[]}",
             messages: 1,
             generation: 4_096,
+            dialect: Dialect::OpenAi,
         },
         &no_barrier,
     );
@@ -554,6 +603,7 @@ fn a_failure_after_the_send_keeps_the_estimate_because_the_provider_may_have_cha
             body: &body,
             messages: 1,
             generation: 64,
+            dialect: Dialect::OpenAi,
         },
         &no_barrier,
     );
@@ -582,6 +632,7 @@ fn a_failure_before_anything_left_the_process_spends_nothing() {
             body: &body,
             messages: 1,
             generation: 64,
+            dialect: Dialect::OpenAi,
         },
         &no_barrier,
     );
@@ -619,6 +670,7 @@ fn a_failure_that_reports_usage_settles_to_what_it_reported() {
             body: &body,
             messages: 1,
             generation: 64,
+            dialect: Dialect::OpenAi,
         },
         &no_barrier,
     );
@@ -656,6 +708,7 @@ fn an_answer_of_the_wrong_kind_is_a_recorded_failure_and_not_a_silent_fall_throu
             body: &body,
             messages: 1,
             generation: 64,
+            dialect: Dialect::OpenAi,
         },
         &no_barrier,
     );
@@ -691,6 +744,7 @@ fn the_boundaries_are_named_per_call_so_a_row_cannot_pass_at_the_wrong_one() {
             body: &body,
             messages: 1,
             generation: 64,
+            dialect: Dialect::OpenAi,
         },
         &|name| seen.lock().expect("not poisoned").push(name),
     );
