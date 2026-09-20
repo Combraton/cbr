@@ -7,6 +7,7 @@
 //! inject a frame.
 
 mod barriers;
+mod budget;
 mod clock;
 mod compiler;
 mod config;
@@ -20,6 +21,7 @@ mod frames;
 mod grants;
 mod jsonrpc;
 mod knowledge;
+mod model;
 mod outbox;
 mod peer;
 mod provider;
@@ -148,6 +150,14 @@ fn run() -> Result<(), String> {
     // happen once, here, whichever binding follows.
     let mut provider = Provider::open(config.clone(), clock, &data_dir)
         .map_err(|error| format!("opening the store at {}: {error}", data_dir.display()))?;
+
+    // The `model.fake` control, and the only thing in this build that
+    // reaches a transport. It exists so the ledger's crash boundaries belong
+    // to a process a test can kill at them; it selects nothing, changes no
+    // packet, and is refused outright by a production configuration.
+    if let Some(fake) = config.model.clone() {
+        provider.run_fake_model_call(&fake);
+    }
 
     // Registration is a launch-time act: a checkout that cannot be read is
     // refused here rather than becoming a repository that answers nothing.

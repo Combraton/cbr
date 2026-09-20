@@ -331,6 +331,44 @@ impl Provider {
     /// is deliberate: a registration whose checkout cannot be read would
     /// otherwise look, to every later search, like a repository with nothing
     /// in it.
+    /// One call through [`crate::model::Runtime`] against the fake
+    /// transport, so the ledger's three crash boundaries belong to a running
+    /// process the crash matrix can kill at.
+    ///
+    /// **It selects nothing.** No packet changes because of it; it exists to
+    /// make the envelope's own failure modes reachable under `SIGKILL`.
+    /// Reached only when `model.fake` is configured, which a production
+    /// launch configuration refuses.
+    pub fn run_fake_model_call(&mut self, fake: &crate::config::FakeModel) {
+        use crate::model::{Answer, Recorder, Runtime};
+        let answer = match fake.answer.split_once(':') {
+            Some(("usage", tokens)) => Answer::Completed {
+                body: Vec::new(),
+                usage: tokens.parse().unwrap_or(0),
+            },
+            _ if fake.answer == "provider_exhausted" => Answer::ProviderExhausted,
+            _ if fake.answer == "failed" => Answer::Failed("scripted".into()),
+            _ => Answer::Completed {
+                body: Vec::new(),
+                usage: 0,
+            },
+        };
+        let transport = Recorder::new(vec![answer]);
+        let now = self.clock.now();
+        let runtime = Runtime {
+            ledger: crate::budget::Ledger::new(self.store.connection()),
+            transport: &transport,
+        };
+        runtime.call(
+            &now,
+            &fake.job,
+            &fake.request,
+            fake.body.as_bytes(),
+            1,
+            &|name| crate::barriers::pause(name),
+        );
+    }
+
     pub fn register_repositories(
         &mut self,
         registrations: &[crate::repositories::Registration],

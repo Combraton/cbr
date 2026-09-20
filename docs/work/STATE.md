@@ -3,13 +3,82 @@
 This is a dated navigation snapshot. Reconcile it with Git, linked issues and current task evidence before acting. Issues own live progress; this file does not grant authority or maintain a second backlog.
 
 - **Updated:** 2026-09-20.
-- **Owner/task:** Claude Code session as implementation lead for standalone CBR. **M1 and M2 are complete**; M1's closing record is [m1/CLOSEOUT.md](m1/CLOSEOUT.md). Active task: **M3, [issue #15](https://github.com/Combraton/cbr/issues/15)**, in four pull requests against `main`, each reviewed at its head before merging: m3a the Context profile (**merged**), m3b retrieval and the dependency evaluator (**merged**) and m3c the packet compiler on a real repository (**merged**); m3d the journey-6 pilots (**merged**) and m3e what the pilots found plus the close-out (**merged**). **M3 is complete and [issue #15](https://github.com/Combraton/cbr/issues/15) is closed.** Active task: **M4, the bounded model runtime, [issue #21](https://github.com/Combraton/cbr/issues/21)**, starting with a docs-only readiness pull request and no model call. Parent: [issue #1](https://github.com/Combraton/cbr/issues/1). An independent reviewer session reviews this read-only.
+- **Owner/task:** Claude Code session as implementation lead for standalone CBR. **M1 and M2 are complete**; M1's closing record is [m1/CLOSEOUT.md](m1/CLOSEOUT.md). Active task: **M3, [issue #15](https://github.com/Combraton/cbr/issues/15)**, in four pull requests against `main`, each reviewed at its head before merging: m3a the Context profile (**merged**), m3b retrieval and the dependency evaluator (**merged**) and m3c the packet compiler on a real repository (**merged**); m3d the journey-6 pilots (**merged**) and m3e what the pilots found plus the close-out (**merged**). **M3 is complete and [issue #15](https://github.com/Combraton/cbr/issues/15) is closed.** Active task: **M4, the bounded model runtime, [issue #21](https://github.com/Combraton/cbr/issues/21)**. The readiness document is merged; **m4a, the envelope, is PR #23**. No model has been called and no credential has been read. Parent: [issue #1](https://github.com/Combraton/cbr/issues/1). An independent reviewer session reviews this read-only.
 - **Merged:** PR #2 as `d68e9d6`, pinned to `877139f`; PR #4 as `a939446`, pinned to `630011c`; PR #5 (c1) as `8b75129`; PR #6 (c2) as `da1e650`, pinned to `b00ec49`; **PR #7 (c3) as `8ba2594`, pinned to `5b98a9f`, confirmed from `merged: true` and `merged_at: 2026-09-16T15:31:51Z`**. Earlier: PR #6 pinned to `b00ec49`, confirmed from `merged: true` and `merged_at: 2026-09-16T14:26:34Z`**, the draft marked ready first and the head re-read unchanged before merging. Every owner decision, including the ceiling, is in [ADR 001](../decisions/001-standalone-v0.1-scope-and-stack.md). **PR #8 (owner follow-ups) as `f00faaf`, pinned to `40cb30b`, `merged_at: 2026-09-16T16:57:29Z`; PR #9 (c4) as `9a7b8f5`, pinned to `5db9d7c`, `merged_at: 2026-09-16T16:57:53Z`**, in that order, each confirmed from `merged` and `merged_at`. **PR #10 (d) as `96a33f2`, pinned to `a1048e6`, `merged_at: 2026-09-16T18:17:38Z`; then PR #11 (e) as `6c63d91`, pinned to `c2a262d`, `merged_at: 2026-09-16T18:17:56Z`**. PR #11 was stacked on #10's branch, so it was retargeted to `main` after #10 merged and before its own merge; retargeting leaves the head unchanged, and `c2a262d` was re-read before merging. **PR #13 (M1 close-out, README) as `5c667ed`, pinned to `507fc77`, `merged_at: 2026-09-16T18:58:44Z`; then PR #14 (M2) as `39113b2`, pinned to `62cbb99`, `merged_at: 2026-09-16T18:59:00Z`**, #14 retargeted to `main` first. **PR #16 (m3a) as `cbfaebe`, pinned to `1bd9a7a`, confirmed from `merged: true` and `merged_at: 2026-09-19T14:48:17Z`**, the draft marked ready first and the head re-read unchanged; the merge commit's second parent is `1bd9a7a`, so the reviewed head is on `main` unaltered. **PR #17 (m3b) as `c3cdf51`, pinned to `fb67250`, confirmed from `merged: true` and `merged_at: 2026-09-19T15:55:37Z`**, second parent `fb67250`. **PR #18 (m3c) as `2cf6b97`, pinned to `81c5f0e`, confirmed from `merged: true` and `merged_at: 2026-09-20T04:35:37Z`**, second parent `81c5f0e`. **PR #19 (m3d) as `17cc54c`, pinned to `52305b3`, confirmed from `merged: true` and `merged_at: 2026-09-20T07:28:00Z`**, second parent `52305b3`.
 - **Merge rule, 2026-09-16, superseded the same day.** This session ran `gh pr merge` on PR #2 after the owner replied "you can merge PR 2" in-session, having first reported the contradicting claim with evidence and waited. It landed the exact reviewed head `877139f` and is kept. A stricter rule was then recorded, and the owner then **granted merge authority under four conditions**, now in [AGENTS.md](../../AGENTS.md): pin with `--match-head-commit`; the head's CI is green; the reviewer has seen that head; no squash. Confirm from `merged` and `merged_at` afterwards, **never `merge_commit_sha`** — GitHub populates that on an open pull request with the test-merge candidate. Tags and releases remain the owner's alone.
 - **Owner decision, 2026-09-20, recorded at the m3c review: m3d has two pilot repositories**, as an amendment to [ADR 001](../decisions/001-standalone-v0.1-scope-and-stack.md) question 6. Knowscroll-v2 stays the decision-memory pilot; the owner's **brian2 fork** is added as a brownfield pilot, registered read-only, whose journey tests discovery and code flow rather than decision memory, whose oracle the owner writes before the run, and whose dirty working tree makes it the first journey to exercise the dirty path. **brian2 is CeCILL-licensed and this repository is MIT, so none of its bytes, excerpts or packets are committed here** — digests, paths, spans, counts and costs only. It is recorded now and acted on only after m3c is cleared; no other brian2 work belongs in this pull request.
 - **Inspected revisions:** protocol `v0.1.0` = `cbf8e4df9df2ca8a9b50264df6acace6e4c3a0fc`; combraton `9af69ce`; pio `e65b7c0`; benchmarks `c8d5878`.
 
-## This change — M4 readiness, docs only
+## This change — M4a, the envelope before any transport
+
+[PR #23](https://github.com/Combraton/cbr/pull/23) against `main`, for [issue #21](https://github.com/Combraton/cbr/issues/21), scoped exactly as [READINESS §1](m4/READINESS.md) sets it out. **No network code, no credential read, and no HTTP or TLS dependency anywhere in the workspace** — a test walks `Cargo.lock` from `cbr-provider` and fails if one becomes reachable.
+
+| Command | Exit | Result |
+|---|---|---|
+| `check_docs.py` / `verify_pin.py` | 0 / 0 | 25 files, 162 links, 27 heading anchors, 0 errors; 433 and 420 match |
+| `cargo fmt --all -- --check` | 0 | — |
+| `cargo clippy --workspace --all-targets --locked -- -D warnings` | 0 | — |
+| `cargo build --workspace --locked` | 0 | — |
+| `cargo test --workspace --locked` | 0 | **207 tests** (181 at the M4 readiness PR) |
+| `git diff --check` | 0 | — |
+| all seven suites + `check_results.py` | 0 | `stream` 24/24 · `core` 130/5/0 · `socket` 11/2/0 · `evidence` 16/0/0 · `knowledge` 10/0/0 · `context` 11/0/0 · `composition` 3 pass, 11 unsupported — **unchanged** |
+
+**The gate, before the code — and where that discipline slipped.** The thirteen `budget` tests were written and run against a module whose every function was `unimplemented!()`: **12 failed, 1 passed**. The one that passed is the no-network guard, which was true before the code existed and is a regression guard rather than a gate; it is not counted as one. **The eight `model` tests were not run red**: they were written in the same step as the module beneath them, which is the discipline m3c set and this round did not keep. What stands in for it is the mutant evidence below — every one of those tests is killed by a mutant of the thing it claims to hold — but a mutant after the fact is not the same as a failing test before it, and it is recorded here as a lapse rather than smoothed over.
+
+### The local estimate is a byte bound, and why
+
+**The byte-based upper bound, not the published tokenizer.** A byte-level BPE emits at most one token per byte of its input — every token decodes to at least one byte and the tokens tile the input — so the UTF-8 byte length of the serialized request is an upper bound on its token count, in any script and under any vocabulary. That is a property, not a measurement, which is what makes it safe to build on without a provider.
+
+The alternative was MiniMax's published `tokenizer.json`, vendored with its digest and licence. It needs fetching once, and READINESS rules out a download at build or run time; this session also has no authorisation to fetch from the provider. The bound is loose — three to four times the real count for English prose — and loose-and-sound was the right trade against tight-and-unverifiable.
+
+**The property is one-sided and pinned on a corpus:** it may over-estimate, it must never under-estimate. The corpus is the crate's own sources, read at test time so it grows with the repository, plus a fixed non-Latin text in Devanagari, Japanese and Chinese. The reference is the worst case a byte-level BPE can emit, obtained by arithmetic rather than measured. A second test states why the bound is bytes rather than characters: on that non-Latin text a character count is **smaller** than the byte count, so a character-based estimate would under-count exactly where it matters.
+
+### Two-step admission, and the ledger
+
+`POST /v1/responses/input_tokens` carries the fully serialized request, so **the count call is a send** and is treated as one everywhere: admitted against the ledger, recorded, and its own cost debited. The local estimate runs first and alone can refuse, and when it does nothing leaves the process. `Recorder`, the only transport in this build, counts a count call among the sends it saw.
+
+The ledger is in the store, under the same WAL, `synchronous=FULL` and `BEGIN IMMEDIATE` discipline as the records it guards, and migrates with them. A reservation is written **before** the send and the same row **becomes** the settlement, so there is never a moment when both are counted and never one when neither is. Time comes from the existing clock control: the rolling five hours and the calendar month are tested by moving the clock, never by sleeping.
+
+### Crash matrix, the envelope's three rows
+
+Driven by the `model.fake` control, which a production configuration refuses like every other — it makes the provider perform one call through the ledger at startup, pausing at a barrier, so the boundaries belong to a process a test can kill at them. **The call selects nothing and changes no packet**; it exists so that these rows are reachable.
+
+| Row | Boundary | After the kill |
+|---|---|---|
+| Reserved, nothing sent | `model.after_reservation` | the reservation survives and is still a reservation |
+| Sent, not reconciled | `model.after_send` | the reservation still holds its estimate, which over-counts |
+| Inside reconciliation | `model.during_reconciliation` | counted exactly once — never twice, never neither |
+
+The property is the same after all three and is deliberately one-sided: **the spend is counted at least once and is never zero.** A ledger that forgets a spend overspends someone else's quota; one that counts it twice only refuses a call it could have allowed.
+
+**Negative control 1, at m4a rather than at m4e:** with no model configured the golden packet digest is unchanged — the existing test says so — and the ledger stays empty, which a second test says. A row written without a model would mean a call nobody asked for, which is what "background spend is zero" forbids.
+
+### Mutants
+
+**Nine, all killed, all observed, each run alone. Two survived their first run and are recorded as survivors.**
+
+| Mutant | Killed by | At |
+|---|---|---|
+| The local admission check removed | `a_request_the_local_estimate_refuses_never_reaches_the_count_endpoint` | the fake transport asserting it was never called |
+| **The provider count reached for a request the local estimate refuses** | the same test | the same assertion — the count endpoint is a send |
+| One of the two counters dropped | `each_counter_refuses_on_its_own` | a window-exhausted case the monthly counter alone admits |
+| **The reservation written after the send** | `every_crash_boundary_is_reached_in_order`, **after it was given something to assert** | "a reservation is written before its send, never after it" |
+| Counters lost on restart | `an_unsettled_reservation_is_still_counted_after_a_restart` | the spend read back from a reopened store |
+| **Provider exhaustion reported as `budget_exhausted`** | `provider_exhaustion_is_a_different_outcome_from_an_exhausted_envelope`, **after the reason was given one source** | the two reasons compared |
+| The estimate under-counts, characters rather than bytes | `the_estimate_never_falls_below_what_any_byte_level_tokenizer_could_emit` | the non-Latin text |
+| A refusal writes a reservation anyway | `a_refusal_writes_no_reservation_and_is_itself_recorded` | "and nothing was reserved" |
+| The no-network guard does not walk the tree | `the_crate_has_no_network_dependency_in_its_tree` | `rusqlite` added to the forbidden list, which must then be found |
+
+**Why the two survived, in one sentence each.** The boundary test **collected the names of the boundaries and asserted nothing at them**, so a build that reserved after it sent still passed: it now asserts what is true at each one, which is that no send has happened when a reservation is written. And the reason a provider-exhausted call reports was **written twice** — as a match in `budget.rs` and as a literal in `model.rs` — so mutating one left the other answering; that is the milestone's own recurring shape in a new place, and it is fixed by making `model.rs` ask `budget.rs` rather than repeat it.
+
+### What m4a does not establish
+
+- **No token count here has been compared with the provider's.** The estimate is sound by construction and unmeasured in practice; that comparison is **m4b's first measurement**, and until it exists the bound's looseness is a guess.
+- **Nothing has been sent anywhere.** The only transport is a recorder, and the only thing that reaches it is a test control a production configuration refuses.
+- **The ledger has never held a real spend.** Every number in it so far was written by a test.
+- **The fake call selects nothing**, so nothing here shows a model improving a packet — or a packet surviving a model. That is m4c onward.
+
+## Earlier — M4 readiness, docs only
 
 [PR #22](https://github.com/Combraton/cbr/pull/22) against `main`, for [issue #21](https://github.com/Combraton/cbr/issues/21). **No code, no transport, no credential read, no model call.** M4 is the first milestone that spends the owner's quota and sends repository text to a third party, so it starts with [`docs/work/m4/READINESS.md`](m4/READINESS.md) and nothing else, reviewed before any of that exists.
 
@@ -43,7 +112,7 @@ The other six: the counters are **durable and conservative** — in the store, s
 
 ## Earlier — M3, complete
 
-M3 closed on 2026-09-20. [Issue #15](https://github.com/Combraton/cbr/issues/15) is closed and the record is [`docs/work/m3/CLOSEOUT.md`](m3/CLOSEOUT.md). Five pull requests, each pinned and confirmed: #16 `cbfaebe` · #17 `c3cdf51` · #18 `2cf6b97` · #19 `17cc54c` · **#20 `c726107`, pinned to `47fd574`, confirmed from `merged: true` and `merged_at: 2026-09-20T09:19:03Z`**, second parent `47fd574`.
+M3 closed on 2026-09-20. [Issue #15](https://github.com/Combraton/cbr/issues/15) is closed and the record is [`docs/work/m3/CLOSEOUT.md`](m3/CLOSEOUT.md). Five pull requests, each pinned and confirmed: #16 `cbfaebe` · #17 `c3cdf51` · #18 `2cf6b97` · #19 `17cc54c` · **#20 `c726107`, pinned to `47fd574`, confirmed from `merged: true` and `merged_at: 2026-09-20T09:19:03Z`**, second parent `47fd574`. **PR #22 (M4 readiness) as `9092439`, pinned to `bf4694a`, confirmed from `merged: true` and `merged_at: 2026-09-20T09:56:46Z`**, second parent `bf4694a`.
 
 ## Earlier — M3e, what the pilots found
 
