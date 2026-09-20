@@ -38,10 +38,10 @@ Unchanged across every M3 pull request. The Rust suite went from **132 tests on 
 | J1, a question finds its own answer with a cited packet | **pass**, model `none` | [record](../../verification/JOURNEYS.md#j1-a-question-finds-its-own-answer-with-a-cited-packet) |
 | J1's negative control, a moved tree is never silently answered from | **pass** | [record](../../verification/JOURNEYS.md#j1s-negative-control-a-moved-tree-is-never-silently-answered-from) |
 | J8, a deadline leaves required items unmet and advisory items at their fallback | **pass**, model `none` | [record](../../verification/JOURNEYS.md#j8-a-deadline-leaves-required-items-unmet-and-advisory-items-at-their-fallback) |
-| J6 pilot, brian2 | **failed** its oracle: one of three required facts, no trap triggered, baseline held none | [record](../../verification/JOURNEYS.md#j6-pilot-brian2-a-brownfield-repository-no-model--failed) |
-| J6 pilot, Knowscroll-v2 | **failed** its oracle: two of three required facts, no trap triggered, baseline held none | [record](../../verification/JOURNEYS.md#j6-pilot-knowscroll-v2-decision-memory-no-model--failed) |
+| J6 pilot, brian2 | **failed** its oracle twice: one of three required facts on both runs, no trap triggered, baseline held none | [record](../../verification/JOURNEYS.md#j6-pilot-brian2-a-brownfield-repository-no-model--failed) |
+| J6 pilot, Knowscroll-v2 | **failed** at m3d, two of three; **passed** the m3e rerun, three of three, no trap | [record](../../verification/JOURNEYS.md#j6-pilot-knowscroll-v2-decision-memory-no-model--failed-then-passed-on-the-rerun) |
 
-Both pilots were rerun in full at m3e after the compiler changed, with the same questions verbatim and the same selectors, and rescored. **A pilot is a steer and never gate evidence**, and neither pilot measures a session: no agent used either packet for any work, which is J6 proper and is M7's.
+Both pilots were rerun in full at m3e after the compiler changed, with the same questions verbatim and the same selectors, and rescored. **The caveat on Knowscroll's pass is part of the result:** the change that moved it was proposed by the reviewer, who holds the oracle, so the pass confirms that a general fix was general and is **not independent evidence of usefulness**. What shows nothing was tuned to pass is brian2, whose failure is unchanged across both runs against the same change. Both questions stay sealed and run again at M4. **A pilot is a steer and never gate evidence**, and neither pilot measures a session: no agent used either packet for any work, which is J6 proper and is M7's.
 
 ## Limits carried into M4
 
