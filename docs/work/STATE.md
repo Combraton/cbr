@@ -15,15 +15,27 @@ This is a dated navigation snapshot. Reconcile it with Git, linked issues and cu
 
 | Command | Exit | Result |
 |---|---|---|
-| `check_docs.py` / `verify_pin.py` | 0 / 0 | 25 files, 162 links, 27 heading anchors, 0 errors; 433 and 420 match |
+| `check_docs.py` / `verify_pin.py` | 0 / 0 | 25 files, 163 links, 27 heading anchors, 0 errors; 433 and 420 match |
 | `cargo fmt --all -- --check` | 0 | — |
 | `cargo clippy --workspace --all-targets --locked -- -D warnings` | 0 | — |
 | `cargo build --workspace --locked` | 0 | — |
-| `cargo test --workspace --locked` | 0 | **207 tests** (181 at the M4 readiness PR) |
+| `cargo test --workspace --locked` | 0 | **221 tests** (207 at the review's head `499ad80`, 181 at the readiness PR) |
 | `git diff --check` | 0 | — |
 | all seven suites + `check_results.py` | 0 | `stream` 24/24 · `core` 130/5/0 · `socket` 11/2/0 · `evidence` 16/0/0 · `knowledge` 10/0/0 · `context` 11/0/0 · `composition` 3 pass, 11 unsupported — **unchanged** |
 
-**The gate, before the code — and where that discipline slipped.** The thirteen `budget` tests were written and run against a module whose every function was `unimplemented!()`: **12 failed, 1 passed**. The one that passed is the no-network guard, which was true before the code existed and is a regression guard rather than a gate; it is not counted as one. **The eight `model` tests were not run red**: they were written in the same step as the module beneath them, which is the discipline m3c set and this round did not keep. What stands in for it is the mutant evidence below — every one of those tests is killed by a mutant of the thing it claims to hold — but a mutant after the fact is not the same as a failing test before it, and it is recorded here as a lapse rather than smoothed over.
+**The gate, before the code — and where that discipline slipped, and what it cost.** The thirteen `budget` tests were written and run against a module whose every function was `unimplemented!()`: **12 failed, 1 passed**. The one that passed is the no-network guard, which was true before the code existed and is a regression guard rather than a gate; it is not counted as one. **The eight `model` tests were not run red**: they were written in the same step as the module beneath them, which is the discipline m3c set and this round did not keep.
+
+**The review then found three defects, and two of them were in `model.rs`** — the module whose tests never ran red. That is not a coincidence worth explaining away. A test written after the code it tests is written to agree with it: the completion reserving the provider's input count alone, and a failure after the send settling to zero, were both things the code did and the tests were shaped around. The thirteen `budget` tests, written first, found no such defect. **The eleven tests for the three findings were written and run red first**, and their red run is in the pull request.
+
+### The three defects the review found
+
+| Defect | What the probe showed | The rule now |
+|---|---|---|
+| **The completion was admitted against the provider's input count alone.** `admit(.., refined.max(1))` dropped the reserved generation and the margin the local estimate carried, and trusted whatever figure came back. | Window nearly full, count answered 1, completion spent 50,000: the ledger row read `estimate 1, usage 50,000`, admitted. The comment above that line said a provider reporting less than it charges does not widen the envelope; the code did exactly that. | The reservation is the refined input count **plus the generation the request asks for plus the margin**. The request must declare that limit or it is never sent. A count below an eighth of the local bound is a recorded **anomaly** and the local figure stands. Usage above the reservation is a recorded **divergence**. |
+| **A failure after the send settled to zero.** | A 100,000-byte body, count fine, completion times out: the ledger recorded 0. The provider may have charged. | Split by what is known: **nothing left the process** spends nothing; **sent with no usage reported** keeps the reservation's estimate, as a kind of its own; **a reported usage** settles to that. The transport's answer says which, and `Answer` carries that distinction now, before m4b builds a real one on it. |
+| **The crash matrix never reached the completion.** One scripted answer was consumed by the count, a `Completed` answered to a count fell into the failure arm, and the process paused at the count's first boundary in all three rows. | The scripted run ended `Unmet(model_call_failed)` with one send, and the scripted usage was never recorded. | Both answers are scripted; the boundaries are **named per call**; there are **six rows**, and each asserts **which call's reservation is on disk, by request id**. A mismatched answer is its own recorded failure, not a fall-through. |
+
+Two smaller things with them. **Admission takes `BEGIN IMMEDIATE` across the check and the write**, because m4c adds concurrency and a check-then-write race is an overspend; the test observes it by holding the write lock on another connection. And a **run-level ceiling** from the launch (`--model-run-ceiling`) sits beside per-request and per-job: it is checked **after** the two counters, so it can only lower the owner's envelope, never raise it. m4e's five-million cap is that, enforced rather than intended.
 
 ### The local estimate is a byte bound, and why
 
@@ -55,7 +67,7 @@ The property is the same after all three and is deliberately one-sided: **the sp
 
 ### Mutants
 
-**Nine, all killed, all observed, each run alone. Two survived their first run and are recorded as survivors.**
+**Eighteen, all killed, all observed, each run alone — nine for the first round and nine for the review's three findings. Two of the first nine survived their first run and are recorded as survivors.**
 
 | Mutant | Killed by | At |
 |---|---|---|
@@ -68,6 +80,15 @@ The property is the same after all three and is deliberately one-sided: **the sp
 | The estimate under-counts, characters rather than bytes | `the_estimate_never_falls_below_what_any_byte_level_tokenizer_could_emit` | the non-Latin text |
 | A refusal writes a reservation anyway | `a_refusal_writes_no_reservation_and_is_itself_recorded` | "and nothing was reserved" |
 | The no-network guard does not walk the tree | `the_crate_has_no_network_dependency_in_its_tree` | `rusqlite` added to the forbidden list, which must then be found |
+| Reserve the input count alone | `the_completion_reserves_its_generation_and_margin_not_the_input_count_alone` | the completion is admitted where it should be refused |
+| Every failure settles to zero | `a_failure_after_the_send_keeps_the_estimate…` and `…settles_to_what_it_reported` | the spend the provider may have charged |
+| An implausible count is believed | `a_count_implausibly_below_the_local_bound_is_an_anomaly…` | no anomaly is recorded |
+| The generation-declared check removed | `a_request_that_does_not_declare_its_generation_limit_is_never_sent` | a body without its limit leaves the process |
+| A divergence is not recorded | `usage_above_the_reservation_is_recorded_as_a_divergence` | spending more than was reserved goes unremarked |
+| Admission without `BEGIN IMMEDIATE` | `the_check_and_the_write_are_one_transaction` | a second writer is not kept out |
+| The run ceiling checked before the envelope | `a_run_ceiling_lowers_the_envelope_and_never_raises_it` | a ceiling above the envelope would raise it |
+| A mismatched answer falls through to failure | `an_answer_of_the_wrong_kind_is_a_recorded_failure…` | it is reported as a transport error |
+| Both calls share one barrier name | `the_boundaries_are_named_per_call…` | a row could pass at the wrong boundary |
 
 **Why the two survived, in one sentence each.** The boundary test **collected the names of the boundaries and asserted nothing at them**, so a build that reserved after it sent still passed: it now asserts what is true at each one, which is that no send has happened when a reservation is written. And the reason a provider-exhausted call reports was **written twice** — as a match in `budget.rs` and as a literal in `model.rs` — so mutating one left the other answering; that is the milestone's own recurring shape in a new place, and it is fixed by making `model.rs` ask `budget.rs` rather than repeat it.
 

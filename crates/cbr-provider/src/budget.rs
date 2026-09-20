@@ -58,6 +58,14 @@ pub const MESSAGE_OVERHEAD_TOKENS: u64 = 8;
 pub const RESERVED_GENERATION_TOKENS: u64 = 4_096;
 pub const SAFETY_MARGIN_TOKENS: u64 = 1_024;
 
+/// How far below the local byte bound a provider's own count may fall before
+/// it is disbelieved. The bound runs **three to four times** the real count
+/// for prose, measured on this crate's own sources, so a figure below an
+/// eighth of it is not a tighter count — it is a number to record as an
+/// anomaly and not to act on. The local figure stands in that case, which is
+/// the conservative direction.
+pub const IMPLAUSIBLE_RATIO: u64 = 8;
+
 /// Why a call was refused before it was sent. Each is a typed outcome that
 /// reaches a context item as its unmet reason; none is retried.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -70,6 +78,8 @@ pub enum Refusal {
     PerRequest,
     /// This job has spent its allowance.
     PerJob,
+    /// A launch-configured ceiling for this whole run.
+    RunCeiling,
 }
 
 impl Refusal {
@@ -81,31 +91,43 @@ impl Refusal {
             Refusal::WindowExhausted | Refusal::MonthExhausted => "budget_exhausted",
             Refusal::PerRequest => "request_over_ceiling",
             Refusal::PerJob => "job_over_ceiling",
+            Refusal::RunCeiling => "run_over_ceiling",
         }
     }
 }
 
 /// How a reserved call ended.
+///
+/// **Split by what is known, not by whether the call succeeded.** A failure
+/// after the body went out is a call the provider may well have charged for,
+/// and settling it to zero under-counts a shared quota. A failure before
+/// anything left the process spent nothing and settling it to anything else
+/// over-counts. The transport says which, because only the transport knows.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Settlement {
     /// The provider's own accounting of what was spent.
     Usage(u64),
+    /// **Sent, and no usage reported.** The reservation's estimate stands:
+    /// the provider may have charged and nobody said how much, so the
+    /// conservative figure is the one already written.
+    UsageUnknown,
+    /// **Nothing left the process.** Nothing was spent.
+    NothingSpent,
     /// **The provider says its quota is exhausted while CBR's ledger has
     /// room.** The quota is shared with the owner's other tools and CBR sees
     /// only its own spending, so this will happen and it is not
     /// `budget_exhausted`: reporting it as such would name the wrong limit.
     /// Never retried.
     ProviderExhausted,
-    /// The call failed for any other reason.
-    Failed,
 }
 
 impl Settlement {
     pub fn reason(self) -> Option<&'static str> {
         match self {
             Settlement::Usage(_) => None,
+            Settlement::UsageUnknown => Some("model_call_failed"),
+            Settlement::NothingSpent => Some("model_not_sent"),
             Settlement::ProviderExhausted => Some("provider_quota_exhausted"),
-            Settlement::Failed => Some("model_call_failed"),
         }
     }
 }
@@ -201,11 +223,37 @@ pub fn epoch_seconds(instant: &str) -> Option<i64> {
 /// The ledger: durable, conservative, and the only thing that admits a call.
 pub struct Ledger<'a> {
     connection: &'a Connection,
+    run_ceiling: Option<u64>,
 }
 
 impl<'a> Ledger<'a> {
     pub fn new(connection: &'a Connection) -> Self {
-        Ledger { connection }
+        Ledger {
+            connection,
+            run_ceiling: None,
+        }
+    }
+
+    /// A ceiling for this whole run, from launch configuration. It can only
+    /// lower the owner's envelope.
+    pub fn with_run_ceiling(mut self, ceiling: Option<u64>) -> Self {
+        self.run_ceiling = ceiling;
+        self
+    }
+
+    /// Everything this ledger has ever spent, which is what a run ceiling
+    /// bounds. The window rolls and the month resets; a run does neither.
+    fn run_spend(&self) -> Result<u64, LedgerError> {
+        let value: Option<i64> = self
+            .connection
+            .prepare(&format!(
+                "SELECT SUM(tokens) FROM model_ledger WHERE {}",
+                Self::SPENT
+            ))?
+            .query_row([], |row| row.get(0))
+            .optional()?
+            .flatten();
+        Ok(value.unwrap_or(0).max(0) as u64)
     }
 
     pub fn migrate(connection: &Connection) -> Result<(), LedgerError> {
@@ -231,7 +279,10 @@ impl<'a> Ledger<'a> {
     }
 
     /// Rows that count as spend. A refusal is recorded and is not one.
-    const SPENT: &'static str = "kind IN ('reservation', 'usage', 'provider_exhausted', 'failed')";
+    /// Rows that count as spend. A refusal, an anomaly, a divergence and a
+    /// mismatch are all recorded and none of them is one.
+    const SPENT: &'static str =
+        "kind IN ('reservation', 'usage', 'unknown', 'provider_exhausted', 'not_sent')";
 
     /// The local half of admission. Refuses without writing a reservation;
     /// admits by writing one, **before anything is sent**, so that a crash
@@ -244,7 +295,33 @@ impl<'a> Ledger<'a> {
         request: &str,
         estimate: u64,
     ) -> Result<Result<Reservation, Refusal>, LedgerError> {
+        // **One write transaction across the check and the insert.** m4c
+        // adds concurrency, and a check-then-write race is an overspend:
+        // two admissions could each read a spend the other was about to
+        // write and both be admitted. `BEGIN IMMEDIATE` takes the write lock
+        // before the read, so the second waits or fails rather than racing.
+        self.connection.execute_batch("BEGIN IMMEDIATE")?;
+        let admitted = self.admit_locked(now, job, request, estimate);
+        let ended = self.connection.execute_batch("COMMIT");
+        match (admitted, ended) {
+            (Ok(admitted), Ok(())) => Ok(admitted),
+            (admitted, ended) => {
+                let _ = self.connection.execute_batch("ROLLBACK");
+                ended?;
+                admitted
+            }
+        }
+    }
+
+    fn admit_locked(
+        &self,
+        now: &str,
+        job: &str,
+        request: &str,
+        estimate: u64,
+    ) -> Result<Result<Reservation, Refusal>, LedgerError> {
         let spend = self.spend(now, job)?;
+        let run = self.run_spend()?;
         // Ceilings first, so a caller learns it asked for something no
         // envelope would ever allow rather than that the quota is low.
         let refusal = if estimate > PER_REQUEST_TOKENS {
@@ -255,6 +332,12 @@ impl<'a> Ledger<'a> {
             Some(Refusal::WindowExhausted)
         } else if spend.month + estimate > MONTH_TOKENS {
             Some(Refusal::MonthExhausted)
+        } else if self
+            .run_ceiling
+            .is_some_and(|ceiling| run + estimate > ceiling)
+        {
+            // Checked **after** the envelope, so a ceiling can only lower it.
+            Some(Refusal::RunCeiling)
         } else {
             None
         };
@@ -314,21 +397,40 @@ impl<'a> Ledger<'a> {
     ) -> Result<(), LedgerError> {
         let seconds = epoch_seconds(now).ok_or_else(|| LedgerError::Instant(now.to_string()))?;
         let (kind, tokens) = match settlement {
-            Settlement::Usage(tokens) => ("usage", tokens),
+            Settlement::Usage(tokens) => ("usage", Some(tokens)),
+            // Sent, and nobody said what it cost: the estimate stands, which
+            // over-counts rather than losing a spend that may have happened.
+            Settlement::UsageUnknown => ("unknown", None),
+            // Nothing left the process, so nothing was spent.
+            Settlement::NothingSpent => ("not_sent", Some(0)),
             // A call the provider refused spent nothing; the reservation is
             // reconciled to that rather than left holding an estimate, which
             // is what "it does not corrupt the ledger" means.
-            Settlement::ProviderExhausted => ("provider_exhausted", 0),
-            Settlement::Failed => ("failed", 0),
+            Settlement::ProviderExhausted => ("provider_exhausted", Some(0)),
         };
         // The reservation row **becomes** the settlement, so there is never a
         // moment when both are counted and never one when neither is.
-        self.connection.execute(
-            "UPDATE model_ledger
-             SET kind = ?1, tokens = ?2, recorded_at = ?3, seconds = ?4
-             WHERE id = ?5 AND kind = 'reservation'",
-            params![kind, tokens as i64, now, seconds, reservation.id],
-        )?;
+        match tokens {
+            Some(tokens) => self.connection.execute(
+                "UPDATE model_ledger
+                 SET kind = ?1, tokens = ?2, recorded_at = ?3, seconds = ?4
+                 WHERE id = ?5 AND kind = 'reservation'",
+                params![kind, tokens as i64, now, seconds, reservation.id],
+            )?,
+            None => self.connection.execute(
+                "UPDATE model_ledger
+                 SET kind = ?1, recorded_at = ?2, seconds = ?3
+                 WHERE id = ?4 AND kind = 'reservation'",
+                params![kind, now, seconds, reservation.id],
+            )?,
+        };
+        // Spending more than was reserved is a fact about the estimate, and
+        // READINESS section 3 requires it to be kept rather than absorbed.
+        if let Settlement::Usage(tokens) = settlement
+            && tokens > reservation.estimate
+        {
+            self.note(now, "", "", "divergence", tokens, reservation.estimate)?;
+        }
         Ok(())
     }
 
@@ -370,6 +472,22 @@ impl<'a> Ledger<'a> {
                 &[&job],
             )?,
         })
+    }
+
+    /// Record something that is not a spend: an anomaly, a divergence, a
+    /// mismatched answer. Kept out of [`Self::SPENT`] on purpose — these are
+    /// facts about a call, not charges for one.
+    pub fn note(
+        &self,
+        now: &str,
+        job: &str,
+        request: &str,
+        kind: &str,
+        tokens: u64,
+        estimate: u64,
+    ) -> Result<(), LedgerError> {
+        self.write(now, job, request, kind, tokens, estimate)?;
+        Ok(())
     }
 
     /// Every row, for a test or a report. Refusals are recorded and are not

@@ -52,6 +52,8 @@ struct Args {
     /// checkout path is local configuration and never crosses the wire, so
     /// it is given to the process that reads it rather than to a client.
     register_repository: Vec<repositories::Registration>,
+    /// A ceiling for this whole run, which can only lower the envelope.
+    model_run_ceiling: Option<u64>,
 }
 
 fn parse_args() -> Result<Args, String> {
@@ -63,6 +65,7 @@ fn parse_args() -> Result<Args, String> {
         revoke_credential: None,
         issue_credential: None,
         register_repository: Vec::new(),
+        model_run_ceiling: None,
     };
     let mut argv = std::env::args().skip(1);
     while let Some(flag) = argv.next() {
@@ -87,6 +90,16 @@ fn parse_args() -> Result<Args, String> {
                 args.issue_credential =
                     Some(argv.next().ok_or("--issue-credential needs a principal")?);
             }
+            "--model-run-ceiling" => {
+                let value = argv
+                    .next()
+                    .ok_or("--model-run-ceiling needs a number of tokens")?;
+                args.model_run_ceiling = Some(
+                    value
+                        .parse()
+                        .map_err(|_| "--model-run-ceiling takes a number of tokens".to_string())?,
+                );
+            }
             "--register-repository" => {
                 let value = argv
                     .next()
@@ -106,7 +119,10 @@ fn parse_args() -> Result<Args, String> {
 
 fn run() -> Result<(), String> {
     let args = parse_args()?;
-    let config = config::Config::load(args.config.as_deref())?;
+    let mut config = config::Config::load(args.config.as_deref())?;
+    // A launch-set ceiling for this whole run. It is checked after the two
+    // counters, so it can only lower the owner's envelope.
+    config.model_run_ceiling = args.model_run_ceiling;
     let data_dir = args.data_dir.clone().unwrap_or_else(|| PathBuf::from("."));
     // Opened before the store, and before any socket is bound, so a malformed
     // clock file stops the launch before anything is written or listened on.
