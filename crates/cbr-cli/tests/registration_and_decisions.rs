@@ -90,6 +90,39 @@ impl Fixture {
             "pub fn drainQueue(limit: u64) -> u64 {\n    limit\n}\n",
         )
         .expect("writes");
+        // Enough discoverable material that the compiler's own bounds bite.
+        // With only the two files above, a fixture packet carries fewer
+        // spans than `DISCOVERED_SPANS` allows and no excerpt reaches
+        // `EXCERPT_BYTES`, so a change to either bound leaves the packet
+        // byte-identical and the golden digest below proves nothing about
+        // them. Six files, because `DISCOVERED_PER_PATH` caps a single file
+        // at two spans however long it is.
+        for (rank, module) in ["alpha", "beta", "gamma", "delta", "epsilon", "zeta"]
+            .into_iter()
+            .enumerate()
+        {
+            // Each module mentions the task's words a different number of
+            // times, so retrieval has something to rank by and the order of
+            // the discovered spans is not a tie broken by whatever the query
+            // plan happened to do.
+            let mut source = format!(
+                "//! {}\n\n",
+                "The compatibility adapter rewrites the queue. ".repeat(rank + 1)
+            );
+            for stage in 0..6 {
+                source.push_str(&format!(
+                    "/// Stage {stage} of the compatibility adapter: it rewrites the queue's \
+                     response field on the way out, so that a client fixture written against \
+                     the old adapter keeps working while the queue migration lands.\n\
+                     /// The adapter is deliberately dull. It drains the queue, renames the \
+                     response field, and hands the result back to the caller unchanged in \
+                     every other respect, which is what the decision record says it must do.\n\
+                     pub fn {module}AdapterStage{stage}(queue: u64) -> u64 {{\n    \
+                     queue + {stage}\n}}\n\n"
+                ));
+            }
+            std::fs::write(checkout.join(format!("src/{module}.rs")), source).expect("writes");
+        }
         git(&checkout, &["init", "-q", "-b", "main"]);
         git(&checkout, &["add", "."]);
         git(&checkout, &["commit", "-q", "-m", "the adapter decision"]);
@@ -874,5 +907,66 @@ fn a_repository_outside_the_grant_contributes_nothing_to_discovery() {
     assert!(
         !String::from_utf8_lossy(&with_second).contains("over closed"),
         "and the reader's does not"
+    );
+}
+
+/// The digest of the packet the fixture above produces, under the packet
+/// compiler this repository builds.
+///
+/// This is the same shape as `cbr_memory::retrieval::GOLDEN_FIXTURE_DIGEST`,
+/// and it exists for the same reason: `cbr-provider`'s `compiler::COMPILER`
+/// is a version string a human has to remember to bump, and in this milestone
+/// a version string was already forgotten once.
+///
+/// **Why the constant is here and not beside `compiler::COMPILER`.**
+/// `cbr-provider` is a binary-only crate with no library target, so nothing
+/// outside it can import that constant, and every test of the compiler drives
+/// the built binary. The digest still guards the version, because the
+/// compiler string is *inside* the bytes it covers: a sealed packet's
+/// coverage names its producer. Bump `compiler::COMPILER` and this digest
+/// changes; change what the compiler emits and it changes too. Either way the
+/// two are updated in the same commit or this test fails.
+const GOLDEN_PACKET_DIGEST: &str =
+    "sha256:74b0d6b175644ba4d6d270bdcba1e29b9212151ccecf55ff5240bbc47f55dfca";
+
+#[test]
+fn the_packet_a_fixed_fixture_produces_has_not_changed_without_the_compiler_string() {
+    let bytes = packet_bytes_for(|_, _, _| {}, false, false);
+    let digest = cbr_encoding::digest_bytes(&bytes);
+    assert_eq!(
+        digest,
+        GOLDEN_PACKET_DIGEST,
+        "\n\nThe packet this fixture produces has changed.\n\n\
+         If the change is intended, it is a change to what the context \
+         compiler emits, so `cbr-provider`'s `compiler::COMPILER` must be \
+         bumped in the same commit and this digest updated with it. If it is \
+         not intended, this is the bug.\n\nWhat the compiler now produces:\n\n{}",
+        String::from_utf8_lossy(&bytes)
+    );
+    // The guard is worth nothing if the bytes do not carry the version it
+    // claims to guard, and worth little if the fixture never reaches the
+    // bounds the compiler applies: a fixture too small to fill
+    // `DISCOVERED_SPANS` or to exceed `EXCERPT_BYTES` leaves both of those
+    // free to change without moving the digest. Both were checked by
+    // mutating them and watching this test.
+    let sealed = cbr_encoding::parse(&bytes).expect("canonical JSON");
+    let sections = sealed
+        .get("sections")
+        .and_then(Value::as_array)
+        .expect("sections");
+    let discovered = sections
+        .iter()
+        .filter(|section| text(section, &["section_id"]).starts_with("d-span-"))
+        .count();
+    assert_eq!(discovered, 8, "the fixture fills DISCOVERED_SPANS");
+    assert!(
+        sections
+            .iter()
+            .any(|section| text(section, &["content"]).len() > 1024),
+        "and at least one excerpt is longer than half of EXCERPT_BYTES"
+    );
+    assert!(
+        String::from_utf8_lossy(&bytes).contains("cbr-context-compiler/"),
+        "the sealed packet names its producer"
     );
 }

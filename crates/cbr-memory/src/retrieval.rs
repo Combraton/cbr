@@ -50,6 +50,23 @@ use crate::lexical;
 /// `State::Lagging` is exactly what it is.
 pub const COMPILER: &str = "cbr-index/2";
 
+/// The digest of everything an index build decides about a fixed fixture
+/// tree, under this `COMPILER`.
+///
+/// [`COMPILER`] is a promise a human has to remember to keep, and in this
+/// milestone that promise was broken once already: the chunker changed and
+/// this string did not, so an index built by the previous chunker would have
+/// been reported `complete` at a basis it does not describe. This digest is
+/// the mechanism that does not rely on remembering. It covers the chunk rows,
+/// the anchor rows, the coverage report and a fixed set of query results over
+/// the fixture in `crates/cbr-memory/tests/golden_index.rs`, together with
+/// `COMPILER` itself — so a build change with no version bump fails the test,
+/// and a version bump with no build change fails it too.
+///
+/// Ranking order is deliberately not covered; the test's header says why.
+pub const GOLDEN_FIXTURE_DIGEST: &str =
+    "sha256:c2fe635a838c9bb6004fad66ca558ae9195b48ba3784f0eeb22b53601563a481";
+
 /// How much source the canonical fallback will read before it stops and says
 /// so. The fallback exists to keep an incomplete projection honest, not to
 /// become an unbounded grep.
