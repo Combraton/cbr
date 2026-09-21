@@ -371,3 +371,102 @@ fn cbrs_own_instruction_is_the_only_instruction_in_either_request() {
         );
     }
 }
+
+// ---- what the flow can cost ---------------------------------------------
+
+/// The largest request a step can send: every candidate it may offer, each
+/// as long as retrieval's own per-span cap allows.
+fn worst_case(step: &Request) -> u64 {
+    let serialized = step.serialize(crate::wire::Dialect::Responses);
+    crate::budget::input_bound(&serialized, step.messages.len())
+        .saturating_add(step.generation)
+        .saturating_add(crate::budget::SAFETY_MARGIN_TOKENS)
+}
+
+/// Terms at the bound: as many as may be proposed, each as long as one
+/// may be.
+fn longest_terms() -> Vec<String> {
+    vec!["x".repeat(MAX_TERM_BYTES); MAX_TERMS]
+}
+
+/// Candidates at the bound: as many as may be offered, each the size of
+/// the largest span retrieval hands back.
+fn at_the_bound(count: usize) -> Vec<Candidate> {
+    let body = "x".repeat(cbr_memory::retrieval::Bounds::default().span_bytes);
+    (1..=count)
+        .map(|n| {
+            span(
+                &format!("d{n}"),
+                "a/path/that/is/longer/than/most/paths/are.rs",
+                &body,
+            )
+        })
+        .collect()
+}
+
+#[test]
+fn neither_step_can_reach_the_per_request_ceiling() {
+    // **The arithmetic, as a mechanism rather than a paragraph.** Both
+    // bodies are bounded by constants in this module — [`SEEN`] and
+    // [`CANDIDATES`] candidates, each at most one span — so the largest
+    // either can be is computable, and it is computed here against the
+    // ceiling it has to fit under rather than asserted in a document
+    // that cannot notice when a constant moves.
+    let task = "x".repeat(4096);
+    let terms = worst_case(&propose("MiniMax-M3", &task, &at_the_bound(SEEN)));
+    let choose = worst_case(&choose(
+        "MiniMax-M3",
+        &task,
+        &longest_terms(),
+        &at_the_bound(CANDIDATES),
+    ));
+    assert!(
+        terms < crate::budget::PER_REQUEST_TOKENS,
+        "the terms step can be refused by its own request ceiling: {terms}"
+    );
+    assert!(
+        choose < crate::budget::PER_REQUEST_TOKENS,
+        "the choose step can be refused by its own request ceiling: {choose}"
+    );
+}
+
+#[test]
+fn the_whole_flow_cannot_exhaust_a_job_or_a_run() {
+    // **Two questions per request, not per item and not per discovered
+    // section** — which is the property the number rests on: discovery
+    // does not scale with what it finds. Each may be repaired once
+    // ([`crate::model::REPAIRS`]) and each may be counted once, so three
+    // sends apiece is the worst a step can do.
+    //
+    // Against the per-job ceiling that bounds one job, and against
+    // m4e's own run ceiling, which is what the whole milestone may
+    // spend.
+    let task = "x".repeat(4096);
+    let terms = worst_case(&propose("MiniMax-M3", &task, &at_the_bound(SEEN)));
+    let choose = worst_case(&choose(
+        "MiniMax-M3",
+        &task,
+        &longest_terms(),
+        &at_the_bound(CANDIDATES),
+    ));
+    let sends = 2 + u64::from(crate::model::REPAIRS);
+    let flow = (terms + choose) * sends;
+    assert!(
+        flow < crate::budget::PER_JOB_TOKENS,
+        "discovery alone can exhaust a job: {flow}"
+    );
+    // The run ceiling m4e sets is the per-job ceiling five times over,
+    // so a run cannot be spent by the flows of fewer than five jobs.
+    assert!(
+        flow * 5 < M4E_RUN_CEILING,
+        "five jobs' discovery can exhaust the whole of m4e: {flow}"
+    );
+}
+
+/// The hard cap for the whole of m4e, [READINESS §9]. It is enforced by
+/// `--model-run-ceiling` at the launch rather than by this constant;
+/// this is here so the arithmetic above is against the real number and
+/// fails if the number moves.
+///
+/// [READINESS §9]: ../../docs/work/m4/READINESS.md
+const M4E_RUN_CEILING: u64 = 5_000_000;

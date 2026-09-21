@@ -7,10 +7,13 @@
 //! says so exactly: sealing `readable_under(view, &[])` survived every
 //! test in the suite.
 //!
-//! A derivation names no claim today, which is why this is a correction
-//! rather than a leak. **In m4e claims enter the candidate sets** and it
-//! becomes load-bearing, so it is tested now, while it is cheap and
-//! while the answer is knowable.
+//! At m4d a derivation named no claim, which is why that was a
+//! correction rather than a leak. **At m4e claims enter the candidate
+//! sets**: discovery offers a model the eligible claims beside the
+//! spans, so a record's `offered` holds claim text a job could read and
+//! the gate is now load-bearing rather than merely correct. The last
+//! test here is that case, and it is the one the reviewer's mutant —
+//! sealing `readable_under(view, &[])` — now leaks through.
 //!
 //! Four doors, and both arms of each: `inspect`, a listing, `fetch`, and
 //! a rebuild.
@@ -21,7 +24,7 @@ use cbr_encoding::Value;
 
 mod serving;
 
-use serving::{Fixture, derivations, prepared, result};
+use serving::{Fixture, answers, bodies_sent, derivations, prepared, result};
 
 const CLAIM: &str = "drains";
 
@@ -288,4 +291,79 @@ fn listing(answered: &Value) -> Vec<String> {
         .filter_map(Value::as_str)
         .map(str::to_string)
         .collect()
+}
+
+/// One item and both discovery steps: three questions, three units.
+const BOTH_STEPS: &str = "3";
+
+#[test]
+fn a_candidate_set_that_held_a_claim_is_sealed_under_that_claim() {
+    // **Where the gate stops being a formality.** Discovery offers a
+    // model the eligible claims beside the spans, so the choice step's
+    // record says *this claim was shown* and its `offered` holds the
+    // claim's own text by digest. A reader who cannot read the claim
+    // must not be handed that record — which until now was true of
+    // nothing, because no record named a claim at all.
+    let fixture = Fixture::answering(&["choose:c2", "terms:tombstone", "ids:k1"]);
+    let running = fixture.start();
+    fixture.propose_claim(CLAIM);
+    prepared(&fixture, "offered", BOTH_STEPS);
+
+    // The claim reached a model, which is the reason any of this
+    // matters: its text left the store.
+    assert!(
+        bodies_sent(&fixture.data())
+            .iter()
+            .any(|body| body.contains(&format!("claim {CLAIM}"))),
+        "the claim was never offered, so this test proves nothing"
+    );
+
+    let recorded = answers(&fixture);
+    let choice = recorded
+        .iter()
+        .find(|(selector, _)| selector.starts_with("discovery.choose"))
+        .unwrap_or_else(|| panic!("no choice record in {recorded:?}"));
+    assert_eq!(
+        choice.1.get("chose_ids").and_then(Value::as_array),
+        Some(&[Value::String("k1".into())][..]),
+        "the claim the model chose is not the one the record says: {recorded:?}"
+    );
+
+    // Every record of this request, not only the one that held the
+    // claim: the readable set is the *job's*, and the job could read it
+    // throughout.
+    for (id, record) in derivations(&fixture.data()) {
+        let claims: Vec<&str> = record
+            .get("readable_under")
+            .and_then(|under| under.get("readable_claims"))
+            .and_then(Value::as_array)
+            .unwrap_or_else(|| panic!("no readable set on {id}"))
+            .iter()
+            .filter_map(Value::as_str)
+            .collect();
+        assert_eq!(claims, vec![CLAIM], "{id} was sealed under no claim");
+    }
+
+    // And the gate holds at the door, with the claim in the set.
+    grant(&fixture, "g-no-claim", false);
+    let artifact = derivations(&fixture.data())
+        .into_iter()
+        .map(|(id, _)| id)
+        .next()
+        .expect("a derivation");
+    let inspected = fixture.query_as_reader(
+        "g-no-claim",
+        "evidence.inspect",
+        &format!(r#"{{"artifact":{{"kind":"evidence.artifact","id":"{artifact}"}}}}"#),
+    );
+    assert_eq!(
+        inspected
+            .get("error")
+            .and_then(|error| error.get("data"))
+            .and_then(|data| data.get("code"))
+            .and_then(Value::as_str),
+        Some("permission_denied"),
+        "a reader who cannot read the claim was served a record built from it: {inspected:?}"
+    );
+    running.stop();
 }

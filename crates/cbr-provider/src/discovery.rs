@@ -85,8 +85,24 @@ pub const MAX_CHOSEN: usize = crate::compiler::DISCOVERED_SPANS + crate::compile
 /// reading found and not the whole of it. Every byte here is sent, and
 /// the arithmetic is in [READINESS §4](../../docs/work/m4/READINESS.md).
 pub const SEEN: usize = 6;
-/// The union's own cap: at most this many candidates are offered.
+/// The union's own cap: at most this many candidates are offered, spans
+/// and claims together. Every one of them is sent, so this is the
+/// number the per-request arithmetic is computed from.
 pub const CANDIDATES: usize = 20;
+/// And at most this many of them are claims, so that a store with a
+/// great many eligible claims cannot crowd out the spans.
+pub const CLAIMS_SHOWN: usize = 6;
+/// **Of the spans offered, at most this many come from the question's
+/// own words** — so a proposed term always has room to add something.
+///
+/// Without a reservation the step is pointless: the ordinary reading of
+/// a real repository returns more candidates than the set can hold, so
+/// it fills every slot and a term can contribute nothing. That is
+/// exactly backwards for the question this step exists for, whose
+/// answer the ordinary reading *missed* while returning plenty of
+/// confident near-misses. The first version of this had no reservation
+/// and a test caught it: `merger.md` never reached the candidate set.
+pub const FROM_QUESTION: usize = 10;
 
 /// The answer is a short list of short strings.
 const TERMS_ANSWER_TOKENS: u64 = 96;
@@ -338,8 +354,17 @@ pub fn chosen(reply: &Reply, candidates: &[Candidate]) -> Result<Vec<usize>, &'s
 /// of them is going in and the call decides nothing — so it is not made,
 /// and a shared quota is not spent on a question with one answer. The
 /// terms step has already run by then and its widening stands.
+///
+/// **Counted per kind**, because the caps are per kind: nine spans and
+/// two claims is a set with something to choose between even though
+/// eleven is fewer than the twelve a packet could hold.
 pub fn worth_choosing(candidates: &[Candidate]) -> bool {
-    candidates.len() > crate::compiler::DISCOVERED_SPANS
+    let claims = candidates
+        .iter()
+        .filter(|candidate| candidate.kind == crate::selection::KIND_CLAIM)
+        .count();
+    candidates.len() - claims > crate::compiler::DISCOVERED_SPANS
+        || claims > crate::compiler::CARRIED_CLAIMS
 }
 
 #[cfg(test)]
