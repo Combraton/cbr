@@ -708,6 +708,60 @@ impl Provider {
 
     // ---- inspect, query, fetch (section 5) ---------------------------------
 
+    /// **A derivation record is readable only under the job's own view
+    /// and readable claims** (READINESS section 6).
+    ///
+    /// Step 6 has already decided whether this caller may read artifacts
+    /// at all; this is the second question, and it exists because a
+    /// derivation names the paths and line ranges of repositories the
+    /// job could read. Serving one to a reader who could not read those
+    /// is the M3 leak arriving through a new door.
+    ///
+    /// **Only derivations carry the member**, so nothing else changes:
+    /// an artifact sealed before m4d, or a cited source, is read exactly
+    /// as it was. The answer is `permission_denied` rather than
+    /// `not_found`, because the caller is authorised for the subject and
+    /// what they lack is the content behind it (CORE section 15.5).
+    fn readable_derivation(
+        &self,
+        in_force: Option<&Grant>,
+        record: &Value,
+    ) -> Result<(), ProtocolError> {
+        let Some(under) = member(record, "readable_under") else {
+            return Ok(());
+        };
+        let view: Vec<String> = crate::repositories::view(&self.store, in_force)
+            .map_err(|_| ProtocolError::new_internal_error())?
+            .into_iter()
+            .map(|visible| visible.id)
+            .collect();
+        let mut claims = Vec::new();
+        for (claim, _) in self
+            .store
+            .subjects_of_kind(crate::knowledge::CLAIM)
+            .map_err(|_| ProtocolError::new_internal_error())?
+        {
+            // The authority principal holds no grant and reads its own
+            // store; anyone else reads exactly what a grant covers.
+            let permitted = match in_force {
+                None => true,
+                Some(grant) => grant.may_read(
+                    &crate::knowledge::key(crate::knowledge::CLAIM, &claim),
+                    "knowledge.read",
+                ),
+            };
+            if permitted {
+                claims.push(claim);
+            }
+        }
+        if crate::derivation::covers(under, &view, &claims) {
+            return Ok(());
+        }
+        Err(ProtocolError::permission_denied(
+            "derivation_outside_readable_set",
+        ))
+    }
+
     pub(super) fn evidence_inspect(
         &self,
         payload: &Value,
@@ -717,6 +771,7 @@ impl Provider {
         let Some((revision, record)) = self.evidence_record(evidence::ARTIFACT, &id)? else {
             return Err(ProtocolError::not_found());
         };
+        self.readable_derivation(in_force, &record)?;
         let state = text(&record, "state").unwrap_or_default();
         let descriptor = member(&record, "descriptor")
             .cloned()
@@ -1033,12 +1088,17 @@ impl Provider {
         Ok(Value::Object(out))
     }
 
-    pub(super) fn evidence_fetch(&self, payload: &Value) -> Result<Value, ProtocolError> {
+    pub(super) fn evidence_fetch(
+        &self,
+        payload: &Value,
+        in_force: Option<&Grant>,
+    ) -> Result<Value, ProtocolError> {
         let id = artifact_id_of(payload)?;
         let requested = text(payload, "digest").unwrap_or_default();
         let Some((_, record)) = self.evidence_record(evidence::ARTIFACT, &id)? else {
             return Err(ProtocolError::not_found());
         };
+        self.readable_derivation(in_force, &record)?;
         // Staged or abandoned: no sealed content exists.
         if text(&record, "state").as_deref() != Some("sealed") {
             return Err(ProtocolError::not_found());

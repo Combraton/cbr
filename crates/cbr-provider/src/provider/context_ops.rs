@@ -186,6 +186,11 @@ struct Assist<'a> {
     /// Owned, because the tick it comes from is borrowed mutably by
     /// everything this is passed to.
     now: String,
+    /// **The job's own readable set**, carried so a derivation record can
+    /// be sealed under it. Resolved at the command, where the grant is;
+    /// preparation never computes one and so cannot widen it.
+    view: &'a [String],
+    claims: &'a [String],
 }
 
 /// What selecting a source decided.
@@ -407,6 +412,11 @@ impl Provider {
             .tick_record(tick, REQUEST, &request)?
             .map(|(_, record)| record)
             .unwrap_or(Value::Null);
+        let claims: Vec<String> = list(job, &["readable_claims"])
+            .iter()
+            .filter_map(Value::as_str)
+            .map(str::to_string)
+            .collect();
         let assist = Assist {
             job: text(&record, &["job"]),
             request: &request,
@@ -414,6 +424,8 @@ impl Provider {
             investigation: int(job, &["limits", "investigation", "amount"]),
             deadline: text(&record, &["limits", "deadline"]),
             now: tick.now.clone(),
+            view: &view,
+            claims: &claims,
         };
         for item in list(job, &["items"]) {
             self.decide_item(item, &record, &trees, &assist, &mut decided, tick)?;
@@ -1649,7 +1661,7 @@ impl Provider {
         // bound is already in place: a closed set of CBR's own
         // candidates, one call, this request's deadline, and the pool's
         // concurrency.
-        let ranked = match self.assist(&answer.found, &bytes, path, &query, assist)? {
+        let ranked = match self.assist(&answer.found, &bytes, path, &query, assist, item, tick)? {
             Assisted::Chose(index) => index,
             Assisted::NotReady => return Err(TickError::NotReady),
             Assisted::Unmet(reason) => return Ok(Choice::Unmet(reason)),
@@ -1743,6 +1755,7 @@ impl Provider {
     /// to ask, no investigation authorised, or nothing to choose between,
     /// so the deterministic path is the same code rather than a branch
     /// around it.
+    #[allow(clippy::too_many_arguments)]
     fn assist(
         &self,
         found: &[cbr_memory::retrieval::Found],
@@ -1750,6 +1763,8 @@ impl Provider {
         path: &str,
         query: &str,
         assist: &Assist<'_>,
+        item: &Value,
+        tick: &mut Tick,
     ) -> Result<Assisted, TickError> {
         let Some(serving) = self.model.clone() else {
             return Ok(Assisted::Chose(0));
@@ -1806,6 +1821,18 @@ impl Provider {
                     + std::time::Duration::from_secs(deadline.saturating_sub(now))
             });
 
+        // What the record will remember of the question, built before
+        // the call so the thing that was asked and the thing that is
+        // recorded cannot drift apart.
+        let offered = crate::derivation::offered(&candidates);
+        // The ids as they were offered, kept behind because the
+        // candidates themselves move into the work. An answer is
+        // resolved against this and nothing else.
+        let ids: Vec<String> = candidates
+            .iter()
+            .map(|candidate| candidate.id.clone())
+            .collect();
+        let item = text(item, &["item_id"]).to_string();
         let asking = || {
             let serving = std::sync::Arc::clone(&serving);
             let (job, request) = (assist.job.to_string(), assist.request.to_string());
@@ -1824,14 +1851,59 @@ impl Provider {
                 // unused closure, and a tick that is only asking should
                 // not pay for a body nobody sends.
                 let body = crate::selection::ask(&serving.model, &task, &selector, &candidates);
-                match serving.ask(&beside, &now, &job, &request, &body) {
-                    crate::model::Outcome::Answered { reply, .. } => {
-                        crate::selection::chosen(&reply, &candidates)
-                            .map(|index| Value::Int(index as i64))
+                let started = std::time::Instant::now();
+                let outcome = serving.ask(&beside, &now, &job, &request, &body);
+                let latency_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
+                // **A call that was made is recorded, whatever it came
+                // to.** An answer that could not be used is still a
+                // charge against a shared quota and still a fact about
+                // the request; only a call that never happened has
+                // nothing to say.
+                let (answer, cost) = match outcome {
+                    crate::model::Outcome::Answered { reply, cost } => (
+                        match crate::selection::chosen(&reply, &candidates) {
+                            Ok(index) => {
+                                crate::derivation::Answer::Chose(candidates[index].id.clone())
+                            }
+                            Err(reason) => crate::derivation::Answer::Unmet(reason),
+                        },
+                        Some(cost),
+                    ),
+                    crate::model::Outcome::Unmet { reason, cost } => {
+                        (crate::derivation::Answer::Unmet(reason), Some(cost))
                     }
-                    crate::model::Outcome::Unmet { reason, .. } => Err(reason),
-                    crate::model::Outcome::Refused(refusal) => Err(refusal.reason()),
-                }
+                    // Refused by CBR's own envelope: nothing was
+                    // admitted and nothing was sent.
+                    crate::model::Outcome::Refused(refusal) => {
+                        (crate::derivation::Answer::Unmet(refusal.reason()), None)
+                    }
+                };
+                Ok(crate::derivation::record(&crate::derivation::Made {
+                    question: &crate::derivation::Question {
+                        model: &serving.model,
+                        dialect: serving.dialect.name(),
+                        task: &task,
+                        selector: &selector,
+                        offered: &offered,
+                    },
+                    answer,
+                    spend: crate::derivation::Spend {
+                        admission: match cost {
+                            None => crate::derivation::NOT_ADMITTED,
+                            Some(cost) if cost.counted.is_some() => crate::model::ADMITTED_COUNT,
+                            Some(_) => crate::model::ADMITTED_LOCAL,
+                        },
+                        usage: cost.and_then(|cost| cost.usage),
+                        input_usage: cost.and_then(|cost| cost.input_usage),
+                        counted: cost.and_then(|cost| cost.counted),
+                        repairs: cost.map(|cost| cost.repairs).unwrap_or_default(),
+                        latency_ms,
+                    },
+                    job: &job,
+                    request: &request,
+                    item: &item,
+                    made_at: &now,
+                }))
             }
         };
         Ok(match self.work.progress(&key, deadline, asking) {
@@ -1842,18 +1914,89 @@ impl Provider {
             // job asked once it has produced its script: freeing a key the
             // moment it was read would have the next tick's compile ask
             // the same question again, at a second charge.
-            crate::work::Progress::Done(value) => match value {
-                Value::Int(index) if usize::try_from(index).is_ok_and(|i| i < found.len()) => {
-                    Assisted::Chose(index as usize)
+            //
+            // **Taking the answer is what seals the record**, in this
+            // tick's own batch. A call whose answer is never taken —
+            // cancelled, or a job that ended — seals nothing, which is
+            // *a cancelled call leaves no partial derivation record*;
+            // what it spent stays in the ledger, because a call that
+            // went out was charged.
+            crate::work::Progress::Done(value) => {
+                self.seal_derivation(tick, &value, assist)?;
+                match crate::derivation::answer_of(&value) {
+                    // The closed set, checked a second time and on the
+                    // way out: an id is only ever resolved against the
+                    // candidates it was offered from.
+                    Some(crate::derivation::Answer::Chose(id)) => {
+                        match ids.iter().position(|offered| *offered == id) {
+                            Some(index) if index < found.len() => Assisted::Chose(index),
+                            // It answered with something that is not one
+                            // of the candidates it was offered. Nothing
+                            // guesses on its behalf.
+                            _ => Assisted::Unmet(crate::selection::NOT_OFFERED),
+                        }
+                    }
+                    Some(crate::derivation::Answer::Unmet(reason)) => Assisted::Unmet(reason),
+                    None => Assisted::Unmet(crate::derivation::UNREADABLE),
                 }
-                // It answered with something that is not one of the
-                // candidates it was offered. Nothing guesses on its
-                // behalf.
-                _ => Assisted::Unmet(crate::selection::NOT_OFFERED),
-            },
+            }
             crate::work::Progress::Failed(reason) => Assisted::Unmet(reason),
             crate::work::Progress::TimedOut => Assisted::Unmet("model_call_timed_out"),
         })
+    }
+
+    /// Seal one model exchange as evidence, unless an artifact already
+    /// holds it.
+    ///
+    /// **In the tick's own batch**, with the same atomicity every other
+    /// record gets: the object is published and verified from disk
+    /// before the row that names it is committed, so a crash leaves an
+    /// object no row names and never a row naming an object that is not
+    /// there. There is no half-written derivation to find.
+    ///
+    /// The id is the record's own digest, so the same exchange sealed
+    /// twice is one artifact, and two answers to one question are two
+    /// records rather than one overwriting the other.
+    fn seal_derivation(
+        &self,
+        tick: &mut Tick,
+        record: &Value,
+        assist: &Assist<'_>,
+    ) -> Result<(), TickError> {
+        let bytes = crate::derivation::bytes(record);
+        let digest = cbr_encoding::digest_bytes(&bytes);
+        let id = crate::derivation::artifact_id(&digest);
+        let artifact_key = crate::evidence::artifact_key(&id);
+        if self.store.revision(&artifact_key)? != 0 || tick.batch.written(&artifact_key).is_some() {
+            return Ok(());
+        }
+        let payload = crate::derivation::descriptor(record, &digest, bytes.len());
+        let descriptor = crate::evidence::parse_descriptor(&payload, &self.config.principal)?;
+        self.store.publish_object(&digest, &bytes)?;
+        let sealed = object(vec![
+            ("descriptor", descriptor),
+            ("state", string("sealed")),
+            ("staged_at", string(&tick.now)),
+            // **The job's own readable set, carried with the record.**
+            // A derivation names paths and line ranges of repositories
+            // the job could read; serving it to a reader who could not
+            // read them is the M3 leak arriving through a new door.
+            (
+                "readable_under",
+                crate::derivation::readable_under(assist.view, assist.claims),
+            ),
+        ]);
+        let revision = self.tick_save(tick, &artifact_key, &sealed)?;
+        tick.batch.event(
+            &artifact_key,
+            revision,
+            "evidence.artifact.sealed",
+            object(vec![
+                ("digest", string(&digest)),
+                ("size", Value::Int(bytes.len() as i64)),
+            ]),
+        );
+        Ok(())
     }
 
     /// Seal a cited file as evidence, unless an artifact already holds it.

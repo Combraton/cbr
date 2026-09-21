@@ -1262,7 +1262,7 @@ impl Provider {
             "core.effects.get" => self.effects_get(&query),
             "evidence.inspect" => self.evidence_inspect(&query.payload, in_force.as_ref()),
             "evidence.query" => self.evidence_query(&query.payload, in_force.as_ref()),
-            "evidence.fetch" => self.evidence_fetch(&query.payload),
+            "evidence.fetch" => self.evidence_fetch(&query.payload, in_force.as_ref()),
             "knowledge.claim.inspect" => self.knowledge_inspect(&query.payload),
             "knowledge.claim.history" => self.knowledge_history(&query.payload),
             "knowledge.authority.get" => self.knowledge_authority_get(&query.payload),

@@ -85,6 +85,10 @@ pub const UNREADABLE: &str = "model_record_unreadable";
 /// Nothing retained answers this question.
 pub const NOT_RETAINED: &str = "model_answer_not_retained";
 
+/// The admission a call that never reached one had: CBR's own envelope
+/// refused it, so nothing was counted and nothing was sent.
+pub const NOT_ADMITTED: &str = "refused";
+
 /// The typed reason `text` names, when this build knows it.
 pub fn reason(text: &str) -> Option<&'static str> {
     REASONS.iter().copied().find(|known| *known == text)
