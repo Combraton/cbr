@@ -91,6 +91,54 @@ So the gate reports it: `--ambiguity <data directory>` names every question whos
 
 **That test also earns a constant its keep.** The terms are part of the choice question's digest, and the only case where that is load-bearing is exactly this one: after a purge leaves one terms answer standing, the two choice records must be two questions rather than one ambiguous question. Without the test the constant would have been a rule nothing read.
 
+### The mutant table
+
+**Twenty-two mutants, twenty-one killed, one surviving.** Each was run against the **whole workspace suite**, not against the tests it was aimed at. Three survived the first pass and were killed only after a test was added, which is the third milestone in a row where that has been the useful part of the exercise.
+
+| Mutant | Result | What kills it |
+|---|---|---|
+| The count bound on proposed terms removed | killed | `a_terms_answer_that_breaks_a_bound_widens_nothing` |
+| The length bound on a term removed | killed | `a_term_longer_than_the_bound_is_a_typed_unmet` |
+| The character bound on a term removed | killed | `a_terms_answer_that_breaks_a_bound_widens_nothing` |
+| A space admitted as a term character | killed | the same; prose stops failing the bound and arrives as a term |
+| **A term used verbatim instead of tokenised** | killed | four, including `a_term_that_looks_like_a_path_becomes_plain_words` |
+| An id that was not offered resolved to the first candidate | killed | `a_choice_that_was_never_offered_widens_nothing`, and negative control 5 |
+| The bound on how many ids may be chosen removed | killed | `a_choice_that_was_never_offered_widens_nothing` |
+| The chosen ids kept in the model's order rather than the offered order | killed | `the_choice_comes_back_in_the_order_it_was_offered` |
+| **The reservation removed, so the ordinary reading fills the candidate set** | killed | three, including `a_term_the_model_proposed_widens_what_discovery_offers` |
+| A failed choice keeps the union instead of the deterministic reading | killed | `a_choice_that_was_never_offered_widens_nothing`, and negative control 5 |
+| A flow started with room for one step rather than two | killed | `a_flow_that_cannot_finish_is_not_started` |
+| A discovery step's derivation is not sealed | killed | two in `derivation_claims.rs` |
+| The readable set narrowed to the view, dropping the claims half | killed | four, including the m4d ones — **now through a real candidate set** |
+| The budget check removed at the selection call site | killed, **observed at its own stage** rather than in this sweep | `the_investigation_limit_counts_questions_and_the_budget_runs_out` |
+| The cap on carried claims removed when a model chose them | killed | `among_many_eligible_claims_the_packet_carries_the_ones_the_question_is_about` |
+| **The terms dropped from the choice question's digest** | killed | `a_purge_makes_an_ambiguous_question_replayable_again`, and only that |
+| A rebuild calls a model for a discovery step instead of reading a record | killed | `a_dry_run_drives_every_stage_and_reports_what_it_found` |
+| A failed step leaves no omission, so the packet does not say it failed | killed | four |
+| **A claim offered as if it were a span** | killed **after a test was corrected** | `a_candidate_set_that_held_a_claim_is_sealed_under_that_claim` |
+| **The model's chosen claims ignored, so the deterministic cut stands** | killed **after a test was added** | `a_claim_the_model_did_not_choose_is_left_out_and_one_it_chose_is_carried` |
+| **A binding claim droppable by a model that did not list it** | killed | `a_binding_claim_is_carried_whether_the_model_listed_it_or_not` |
+| **A view with nothing readable in it still buys a call** | killed **after a test was added** | `a_request_with_nothing_readable_in_its_view_buys_no_call` |
+| Span candidate ids taken from the input position rather than the kept one | **survived** | nothing — below |
+
+### The three the first pass missed, and the one that still survives
+
+**A test of mine was satisfied by the wrong thing.** `a_candidate_set_that_held_a_claim_is_sealed_under_that_claim` asserted that a request body contained `claim drains` — and a claim's own content *begins* `claim drains revision 1: …`, so the assertion held however the candidate had been labelled. The mutant offering a claim as if it were a span survived it. The fix is to assert on the line that offers it, `[k1] claim drains`, which only the offer can produce. This is the vacuity failure of m4d in a new shape: **a property whose evidence is also produced by the thing it is meant to distinguish is not evidence.**
+
+**A rule with no test for its negative arm.** Nothing asserted that a claim the model did *not* choose is left out; the tests all watched claims being carried. Both arms are now one test, because either alone is satisfied by doing nothing — a rule that always carries passes the first half, and one that always drops passes the second.
+
+**A guard written and not exercised.** The check that a request with nothing readable in its view buys no call was added from a reading and had no test, which is exactly the recurring failure this file keeps recording. It has one now, through the door a grant actually opens: a reader whose grant names no repository at all.
+
+**The survivor, recorded rather than dismissed.** `span_candidates` gives a candidate the id of its position among the **kept** spans; the mutant gives it the position among the spans it was *handed*. The two differ only when a span is dropped for having a blob that cannot be read — and no test reaches that, because the indexer skips a blob too large to read, so a span in the ranked set always has readable bytes. The branch is reachable only when an index outlives the bytes it indexed.
+
+**It is not recorded as equivalent**, and the difference matters: STATE already records a mutant this session argued was equivalent and was not. What can be said is narrower. The two lists are appended in one statement, so they cannot drift; the mutant changes which of two correct-today schemes is used; and if the branch ever became reachable, the mutant's scheme would resolve an id to a span nobody was shown — the closed set broken from the inside, which is why the code is written the other way.
+
+### A probe bug, in the other direction from the last one
+
+m4d recorded a probe that reported **seven survivors it never observed**. This one reported a *kill* it should not have trusted, by a different route: `apply_mutant` backed up each file as it processed each edit, so a mutant with **two edits to one file** stored the already-mutated text as its backup and "restored" half a mutant. The half that stayed was an unused loop variable, which changes no behaviour — so the two mutants that ran after it were not wrong, and both were re-run clean to say so rather than reasoned about.
+
+**What it cost was a verdict, not a result.** The re-check of that mutant came back `NOT-APPLIED` because its target text was no longer there, which is the probe refusing to guess — the same discipline that produced `NO-RESULTS` at m4d, working. The fix is one line: back up each file once, before any edit touches it. **A probe is a measuring instrument and it gets the same treatment as the code**, which is now twice this milestone.
+
 ## Earlier — M4d, derivation records and replay
 
 [PR #27](https://github.com/Combraton/cbr/pull/27), **merged** as `7fa939c`, pinned to `8bc5698`, `merged_at: 2026-09-21T16:21:16Z`. For [issue #21](https://github.com/Combraton/cbr/issues/21). **No model was called.**

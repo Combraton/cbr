@@ -1235,6 +1235,7 @@ impl Provider {
         // request's own words; what comes back are spans CBR found, at
         // paths CBR resolved, inside repositories the grant allowed. A
         // term cannot name any of those.
+        //
         // **The ordinary reading takes a reserved share and no more.**
         // On a real repository it returns more than the set can hold, so
         // without this it fills every slot and a term contributes
@@ -1278,11 +1279,12 @@ impl Provider {
                 path: claim_ids[position].clone(),
                 start_line: 0,
                 end_line: 0,
-                text: discovered
-                    .content
-                    .chars()
-                    .take(compiler::EXCERPT_BYTES)
-                    .collect(),
+                // **Bounded in bytes, not characters.** The
+                // per-request arithmetic is computed from a byte
+                // bound, and `chars().take(n)` is up to four times
+                // that on non-Latin text -- which a claim's statement
+                // may well be.
+                text: crate::discovery::clipped(&discovered.content, compiler::EXCERPT_BYTES),
             });
         }
         if !crate::discovery::worth_choosing(&candidates) {
@@ -1297,15 +1299,23 @@ impl Provider {
         let chosen = match self.ask_step(
             &serving,
             assist,
+            // **The key is the question**, which is m4c's own rule, and
+            // this question includes the terms. Nothing today can ask
+            // this key twice under different terms -- the terms answer
+            // is the pool's and is stable across the ticks of one
+            // compile -- and a key that disagreed with its question
+            // would be a coupling waiting to be broken.
             &format!(
-                "model:{}:{}:discovery.choose:{digest}",
-                assist.job, assist.request
+                "model:{}:{}:discovery.choose:{digest}:{}",
+                assist.job,
+                assist.request,
+                cbr_encoding::digest_bytes(terms.join(" ").as_bytes())
             ),
             // **The terms are part of the question**, so a rebuild that
             // retained different terms asks a different question here and
             // does not answer it from this record.
             &format!("discovery.choose {question} | {}", terms.join(" ")),
-            candidates.clone(),
+            candidates,
             Step::Choose(terms),
             tick,
         )? {

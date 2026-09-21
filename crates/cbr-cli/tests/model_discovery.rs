@@ -573,3 +573,70 @@ fn a_purge_makes_an_ambiguous_question_replayable_again() {
     );
     rebuilding.stop();
 }
+
+#[test]
+fn a_request_with_nothing_readable_in_its_view_buys_no_call() {
+    // **An empty result is not an empty view.** The first is the case
+    // the terms step exists for: the ordinary reading found nothing
+    // useful, which is brian2's shape and the reason discovery is worth
+    // a call at all. The second is a request with no repository to
+    // search, where every term would be run against nothing — so the
+    // call cannot change the answer and is not made.
+    //
+    // The reader's grant carries the context rights and names no
+    // repository at all, which is how a view comes out empty through
+    // the door a grant actually opens.
+    let fixture = Fixture::answering(&["choose:c1", "terms:tombstone", "ids:d1"]);
+    let provider = fixture.start();
+    fixture.issue_grant(
+        "g-nothing",
+        &["context.request", "context.read", "context.packet.read"],
+        r#"{"kind":"context.request"},{"kind":"context.job"},{"kind":"context.packet"}"#,
+    );
+    let submitted = fixture.cbr_as_reader(
+        "g-nothing",
+        &[
+            "context",
+            "blind",
+            "--repo",
+            fixture.checkout.to_str().expect("utf-8"),
+            "--repo-id",
+            "app",
+            "--selector",
+            "queue drains shutdown",
+            "--task",
+            "what drains the queue",
+            "--capacity",
+            "65536",
+            "--investigation",
+            BOTH_STEPS,
+            "--want",
+            "q=source:queue.md",
+        ],
+    );
+    assert!(
+        submitted.status.success(),
+        "submit: {}",
+        String::from_utf8_lossy(&submitted.stderr)
+    );
+    let started = std::time::Instant::now();
+    loop {
+        let polled = fixture.cbr_as_reader("g-nothing", &["request", "blind"]);
+        let parsed = cbr_encoding::parse(String::from_utf8_lossy(&polled.stdout).trim().as_bytes())
+            .expect("canonical JSON");
+        if parsed.get("state").and_then(Value::as_str) != Some("preparing") {
+            break;
+        }
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(60),
+            "never left preparing: {parsed:?}"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    assert!(
+        bodies_sent(&fixture.data()).is_empty(),
+        "a request with nothing to search still asked a model: {:?}",
+        bodies_sent(&fixture.data())
+    );
+    provider.stop();
+}

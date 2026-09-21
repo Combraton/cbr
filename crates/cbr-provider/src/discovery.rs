@@ -164,6 +164,22 @@ pub fn query(terms: &[String]) -> String {
     seen.join(" ")
 }
 
+/// `text`, cut to at most `bytes` bytes on a character boundary.
+///
+/// **Bytes rather than characters**, because every bound the
+/// per-request arithmetic rests on is a byte bound and
+/// `chars().take(n)` is up to four times one on non-Latin text.
+pub fn clipped(text: &str, bytes: usize) -> String {
+    if text.len() <= bytes {
+        return text.to_string();
+    }
+    let mut cut = bytes;
+    while cut > 0 && !text.is_char_boundary(cut) {
+        cut -= 1;
+    }
+    text[..cut].to_string()
+}
+
 /// CBR's own words, and the only instruction in the terms request.
 const TERMS_INSTRUCTION: &str = "You are helping search a code repository. You will be shown a \
      question and the excerpts an ordinary keyword search already found \

@@ -309,13 +309,19 @@ fn a_candidate_set_that_held_a_claim_is_sealed_under_that_claim() {
     fixture.propose_claim(CLAIM);
     prepared(&fixture, "offered", BOTH_STEPS);
 
-    // The claim reached a model, which is the reason any of this
-    // matters: its text left the store.
+    // **The claim reached a model as a claim**, which is the reason any
+    // of this matters: its text left the store.
+    //
+    // Asserted on the line that *offers* it rather than on the text,
+    // and the difference is not pedantry -- a claim's own content
+    // begins "claim drains revision 1: ...", so a substring assertion
+    // holds however the candidate was labelled. The mutant that offered
+    // a claim as if it were a span survived the first form of this.
     assert!(
         bodies_sent(&fixture.data())
             .iter()
-            .any(|body| body.contains(&format!("claim {CLAIM}"))),
-        "the claim was never offered, so this test proves nothing"
+            .any(|body| body.contains(&format!("[k1] claim {CLAIM}"))),
+        "the claim was never offered as a claim, so this test proves nothing"
     );
 
     let recorded = answers(&fixture);
@@ -431,4 +437,63 @@ fn a_binding_claim_is_carried_whether_the_model_listed_it_or_not() {
         "and it is carried as something other than binding: {carried:?}"
     );
     running.stop();
+}
+
+#[test]
+fn a_claim_the_model_did_not_choose_is_left_out_and_one_it_chose_is_carried() {
+    // **Both arms, because either alone is satisfied by doing nothing.**
+    // A rule that only ever carries claims passes the first half; a rule
+    // that only ever drops them passes the second.
+    //
+    // The claim here is an observation rather than binding, so nothing
+    // else keeps it: what decides is the choice. The mutant that ignores
+    // the model's chosen claims survived until this existed.
+    for (request, chosen, carried) in [("left-out", "ids:d1", false), ("carried", "ids:k1", true)] {
+        let fixture = Fixture::answering(&["choose:c2", "terms:tombstone", chosen]);
+        let running = fixture.start();
+        fixture.propose_checkable_claim(CLAIM);
+        prepared(&fixture, request, BOTH_STEPS);
+
+        let omitted = packet_omissions(&fixture, request)
+            .into_iter()
+            .any(|(section, reason)| {
+                section == format!("d-claim-{CLAIM}") && reason == "applicability"
+            });
+        assert_eq!(
+            !omitted, carried,
+            "{request}: the packet did not follow the model's choice of claims"
+        );
+        running.stop();
+    }
+}
+
+/// Every omission the packet declares, as `(section_id, reason)`.
+fn packet_omissions(fixture: &Fixture, request: &str) -> Vec<(String, String)> {
+    let printed = fixture.cbr(&["packet", request]);
+    assert!(
+        printed.status.success(),
+        "packet: {}",
+        String::from_utf8_lossy(&printed.stderr)
+    );
+    cbr_encoding::parse(String::from_utf8_lossy(&printed.stdout).trim().as_bytes())
+        .expect("canonical JSON")
+        .get("omissions")
+        .and_then(Value::as_array)
+        .unwrap_or_default()
+        .iter()
+        .map(|omission| {
+            (
+                omission
+                    .get("section_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string(),
+                omission
+                    .get("reason")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string(),
+            )
+        })
+        .collect()
 }
