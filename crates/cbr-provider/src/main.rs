@@ -29,10 +29,12 @@ mod outbox;
 mod peer;
 mod provider;
 mod repositories;
+mod selection;
 mod session;
 mod socket;
 mod store;
 mod wire;
+mod work;
 
 use std::path::PathBuf;
 
@@ -277,16 +279,37 @@ fn run() -> Result<(), String> {
     let _held = store::lock_data_dir(&data_dir)?;
     // Start-time effects — epoch, retention, capabilities, the generation —
     // happen once, here, whichever binding follows.
-    let mut provider = Provider::open(config.clone(), clock, &data_dir)
+    let provider = Provider::open(config.clone(), clock, &data_dir)
         .map_err(|error| format!("opening the store at {}: {error}", data_dir.display()))?;
 
-    // The `model.fake` control, and the only thing in this build that
-    // reaches a transport. It exists so the ledger's crash boundaries belong
-    // to a process a test can kill at them; it selects nothing, changes no
-    // packet, and is refused outright by a production configuration.
-    if let Some(fake) = config.model.clone() {
-        provider.run_fake_model_call(&fake);
-    }
+    // **The model this launch may call, if it may call one.** Two sources
+    // and never both: the `model.fake` control, which carries its own
+    // identity and needs no credential, or a configured `model_runtime`
+    // with the permit and the credential `launch::decide` already
+    // insisted on. Absent is the ordinary case, and then preparation is
+    // the deterministic path M3 shipped.
+    let serving = match (
+        config.model.clone(),
+        config.model_runtime.clone(),
+        credential,
+    ) {
+        (Some(fake), _, _) => Some(std::sync::Arc::new(provider::Serving {
+            dialect: fake.dialect,
+            model: fake.model.clone(),
+            counting: fake.counting,
+            run_ceiling: config.model_run_ceiling,
+            wire: provider::Wire::Fake(model::Fake::new(fake.dialect, fake.answers, fake.usage)),
+        })),
+        (None, Some(runtime), Some(credential)) => Some(std::sync::Arc::new(provider::Serving {
+            dialect: runtime.dialect,
+            model: runtime.model.clone(),
+            counting: model::Counting::WhenItCouldAdmit,
+            run_ceiling: config.model_run_ceiling,
+            wire: provider::Wire::Live(credential),
+        })),
+        _ => None,
+    };
+    let mut provider = provider.with_model(serving);
 
     // Registration is a launch-time act: a checkout that cannot be read is
     // refused here rather than becoming a repository that answers nothing.
@@ -302,8 +325,13 @@ fn run() -> Result<(), String> {
         }
         // Each session connects to the store this start already prepared.
         let clock = provider.shared_clock();
+        // One pool for the process, shared by every connection's provider:
+        // an index build started on one poll has to be the same build the
+        // next poll finds running.
+        let work = provider.shared_work();
+        let model = provider.shared_model();
         drop(provider);
-        return socket::serve(socket, config, clock, data_dir);
+        return socket::serve(socket, config, clock, work, model, data_dir);
     }
 
     let stdin = std::io::stdin();

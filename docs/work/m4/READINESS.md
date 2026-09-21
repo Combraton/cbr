@@ -29,7 +29,7 @@ Split as M3 was, each with its gate stated before its code, each reviewed at its
 | **m4a** | **The envelope, before any transport exists.** Two-step admission whose local step alone can refuse; a durable ledger with a reservation written before the send; per-request and per-job ceilings; `budget_exhausted` and the distinct provider-exhaustion outcome. A fake transport that records what it was asked to send and never opens a socket. | Tests with the fake transport, both counters independently, a restart between reservation and reconciliation. Mutants: the local check removed; the provider count reached for a request the local step refused; the reservation written after the send; counters lost on restart. **No network code and no credential read in this PR.** |
 | **m4b** | **The wire and the credential. Fixtures only — no live call.** Both dialects' serializer and parser, the Keychain read once at construction and only when a model is configured, redaction at the recording boundary, the four provider behaviours handled as ordinary outcomes. | Recorded-fixture tests for both dialects, the fixtures written by hand from public documentation and **labelled as unverified against the live service**. A test that a credential-shaped string in a response is redacted before anything reaches the store. A test that the Keychain is read exactly once, and that a configured model with no Keychain is a **refused launch**, never a fallback. A test that no test in the suite resolves a host. |
 | **the calibration** | **The first live calls, and the only ones before m4e.** Its own step, **after m4b is reviewed and merged**, and only on the owner's explicit word at that time. [§10](#10-the-calibration-and-what-stops-m4). | One provider count above its local estimate stops M4. |
-| **m4c** | **The bounded runtime.** Model work leaves the preparation tick; deadlines, cancellation, a concurrency bound; failure reported as an item's unmet reason. The index build's stall is resolved here. | The measured stall falls; a cancelled call leaves no partial record; a failed call leaves an unmet item with a reason and never a hang. |
+| **m4c** | **The bounded runtime.** Model work leaves the preparation tick; deadlines, cancellation, a concurrency bound; failure reported as an item's unmet reason. The index build's stall is resolved here, and serving gets the call site that makes a credential worth reading. | The measured stall falls ([STALL](STALL.md): 65×, 49× and 23×); a cancelled call leaves no partial record; a failed call leaves an unmet item with a reason and never a hang. **No live call.** |
 | **m4d** | **Derivation records and replay.** Every call sealed as an evidence artifact; a packet rebuilt offline from retained records. | A test rebuilds a model-assisted packet with the transport refused and compares digests. |
 | **m4e** | **The first live run, and the journeys.** J1 revisited with a model; both sealed pilot questions rerun, **under a hard cap of 5,000,000 tokens** enforced by the per-job ceiling. | Scored by the reviewer against the same oracles, with the deterministic runs as baselines and tokens, spend and latency recorded beside them. A run exceeding its estimate by more than half stops and is reported. |
 
@@ -54,6 +54,34 @@ Every row is the owner's, recorded before M4 and unchanged by it. The right-hand
 ## 3. The budget, in code before the first call exists
 
 The quota is **shared with the owner's other tools** ([STACK §8.1](../readiness/STACK.md)), so an overspend degrades their working environment rather than merely costing money. That is why admission is m4a — before any transport — and why exhaustion is a typed result and never a retry.
+
+### Admission is one step, and the count is a second only when it can change the answer
+
+**Revised 2026-09-21, from what calibration run 2 measured.** The design below was written before any call had been made. What the run found:
+
+- **The count sends the repository text a second time.** Everything §7 says about what may be sent applies to it twice over.
+- **The provider does not price it.** Its response carries no usage member, so CBR settles a count at the figure it counted — the conservative reading of silence. **15,538 of the 15,582 tokens that run were CBR charging itself for seven counts the provider never priced.**
+- **It over-predicted the bill by 4.4×** on the one completion where both figures exist: 122 predicted, 28 charged. That is conservatism the local bound already provides.
+
+So **the local bound admits, alone, and the call settles by usage** — which was always the truth of it. The provider count is made only where it **can change a decision**: the local bound would refuse on the window, the month, the job or the run ceiling, and a tighter figure could admit. **Not** on the per-request ceiling, which is a policy limit on how large one request may be; the local bound is deliberately the conservative measure of that, and letting the provider's figure talk CBR into sending a bigger request inverts the direction the bound protects.
+
+**Which path admitted a call is recorded** — `admitted_local` or `admitted_count` in the ledger, and carried into the derivation record — because a selection admitted on the local bound and one admitted on the provider's count were decided by different evidence.
+
+**One data point is not a rule.** The 4.4× and the unpriced count are one run of six files and one completion, on requests far smaller than a real packet. m4e's requests are realistic sizes and will say more; until then this is the reading of one measurement, and it is the reading that spends less. A caller whose purpose *is* the count — the calibration — asks for it explicitly.
+
+**And the count is still settled at the figure it counted**, not at zero, until an observation says the provider charges nothing. The documentation makes no statement about billing for that endpoint, and "unbilled because a page says so" is what the calibration exists to avoid.
+
+### The tripwire: the calibration's stop rule, kept alive
+
+Six files cannot prove a bound; a tripwire can hold it. **At every settlement, a `usage.input_tokens` above the local input bound for that request means the bound is wrong** — and every admission CBR has ever made rests on it. It is recorded as its own ledger kind, `bound_unsound`; no further model call is admitted; and the call ends with the typed reason `local_bound_unsound`.
+
+**Held in the ledger rather than in a process flag**, which is stronger than "for the process": the bound is a property of the code, so a restart with the same code has the same bound, and forgetting at restart would forget the one observation that invalidates everything the store has admitted.
+
+Two rules that overlap, in order: a charge above the **local bound** stops everything, because the bound is wrong; a charge above the **count endpoint's prediction** by more than the stated margin is a finding, because the prediction is poor. The first is the graver claim and it wins.
+
+### The original two-step design, and what remains of it
+
+The count call **is** a send, and everything below about that remains true — it is admitted, recorded, charged and under the same view rule. What changed is when it is made.
 
 ### Admission is two steps, because the count call is itself a send
 
@@ -98,12 +126,20 @@ Tests with a fake transport that asserts it was never called when admission refu
 
 ## 4. Provider facts that are design inputs, not discoveries
 
-Four behaviours are already recorded in [STACK §8.1](../readiness/STACK.md) and are stated by the owner independently of any call CBR has made. M4 designs for them:
+Five behaviours are already recorded in [STACK §8.1](../readiness/STACK.md) and are stated by the owner independently of any call CBR has made. M4 designs for them:
 
 1. **`response_format` and `json_schema` are silently ignored** — HTTP 200 with free-form prose. So **CBR parses and validates every model output**, and a schema is a thing CBR checks rather than a thing the provider guarantees.
-2. **`tool_choice: "required"` is silently ignored** while `"none"` is honoured. A text response where a tool call was demanded is therefore an **ordinary outcome to repair**, not a transport error. Repair spends real tokens, so the repair budget is bounded and debited from the same envelope.
-3. **`MiniMax-M3` embeds `<think>…</think>` in `message.content`** unless `reasoning_split` is set. Reasoning text reaching a sealed derivation record as if it were output would be a correctness problem, so the split is set and the parser refuses content that still carries the marker.
-4. **There is no `data: [DONE]` sentinel**, so **M4 does not stream**; whole responses only.
+2. **`tool_choice: "required"` is silently ignored** while `"none"` is honoured. (Confirmed: the Responses API documents `none` and `auto` only, so a call cannot be demanded there at all.) A text response where a tool call was demanded is therefore an **ordinary outcome to repair**, not a transport error. Repair spends real tokens, so the repair budget is bounded and debited from the same envelope.
+3. **Reasoning spends the output budget, and on the M2.x models it cannot be turned off** (observed, calibration run 2). `max_output_tokens` must therefore cover **reasoning plus the answer**, and the service reports **no breakdown** — there is no `output_tokens_details` — so CBR cannot learn the split by measuring.
+
+   **The sizing rule, and why.** The generation budget is four times what the answer itself needs, never below 512 tokens, and a truncation is repaired once by **doubling** rather than by asking again in the same space. The multiplier is not an estimate of how much a model thinks; it follows from an asymmetry. **Billing is by tokens produced**, so a limit that is too large costs nothing that is not used, while a limit that is too small costs the whole call and returns nothing — which is exactly what run 2 did with sixteen tokens. Generosity is the cheap error here and parsimony the expensive one. m4e measures what is actually used and replaces the multiplier with a figure.
+
+   **`status: incomplete` with no text is a first-class outcome**: recorded with its usage, counted against the bounded repair, and ending as the item's typed unmet reason when the repair is spent. m4b had it as *not* repairable, reasoning that asking again under the same limit gives the same answer — true, and beside the point, because the repair asks again with a larger one.
+
+   **For m4e:** run model-assisted selection on `MiniMax-M3`, whose documentation says reasoning is off by default, **beside** `MiniMax-M2.7-highspeed`, and compare tokens, latency and outcome. Two models on the same question is a comparison the owner will want and neither model alone provides.
+
+4. **`MiniMax-M3` embeds `<think>…</think>` in `message.content`** unless `reasoning_split` is set. Reasoning text reaching a sealed derivation record as if it were output would be a correctness problem, so the split is set and the parser refuses content that still carries the marker.
+5. **There is no `data: [DONE]` sentinel**, so **M4 does not stream**; whole responses only.
 
 The rule under all four: **nothing downstream trusts a shape the model was only asked for.** Invalid output is a **recorded failure with a bounded retry**, and the failure is in the derivation record — not swallowed, not retried until it looks right.
 
@@ -140,18 +176,43 @@ One thing already known and carried in: an ingested artifact's id embeds the ins
 
 This is the leak M3 shipped and fixed once already: discovery called an operation body whose authorization was step 6 of a command that had not run, and every claim in the store went into every packet. **Gate:** a test proves that a repository or a claim outside the submitting grant's view appears nowhere in a request body — asserted over the serialized bytes the fake transport received, not over the selection that preceded it.
 
-**Open question for the owner: does the provider retain what is sent?** The Responses API's published schema has a `store` field on the **response** and not on the request, so there is no documented request parameter by which CBR can say *"do not retain this"*. CBR sends none, because sending an undocumented member is what ended the first calibration run. **Whether the provider retains repository text is the owner's decision and the default must be no**, so this is recorded as unanswered rather than settled by silence. If a request parameter exists and is simply undocumented, CBR should send `false`; if retention is governed by an account setting instead, that is the owner's to set. Read 2026-09-21 from the published OpenAPI schema; not confirmed against a live response.
+**Provider-side retention: a stated limit, not a solved problem.** The Responses API offers **no request option by which CBR can say "do not retain this"**: `store` is a response property, not a request one (published OpenAPI schema, read 2026-09-21; the live response of calibration run 2 carried `store: false`, which CBR did not ask for and cannot ask for).
+
+**The owner's decision, 2026-09-21: this is accepted for public repositories only** — CBR's own source, Knowscroll-v2 and brian2. It is accepted as a limit that is understood rather than as a risk that has been removed: those repositories are public, so what is sent is already public, and the provider may retain it.
+
+**Any private repository still needs the owner's explicit word before a single byte of it is sent**, exactly as §7 already requires, and that word has not been given for any. The absence of a retention control is a reason that bar stays where it is, not a reason to lower it.
+
+**Two more things are unobservable, and stay stated as such.** Both from calibration run 2, observed 2026-09-21:
+
+- **Whether `service_tier: standard` was honoured is unknown.** CBR sends it explicitly and the response returns `service_tier: null`, so the field is accepted and not reflected. Nothing in a response says which tier served it. CBR keeps sending `standard` because sending nothing would leave a default to change under it; it cannot claim the request was honoured.
+- **`store` came back `false` without being asked.** There is no request parameter for it, so CBR did not ask and cannot; the value observed on one response was `false`. **One response is not a policy**, and this does not soften the retention limit above — it is a single observation recorded next to it.
+
+Both are things CBR **cannot** verify rather than things it has not got round to verifying, which is a different claim and is the one being made.
 
 **The repositories.** brian2 is CeCILL-licensed and public; Knowscroll-v2 is public. Sending their text to a provider is sending public text, and the licence still governs what CBR may **commit** — digests, paths, spans, counts and costs only, which is unchanged. **Any private repository needs the owner's explicit word before a single byte of it is sent**, and CBR has no such word today.
 
 ## 8. Bounded runtime
 
-**Model work leaves the preparation tick.** M3 measured the cost of doing long work inside it: the index build holds the tick throughout, **7.2s** on CBR's own 1,066 blobs, **12.8s** on brian2's 553 blobs and 5.3 MB, and **3.9s** on Knowscroll's 145, with every other job on that provider waiting it out. A model call is longer and less predictable than any of those, so M4 is where this is resolved — for the index build as well as for the model.
+**Model work leaves the preparation tick.** M3 measured the cost of doing long work inside it: the index build holds the tick throughout, **7.2s** on CBR's own 1,066 blobs, **12.8s** on brian2's 553 blobs and 5.3 MB, and **3.9s** on Knowscroll's 145, with every other job on that provider waiting it out. A model call is longer and less predictable than any of those, so M4 is where this is resolved — for the index build as well as for the model. m4c moves the build; [STALL](STALL.md) is the before-and-after measurement.
 
 - **Deadlines** are the request's, already in the protocol, and a call that would outlast one is not started.
 - **Cancellation** drops the request; a cancelled call leaves no partial derivation record.
 - **A concurrency bound** caps calls in flight, because a shared quota plus unbounded concurrency is the overspend of §3 arriving by another route.
 - **Failure is an item's unmet reason, never a hang.** A provider error, a timeout, a refusal at admission and an invalid output after bounded repair all end as a typed reason a consumer can read.
+
+### What m4c built, and the two decisions inside it
+
+**The work pool.** `work::Pool` bounds work in flight at two and answers every ask with a typed `Progress`; nothing blocks the caller, so the tick that asks is the tick that returns. Work beyond the bound is **deferred, not queued**, because by the next tick the request may have been cancelled or its deadline passed. A settled answer is **kept until its caller takes it**: a compile needing two calls asks across several ticks, and a released failure would be a retry nobody asked for.
+
+**The deadline is converted once, not kept twice.** The pool measures monotonic time and the protocol measures instants. `clock::unix_of` converts the request's deadline at the moment the call is asked about; keeping a second deadline beside the protocol's would be two clocks disagreeing about one request.
+
+**Cancellation is the job's, not the item's.** A compile that produced its script has read every answer it asked for, and it releases them together. The index build is not cancelled at all and says why: it writes its manifest as it goes, so cancelling it would leave exactly the partial record the rule forbids, and it has no single owner besides.
+
+**What the model is asked.** Which of the spans BM25 already ranked, inside the one file the item named, to cite. It answers with one of a **closed set of ids CBR offered** — never a path, a line or a repository — so the worst any answer can do is choose a worse candidate from CBR's own list. An id that was not offered ends as the item's unmet reason, with no repair: the answer was well formed and wrong, and asking again would spend a shared quota on the same question.
+
+**A request that authorised no investigation calls nothing**, and gets exactly the compiler M3 shipped. That is what makes the same binary the baseline m4e's journeys are scored against, rather than a second build nobody ran.
+
+**One rule was loosened to test this, and only one.** Compiling is a production capability and the fake transport is a conformance control, so the two could never overlap and the call site could not be reached under `SIGKILL` at all. A conformance launch may now ask to compile, with `context.compile`. No fixture sets it, and a test holds what a launch that does not set it still does.
 
 ## 9. How M4 is judged
 

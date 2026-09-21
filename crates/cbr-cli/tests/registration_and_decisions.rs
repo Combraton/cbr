@@ -609,7 +609,23 @@ fn a_projection_that_cannot_be_built_is_reported_unavailable_rather_than_empty()
         String::from_utf8_lossy(&submitted.stderr)
     );
 
-    let inspected = ok(&fixture.cbr("owner", &["request", "confused"]));
+    // As above: preparation takes ticks, and each `request` is one.
+    let started = std::time::Instant::now();
+    let inspected = loop {
+        let inspected = ok(&fixture.cbr("owner", &["request", "confused"]));
+        if !at(&inspected, &["packets"])
+            .as_array()
+            .map(<[Value]>::is_empty)
+            .unwrap_or(true)
+        {
+            break inspected;
+        }
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(120),
+            "no packet after two minutes: {inspected:?}"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    };
     let items = at(&inspected, &["items"])
         .as_array()
         .map(<[Value]>::to_vec)
@@ -788,7 +804,27 @@ fn packet_bytes_for(
             .output()
             .expect("cbr runs")
     };
-    read(&["request", "probe"]);
+    // **Preparation takes ticks now.** The index build left the
+    // preparation tick in m4c, so a first request waits for it rather than
+    // having it done inline — which is the point: every other job on the
+    // provider carries on meanwhile. Each `request` call is a poll, and
+    // each poll is a tick.
+    let started = std::time::Instant::now();
+    loop {
+        let inspected = ok(&read(&["request", "probe"]));
+        if !at(&inspected, &["packets"])
+            .as_array()
+            .map(<[Value]>::is_empty)
+            .unwrap_or(true)
+        {
+            break;
+        }
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(120),
+            "no packet after two minutes: {inspected:?}"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
     let printed = ok(&read(&["packet", "probe", "--excerpt", "1000000"]));
     let data = text(&printed, &["excerpt", "data_base64"]);
     let bytes = cbr_encoding::decode_base64(&data).expect("base64");

@@ -43,7 +43,7 @@ fn corpus() -> Vec<(String, Vec<u8>)> {
 }
 
 #[test]
-fn the_estimate_never_falls_below_what_any_byte_level_tokenizer_could_emit() {
+fn the_bound_never_falls_below_what_any_byte_level_tokenizer_could_emit() {
     // One-sided: over-estimating is the safe direction and under-estimating
     // admits a request the provider charges for anyway. The reference is the
     // worst case a byte-level BPE can produce, which is one token per byte —
@@ -51,7 +51,7 @@ fn the_estimate_never_falls_below_what_any_byte_level_tokenizer_could_emit() {
     // available offline and fetching one is not this milestone's to do.
     for (name, bytes) in corpus() {
         let reference = worst_case_tokens(&bytes);
-        let estimated = estimate(&bytes, 1);
+        let estimated = input_bound(&bytes, 1);
         assert!(
             estimated >= reference,
             "{name}: estimate {estimated} < worst case {reference}"
@@ -69,17 +69,17 @@ fn a_character_count_would_under_estimate_the_non_latin_text_and_a_byte_count_do
         characters < worst_case_tokens(bytes),
         "the non-Latin text has more bytes than characters: {characters}"
     );
-    assert!(estimate(bytes, 1) >= worst_case_tokens(bytes));
+    assert!(input_bound(bytes, 1) >= worst_case_tokens(bytes));
 }
 
 #[test]
-fn the_estimate_counts_the_whole_body_and_not_only_its_messages() {
+fn the_bound_counts_the_whole_body_and_not_only_its_messages() {
     // The defect this catches: an estimate that walks `messages` and forgets
     // the tool schemas, the system instructions or the JSON framing around
     // them. The serialized body is what is sent, so the serialized body is
     // what is counted.
-    let small = estimate(b"{\"messages\":[]}", 0);
-    let large = estimate(
+    let small = input_bound(b"{\"messages\":[]}", 0);
+    let large = input_bound(
         b"{\"messages\":[],\"tools\":[{\"name\":\"search\",\"schema\":{\"a\":1}}]}",
         0,
     );
@@ -88,25 +88,34 @@ fn the_estimate_counts_the_whole_body_and_not_only_its_messages() {
 }
 
 #[test]
-fn the_estimate_reserves_generation_and_margin_above_the_input_bound() {
+fn the_bound_is_the_input_and_the_framing_and_nothing_else() {
     // **What nothing asserted until m4b.** The estimate's parts were named
     // in constants, documented, and never read by a test: removing the
     // margin from it left the whole workspace green. An estimate that is
     // only the input bound admits a request whose generation it has not
     // accounted for, which is the same defect the completion's reservation
     // had, one layer down.
+    // **What changed, and why this test did.** m4a's `estimate` added a
+    // fixed 4,096-token generation reserve because admission happened
+    // before the request's own limit was known. Every call site knows it
+    // now, so the completion reserves the real figure and this function is
+    // the input alone — which is also what stops the calibration's ratio
+    // column measuring the reservation instead of the bound.
+    //
+    // The property that reserve carried has not gone: it moved to
+    // `model::tests::the_completions_reservation_covers_the_margin_as_well_as_the_generation`,
+    // where the figure is the one the request actually asked for.
     for (name, bytes) in corpus() {
-        let headroom = estimate(&bytes, 0) - worst_case_tokens(&bytes);
-        assert!(
-            headroom >= RESERVED_GENERATION_TOKENS + SAFETY_MARGIN_TOKENS,
-            "{name}: the estimate leaves {headroom} above the input bound, which is less \
-             than the generation and margin it is supposed to reserve"
+        assert_eq!(
+            input_bound(&bytes, 0),
+            worst_case_tokens(&bytes),
+            "{name}: the bound with no messages to frame is the byte count"
         );
     }
 }
 
 #[test]
-fn the_estimate_grows_with_the_messages_it_frames() {
+fn the_bound_grows_with_the_messages_it_frames() {
     // The provider frames each message, and the serialized body does not
     // obviously show that framing. Dropping the term left every test green.
     let body = b"{\"messages\":[]}";
@@ -114,11 +123,11 @@ fn the_estimate_grows_with_the_messages_it_frames() {
     // of zero satisfies the equality and is not a framing at all, which is
     // exactly what the surviving mutant did.
     assert!(
-        estimate(body, 4) > estimate(body, 0),
+        input_bound(body, 4) > input_bound(body, 0),
         "four messages cost more than none"
     );
     assert_eq!(
-        estimate(body, 4) - estimate(body, 0),
+        input_bound(body, 4) - input_bound(body, 0),
         4 * MESSAGE_OVERHEAD_TOKENS,
         "and cost four framings, not some other number"
     );
@@ -411,3 +420,84 @@ fn a_usage_that_differs_from_the_estimate_is_reconciled_and_the_divergence_kept(
 // `wire::net::tests` when m4b gave the crate one, and became two tests
 // there: the four crates that do not need a network client still have
 // none, and the one that does names exactly what it added.
+
+#[test]
+fn two_admissions_racing_for_the_last_of_a_window_admit_exactly_one() {
+    // **The property m4a claimed and m4c needs.** `BEGIN IMMEDIATE` takes
+    // the write lock before the read, so a check-then-write race cannot
+    // have both readers see the same room and both write against it.
+    // Until m4c there was no concurrency to test it under; there is now.
+    //
+    // Two connections to one file, two threads, one barrier, and exactly
+    // enough window left for one of the two requests.
+    let directory = tempfile::tempdir().expect("temp dir");
+    let path = directory.path().join("ledger.sqlite");
+    let open = || {
+        let connection = Connection::open(&path).expect("opens");
+        connection
+            .pragma_update(None, "journal_mode", "WAL")
+            .expect("wal");
+        connection
+            .busy_timeout(std::time::Duration::from_secs(10))
+            .expect("busy timeout");
+        connection
+    };
+    let setup = open();
+    Ledger::migrate(&setup).expect("migrates");
+
+    // Leave room for exactly one request of `each`.
+    let each = 10_000;
+    let ledger = Ledger::new(&setup);
+    let mut spent = 0;
+    let mut job = 0;
+    while spent + PER_REQUEST_TOKENS <= WINDOW_TOKENS - each {
+        ledger
+            .admit(T0, &format!("filler-{job}"), "r", PER_REQUEST_TOKENS)
+            .expect("admits")
+            .expect("room");
+        spent += PER_REQUEST_TOKENS;
+        job += 1;
+    }
+    let remaining = WINDOW_TOKENS - each - spent;
+    if remaining > 0 {
+        ledger
+            .admit(T0, "filler-top", "r", remaining)
+            .expect("admits")
+            .expect("room");
+    }
+    assert_eq!(
+        ledger.spend(T0, "none").expect("spend").window,
+        WINDOW_TOKENS - each,
+        "exactly one request's worth is left"
+    );
+    drop(setup);
+
+    let start = std::sync::Barrier::new(2);
+    let admitted = std::sync::atomic::AtomicUsize::new(0);
+    std::thread::scope(|scope| {
+        for racer in 0..2 {
+            let start = &start;
+            let admitted = &admitted;
+            let open = &open;
+            scope.spawn(move || {
+                let connection = open();
+                let ledger = Ledger::new(&connection);
+                start.wait();
+                if let Ok(Ok(_)) = ledger.admit(T0, &format!("racer-{racer}"), "r", each) {
+                    admitted.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                }
+            });
+        }
+    });
+
+    assert_eq!(
+        admitted.load(std::sync::atomic::Ordering::SeqCst),
+        1,
+        "exactly one of the two was admitted"
+    );
+    let after = open();
+    assert!(
+        Ledger::new(&after).spend(T0, "none").expect("spend").window <= WINDOW_TOKENS,
+        "and the window was never over-committed"
+    );
+}

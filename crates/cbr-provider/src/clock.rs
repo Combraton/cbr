@@ -133,9 +133,97 @@ pub fn format_unix(seconds: u64) -> String {
     format!("{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}Z")
 }
 
+/// Seconds since the Unix epoch, from an instant [`format_unix`] wrote.
+///
+/// The inverse of [`format_unix`], and the reason it exists: a model call
+/// put on the work pool needs the request's deadline as a **duration from
+/// now**, and the pool measures in monotonic time while the protocol
+/// measures in wall-clock instants. One conversion, at the moment the
+/// call is asked about, is a great deal better than two clocks running
+/// beside each other and disagreeing about the same request.
+///
+/// `None` for anything that is not the format this module writes. A
+/// deadline CBR cannot read is not a deadline it guesses at.
+pub fn unix_of(instant: &str) -> Option<u64> {
+    let bytes = instant.as_bytes();
+    if bytes.len() != 20 || bytes[19] != b'Z' {
+        return None;
+    }
+    let number =
+        |from: usize, to: usize| -> Option<i64> { instant.get(from..to)?.parse::<i64>().ok() };
+    if &instant[4..5] != "-"
+        || &instant[7..8] != "-"
+        || &instant[10..11] != "T"
+        || &instant[13..14] != ":"
+        || &instant[16..17] != ":"
+    {
+        return None;
+    }
+    let (year, month, day) = (number(0, 4)?, number(5, 7)?, number(8, 10)?);
+    let (hour, minute, second) = (number(11, 13)?, number(14, 16)?, number(17, 19)?);
+    if !(1..=12).contains(&month) || !(1..=31).contains(&day) {
+        return None;
+    }
+    if hour > 23 || minute > 59 || second > 59 {
+        return None;
+    }
+    // Howard Hinnant's days-from-civil, the inverse of the algorithm
+    // `format_unix` uses, so the two cannot drift apart.
+    let year = year - i64::from(month <= 2);
+    let era = year.div_euclid(400);
+    let yoe = year - era * 400;
+    let mp = if month > 2 { month - 3 } else { month + 9 };
+    let doy = (153 * mp + 2) / 5 + day - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    let days = era * 146_097 + doe - 719_468;
+    let seconds = days * 86_400 + hour * 3_600 + minute * 60 + second;
+    u64::try_from(seconds).ok()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_instant_round_trips_through_seconds() {
+        // **The two halves cannot drift apart**, which is the whole
+        // reason the inverse is written here beside the original rather
+        // than wherever it was first needed.
+        for seconds in [
+            0,
+            1,
+            86_399,
+            86_400,
+            951_782_400,   // 2000-02-29, a leap day in a leap century
+            1_709_164_800, // 2024-02-29
+            1_789_100_000,
+            4_102_444_800,  // 2100-01-01, not a leap year
+            32_503_680_000, // 3000-01-01
+        ] {
+            let written = format_unix(seconds);
+            assert_eq!(unix_of(&written), Some(seconds), "{written}");
+        }
+    }
+
+    #[test]
+    fn anything_that_is_not_an_instant_is_refused_rather_than_guessed_at() {
+        for text in [
+            "",
+            "2026-09-21",
+            "2026-09-21T00:00:00",
+            "2026-09-21T00:00:00z",
+            "2026-09-21 00:00:00Z",
+            "2026/09/21T00:00:00Z",
+            "2026-13-01T00:00:00Z",
+            "2026-09-00T00:00:00Z",
+            "2026-09-21T24:00:00Z",
+            "2026-09-21T00:60:00Z",
+            "202x-09-21T00:00:00Z",
+            "1960-01-01T00:00:00Z",
+        ] {
+            assert_eq!(unix_of(text), None, "{text} was read as an instant");
+        }
+    }
 
     fn clock_file(content: &str) -> (tempfile::TempDir, PathBuf) {
         let directory = tempfile::tempdir().expect("temp dir");

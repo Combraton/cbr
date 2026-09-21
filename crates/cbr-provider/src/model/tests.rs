@@ -33,11 +33,12 @@ fn the_count_call_is_a_send_and_is_admitted_recorded_and_charged_like_one() {
         &Attempt {
             job: "job",
             request: "r",
-            body: &body_declaring(64),
-            count_body: Some(&body_declaring(64)),
+            body: &roomy_body(64),
+            count_body: Some(&roomy_body(64)),
             messages: 1,
             generation: 64,
             dialect: Dialect::OpenAi,
+            counting: Counting::Always,
         },
         &no_barrier,
     );
@@ -50,11 +51,17 @@ fn the_count_call_is_a_send_and_is_admitted_recorded_and_charged_like_one() {
     assert_eq!(sent.len(), 2, "the count and the completion are both sends");
     assert_eq!(sent[0].0, Call::Count);
     assert_eq!(sent[1].0, Call::Completion);
-    assert_eq!(sent[0].1, body_declaring(64), "the exact serialized bytes");
+    assert_eq!(sent[0].1, roomy_body(64), "the exact serialized bytes");
 
     let ledger = Ledger::new(&connection);
     let rows = ledger.rows().expect("rows");
-    assert_eq!(rows.len(), 2, "both calls are in the ledger: {rows:?}");
+    // Spend rows only: the note recording which evidence admitted the call
+    // is a fact about it, not a charge.
+    let spend = rows
+        .iter()
+        .filter(|(kind, _, _)| kind == "usage" || kind == "unknown")
+        .count();
+    assert_eq!(spend, 2, "both calls are in the ledger: {rows:?}");
     assert_eq!(
         ledger.spend(T0, "job").expect("spend").window,
         120 + 150,
@@ -91,6 +98,7 @@ fn a_request_the_local_estimate_refuses_never_reaches_the_count_endpoint() {
             messages: 1,
             generation: 64,
             dialect: Dialect::OpenAi,
+            counting: Counting::Always,
         },
         &no_barrier,
     );
@@ -152,6 +160,7 @@ fn an_exhausted_envelope_refuses_before_the_count_call() {
             messages: 1,
             generation: 64,
             dialect: Dialect::OpenAi,
+            counting: Counting::Always,
         },
         &no_barrier,
     );
@@ -178,6 +187,7 @@ fn provider_exhaustion_reaches_the_caller_as_its_own_reason_and_is_not_retried()
             messages: 1,
             generation: 64,
             dialect: Dialect::OpenAi,
+            counting: Counting::Always,
         },
         &no_barrier,
     );
@@ -216,6 +226,7 @@ fn a_failed_call_reaches_the_caller_as_an_unmet_reason_and_never_hangs() {
             messages: 1,
             generation: 64,
             dialect: Dialect::OpenAi,
+            counting: Counting::Always,
         },
         &no_barrier,
     );
@@ -242,11 +253,12 @@ fn a_usage_that_differs_from_the_count_is_what_the_ledger_keeps() {
         &Attempt {
             job: "job",
             request: "r",
-            body: &body_declaring(64),
-            count_body: Some(&body_declaring(64)),
+            body: &roomy_body(64),
+            count_body: Some(&roomy_body(64)),
             messages: 1,
             generation: 64,
             dialect: Dialect::OpenAi,
+            counting: Counting::Always,
         },
         &no_barrier,
     );
@@ -300,6 +312,7 @@ fn every_crash_boundary_is_reached_in_order() {
             messages: 1,
             generation: 64,
             dialect: Dialect::OpenAi,
+            counting: Counting::Always,
         },
         &|name| {
             // **What is true at each boundary, not merely that it was reached.**
@@ -359,7 +372,10 @@ fn the_completion_reserves_its_generation_and_margin_not_the_input_count_alone()
     // spent fifty thousand.
     let connection = database();
     let ledger = Ledger::new(&connection);
-    fill_window_to(&ledger, WINDOW_TOKENS - 8_000);
+    // Room for the count call and for a completion reserved against the
+    // count alone (1), and **not** for one that also reserves the
+    // generation and the margin (1 + 4,096 + 1,024).
+    fill_window_to(&ledger, WINDOW_TOKENS - 4_000);
 
     let transport = Recorder::new(vec![
         Answer::Counted(1),
@@ -383,6 +399,7 @@ fn the_completion_reserves_its_generation_and_margin_not_the_input_count_alone()
             messages: 1,
             generation: 4_096,
             dialect: Dialect::OpenAi,
+            counting: Counting::Always,
         },
         &no_barrier,
     );
@@ -412,15 +429,17 @@ fn the_completions_reservation_covers_the_margin_as_well_as_the_generation() {
     // reservation that omits the margin is admitted and one that includes it
     // is not.
     let body = body_declaring(64);
-    let local = crate::budget::estimate(&body, 1);
-    let refined = local; // the count is answered at the local figure
+    // The count call reserves its input and settles at what it counted; the
+    // completion is then reserved against that figure.
+    let input = crate::budget::input_bound(&body, 1);
+    let refined = input; // the count is answered at the local figure
     let without_margin = refined + 64;
 
     let connection = database();
     let ledger = Ledger::new(&connection);
     // Leave room for the count, then exactly `without_margin` for the
     // completion — so the margin is the whole of the difference.
-    fill_window_to(&ledger, WINDOW_TOKENS - (local + without_margin));
+    fill_window_to(&ledger, WINDOW_TOKENS - (input + without_margin));
 
     let transport = Recorder::new(vec![
         Answer::Counted(refined),
@@ -443,6 +462,7 @@ fn the_completions_reservation_covers_the_margin_as_well_as_the_generation() {
             messages: 1,
             generation: 64,
             dialect: Dialect::OpenAi,
+            counting: Counting::Always,
         },
         &no_barrier,
     );
@@ -486,6 +506,7 @@ fn a_count_implausibly_below_the_local_bound_is_an_anomaly_and_the_local_figure_
             messages: 1,
             generation: 16,
             dialect: Dialect::OpenAi,
+            counting: Counting::Always,
         },
         &no_barrier,
     );
@@ -521,6 +542,7 @@ fn usage_above_the_reservation_is_recorded_as_a_divergence() {
             messages: 1,
             generation: 64,
             dialect: Dialect::OpenAi,
+            counting: Counting::Always,
         },
         &no_barrier,
     );
@@ -555,6 +577,7 @@ fn a_limit_the_body_only_mentions_is_not_a_limit_the_body_declares() {
             messages: 1,
             generation: 16,
             dialect: Dialect::OpenAi,
+            counting: Counting::Always,
         },
         &no_barrier,
     );
@@ -583,6 +606,7 @@ fn a_request_that_does_not_declare_its_generation_limit_is_never_sent() {
             messages: 1,
             generation: 4_096,
             dialect: Dialect::OpenAi,
+            counting: Counting::Always,
         },
         &no_barrier,
     );
@@ -618,6 +642,7 @@ fn a_failure_after_the_send_keeps_the_estimate_because_the_provider_may_have_cha
             messages: 1,
             generation: 64,
             dialect: Dialect::OpenAi,
+            counting: Counting::Always,
         },
         &no_barrier,
     );
@@ -648,6 +673,7 @@ fn a_failure_before_anything_left_the_process_spends_nothing() {
             messages: 1,
             generation: 64,
             dialect: Dialect::OpenAi,
+            counting: Counting::Always,
         },
         &no_barrier,
     );
@@ -665,7 +691,7 @@ fn a_failure_before_anything_left_the_process_spends_nothing() {
 #[test]
 fn a_failure_that_reports_usage_settles_to_what_it_reported() {
     let connection = database();
-    let body = body_declaring(64);
+    let body = roomy_body(64);
     let transport = Recorder::new(vec![
         Answer::Counted(100),
         Answer::Failed {
@@ -687,6 +713,7 @@ fn a_failure_that_reports_usage_settles_to_what_it_reported() {
             messages: 1,
             generation: 64,
             dialect: Dialect::OpenAi,
+            counting: Counting::Always,
         },
         &no_barrier,
     );
@@ -726,6 +753,7 @@ fn an_answer_of_the_wrong_kind_is_a_recorded_failure_and_not_a_silent_fall_throu
             messages: 1,
             generation: 64,
             dialect: Dialect::OpenAi,
+            counting: Counting::Always,
         },
         &no_barrier,
     );
@@ -763,6 +791,7 @@ fn the_boundaries_are_named_per_call_so_a_row_cannot_pass_at_the_wrong_one() {
             messages: 1,
             generation: 64,
             dialect: Dialect::OpenAi,
+            counting: Counting::Always,
         },
         &|name| seen.lock().expect("not poisoned").push(name),
     );
@@ -885,6 +914,13 @@ fn fill_window_to(ledger: &Ledger<'_>, target: u64) {
     }
 }
 
+/// A body whose input bound is comfortably above the counts these tests
+/// script, so that the cap on a count's settlement — it never settles above
+/// what it reserved — is not what the test ends up measuring.
+fn roomy_body(generation: u64) -> Vec<u8> {
+    padded_chat_body(generation, 2_000)
+}
+
 /// A body that declares the generation limit it was reserved for.
 fn body_declaring(generation: u64) -> Vec<u8> {
     format!("{{\"messages\":[],\"max_tokens\":{generation}}}").into_bytes()
@@ -937,8 +973,11 @@ fn answered(content: &str) -> Answer {
     }
 }
 
+/// What the scripted count answers with.
+const COUNTED: u64 = 60;
+
 fn counted() -> Answer {
-    Answer::Counted(60)
+    Answer::Counted(COUNTED)
 }
 
 #[test]
@@ -963,11 +1002,15 @@ fn prose_where_a_structure_was_asked_for_is_repaired_once_and_then_answered() {
             request: "r",
             dialect: Dialect::Responses,
             body: &asking(structure()),
+            counting: Counting::Always,
         },
         &no_barrier,
     );
     match outcome {
-        Outcome::Answered { reply, repairs, .. } => {
+        Outcome::Answered {
+            reply,
+            cost: Cost { repairs, .. },
+        } => {
             assert!(matches!(reply, Reply::Structure(_)), "{reply:?}");
             assert_eq!(repairs, 1, "one repair, not none and not two");
         }
@@ -1004,6 +1047,7 @@ fn the_repair_is_bounded_and_the_outcome_is_reported_rather_than_chased() {
             request: "r",
             dialect: Dialect::Responses,
             body: &asking(structure()),
+            counting: Counting::Always,
         },
         &no_barrier,
     );
@@ -1012,7 +1056,7 @@ fn the_repair_is_bounded_and_the_outcome_is_reported_rather_than_chased() {
             outcome,
             Outcome::Unmet {
                 reason: "model_output_unstructured",
-                repairs: 1
+                cost: Cost { repairs: 1, .. }
             }
         ),
         "{outcome:?}"
@@ -1043,6 +1087,7 @@ fn an_outcome_that_is_not_repairable_is_reported_without_a_second_call() {
             request: "r",
             dialect: Dialect::Responses,
             body: &asking(Want::Text),
+            counting: Counting::Always,
         },
         &no_barrier,
     );
@@ -1051,7 +1096,7 @@ fn an_outcome_that_is_not_repairable_is_reported_without_a_second_call() {
             outcome,
             Outcome::Unmet {
                 reason: "model_reasoning_leaked",
-                repairs: 0
+                cost: Cost { repairs: 0, .. }
             }
         ),
         "{outcome:?}"
@@ -1083,6 +1128,7 @@ fn a_repair_asks_again_without_repeating_what_the_model_said() {
             request: "r",
             dialect: Dialect::Responses,
             body: &asking(structure()),
+            counting: Counting::Always,
         },
         &no_barrier,
     );
@@ -1111,10 +1157,16 @@ fn a_repair_the_envelope_has_no_room_for_does_not_happen() {
     let connection = database();
     let asked = asking(structure());
     let first = asked.serialize(Dialect::Responses);
-    let estimate = crate::budget::estimate(&first, asked.framed_messages(Dialect::Responses));
+    let messages = asked.framed_messages(Dialect::Responses);
+    // What one whole call costs the ledger: the count's own reservation,
+    // then the completion reserved against what the count reported.
+    let one_call = crate::budget::input_bound(&first, messages)
+        + COUNTED
+        + asked.generation
+        + crate::budget::SAFETY_MARGIN_TOKENS;
     let transport = Recorder::new(vec![counted(), answered("prose")]);
     let runtime = Runtime {
-        ledger: Ledger::new(&connection).with_run_ceiling(Some(estimate + 16)),
+        ledger: Ledger::new(&connection).with_run_ceiling(Some(one_call + 16)),
         transport: &transport,
     };
     let outcome = runtime.ask(
@@ -1124,6 +1176,7 @@ fn a_repair_the_envelope_has_no_room_for_does_not_happen() {
             request: "r",
             dialect: Dialect::Responses,
             body: &asked,
+            counting: Counting::Always,
         },
         &no_barrier,
     );
@@ -1131,10 +1184,20 @@ fn a_repair_the_envelope_has_no_room_for_does_not_happen() {
         matches!(outcome, Outcome::Refused(Refusal::RunCeiling)),
         "the repair was refused by the ceiling: {outcome:?}"
     );
+    // **One completion, not two.** The repair asked for its count and was
+    // then refused, which is the repair not happening; counting the sends
+    // would have counted that count. The claim is about what was
+    // *completed*, so that is what is asserted.
+    let completions = transport
+        .sent()
+        .iter()
+        .filter(|(call, _)| *call == Call::Completion)
+        .count();
     assert_eq!(
-        transport.sent().len(),
-        2,
-        "the first call happened and the repair did not"
+        completions,
+        1,
+        "the first call completed and the repair did not: {:?}",
+        transport.sent().iter().map(|(c, _)| *c).collect::<Vec<_>>()
     );
 }
 
@@ -1158,6 +1221,7 @@ fn a_repair_is_charged_to_the_same_ledger_as_the_call_it_repairs() {
             request: "r",
             dialect: Dialect::Responses,
             body: &asking(structure()),
+            counting: Counting::Always,
         },
         &no_barrier,
     );
@@ -1204,11 +1268,17 @@ fn a_completion_the_provider_did_not_price_settles_to_the_estimate_never_to_zero
             messages: 1,
             generation: 64,
             dialect: Dialect::OpenAi,
+            counting: Counting::Always,
         },
         &no_barrier,
     );
     let rows = Ledger::new(&connection).rows().expect("rows");
-    let completion = rows.last().expect("a completion row");
+    // The last row is the note saying which evidence admitted the call;
+    // the settlement is the last row that is a charge.
+    let completion = rows
+        .iter()
+        .rfind(|(kind, _, _)| kind != "admitted_local" && kind != "admitted_count")
+        .expect("a completion row");
     assert_eq!(completion.0, "unknown", "settled as unpriced: {rows:?}");
     assert!(
         completion.2 > 0,
@@ -1255,6 +1325,7 @@ fn the_count_call_sends_the_count_body_and_the_completion_sends_its_own() {
             messages: 1,
             generation: 64,
             dialect: Dialect::Responses,
+            counting: Counting::Always,
         },
         &no_barrier,
     );
@@ -1291,6 +1362,7 @@ fn a_dialect_the_counting_endpoint_does_not_describe_sends_no_count_call() {
             messages: 1,
             generation: 64,
             dialect: Dialect::OpenAi,
+            counting: Counting::Always,
         },
         &no_barrier,
     );
@@ -1326,7 +1398,7 @@ fn an_uncounted_dialect_reserves_the_completion_against_the_local_bound() {
         transport: &transport,
     };
     let body = body_declaring(64);
-    let local = crate::budget::estimate(&body, 1);
+    let reserves = crate::budget::input_bound(&body, 1) + 64 + crate::budget::SAFETY_MARGIN_TOKENS;
     runtime.call(
         T0,
         &Attempt {
@@ -1337,15 +1409,481 @@ fn an_uncounted_dialect_reserves_the_completion_against_the_local_bound() {
             messages: 1,
             generation: 64,
             dialect: Dialect::OpenAi,
+            counting: Counting::Always,
         },
         &no_barrier,
     );
     let rows = Ledger::new(&connection).rows().expect("rows");
-    let settled = rows.last().expect("a row");
+    let settled = rows
+        .iter()
+        .rfind(|(kind, _, _)| kind != "admitted_local" && kind != "admitted_count")
+        .expect("a row");
     assert_eq!(settled.0, "unknown", "{rows:?}");
+    assert_eq!(
+        settled.2, reserves,
+        "reserved against the local bound plus the limit it asked for: {rows:?}"
+    );
+}
+
+// --- the count is made only when it could change the decision ------------
+
+#[test]
+fn no_count_is_made_when_the_local_bound_already_admits() {
+    // **The mutant this exists for.** Calibration run 2 measured what the
+    // count costs: it sends the repository text a second time, the
+    // provider does not price it so CBR charges itself for it -- 15,538 of
+    // the 15,582 tokens that run -- and the one comparison available had
+    // it over-predict by 4.4 times, which is conservatism the local bound
+    // already gives. So it is not made unless it can change the answer.
+    let connection = database();
+    let transport = Recorder::new(vec![Answer::Completed {
+        body: b"{}".to_vec(),
+        usage: Some(70),
+    }]);
+    let runtime = Runtime {
+        ledger: Ledger::new(&connection),
+        transport: &transport,
+    };
+    let ended = runtime.call(
+        T0,
+        &Attempt {
+            job: "job",
+            request: "r",
+            body: &responses_body_declaring(64),
+            count_body: Some(&responses_body_declaring(64)),
+            messages: 1,
+            generation: 64,
+            dialect: Dialect::Responses,
+            counting: Counting::WhenItCouldAdmit,
+        },
+        &no_barrier,
+    );
+    let sent = transport.sent();
+    assert_eq!(
+        sent.len(),
+        1,
+        "one send, and it is the completion: {sent:?}"
+    );
+    assert_eq!(sent[0].0, Call::Completion);
+    assert!(matches!(ended, Ended::Completed { .. }), "{ended:?}");
+}
+
+#[test]
+fn the_local_path_is_recorded_as_the_one_that_admitted() {
+    let connection = database();
+    let transport = Recorder::new(vec![Answer::Completed {
+        body: b"{}".to_vec(),
+        usage: Some(70),
+    }]);
+    let runtime = Runtime {
+        ledger: Ledger::new(&connection),
+        transport: &transport,
+    };
+    runtime.call(
+        T0,
+        &Attempt {
+            job: "job",
+            request: "r",
+            body: &responses_body_declaring(64),
+            count_body: Some(&responses_body_declaring(64)),
+            messages: 1,
+            generation: 64,
+            dialect: Dialect::Responses,
+            counting: Counting::WhenItCouldAdmit,
+        },
+        &no_barrier,
+    );
+    let rows = Ledger::new(&connection).rows().expect("rows");
     assert!(
-        settled.2 >= local,
-        "reserved {} against a local bound of {local}: {rows:?}",
-        settled.2
+        rows.iter().any(|(kind, _, _)| kind == "admitted_local"),
+        "which path admitted it is a fact about the call: {rows:?}"
+    );
+    assert!(
+        !rows.iter().any(|(kind, _, _)| kind == "admitted_count"),
+        "{rows:?}"
+    );
+}
+
+#[test]
+fn a_count_is_made_when_a_ceiling_refuses_the_local_bound_and_a_tighter_figure_would_admit() {
+    // The one case where the count earns its call: the envelope has room
+    // for what the request really costs and not for what the byte bound
+    // says it might.
+    let connection = database();
+    let body = padded_body(64, 4_000);
+    let input = crate::budget::input_bound(&body, 1);
+    // Enough for the count call's own reservation, and not enough for the
+    // completion reserved against the byte bound.
+    let ceiling = input + 200;
+    let transport = Recorder::new(vec![
+        // About a quarter of the bytes, which is what a real tokenizer does
+        // to text. A figure below an eighth is disbelieved and the local
+        // bound stands, which would make the count useless here — and was
+        // how the first version of this test failed.
+        Answer::Counted(1_000),
+        Answer::Completed {
+            body: b"{}".to_vec(),
+            usage: Some(120),
+        },
+    ]);
+    let runtime = Runtime {
+        ledger: Ledger::new(&connection).with_run_ceiling(Some(ceiling)),
+        transport: &transport,
+    };
+    let ended = runtime.call(
+        T0,
+        &Attempt {
+            job: "job",
+            request: "r",
+            body: &body,
+            count_body: Some(&body),
+            messages: 1,
+            generation: 64,
+            dialect: Dialect::Responses,
+            counting: Counting::WhenItCouldAdmit,
+        },
+        &no_barrier,
+    );
+    assert!(matches!(ended, Ended::Completed { .. }), "{ended:?}");
+    let sent = transport.sent();
+    assert_eq!(sent.len(), 2, "the count, then the completion");
+    assert_eq!(sent[0].0, Call::Count);
+    let rows = Ledger::new(&connection).rows().expect("rows");
+    assert!(
+        rows.iter().any(|(kind, _, _)| kind == "admitted_count"),
+        "{rows:?}"
+    );
+}
+
+#[test]
+fn a_request_no_figure_could_admit_is_refused_without_a_count() {
+    // A per-request ceiling is a policy limit on how large one request may
+    // be, and the local bound is deliberately the conservative measure of
+    // that. Letting the provider's figure talk CBR into sending a bigger
+    // request inverts the direction the bound exists to protect, so this
+    // refusal never buys a count.
+    let connection = database();
+    // **Sized so the count call itself would be admitted.** A body so
+    // large that the count is refused for the same reason proves nothing:
+    // nothing is sent either way, and a mutant that counts on every
+    // refusal survives it. This one is just under the ceiling on its own
+    // and just over it once the generation and the margin are added.
+    let body = padded_body(64, PER_REQUEST_TOKENS as usize - 500);
+    let input = crate::budget::input_bound(&body, 1);
+    assert!(
+        input <= PER_REQUEST_TOKENS,
+        "the count call would be admitted: {input}"
+    );
+    assert!(
+        input + 64 + crate::budget::SAFETY_MARGIN_TOKENS > PER_REQUEST_TOKENS,
+        "and the completion would not: {input}"
+    );
+    let transport = Recorder::new(vec![]);
+    let runtime = Runtime {
+        ledger: Ledger::new(&connection),
+        transport: &transport,
+    };
+    let ended = runtime.call(
+        T0,
+        &Attempt {
+            job: "job",
+            request: "r",
+            body: &body,
+            count_body: Some(&body),
+            messages: 1,
+            generation: 64,
+            dialect: Dialect::Responses,
+            counting: Counting::WhenItCouldAdmit,
+        },
+        &no_barrier,
+    );
+    assert_eq!(ended, Ended::Refused(Refusal::PerRequest));
+    assert!(transport.sent().is_empty(), "nothing left the process");
+}
+
+#[test]
+fn a_count_that_does_not_help_still_ends_in_a_refusal() {
+    // The count is made because a tighter figure *could* admit; when it
+    // does not, the refusal stands. What it must not do is send anyway.
+    let connection = database();
+    let body = padded_body(64, 4_000);
+    let input = crate::budget::input_bound(&body, 1);
+    let transport = Recorder::new(vec![Answer::Counted(3_500)]);
+    let runtime = Runtime {
+        ledger: Ledger::new(&connection).with_run_ceiling(Some(input + 200)),
+        transport: &transport,
+    };
+    let ended = runtime.call(
+        T0,
+        &Attempt {
+            job: "job",
+            request: "r",
+            body: &body,
+            count_body: Some(&body),
+            messages: 1,
+            generation: 64,
+            dialect: Dialect::Responses,
+            counting: Counting::WhenItCouldAdmit,
+        },
+        &no_barrier,
+    );
+    assert!(matches!(ended, Ended::Refused(_)), "{ended:?}");
+    let sent = transport.sent();
+    assert_eq!(
+        sent.len(),
+        1,
+        "the count happened and the completion did not"
+    );
+    assert_eq!(sent[0].0, Call::Count);
+}
+
+#[test]
+fn an_uncounted_dialect_is_refused_rather_than_counted() {
+    // There is no count to make for a dialect the endpoint does not
+    // describe, so a refusal is the end of it.
+    let connection = database();
+    let body = padded_chat_body(64, 4_000);
+    let transport = Recorder::new(vec![]);
+    let runtime = Runtime {
+        ledger: Ledger::new(&connection).with_run_ceiling(Some(100)),
+        transport: &transport,
+    };
+    let ended = runtime.call(
+        T0,
+        &Attempt {
+            job: "job",
+            request: "r",
+            body: &body,
+            count_body: None,
+            messages: 1,
+            generation: 64,
+            dialect: Dialect::OpenAi,
+            counting: Counting::WhenItCouldAdmit,
+        },
+        &no_barrier,
+    );
+    assert!(matches!(ended, Ended::Refused(_)), "{ended:?}");
+    assert!(transport.sent().is_empty());
+}
+
+/// A body declaring `generation` in the member the **Responses** dialect
+/// reads. `body_declaring` writes the chat dialects' member, and using it
+/// with the wrong dialect is a body that declares nothing.
+fn responses_body_declaring(generation: u64) -> Vec<u8> {
+    format!("{{\"input\":[],\"max_output_tokens\":{generation}}}").into_bytes()
+}
+
+/// The same, in the member the chat dialects read.
+fn padded_chat_body(generation: u64, bytes: usize) -> Vec<u8> {
+    format!(
+        "{{\"max_tokens\":{generation},\"messages\":[{{\"content\":\"{}\"}}]}}",
+        "x".repeat(bytes)
+    )
+    .into_bytes()
+}
+
+/// A Responses-shaped body declaring `generation`, padded to `bytes`.
+fn padded_body(generation: u64, bytes: usize) -> Vec<u8> {
+    format!(
+        "{{\"max_output_tokens\":{generation},\"input\":[{{\"content\":\"{}\"}}]}}",
+        "x".repeat(bytes)
+    )
+    .into_bytes()
+}
+
+// --- the tripwire: the calibration's stop rule, kept alive in production -
+
+/// A completion whose `usage.input_tokens` is `charged`.
+fn responses_completion_charging(charged: u64) -> Vec<u8> {
+    format!(
+        "{{\"object\":\"response\",\"status\":\"completed\",\"error\":null,\
+         \"output\":[{{\"type\":\"message\",\"role\":\"assistant\",\
+         \"content\":[{{\"type\":\"output_text\",\"text\":\"ok\"}}]}}],\
+         \"output_text\":\"ok\",\"usage\":{{\"input_tokens\":{charged},\
+         \"output_tokens\":1,\"total_tokens\":{}}}}}",
+        charged + 1
+    )
+    .into_bytes()
+}
+
+fn asked_with(body: &[u8], generation: u64) -> Attempt<'_> {
+    Attempt {
+        job: "job",
+        request: "r",
+        body,
+        count_body: None,
+        messages: 1,
+        generation,
+        dialect: Dialect::Responses,
+        counting: Counting::WhenItCouldAdmit,
+    }
+}
+
+#[test]
+fn an_input_charged_above_its_local_bound_trips_the_wire_and_stops_the_process() {
+    // **The calibration's stop condition, kept alive in production.** Six
+    // files cannot prove a bound; a tripwire can hold it. If the provider
+    // ever charges more for an input than the byte bound said it could
+    // cost, the bound is wrong — and every admission CBR has ever made
+    // rests on it.
+    let connection = database();
+    let body = responses_body_declaring(64);
+    let input = crate::budget::input_bound(&body, 1);
+    let transport = Recorder::new(vec![Answer::Completed {
+        body: responses_completion_charging(input + 1),
+        usage: Some(input + 2),
+    }]);
+    let runtime = Runtime {
+        ledger: Ledger::new(&connection),
+        transport: &transport,
+    };
+    let ended = runtime.call(T0, &asked_with(&body, 64), &no_barrier);
+    assert_eq!(
+        ended.reason(),
+        Some("local_bound_unsound"),
+        "the caller is told which rule broke: {ended:?}"
+    );
+    let rows = Ledger::new(&connection).rows().expect("rows");
+    assert!(
+        rows.iter().any(|(kind, _, _)| kind == "bound_unsound"),
+        "it is its own ledger kind, not an anomaly among others: {rows:?}"
+    );
+}
+
+#[test]
+fn a_tripped_wire_refuses_every_later_call_in_the_process() {
+    // Not just this call. The bound is what admits every call, so once it
+    // is known to be wrong there is no admitting anything on it.
+    let connection = database();
+    let body = responses_body_declaring(64);
+    let input = crate::budget::input_bound(&body, 1);
+    let transport = Recorder::new(vec![
+        Answer::Completed {
+            body: responses_completion_charging(input + 1),
+            usage: Some(input + 2),
+        },
+        Answer::Completed {
+            body: responses_completion_charging(1),
+            usage: Some(2),
+        },
+    ]);
+    let runtime = Runtime {
+        ledger: Ledger::new(&connection),
+        transport: &transport,
+    };
+    runtime.call(T0, &asked_with(&body, 64), &no_barrier);
+    let after = runtime.call(T0, &asked_with(&body, 64), &no_barrier);
+    assert_eq!(after.reason(), Some("local_bound_unsound"), "{after:?}");
+    assert_eq!(
+        transport.sent().len(),
+        1,
+        "and the second call never left the process"
+    );
+}
+
+#[test]
+fn an_input_charged_at_or_below_its_local_bound_does_not_trip_it() {
+    // The negative control. A tripwire that fires on the ordinary case
+    // stops every process and proves nothing about the bound.
+    let connection = database();
+    let body = responses_body_declaring(64);
+    let input = crate::budget::input_bound(&body, 1);
+    for charged in [1, input / 2, input] {
+        let transport = Recorder::new(vec![Answer::Completed {
+            body: responses_completion_charging(charged),
+            usage: Some(charged + 1),
+        }]);
+        let runtime = Runtime {
+            ledger: Ledger::new(&connection),
+            transport: &transport,
+        };
+        let ended = runtime.call(T0, &asked_with(&body, 64), &no_barrier);
+        assert!(
+            matches!(ended, Ended::Completed { .. }),
+            "charged {charged} against a bound of {input}: {ended:?}"
+        );
+    }
+    let rows = Ledger::new(&connection).rows().expect("rows");
+    assert!(
+        !rows.iter().any(|(kind, _, _)| kind == "bound_unsound"),
+        "{rows:?}"
+    );
+}
+
+#[test]
+fn a_completion_that_reports_no_input_usage_cannot_trip_it() {
+    // Silence is not evidence. A provider that does not say what the input
+    // cost has not said the bound is wrong.
+    let connection = database();
+    let body = responses_body_declaring(64);
+    let transport = Recorder::new(vec![Answer::Completed {
+        body: br#"{"object":"response","status":"completed","error":null,
+"output":[{"type":"message","role":"assistant",
+"content":[{"type":"output_text","text":"ok"}]}],"output_text":"ok"}"#
+            .to_vec(),
+        usage: None,
+    }]);
+    let runtime = Runtime {
+        ledger: Ledger::new(&connection),
+        transport: &transport,
+    };
+    let ended = runtime.call(T0, &asked_with(&body, 64), &no_barrier);
+    assert!(matches!(ended, Ended::Completed { .. }), "{ended:?}");
+}
+
+#[test]
+fn a_truncated_answer_is_repaired_with_a_wider_limit() {
+    // **What run 2 lost.** Sixteen tokens, all reasoning, no answer, and
+    // the call gone. The repair asks again with twice the room, so the
+    // second body binds a larger `max_output_tokens` than the first.
+    let connection = database();
+    let truncated = br#"{"object":"response","status":"incomplete","error":null,
+"incomplete_details":{"reason":"max_output_tokens"},
+"output":[{"type":"reasoning","content":[{"type":"reasoning_text","text":"..."}],"summary":[]}],
+"output_text":null,"usage":{"input_tokens":28,"output_tokens":16,"total_tokens":44}}"#;
+    let transport = Recorder::new(vec![
+        counted(),
+        Answer::Completed {
+            body: truncated.to_vec(),
+            usage: Some(44),
+        },
+        counted(),
+        answered("calibrated."),
+    ]);
+    let runtime = Runtime {
+        ledger: Ledger::new(&connection),
+        transport: &transport,
+    };
+    let outcome = runtime.ask(
+        T0,
+        &Ask {
+            job: "job",
+            request: "r",
+            dialect: Dialect::Responses,
+            body: &asking(Want::Text),
+            counting: Counting::Always,
+        },
+        &no_barrier,
+    );
+    assert!(
+        matches!(outcome, Outcome::Answered { .. }),
+        "the wider limit got an answer: {outcome:?}"
+    );
+    let sent = transport.sent();
+    let limit = |bytes: &[u8]| -> i64 {
+        cbr_encoding::parse(bytes)
+            .expect("its own body")
+            .get("max_output_tokens")
+            .and_then(|value| match value {
+                cbr_encoding::Value::Int(number) => Some(*number),
+                _ => None,
+            })
+            .expect("bound")
+    };
+    let first = limit(&sent[1].1);
+    let second = limit(&sent[3].1);
+    assert!(
+        second > first,
+        "the repair asked for {second} after {first}"
     );
 }

@@ -89,11 +89,23 @@ impl Unusable {
     }
 
     /// Whether asking again, once, could plausibly produce something
-    /// different. Only the two outcomes the provider's own documented
-    /// behaviour produces; everything else would spend twice for one
-    /// answer.
+    /// different.
+    ///
+    /// Two of these are what the provider's documented behaviour produces:
+    /// prose where a structure was asked for, and text where a tool call
+    /// was demanded. **The third is truncation**, which m4b had as *not*
+    /// repairable on the reasoning that asking again under the same limit
+    /// gives the same answer. That premise was the mistake: the repair
+    /// asks again with a **larger** limit. Run 2 spent a whole call on
+    /// sixteen tokens of reasoning and returned nothing, and under the old
+    /// rule that call was simply lost.
+    ///
+    /// Everything else would spend twice for one answer.
     pub fn repairable(self) -> bool {
-        matches!(self, Unusable::NotStructured | Unusable::NoToolCall)
+        matches!(
+            self,
+            Unusable::NotStructured | Unusable::NoToolCall | Unusable::Truncated
+        )
     }
 }
 
@@ -414,6 +426,13 @@ pub fn accounting(dialect: Dialect, raw: &[u8]) -> (Option<u64>, Option<Unusable
     (usage(dialect, &read), provider_failure(&read))
 }
 
+/// What the provider said the **input** of a completion cost, for the
+/// tripwire that compares it against the bound that admitted the call.
+pub fn input_usage_of(dialect: Dialect, raw: &[u8]) -> Option<u64> {
+    let _ = dialect;
+    input_usage(&json::read(raw)?)
+}
+
 /// The provider's own token count, from `POST /v1/responses/input_tokens`.
 pub fn read_count(body: &[u8]) -> Option<u64> {
     let read = json::read(body)?;
@@ -433,4 +452,35 @@ pub fn read_count(body: &[u8]) -> Option<u64> {
         }
     }
     found
+}
+
+/// A dialect-shaped completion carrying `text`, for the `model.fake`
+/// control alone.
+///
+/// **It exists so the fake transport is a transport.** A control that
+/// returned bytes this module could not read would make every test above
+/// it vacuous: the call site would see a malformed answer whatever it
+/// asked for, and a crash-matrix row would pass at the wrong boundary for
+/// the wrong reason. `scripted_round_trips` is what keeps it honest.
+///
+/// It is never reached in production: the control that builds it is
+/// refused by a production configuration like every other test control.
+pub fn scripted(dialect: Dialect, text: &str, usage: Option<u64>) -> Vec<u8> {
+    let quoted = String::from_utf8(cbr_encoding::to_canonical(&cbr_encoding::Value::String(
+        text.to_string(),
+    )))
+    .expect("canonical JSON is utf-8");
+    let spent = usage.unwrap_or(0);
+    match dialect {
+        Dialect::Responses => format!(
+            r#"{{"id":"resp_scripted","object":"response","status":"completed","output":[{{"type":"message","role":"assistant","content":[{{"type":"output_text","text":{quoted}}}]}}],"output_text":{quoted},"error":null,"usage":{{"input_tokens":0,"output_tokens":{spent},"total_tokens":{spent}}}}}"#
+        ),
+        Dialect::OpenAi => format!(
+            r#"{{"id":"chatcmpl_scripted","object":"chat.completion","choices":[{{"index":0,"finish_reason":"stop","message":{{"role":"assistant","content":{quoted}}}}}],"usage":{{"prompt_tokens":0,"completion_tokens":{spent},"total_tokens":{spent}}}}}"#
+        ),
+        Dialect::Anthropic => format!(
+            r#"{{"id":"msg_scripted","type":"message","role":"assistant","stop_reason":"end_turn","content":[{{"type":"text","text":{quoted}}}],"usage":{{"input_tokens":0,"output_tokens":{spent}}}}}"#
+        ),
+    }
+    .into_bytes()
 }

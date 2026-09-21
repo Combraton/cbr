@@ -380,6 +380,9 @@ pub struct ProviderEvent {
 pub struct Store {
     connection: Connection,
     objects: PathBuf,
+    /// The database file, so a worker off the preparation tick can open
+    /// its own connection to it.
+    database: PathBuf,
 }
 
 impl Store {
@@ -399,6 +402,7 @@ impl Store {
         let store = Self {
             connection,
             objects,
+            database: data_dir.join("cbr.sqlite"),
         };
         store.verify_durability()?;
         store.migrate()?;
@@ -1108,6 +1112,22 @@ impl Store {
     /// Index rows are written outside the caller's command transaction on
     /// purpose: an index is derived and idempotent, so a build that survives
     /// a failed tick costs a rebuild at worst and never makes a record wrong.
+    /// Open a **second** connection to the same database, for work that
+    /// has left the preparation tick.
+    ///
+    /// A `Connection` is not `Sync`, so sharing the one above with a worker
+    /// would not compile — which is the right answer rather than an
+    /// obstacle: WAL gives concurrent readers and a single writer, and a
+    /// worker that wants to write takes the write lock like anyone else.
+    pub fn open_beside(&self) -> Result<rusqlite::Connection, StoreError> {
+        let connection = rusqlite::Connection::open(&self.database)?;
+        connection.pragma_update(None, "journal_mode", "WAL")?;
+        connection.pragma_update(None, "synchronous", "FULL")?;
+        connection.pragma_update(None, "foreign_keys", "ON")?;
+        connection.busy_timeout(std::time::Duration::from_secs(10))?;
+        Ok(connection)
+    }
+
     pub fn connection(&self) -> &rusqlite::Connection {
         &self.connection
     }

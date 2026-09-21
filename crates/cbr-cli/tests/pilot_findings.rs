@@ -179,7 +179,28 @@ impl Fixture {
             "submit: {}",
             String::from_utf8_lossy(&submitted.stderr)
         );
-        let _ = self.cbr(&["request", request]);
+        // **Preparation takes ticks now.** The index build left the
+        // preparation tick in m4c, so a first request waits for it rather
+        // than having it done inline — which is the point: every other job
+        // on the provider carries on meanwhile. Each `request` call is a
+        // poll, and each poll is a tick.
+        let started = std::time::Instant::now();
+        loop {
+            let inspected = ok(&self.cbr(&["request", request]));
+            if !inspected
+                .get("packets")
+                .and_then(cbr_encoding::Value::as_array)
+                .unwrap_or_default()
+                .is_empty()
+            {
+                break;
+            }
+            assert!(
+                started.elapsed() < std::time::Duration::from_secs(120),
+                "no packet for {request} after two minutes: {inspected:?}"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
         ok(&self.cbr(&["packet", request, "--excerpt", "1000000"]))
     }
 }

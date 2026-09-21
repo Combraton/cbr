@@ -57,9 +57,41 @@ pub const PER_JOB_TOKENS: u64 = 1_000_000;
 /// Per-message framing the provider counts and the serialized body does not
 /// obviously show. Added on top of the byte bound, never instead of it.
 pub const MESSAGE_OVERHEAD_TOKENS: u64 = 8;
-/// Reserved generation and a safety margin, per [MODEL-RUNTIME §2].
-pub const RESERVED_GENERATION_TOKENS: u64 = 4_096;
+/// The safety margin every completion reserves on top of its input and the
+/// generation limit it asks for, per [MODEL-RUNTIME §2].
+///
+/// **There is no longer a *default* generation reserve.** m4a's `estimate`
+/// added a fixed 4,096 because admission happened before the request's own
+/// limit was known; it is known at every call site now, so the reservation
+/// carries the real figure. The default was also what made the calibration
+/// table's ratio column measure the reservation rather than the bound.
 pub const SAFETY_MARGIN_TOKENS: u64 = 1_024;
+
+/// The smallest generation budget worth asking for.
+///
+/// **Reasoning cannot be disabled on the M2.x models**, and the service
+/// reports no breakdown, so `max_output_tokens` has to cover reasoning
+/// *plus* the answer and CBR cannot learn the split by measuring. Below
+/// this a model cannot finish a thought, and calibration run 2 proved what
+/// that costs: sixteen tokens, all of them reasoning, no answer, and the
+/// whole call wasted.
+// Read by `wire::request::generation_for`, which m4c's selection call site
+// calls. The calibration deliberately does not: READINESS §10 fixes its
+// completion at sixteen tokens so the path is exercised end to end and
+// cannot cost much even if everything else is wrong.
+#[cfg_attr(not(test), allow(dead_code))]
+pub const MIN_OUTPUT_TOKENS: u64 = 512;
+
+/// How much room reasoning is given relative to the answer itself.
+///
+/// **The asymmetry decides this, not an estimate of how much a model
+/// thinks.** Billing is by tokens produced, so a limit that is too large
+/// costs nothing that is not used; a limit that is too small costs the
+/// whole call and returns nothing. Generosity is therefore the cheap
+/// error and parsimony the expensive one, and the multiplier is set
+/// accordingly rather than tuned. m4e measures what is actually used.
+#[cfg_attr(not(test), allow(dead_code))]
+pub const REASONING_HEADROOM: u64 = 4;
 
 /// How far below the local byte bound a provider's own count may fall before
 /// it is disbelieved. The bound runs **three to four times** the real count
@@ -86,6 +118,26 @@ pub enum Refusal {
 }
 
 impl Refusal {
+    /// Whether a **tighter figure for the same request** could turn this
+    /// refusal into an admission.
+    ///
+    /// The three quota counters and the run ceiling, yes: they are about
+    /// how much is left, and the local bound over-states what this request
+    /// will use by three to four times. **The per-request ceiling, no** —
+    /// it is a policy limit on how large one request may be, and the local
+    /// bound is deliberately the conservative measure of that. Letting the
+    /// provider's figure talk CBR into sending a larger request inverts
+    /// the direction the bound exists to protect.
+    pub fn a_tighter_figure_could_admit(self) -> bool {
+        match self {
+            Refusal::WindowExhausted
+            | Refusal::MonthExhausted
+            | Refusal::PerJob
+            | Refusal::RunCeiling => true,
+            Refusal::PerRequest => false,
+        }
+    }
+
     /// The reason a consumer reads. `budget_exhausted` for the envelope's own
     /// two counters, and the ceilings named separately so a caller can tell a
     /// policy limit from an exhausted quota.
@@ -174,15 +226,16 @@ impl std::fmt::Display for LedgerError {
     }
 }
 
-/// The upper bound on the tokens a serialized request can cost.
+/// The input alone: the byte bound plus the provider's per-message
+/// framing, **without** the reserved generation and margin.
 ///
-/// See the module header for why this is a byte count. `messages` is the
-/// number of messages the body carries, each of which the provider frames.
-pub fn estimate(serialized: &[u8], messages: usize) -> u64 {
-    worst_case_tokens(serialized)
-        + MESSAGE_OVERHEAD_TOKENS * messages as u64
-        + RESERVED_GENERATION_TOKENS
-        + SAFETY_MARGIN_TOKENS
+/// [`estimate`] adds a default generation reserve on top, which is right
+/// for admitting a call whose generation limit is not yet known. A
+/// completion's reservation knows the limit the request actually asks for,
+/// so it adds that instead — and adding both would reserve the default
+/// twice.
+pub fn input_bound(serialized: &[u8], messages: usize) -> u64 {
+    worst_case_tokens(serialized) + MESSAGE_OVERHEAD_TOKENS * messages as u64
 }
 
 /// The largest number of tokens any byte-level BPE could emit for `text`:
@@ -491,6 +544,21 @@ impl<'a> Ledger<'a> {
     ) -> Result<(), LedgerError> {
         self.write(now, job, request, kind, tokens, estimate)?;
         Ok(())
+    }
+
+    /// Whether this store has ever recorded the local bound being wrong.
+    ///
+    /// **Durable, which is stronger than "for this process".** The bound is
+    /// a property of the code, so a restart with the same code has the same
+    /// bound; forgetting at restart would be forgetting the one observation
+    /// that invalidates every admission the store has ever made.
+    pub fn bound_is_unsound(&self) -> Result<bool, LedgerError> {
+        let found: Option<i64> = self
+            .connection
+            .prepare("SELECT 1 FROM model_ledger WHERE kind = 'bound_unsound' LIMIT 1")?
+            .query_row([], |row| row.get(0))
+            .optional()?;
+        Ok(found.is_some())
     }
 
     /// Every row, for a test or a report. Refusals are recorded and are not

@@ -17,3 +17,8 @@ cbr-identity = { path = "../cbr-identity" }
 
 [dev-dependencies]
 tempfile = "3.27.0"
+# The model crash matrix reads the ledger the provider wrote, which is the
+# only way to check a counter after the process that held it was killed.
+# Already in the tree through the provider; declared here so `tests/` can
+# see it.
+rusqlite.workspace = true

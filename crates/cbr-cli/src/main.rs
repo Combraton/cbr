@@ -23,6 +23,7 @@
 //!     [--obligation O] [--selector TEXT] [--task TEXT]
 //!     [--capacity BYTES] [--deadline INSTANT] [--investigation N]
 //! cbr request <request>
+//! cbr cancel <request>
 //! cbr packet <request> [--revision N] [--excerpt SECTION]
 //! ```
 //!
@@ -55,7 +56,7 @@ pub struct Options {
 }
 
 const USAGE: &str = "usage: cbr ingest|fetch|propose|revise|decide|evaluate|inspect|history|\
-                     authority bind|basis|context|request|packet …";
+                     authority bind|basis|context|request|cancel|packet …";
 
 /// Options that take a value; everything else starting `--` is refused.
 const VALUED: [&str; 27] = [
@@ -165,6 +166,7 @@ fn run() -> Result<(), String> {
                 .map_or(Ok(0), str::parse)
                 .map_err(|_| "--investigation is a number")?,
         ),
+        ("cancel", [request]) => context::cancel(&options, request),
         ("request", [request]) => context::inspect(&options, request),
         ("packet", [request]) => context::packet(
             &options,

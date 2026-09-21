@@ -19,18 +19,26 @@
 
 /// Whether anything a *serving* launch does can reach a model.
 ///
-/// **False until m4c connects selection to the transport.** While it is
-/// false, a serving launch that read the owner's credential would be
-/// holding a secret it has no call site to spend — which is precisely what
-/// [READINESS §2](../../docs/work/m4/READINESS.md) says a Keychain read
-/// must never be: *a prompt, an audit entry and a secret in a process that
-/// had no use for one*.
+/// **True since m4c connected selection to the transport.** A serving
+/// provider now makes a model call while preparing a request that
+/// authorised an investigation: `provider::Serving::ask`, reached from
+/// `select_source` by way of the work pool, choosing which of the ranked
+/// spans to cite. So a launch given a model, the permit and a credential
+/// has somewhere to spend it, and reading one is no longer *a prompt, an
+/// audit entry and a secret in a process that had no use for one*
+/// ([READINESS §2](../../docs/work/m4/READINESS.md)).
 ///
-/// So while it is false the calibration is the only launch that reads a
-/// credential. m4c sets it true in the commit that gives serving a call
-/// site, and the tests that constrain that row are written as implications
-/// so they stop constraining it then rather than having to be deleted.
-pub const SERVING_CALLS_A_MODEL: bool = false;
+/// **What changed with it, and what did not.** While this was false the
+/// calibration was the only launch that read a credential at all, and the
+/// tests holding that were written as implications so they would stop
+/// constraining the row rather than have to be found and deleted. They
+/// have stopped. What has not changed is that **no test in the suite
+/// launches a serving provider with a real model**: the one test that
+/// passes `--permit-model-network` with a valid configuration asks for
+/// the calibration and is gated off macOS, and
+/// `tests/credential_discipline.rs` now holds that rule over the sources
+/// rather than over anybody's memory of it.
+pub const SERVING_CALLS_A_MODEL: bool = true;
 
 /// Everything about a launch that the decision depends on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

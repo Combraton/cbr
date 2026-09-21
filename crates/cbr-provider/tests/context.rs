@@ -782,3 +782,74 @@ fn j8_a_deadline_leaves_required_items_unmet_and_advisory_items_at_their_fallbac
     }
     ctx.kill();
 }
+
+#[test]
+fn a_conformance_launch_prepares_nothing_unless_it_asks_to_compile() {
+    // **The rule m4c loosened, and the half of it that did not move.**
+    //
+    // Compiling is a production capability: a conformance launch is a test
+    // harness, and there a request with no script is a request nothing
+    // prepares — which is what every context fixture was measured
+    // against. m4c added one way to ask for it, `context.compile`, because
+    // the model call site lives inside compiling and reaching it needs the
+    // fake transport, which only a conformance launch may have.
+    //
+    // So the thing worth holding is that **the default did not change**.
+    // No fixture sets the member; this says what a launch that does not
+    // set it still does, and what one that does still does differently, so
+    // neither can drift into the other.
+    let directory = tempfile::tempdir().expect("temp dir");
+    let base = r#""format":"combraton-conformance-config/1","provider_id":"context-1","principal":"owner","authority_principals":["owner""#;
+
+    let mut plain = ContextProvider::start(directory.path(), &format!("{{{base}]}}"));
+    assert_eq!(
+        text(
+            result(&plain.submit("r-1", "2030-01-01T01:00:00Z")),
+            &["outcome", "state"]
+        ),
+        "preparing"
+    );
+    // Several ticks, so this is "nothing prepares it" rather than "not
+    // yet". Each `inspect` is a request, and a tick runs at the start of
+    // every one.
+    for _ in 0..5 {
+        let inspected = plain.inspect("r-1");
+        assert_eq!(text(&inspected, &["state"]), "preparing", "{inspected:?}");
+        assert_eq!(
+            at(&inspected, &["packets"]).as_array().map(<[_]>::len),
+            Some(0),
+            "a conformance launch that did not ask to compile published a packet"
+        );
+    }
+    plain.kill();
+
+    let asking = directory.path().join("asking");
+    std::fs::create_dir(&asking).expect("dir");
+    let mut compiling = ContextProvider::start(
+        &asking,
+        &format!(r#"{{{base}],"context":{{"compile":true}}}}"#),
+    );
+    compiling.submit("r-1", "2030-01-01T01:00:00Z");
+    let published = (0..20).find_map(|_| {
+        let inspected = compiling.inspect("r-1");
+        (at(&inspected, &["packets"])
+            .as_array()
+            .is_some_and(|packets| !packets.is_empty()))
+        .then_some(inspected)
+    });
+    let published = published.expect("a launch that asked to compile publishes a packet");
+    // Its basis names a repository this launch never registered, so the
+    // item is unmet rather than satisfied. What matters is that something
+    // compiled it at all.
+    let item = at(&published, &["items"])
+        .as_array()
+        .and_then(<[Value]>::first)
+        .cloned()
+        .unwrap_or(Value::Null);
+    assert_eq!(
+        text(&item, &["reason"]),
+        "source_unavailable",
+        "{published:?}"
+    );
+    compiling.kill();
+}

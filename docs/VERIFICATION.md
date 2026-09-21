@@ -45,21 +45,24 @@ Conformance additionally needs the runner, which is **not** built from this work
 
 ```sh
 python3 scripts/build_runner.py
-python3 scripts/run_fixtures.py --filter stream. --out conformance/results/m1b
-python3 scripts/check_results.py conformance/results/m1b conformance/expectations/stream.json
-python3 scripts/run_fixtures.py --filter core.   --out conformance/results/m1c4
-python3 scripts/check_results.py conformance/results/m1c4 conformance/expectations/core-c4.json
-python3 scripts/run_fixtures.py --filter socket. --participant conformance/participants/cbr-provider-unix.json --out conformance/results/m1d
-python3 scripts/check_results.py conformance/results/m1d conformance/expectations/socket.json
-python3 scripts/run_fixtures.py --filter evidence. --out conformance/results/m1e
-python3 scripts/check_results.py conformance/results/m1e conformance/expectations/evidence.json
-python3 scripts/run_fixtures.py --filter knowledge. --out conformance/results/m2
-python3 scripts/check_results.py conformance/results/m2 conformance/expectations/knowledge.json
-python3 scripts/run_fixtures.py --filter context. --out conformance/results/m3a
-python3 scripts/check_results.py conformance/results/m3a conformance/expectations/context.json
-python3 scripts/run_fixtures.py --filter composition. --participant conformance/participants/cbr-provider-unix.json --out conformance/results/m3a-composition
-python3 scripts/check_results.py conformance/results/m3a-composition conformance/expectations/composition.json
+OUT=$(mktemp -d)   # not conformance/results/: see below
+python3 scripts/run_fixtures.py --filter stream. --out "$OUT/stream"
+python3 scripts/check_results.py "$OUT/stream" conformance/expectations/stream.json
+python3 scripts/run_fixtures.py --filter core.   --out "$OUT/core"
+python3 scripts/check_results.py "$OUT/core" conformance/expectations/core-c4.json
+python3 scripts/run_fixtures.py --filter socket. --participant conformance/participants/cbr-provider-unix.json --out "$OUT/socket"
+python3 scripts/check_results.py "$OUT/socket" conformance/expectations/socket.json
+python3 scripts/run_fixtures.py --filter evidence. --out "$OUT/evidence"
+python3 scripts/check_results.py "$OUT/evidence" conformance/expectations/evidence.json
+python3 scripts/run_fixtures.py --filter knowledge. --out "$OUT/knowledge"
+python3 scripts/check_results.py "$OUT/knowledge" conformance/expectations/knowledge.json
+python3 scripts/run_fixtures.py --filter context. --out "$OUT/context"
+python3 scripts/check_results.py "$OUT/context" conformance/expectations/context.json
+python3 scripts/run_fixtures.py --filter composition. --participant conformance/participants/cbr-provider-unix.json --out "$OUT/composition"
+python3 scripts/check_results.py "$OUT/composition" conformance/expectations/composition.json
 ```
+
+**Run them somewhere other than `conformance/results/`.** Those directories are **the record of the stage that produced them**, not scratch space: `m1b` holds what M1b measured, when CBR declared `core/1` and nothing else. Re-running into them overwrites that with today's descriptor and today's transcripts, and the result is a committed record that claims to be a stage it is not. The block above used to name them, and following it did exactly that.
 
 **`composition` runs over the socket participant and only over it.** Its fixtures are separate CBR instances reaching one another over public sockets, so the stdio participant has no second role to give them: run with `cbr-provider.json` every one of the fourteen is **skipped**, which reads like a regression and is not one. The last two commands were missing from this block until m4c, which is how that mistake was made.
 
@@ -272,7 +275,7 @@ A production request with no script is **compiled**, not left to its deadline. T
 
 **One timing assertion was rewritten after it failed on CI, and it is worth saying why.** `a_consumer_that_never_reads_is_closed_within_twice_the_notice_budget` bounded the *sum* of two phases with a single slack allowance. On a loaded macOS runner it failed at 861 ms against 850: the provider had declared the stall at the room deadline and closed the session one notice budget later, exactly as CORE section 11 requires, and two independent scheduling delays had added up while the one allowance did not. The test now bounds each phase separately — declared within the budget, then closed within the budget of *being declared* — and keeps the total as the composition of those two. The same behaviour is pinned; what changed is that a scheduler delay in the first phase no longer eats the allowance for the second. The provider's unit-test binary grew from 57 tests to 68 this milestone, which is the contention that surfaced it.
 
-**A known limit: the index build runs inside the preparation tick.** A job that needs an index builds it while holding the provider's processing lock, so every other job and every request to that provider waits for it. Measured on this repository: **about 7 seconds for 1,066 blobs**, once, on the first request at a tree. It is left in place rather than moved now because moving it means a bounded background runtime with its own budget and its own failure reporting, which is M4's work; doing it cheaply here would mean an unsupervised thread with neither. Until then, a first request at an unindexed tree is slow and everything else waits.
+**A limit M3 recorded and m4c resolved: the index build ran inside the preparation tick.** A job that needed an index built it while holding the provider's processing lock, so every other job and every request to that provider waited for it — **about 7 seconds for 1,066 blobs** on this repository, once, on the first request at a tree. It was left in place at M3 rather than moved cheaply, because moving it means a bounded runtime with its own budget and its own failure reporting, and doing it without one would have meant an unsupervised thread with neither. m4c gives it that runtime: the build goes on a bounded work pool, the tick asks where it has got to and returns, and a build that fails or outruns the request's deadline is a projection of state `unavailable` naming why rather than an empty one. Measured before and after on the same machine and the same three trees, an unrelated job's worst wait falls from 8.5s, 11.1s and 3.4s to 0.13s, 0.23s and 0.15s, while the time to a first packet is unchanged — [the measurement and what it does not establish](work/m4/STALL.md).
 
 **Compiling is production-only.** A conformance launch is a test harness, and there a request with no script is still a request nothing prepares — which is what every context fixture was measured against. All seven suites are unchanged.
 
@@ -290,19 +293,20 @@ Issue #3's acceptance is `ingested_bytes_fetch_identically_after_sigkill_and_res
 
 ### The model runtime
 
-**No model has been called.** Everything below is established against a fake transport and against hand-written fixtures, and that is the ceiling on what it can establish.
+**No model has been called by anything in this suite.** Everything below is established against a fake transport and against hand-written fixtures, and that is the ceiling on what it can establish. Two live calibration runs have been made, by hand and on the owner's explicit word, and what they found is in [CALIBRATION](work/m4/CALIBRATION.md) and in [READINESS §7](work/m4/READINESS.md#7-what-may-be-sent).
 
 | What the tests establish | What they do not |
 |---|---|
-| The **envelope**: a local byte bound that never falls below what any byte-level tokenizer could emit, two counters checked independently, per-request, per-job and per-run ceilings, a durable ledger whose reservation is written before the send, and six crash-matrix rows after each of which the spend is counted at least once and never zero | That the bound holds against the provider's own tokenizer. **No count of CBR's has been compared with MiniMax's**; that is the calibration ([READINESS §10](work/m4/READINESS.md#10-the-calibration-and-what-stops-m4)), and one provider count above its local estimate stops M4. |
+| The **envelope**: a local byte bound that never falls below what any byte-level tokenizer could emit, two counters checked independently, per-request, per-job and per-run ceilings, a durable ledger whose reservation is written before the send, a completion that settles to the provider's own figure rather than to the reservation that over-stated it, two admissions racing for the last of a window admitting exactly one, and six crash-matrix rows — now killing a provider in the middle of preparing a **real request**, after each of which the spend is counted at least once and never zero | That the bound holds against the provider's own tokenizer. **No count of CBR's has been compared with MiniMax's**; that is the calibration ([READINESS §10](work/m4/READINESS.md#10-the-calibration-and-what-stops-m4)), and one provider count above its local estimate stops M4. |
 | The **credential path**: an absolute tool path, arguments fixed at compile time, a cleared environment, null standard input, discarded standard error, a timeout, and a refused launch for every failure with no fallback to any other source on any platform | Anything about the real Keychain. **Every test runs against an injected fake tool**, so no test on any machine reads the owner's key. The Linux refusal is established only by CI's Linux job. |
 | The **wire**: both dialects' serializer and parser, the generation limit bound to the member each dialect's provider reads, `reasoning_split` set, whole responses only, a `<think>` marker refused, and prose-where-a-structure-was-asked and text-where-a-tool-was-demanded handled as ordinary outcomes with one bounded repair charged to the same ledger | That the provider sends what these fixtures say. **Every fixture is hand-written from public documentation and unverified against the live service**; the count response's shape and two exhaustion status codes are explicitly guesses that degrade to a refusal rather than to a wrong answer. |
 | **Redaction at the recording boundary**: the store accepts only bytes that have been through it — a type-level property, so moving redaction after the write is a compile error — and a scan test opens a real store file and reads back every byte of every file it leaves behind, looking for a planted key and signature in a presigned URL's query string | That every credential shape is recognised. A credential is not recognisable by looking at it; the rules key on parameter and member names, scheme words and vendor prefixes, and a negative control asserts ordinary text is untouched. |
 | **The calibration** ([READINESS §10](work/m4/READINESS.md#10-the-calibration-and-what-stops-m4)) runs end to end against the fake transport, including its stop condition: a provider count above its local estimate halts the run, says so, and sends nothing further | Anything about the live service. **It has not been run.** |
+| **The serving call site** (m4c): a request that authorised an investigation asks a model which of the ranked spans to cite, on a bounded work pool, with the request's deadline. The answer is one of a **closed set of ids CBR offered**, so an id it never offered, a structure that is not a choice, a provider failure, a refusal at admission and a timeout all end as the item's typed unmet reason rather than as the span BM25 would have chosen. A request that authorised none calls nothing at all, and nothing outside its view is in a request body | Whether asking improves a packet. The model chooses between spans BM25 already ranked, and nothing here says the choice is better. **That is m4e's journeys**, scored against the deterministic runs as baselines. |
 | **No socket is opened**: the transport cannot be constructed without a permit that only `--permit-model-network` produces, one test asserts the gate has exactly one caller and that it is the launch, and two more assert that four of the five crates reach no network client at all while the fifth names in code exactly what it added | That a process given the flag behaves correctly against a real endpoint. Nothing here has run against one. |
 
 
-#### Three rules that keep the owner's key out of every test run
+#### Four rules that keep the owner's key out of every run
 
 **These are rules, not conveniences.** A reviewer or a future test that launches a valid model configuration on macOS reads the owner's real Keychain entry, and no test in this suite has any business doing that.
 
@@ -312,13 +316,17 @@ Issue #3's acceptance is `ingested_bytes_fetch_identically_after_sigkill_and_res
 
 3. **The launch decision is a pure function, and every row of it is tested without starting a process.** `launch::decide` takes the arguments and the configuration and returns one of four decisions; whether a credential is read is a property of the decision, and `launch::tests` states it over *every* combination of inputs rather than over a table somebody remembered to extend. Before that, rules 1 and 2 rested on **the order of statements in `main`**, checked only by process-level tests asserting that the message did not mention a keychain — an assertion that would not have noticed a successful, silent read, which is the failure that matters on the owner's own machine.
 
-   The rule has teeth because of what it revealed: while `launch::SERVING_CALLS_A_MODEL` is false, **a serving launch with a model configured is refused**, because this build has no call site to spend a credential at and [READINESS §2](work/m4/READINESS.md) forbids reading one into a process with no use for it. **So the calibration is the only launch that reads a credential at all**, and it needs three flags and a ceiling. m4c sets that constant true in the commit that connects selection to the transport; the tests constraining that row are written as implications, so they stop constraining it then rather than having to be found and deleted.
+   The rule had teeth because of what it revealed: while `launch::SERVING_CALLS_A_MODEL` was false, **a serving launch with a model configured was refused**, because the build had no call site to spend a credential at and [READINESS §2](work/m4/READINESS.md) forbids reading one into a process with no use for it. So the calibration was the only launch that read a credential at all. **m4c set that constant true**, in the commit that gave serving a call site, and the tests constraining that row were written as implications so they stopped constraining it rather than having to be found and deleted.
 
-A change that moves either check later, that adds a second ungated test passing `--permit-model-network` with a valid model, or that sets `SERVING_CALLS_A_MODEL` true without a call site, breaks these rules. Anything needing a live launch on macOS is the owner's to run deliberately, never the suite's.
+   **What the flip costs, and what pays for it.** `--permit-model-network` with a valid model and no `--calibrate` is now a launch that reads the owner's Keychain and serves, where it used to be a refusal — which is the exact shape of the lapse this rule exists for. So the rule moved out of the constant and into a test that reads the sources: `tests/credential_discipline.rs` requires every place a test passes that flag to be gated off macOS, to be asking for the calibration, or to configure no model at all. It reads text, so a program that builds the flag out of pieces would slip past it; it is a guard against carelessness, which is what the lapse was, and not against intent.
+
+4. **On the owner's machine, the provider is launched only through the test suite or an authorised run.** Not by hand, not to check a refusal, not to see what a flag does. The three rules above are about what the *code* permits; this one is about what a person does with it, and it exists because the code's permission was found the hard way: the credential read that [STATE](work/STATE.md) records came from improvising a launch at a shell prompt to probe a refusal. Rule 3 now makes that particular launch impossible, which is the right kind of fix — and the habit is still the rule, because the next gap will be somewhere rule 3 does not reach. A refusal worth checking is worth a test.
+
+A change that moves either check later, or that adds a second ungated test passing `--permit-model-network` with a valid model, breaks these rules — and the second of those is now a failing test rather than a convention. Anything needing a live launch on macOS is the owner's to run deliberately, never the suite's.
 
 ### The storage crash matrix
 
-[STORAGE §5](https://github.com/Combraton/combraton/blob/main/docs/architecture/STORAGE.md) names the crash boundaries. **Each row that exists in CBR at M1 is fault-injected by killing the real provider at that line.** A test barrier inside the provider (decision 007) creates `<name>.reached` and waits; the test sees the marker, sends `SIGKILL`, confirms no response frame was written, restarts over the same data directory and asserts the durable fact through the protocol. The tests are in `crates/cbr-provider/tests/crash_matrix.rs`.
+[STORAGE §5](https://github.com/Combraton/combraton/blob/main/docs/architecture/STORAGE.md) names the crash boundaries. **Each row that exists in CBR at M1 is fault-injected by killing the real provider at that line.** A test barrier inside the provider (decision 007) creates `<name>.reached` and waits; the test sees the marker, sends `SIGKILL`, confirms no response frame was written, restarts over the same data directory and asserts the durable fact through the protocol. The tests are in `crates/cbr-provider/tests/crash_matrix.rs`; **the six model rows moved in m4c** to `crates/cbr-cli/tests/model_crash_matrix.rs`, where a client can submit the request whose preparation they kill.
 
 | Row | Killed at | Durable fact asserted after restart |
 |---|---|---|

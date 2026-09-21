@@ -6,7 +6,7 @@ use super::Dialect;
 use super::record::*;
 use super::redact::{REDACTED, redact};
 use crate::budget::Ledger;
-use crate::model::{Answer, Attempt, Recorder, Runtime, no_barrier};
+use crate::model::{Answer, Attempt, Counting, Recorder, Runtime, no_barrier};
 
 const T0: &str = "2026-09-20T12:00:00Z";
 
@@ -66,6 +66,7 @@ fn a_credential_shaped_string_in_a_response_never_reaches_the_store() {
                 messages: 1,
                 generation: 64,
                 dialect: Dialect::OpenAi,
+                counting: Counting::Always,
             },
             &no_barrier,
         );

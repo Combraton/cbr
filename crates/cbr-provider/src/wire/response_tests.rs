@@ -9,7 +9,9 @@ use cbr_encoding::Value;
 
 use super::Dialect;
 use super::request::Want;
+use super::request::generation_for;
 use super::response::*;
+use crate::budget::{MIN_OUTPUT_TOKENS, REASONING_HEADROOM};
 
 macro_rules! unverified_fixture {
     ($name:literal) => {
@@ -194,18 +196,19 @@ fn a_structured_answer_outside_the_protocols_domain_is_not_structured() {
 // --- what is not repairable ----------------------------------------------
 
 #[test]
-fn a_truncated_answer_is_reported_rather_than_repaired() {
-    // The generation limit was reached. Asking again under the same limit
-    // produces the same truncation, so a repair would spend twice for one
-    // outcome. It is reported with its own reason instead.
+fn a_truncated_answer_is_repaired_with_more_room_and_then_reported() {
+    // m4b reported this and did not repair it, reasoning that asking again
+    // under the same limit gives the same truncation. True, and beside the
+    // point: the repair asks again with a **larger** limit. Run 2 spent a
+    // whole call on sixteen tokens of reasoning and returned nothing.
     let read = read_completion(
         Dialect::OpenAi,
         &Want::Structure { schema: schema() },
         UNVERIFIED_OPENAI_TRUNCATED,
     );
     assert_eq!(read.reply, Err(Unusable::Truncated));
-    assert!(!Unusable::Truncated.repairable());
-    assert_eq!(read.usage, Some(1196));
+    assert!(Unusable::Truncated.repairable());
+    assert_eq!(read.usage, Some(1196), "and it cost what it cost");
 }
 
 #[test]
@@ -394,11 +397,22 @@ macro_rules! documented_fixture {
     };
 }
 
+macro_rules! observed_fixture {
+    ($name:literal) => {
+        include_bytes!(concat!("fixtures/", $name, ".observed-2026-09-21.json"))
+    };
+}
+
+/// Written from the published reference and **not yet seen** from the
+/// service: calibration run 2 obtained neither a completed text answer nor
+/// a tool call, because its one completion was spent on reasoning.
 const DOCUMENTED_RESPONSES_TEXT: &[u8] = documented_fixture!("responses-text");
-const DOCUMENTED_RESPONSES_INCOMPLETE: &[u8] =
-    documented_fixture!("responses-incomplete-reasoning-only");
 const DOCUMENTED_RESPONSES_TOOL_CALL: &[u8] = documented_fixture!("responses-tool-call");
-const DOCUMENTED_RESPONSES_COUNT: &[u8] = documented_fixture!("responses-input-tokens");
+
+/// **Seen from the live service on 2026-09-21**, in calibration run 2.
+const OBSERVED_RESPONSES_INCOMPLETE: &[u8] =
+    observed_fixture!("responses-incomplete-reasoning-only");
+const OBSERVED_RESPONSES_COUNT: &[u8] = observed_fixture!("responses-input-tokens");
 
 #[test]
 fn the_responses_dialect_reads_text_and_its_usage() {
@@ -423,13 +437,16 @@ fn an_incomplete_answer_with_no_text_is_an_outcome_with_usage_not_a_failure() {
     let read = read_completion(
         Dialect::Responses,
         &Want::Text,
-        DOCUMENTED_RESPONSES_INCOMPLETE,
+        OBSERVED_RESPONSES_INCOMPLETE,
     );
     assert_eq!(read.reply, Err(Unusable::Truncated), "{read:?}");
-    assert_eq!(read.usage, Some(1196), "and it cost what it cost");
+    // The figures are the ones run 2 actually came back with: sixteen
+    // output tokens, all of them reasoning, and no answer.
+    assert_eq!(read.usage, Some(44), "and it cost what it cost");
+    assert_eq!(read.input_usage, Some(28), "of which the input was 28");
     assert!(
-        !Unusable::Truncated.repairable(),
-        "asking again under the same limit gets the same answer"
+        Unusable::Truncated.repairable(),
+        "the repair asks again with more room, not the same room again"
     );
     assert_eq!(Unusable::Truncated.reason(), "model_answer_truncated");
 }
@@ -495,11 +512,56 @@ fn the_responses_dialect_reads_a_tool_call_from_its_own_output_item() {
 }
 
 #[test]
-fn the_documented_count_response_is_read() {
-    // `{"object": "response.input_tokens", "input_tokens": N}`. The member
-    // was already in the set the parser accepts, which is the one guess
-    // m4b made that turned out right.
-    assert_eq!(read_count(DOCUMENTED_RESPONSES_COUNT), Some(1180));
+fn the_observed_count_response_is_read() {
+    // `{"object": "response.input_tokens", "input_tokens": N}`, seen seven
+    // times in calibration run 2 and carrying **no usage member**, which is
+    // why what a count costs is still the provider's silence rather than a
+    // figure. The member name was already in the set the parser accepts,
+    // which is the one guess m4b made that turned out right.
+    assert_eq!(read_count(OBSERVED_RESPONSES_COUNT), Some(1180));
+}
+
+#[test]
+fn the_observed_completion_reports_no_reasoning_breakdown() {
+    // **A documented member that the service does not send.** The
+    // reference names `usage.output_tokens_details.reasoning_tokens`; run 2
+    // received no `output_tokens_details` at all. So reasoning tokens are
+    // inside `output_tokens` and CBR cannot tell how much of a completion
+    // was reasoning — which matters, because on the M2.x models reasoning
+    // cannot be turned off and can consume the whole limit.
+    let read = super::json::read(OBSERVED_RESPONSES_INCOMPLETE).expect("reads");
+    let usage = read.get("usage").expect("usage");
+    assert!(usage.get("output_tokens").is_some());
+    assert!(
+        usage.get("output_tokens_details").is_none(),
+        "the service sent a breakdown after all; the fixture is stale"
+    );
+    // What it does send: the total, and the cached-input breakdown.
+    assert!(usage.get("total_tokens").is_some());
+    assert!(usage.get("input_tokens_details").is_some());
+}
+
+#[test]
+fn the_observed_response_echoes_the_request_back() {
+    // Thirty-seven members where the reference describes twelve, most of
+    // them the request returned. Nothing downstream may assume a response
+    // holds only what was documented — a parser that walked every member
+    // would be walking CBR's own request.
+    let read = super::json::read(OBSERVED_RESPONSES_INCOMPLETE).expect("reads");
+    for echoed in [
+        "instructions",
+        "max_output_tokens",
+        "temperature",
+        "truncation",
+    ] {
+        assert!(read.get(echoed).is_some(), "{echoed} was not echoed");
+    }
+    // And `service_tier` comes back null though `standard` was sent, so
+    // whether it was honoured is not observable from the response.
+    assert_eq!(read.get("service_tier"), Some(&super::json::Json::Null));
+    // `store` is false, which is what the owner's decision requires and
+    // what CBR cannot ask for: there is no request parameter.
+    assert_eq!(read.get("store"), Some(&super::json::Json::Bool(false)));
 }
 
 #[test]
@@ -509,4 +571,83 @@ fn a_failed_status_is_a_failure_even_with_no_error_member() {
     let read = read_completion(Dialect::Responses, &Want::Text, body);
     assert_eq!(read.reply, Err(Unusable::ProviderError), "{read:?}");
     assert_eq!(read.usage, Some(5), "and it still cost something");
+}
+
+// --- reasoning spends the output budget ----------------------------------
+
+#[test]
+fn a_truncated_answer_is_repairable_now_that_the_repair_widens_the_limit() {
+    // **m4b had this wrong, and run 2 showed why.** It reasoned that
+    // asking again under the same limit produces the same truncation, so
+    // truncation was not repairable. The premise was the mistake: the
+    // repair does not ask again under the same limit, it asks again with a
+    // larger one.
+    //
+    // Run 2 spent all sixteen output tokens on reasoning and returned no
+    // answer. Under the old rule that call was simply lost.
+    assert!(Unusable::Truncated.repairable());
+    assert_eq!(Unusable::Truncated.reason(), "model_answer_truncated");
+}
+
+#[test]
+fn the_sizing_rule_covers_reasoning_as_well_as_the_answer() {
+    // Reasoning cannot be disabled on the M2.x models and the service
+    // reports no breakdown, so `max_output_tokens` has to cover both and
+    // CBR cannot learn the split by measurement.
+    // Never below the floor, whatever the answer needs.
+    assert_eq!(generation_for(1), MIN_OUTPUT_TOKENS);
+    assert_eq!(generation_for(0), MIN_OUTPUT_TOKENS);
+    // Above it, headroom over what the answer itself needs.
+    let wanted = MIN_OUTPUT_TOKENS * 2;
+    assert_eq!(generation_for(wanted), wanted * REASONING_HEADROOM);
+    // And it is a widening function: more answer never means less budget.
+    let mut last = 0;
+    for answer in [0, 1, 100, MIN_OUTPUT_TOKENS, 10_000] {
+        let got = generation_for(answer);
+        assert!(got >= last, "{answer} gave {got} after {last}");
+        assert!(
+            got >= answer,
+            "the answer itself must fit: {answer} -> {got}"
+        );
+        last = got;
+    }
+}
+
+#[test]
+fn the_repair_asks_for_more_room_rather_than_the_same_room_again() {
+    use super::request::widened;
+    let first = generation_for(100);
+    let second = widened(first);
+    assert!(second > first, "{first} -> {second}");
+    assert_eq!(second, first * 2, "doubled, once");
+}
+
+#[test]
+fn a_scripted_completion_round_trips_through_this_parser() {
+    // **A test control that lies makes every test above it vacuous.** If
+    // the fake transport returned bytes this parser could not read, the
+    // serving call site would see a malformed answer whatever it asked
+    // for, and a crash-matrix row would pass at the wrong boundary for the
+    // wrong reason. So the control is held to the parser, in all three
+    // dialects, for both shapes a caller asks for.
+    let structure = Want::Structure {
+        schema: Value::Object(Vec::new()),
+    };
+    for dialect in [Dialect::Responses, Dialect::OpenAi, Dialect::Anthropic] {
+        let body = scripted(dialect, r#"{"id":"c2"}"#, Some(1_234));
+        let read = read_completion(dialect, &structure, &body);
+        assert_eq!(
+            read.reply.expect("a structure"),
+            Reply::Structure(Value::Object(vec![(
+                "id".into(),
+                Value::String("c2".into())
+            )])),
+            "{dialect:?}"
+        );
+        assert_eq!(read.usage, Some(1_234), "{dialect:?} reports what it cost");
+
+        let read = read_completion(dialect, &Want::Text, &scripted(dialect, "plain", None));
+        assert_eq!(read.reply.expect("text"), Reply::Text("plain".into()));
+        assert_eq!(read.usage, Some(0), "{dialect:?} with no usage scripted");
+    }
 }

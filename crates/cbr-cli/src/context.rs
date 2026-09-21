@@ -227,6 +227,43 @@ pub fn submit(
     Ok(())
 }
 
+/// `cbr cancel <request>`: stop preparing it.
+///
+/// **The payload is empty** and the request is the command's subject, so
+/// there is nothing here to get wrong. What it does on the provider is
+/// the interesting half: a job nobody is waiting for any more lets go of
+/// everything it asked a model, and a call still in flight stops holding
+/// the concurrency bound — its answer is never read, so nothing it chose
+/// reaches a packet.
+pub fn cancel(options: &Options, request: &str) -> Result<(), String> {
+    let mut session = open(options)?;
+    // **The revision this client last saw.** A command carries the
+    // revision it expects, so a cancel racing a publication is refused
+    // rather than applied to a request that has moved on. Read here
+    // rather than asked for on the command line: the caller is
+    // cancelling *this* request, not a particular version of it, and a
+    // number they had to look up first would be a number they could get
+    // wrong.
+    let seen = session.query(
+        "context.request.inspect",
+        object(vec![("request", string(request))]),
+    )?;
+    let revision = match at(&seen, &["revision"]) {
+        Value::Int(revision) => revision,
+        other => return Err(format!("{request} has no revision: {other:?}")),
+    };
+    let outcome = session.command(
+        "context.request.cancel",
+        &format!("{request}.cancel"),
+        subject(REQUEST, request),
+        revision,
+        None,
+        Value::Object(Vec::new()),
+    )?;
+    print(&outcome);
+    Ok(())
+}
+
 /// `cbr request <request>`: what the request looks like now.
 pub fn inspect(options: &Options, request: &str) -> Result<(), String> {
     let mut session = open(options)?;

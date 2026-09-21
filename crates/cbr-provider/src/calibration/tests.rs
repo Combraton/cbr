@@ -78,7 +78,9 @@ fn the_whole_corpus_fits_under_the_run_ceiling() {
     // than a larger ceiling.
     let total: u64 = corpus()
         .iter()
-        .map(|(_, text)| budget::estimate(text.as_bytes(), 2))
+        .map(|(_, text)| {
+            budget::input_bound(text.as_bytes(), 2) + 64 + budget::SAFETY_MARGIN_TOKENS
+        })
         .sum();
     assert!(
         total < CEILING,
@@ -329,6 +331,30 @@ fn run_with_completion(counted: u64, input: u64) -> Report {
     )
 }
 
+/// The input bound of the calibration's own completion request — the
+/// figure the tripwire compares a charge against. Tests about the
+/// *prediction* must stay under it, or they are testing the tripwire.
+fn completion_bound() -> u64 {
+    let request = asking(
+        "MiniMax-M2.7-highspeed",
+        "Reply with the single word: calibrated.",
+    );
+    let body = request.serialize(Dialect::Responses);
+    crate::budget::input_bound(&body, request.framed_messages(Dialect::Responses))
+}
+
+#[test]
+fn an_input_charged_above_the_local_bound_trips_the_wire_before_any_finding() {
+    // The two rules overlap, and the order matters. A charge above the
+    // *local bound* means the bound is wrong, which stops everything; a
+    // charge above the *count endpoint's prediction* means the prediction
+    // is poor, which is a finding. The first is the graver claim and it
+    // wins.
+    let report = run_with_completion(100, completion_bound() + 1);
+    let completion = report.completion.expect("the completion is recorded");
+    assert_eq!(completion.outcome, "local_bound_unsound", "{completion:?}");
+}
+
 #[test]
 fn the_completion_compares_its_count_against_what_its_input_actually_cost() {
     // **The measurement that says whether the count endpoint predicts what
@@ -336,11 +362,11 @@ fn the_completion_compares_its_count_against_what_its_input_actually_cost() {
     // question; the provider's count against the provider's own bill for
     // the same request is a different one, and only the second says the
     // count is worth making.
-    let report = run_with_completion(1_000, 1_000);
+    let report = run_with_completion(100, 100);
     let table = report.table();
     let completion = report.completion.expect("the completion ran");
-    assert_eq!(completion.counted, Some(1_000), "what was predicted");
-    assert_eq!(completion.input_usage, Some(1_000), "what was charged");
+    assert_eq!(completion.counted, Some(100), "what was predicted");
+    assert_eq!(completion.input_usage, Some(100), "what was charged");
     assert!(completion.prediction_finding.is_none(), "and they agree");
     assert!(table.contains("counted"), "the table carries both: {table}");
     assert!(table.contains("input charged"), "{table}");
@@ -352,15 +378,19 @@ fn an_input_charged_above_its_count_beyond_the_margin_is_a_finding_not_a_stop() 
     // being wrong, because the whole admission design rests on it. A count
     // that under-predicts the bill is a fact about the count endpoint, and
     // it is reported so the owner can decide what it means.
-    let over = 1_000 + 1_000 * PREDICTION_MARGIN_PERCENT / 100 + 1;
-    let report = run_with_completion(1_000, over);
+    let over = 100 + 100 * PREDICTION_MARGIN_PERCENT / 100 + 1;
+    assert!(
+        over <= completion_bound(),
+        "the charge stays under the local bound, or this tests the tripwire"
+    );
+    let report = run_with_completion(100, over);
     let table = report.table();
     let stopped = report.stopped.clone();
     let completion = report.completion.expect("the completion ran");
     let finding = completion
         .prediction_finding
         .expect("a finding was recorded");
-    assert!(finding.contains("1000"), "naming the count: {finding}");
+    assert!(finding.contains("100"), "naming the count: {finding}");
     assert!(
         finding.contains(&over.to_string()),
         "and the charge: {finding}"
@@ -375,8 +405,8 @@ fn an_input_charged_above_its_count_beyond_the_margin_is_a_finding_not_a_stop() 
 #[test]
 fn an_input_charged_within_the_margin_is_not_a_finding() {
     // The negative control: a margin that flags everything reports nothing.
-    let within = 1_000 + 1_000 * PREDICTION_MARGIN_PERCENT / 100;
-    let report = run_with_completion(1_000, within);
+    let within = 100 + 100 * PREDICTION_MARGIN_PERCENT / 100;
+    let report = run_with_completion(100, within);
     let completion = report.completion.expect("the completion ran");
     assert!(
         completion.prediction_finding.is_none(),
@@ -384,11 +414,155 @@ fn an_input_charged_within_the_margin_is_not_a_finding() {
         completion.prediction_finding
     );
     // And an input charged *below* its count is the expected direction.
-    let report = run_with_completion(1_000, 400);
+    let report = run_with_completion(100, 40);
     assert!(report.completion.expect("ran").prediction_finding.is_none());
 }
 
 #[test]
 fn the_margin_is_a_stated_number() {
     assert_eq!(PREDICTION_MARGIN_PERCENT, 2);
+}
+
+// --- a truncated completion is not a stop --------------------------------
+
+/// A Responses completion that ends `incomplete`, its whole output budget
+/// spent on reasoning, exactly as run 2's did.
+fn responses_incomplete() -> Vec<u8> {
+    br#"{"object":"response","status":"incomplete","error":null,
+"incomplete_details":{"reason":"max_output_tokens"},
+"output":[{"type":"reasoning","content":[{"type":"reasoning_text","text":"thinking"}],
+"summary":[]}],"output_text":null,
+"usage":{"input_tokens":28,"output_tokens":16,"total_tokens":44}}"#
+        .to_vec()
+}
+
+/// A run whose completion answers `body` **and whose repair answers it
+/// again**. A truncation is repairable now — the repair asks with twice
+/// the room — so a run that truncates twice is what spends the repair and
+/// ends as the typed reason.
+fn run_ending_in(body: Vec<u8>, usage: Option<u64>) -> Report {
+    let connection = database();
+    let mut answers: Vec<Answer> = corpus()
+        .iter()
+        .map(|(_, text)| Answer::Counted((text.len() / 4) as u64))
+        .collect();
+    answers.push(Answer::Counted(122));
+    answers.push(Answer::Completed {
+        body: body.clone(),
+        usage,
+    });
+    answers.push(Answer::Counted(122));
+    answers.push(Answer::Completed { body, usage });
+    let transport = Recorder::new(answers);
+    run(
+        T0,
+        Ledger::new(&connection).with_run_ceiling(Some(CEILING)),
+        &transport,
+        Dialect::Responses,
+        "MiniMax-M2.7-highspeed",
+    )
+}
+
+#[test]
+fn a_truncated_completion_is_an_outcome_with_a_cost_and_not_a_stop() {
+    // **The defect run 2 exposed in this module.** A sixteen-token limit
+    // spent entirely on reasoning is what the provider documents itself
+    // doing, and the run that produced every measurement it exists for
+    // reported `STOPPED` and exited non-zero.
+    //
+    // A stop means one of two things and no others: a count above its
+    // local estimate, or a measurement that could not be obtained.
+    let report = run_ending_in(responses_incomplete(), Some(44));
+    assert!(
+        report.stopped.is_none(),
+        "a truncated completion stopped the run: {:?}",
+        report.stopped
+    );
+    assert_eq!(report.rows.len(), corpus().len(), "every file was counted");
+    let completion = report.completion.expect("the completion is recorded");
+    assert_eq!(
+        completion.outcome, "model_answer_truncated",
+        "and its outcome is carried rather than collapsed"
+    );
+    assert_eq!(
+        completion.repairs, 1,
+        "the repair was spent asking again with more room"
+    );
+    assert_eq!(completion.usage, Some(44), "with its cost");
+    assert_eq!(completion.input_usage, Some(28));
+    assert_eq!(completion.counted, Some(122));
+}
+
+#[test]
+fn the_table_of_a_truncated_run_reads_as_a_finished_run() {
+    let report = run_ending_in(responses_incomplete(), Some(44));
+    let table = report.table();
+    assert!(!table.contains("STOPPED"), "{table}");
+    assert!(table.contains("model_answer_truncated"), "{table}");
+    assert!(table.contains("44"), "the cost is in it: {table}");
+}
+
+#[test]
+fn a_count_that_could_not_be_obtained_is_still_a_stop() {
+    // The other half: the exit stays non-zero for the two things that
+    // really are stops, or the change would have made every run succeed.
+    let connection = database();
+    let transport = Recorder::new(vec![Answer::Failed {
+        reason: "provider_status".into(),
+        usage: None,
+    }]);
+    let report = run(
+        T0,
+        Ledger::new(&connection).with_run_ceiling(Some(CEILING)),
+        &transport,
+        Dialect::Responses,
+        "MiniMax-M2.7-highspeed",
+    );
+    assert!(report.stopped.is_some(), "a measurement was not obtained");
+}
+
+#[test]
+fn a_completion_the_envelope_refused_is_still_a_stop() {
+    // **The completion never happened at all**, so the run did not obtain
+    // the measurement it came for. That is a stop, where a completion that
+    // happened and was truncated is not.
+    //
+    // Reached by scripting the completion's own count above the
+    // per-request ceiling, so the refusal lands on the completion rather
+    // than on one of the corpus counts — an earlier version set a low run
+    // ceiling, which stopped the first count instead and tested nothing
+    // about this path.
+    let connection = database();
+    let mut answers: Vec<Answer> = corpus()
+        .iter()
+        .map(|(_, text)| Answer::Counted((text.len() / 4) as u64))
+        .collect();
+    answers.push(Answer::Counted(crate::budget::PER_REQUEST_TOKENS + 1));
+    let transport = Recorder::new(answers);
+    let report = run(
+        T0,
+        Ledger::new(&connection).with_run_ceiling(Some(CEILING)),
+        &transport,
+        Dialect::Responses,
+        "MiniMax-M2.7-highspeed",
+    );
+    assert_eq!(report.rows.len(), corpus().len(), "every file was counted");
+    let stopped = report.stopped.expect("the completion was refused");
+    assert!(stopped.contains("refused"), "{stopped}");
+    assert!(report.completion.is_none(), "and there is no completion");
+}
+
+#[test]
+fn a_run_ceiling_too_low_for_the_corpus_is_a_stop_too() {
+    let connection = database();
+    let transport = Recorder::new(vec![Answer::Counted(10)]);
+    let report = run(
+        T0,
+        Ledger::new(&connection).with_run_ceiling(Some(1_000)),
+        &transport,
+        Dialect::Responses,
+        "MiniMax-M2.7-highspeed",
+    );
+    let stopped = report.stopped.expect("the ceiling stopped it");
+    assert!(stopped.contains("run_over_ceiling"), "{stopped}");
 }

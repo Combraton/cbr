@@ -9,13 +9,192 @@ This is a dated navigation snapshot. Reconcile it with Git, linked issues and cu
 - **Owner decision, 2026-09-20, recorded at the m3c review: m3d has two pilot repositories**, as an amendment to [ADR 001](../decisions/001-standalone-v0.1-scope-and-stack.md) question 6. Knowscroll-v2 stays the decision-memory pilot; the owner's **brian2 fork** is added as a brownfield pilot, registered read-only, whose journey tests discovery and code flow rather than decision memory, whose oracle the owner writes before the run, and whose dirty working tree makes it the first journey to exercise the dirty path. **brian2 is CeCILL-licensed and this repository is MIT, so none of its bytes, excerpts or packets are committed here** — digests, paths, spans, counts and costs only. It is recorded now and acted on only after m3c is cleared; no other brian2 work belongs in this pull request.
 - **Inspected revisions:** protocol `v0.1.0` = `cbf8e4df9df2ca8a9b50264df6acace6e4c3a0fc`; combraton `9af69ce`; pio `e65b7c0`; benchmarks `c8d5878`.
 
-## This change — M4c, beginning with the m4b review's three residuals
+## This change — M4c, the bounded runtime
 
-[PR #25](https://github.com/Combraton/cbr/pull/25) against `main`, for [issue #21](https://github.com/Combraton/cbr/issues/21). **In progress.**
+[PR #26](https://github.com/Combraton/cbr/pull/26) against `main`, for [issue #21](https://github.com/Combraton/cbr/issues/21). **In progress.** Its first commit is the record of calibration run 2.
+
+### Calibration run 2 — the measurement, and the bound held
+
+**Authorised by the owner on 2026-09-21, run once from `main` at `dabf033`, release profile.** The record is [m4/CALIBRATION.md](m4/CALIBRATION.md).
+
+**No provider count exceeded its local estimate on any of the six files, so READINESS §10's stop condition did not fire and M4 is not stopped.** Against the input bound alone the ratios are **3.40 to 4.29**, which is what READINESS predicted; the table's own ratio column runs 5.35 to 27.82 because it includes the fixed 5,128 tokens of reserved generation and margin, and for a small input that is what it measures rather than the bound. The table should carry the input column.
+
+Four things the run found that no fixture had:
+
+- **The count response carries no usage member**, so the provider says nothing about what a count costs. CBR settles a count at the figure it counted, which is the conservative reading of silence — and **15,538 of the 15,582 tokens this run charged were CBR charging itself for seven counts the provider never priced.** An observation for the owner, not a change made here.
+- **The counting endpoint over-predicted the bill by 4.4×** on the one completion: it predicted 122 input tokens and the provider charged 28. Safe, and it means the count buys conservatism the local bound already provides, at the price of a call. One sample.
+- **`usage.output_tokens_details` does not exist.** The reference names `reasoning_tokens`; the service sends no breakdown, so **CBR cannot tell how much of a completion was reasoning** — which matters on the M2.x models, where reasoning cannot be turned off and took the whole sixteen-token limit.
+- **A response echoes the request back**: 37 members where the reference describes 12, with `service_tier` returned as `null` though `standard` was sent.
+
+**The credential appears nowhere in the store**, and every recorded request is byte-identical to the source file it was read from — checked by digest, on a corpus that is five thousand lines about credentials and redaction and which an over-eager redactor would have shredded.
+
+**And a defect in the calibration itself:** it reports `STOPPED` and exits non-zero for a *truncated* completion, which is an ordinary outcome with a cost. A run that obtained every measurement it exists for is recorded as having stopped. Fixed in this milestone.
+
+### The count becomes conditional, and the bound gets a tripwire
+
+**What run 2 measured, turned into design.** The count is no longer made before every call: the **local bound admits alone and the call settles by usage**, and the provider count is made only when it can change a decision — a refusal on the window, the month, the job or the run ceiling, where a tighter figure could admit. Not on the per-request ceiling, which is a limit on how large one request may be and which the local bound is the conservative measure of. Which evidence admitted a call is recorded, `admitted_local` or `admitted_count`. [ADR 001 question 15](../decisions/001-standalone-v0.1-scope-and-stack.md) and [READINESS §3](m4/READINESS.md).
+
+**A caller whose purpose is the count asks for it**: `Counting::Always`, used by the calibration, because a comparison with no count is no comparison. Making that explicit rather than implicit is what kept the calibration's second measurement alive through the change.
+
+**The tripwire** keeps §10's stop rule alive in production: a `usage.input_tokens` above the local input bound for that request means the bound is wrong, which is recorded as its own ledger kind and admits no further model call. **Held in the ledger rather than a process flag** — stronger than the rule asked for, because the bound is a property of the code and a restart with the same code has the same bound.
+
+Two rules overlap and the order is pinned by a test: a charge above the **local bound** stops everything; a charge above the **count's prediction** is a finding. The first is the graver claim and wins.
+
+**A constant died of it.** m4a's `estimate` added a fixed 4,096-token generation reserve because admission happened before the request's own limit was known. Every call site knows it now, so the reservation carries the real figure — `estimate` had no caller left and `RESERVED_GENERATION_TOKENS` with it. Clippy found that, not me. The three tests m4b wrote to kill the mutants in those constants are rewritten around `input_bound`, and the property the reserve carried is asserted where the reservation is now made. It is also what made run 2's ratio column measure the reservation instead of the bound.
+
+### Reasoning spends the output budget, and m4b had a rule wrong
+
+Run 2's completion spent all sixteen of its output tokens on reasoning and returned no answer. On the M2.x models reasoning cannot be turned off, and the service reports **no breakdown**, so `max_output_tokens` has to cover reasoning *plus* the answer and CBR cannot learn the split by measuring.
+
+**The sizing rule: four times what the answer needs, never below 512, and a truncation repaired once by doubling.** The multiplier is not an estimate of how much a model thinks — it follows from an asymmetry. Billing is by tokens **produced**, so an over-sized limit costs nothing that is not used, while an under-sized one costs the whole call and returns nothing. Generosity is the cheap error here. m4e replaces the multiplier with a measurement.
+
+**m4b had truncation as not repairable**, reasoning that asking again under the same limit gives the same answer. True, and beside the point: the repair asks again with a **larger** limit. Under the old rule run 2's call was simply lost. It is repairable now, it consumes a repair, and when the repair is spent it ends as the item's typed unmet reason.
+
+### The stall, measured away
+
+M3 recorded the index build holding the preparation tick as a known limit and READINESS §8 made resolving it m4c's first job. `work::Pool` bounds work in flight at two, answers every ask with a typed `Progress`, and blocks no caller, so the tick that asks is the tick that returns. **Measured before and after with the same instrument, on the same machine and the same three trees** ([STALL](m4/STALL.md)), an unrelated job's worst wait falls from 8.5s, 11.1s and 3.4s to 0.13s, 0.23s and 0.15s — 65×, 49× and 23×. Time to first packet is unchanged, which is the expected result: the build costs what it costs, and the provider stops holding everything else while it pays.
+
+Two decisions inside it are worth naming because the obvious alternative is wrong in each.
+
+**Deferred, not queued.** Work beyond the bound is refused for now and asked about again next tick. A queue would be a promise to do work nobody may want any more, made at the moment CBR has least idea whether it is still wanted.
+
+**A settled answer is kept until its caller takes it.** Releasing on first report breaks any compile needing two calls — the first answer would be gone by the tick the second arrived — and, worse, a released *failure* is a retry: the next tick asks again, the key is free, and the pool starts the work afresh. That is not the bounded repair READINESS §8 allows; it is an unbounded loop spending a shared quota.
+
+### Serving calls a model
+
+`SERVING_CALLS_A_MODEL` is true, in the commit that gave serving a call site. A request that authorised an investigation now asks a model, while preparing, which of the spans BM25 ranked inside the file an item named to cite. **No live call was made: the transport is the `model.fake` control.**
+
+**The answer cannot widen what is cited**, and that is the whole design. The model is shown a closed set of CBR's own candidates and answers with one of their ids — never a path, a line or a repository — so the worst any answer can do is choose a worse candidate from that list. An id it was never offered, a structure that is not a choice, a provider failure, a refusal at admission and a timeout all end as **the item's typed unmet reason**, never as the span BM25 would have chosen, which would report a model-assisted selection that no model made. There is no repair for an answer that is well formed and wrong: asking again would spend a shared quota on the same question.
+
+**A request that authorised no investigation calls nothing**, and gets exactly the compiler M3 shipped — from the same binary, which is what makes it m4e's baseline rather than a second build nobody ran.
+
+**The fake became a transport for the call site** rather than a scripted call at startup, and the six model crash rows moved with it: they now kill a provider in the middle of preparing a real request. They live in `cbr-cli`'s tests, because reaching that call site means submitting a request and `cbr` is the client that submits one.
+
+**One rule was loosened, and only one.** Compiling is production-only and the fake transport is a conformance control, so the two could never overlap and the call site could not be reached under `SIGKILL` at all. A conformance launch may now ask to compile, with `context.compile`. No fixture sets it, and `a_conformance_launch_prepares_nothing_unless_it_asks_to_compile` holds both halves.
+
+### A CI flake this milestone made likely
+
+`a_configured_model_whose_credential_is_unreadable_refuses_the_launch` failed once on Linux at `db17494` — `Unavailable` where `NotFound` was expected — while the same commit's other run passed. `Unavailable` is what CBR reports when the child could not be **started**, which has nothing to do with the exit code the test is about.
+
+**The cause is a fork race, and it is the suite's own.** Another thread forking while the fake tool's write handle is still open leaves its child holding that handle, and the `exec` which follows fails with `ETXTBSY`. The window is the few instructions between creating the script and closing it, and it is crossed more often the more tests run beside it — this milestone added a hundred, most of which start processes. [VERIFICATION](../VERIFICATION.md) already records one timing assertion rewritten for the same reason at m3c; this is the second.
+
+The fake-tool reads retry past that one refusal and nothing else, so a tool that is genuinely unstartable still refuses and every other outcome comes back from the first attempt. **No assertion was softened.**
+
+### The mutant table
+
+**Twenty-seven mutants, twenty-two killed, five surviving** — each run against *every* target, not the binary's unit tests alone, which is the mistake m4b made and which returned two false survivors then.
+
+| Mutant | Killed by |
+|---|---|
+| pool: `Done` releases the slot, as it did before | `a_request_with_two_items_asks_two_questions_and_holds_both_answers` |
+| pool: the bound counts settled answers too | `a_result_waiting_to_be_taken_does_not_hold_the_bound` |
+| pool: **the bound counts map entries, not threads** | `a_finished_unit_nobody_asked_about_again_does_not_hold_the_bound` |
+| pool: `release_all` matches nothing | `a_job_releases_every_answer_it_asked_for_by_naming_itself` |
+| pool: a panicking unit is reported `Done` | `work_that_fails_reports_its_typed_reason_and_is_not_retried` |
+| pool: a passed deadline does not time the work out | `a_deadline_that_passes_ends_the_work_as_timed_out` |
+| selection: an id that was not offered selects the first candidate | `an_id_that_was_never_offered_leaves_the_item_unmet` |
+| selection: the schema offers no closed set of ids | `the_schema_offers_exactly_the_candidates_and_nothing_else` |
+| selection: one candidate is worth asking about | `one_candidate_is_not_a_question_worth_paying_for` |
+| selection: a non-string id is read as the first candidate | `an_answer_of_the_wrong_shape_is_refused_rather_than_guessed_at` |
+| call site: the investigation budget is ignored | `a_request_that_authorises_no_investigation_calls_nothing_at_all` |
+| call site: a failed call falls back to the span BM25 ranked first | `a_call_that_fails_leaves_the_item_unmet_with_the_reason_it_failed_for` |
+| call site: the answer is released the moment it is read | `a_request_with_two_items_…` |
+| call site: the key forgets the path, so two files share one answer | `a_request_with_two_items_…` |
+| call site: a cancelled job keeps its answers | `cancelling_a_request_frees_the_bound_its_call_was_holding` |
+| clock: an instant without its `Z` is still an instant | `anything_that_is_not_an_instant_is_refused_rather_than_guessed_at` |
+| clock: the month and day are not checked | as above |
+| conformance: a launch that did not ask to compile compiles anyway | `a_conformance_launch_prepares_nothing_unless_it_asks_to_compile` |
+| fake transport: a count call eats the scripted completion answer | three of the six crash rows |
+| fake transport: the scripted usage is dropped | `a_completion_settles_to_what_the_provider_said_it_cost` |
+| launch: `SERVING_CALLS_A_MODEL` is false, so the constant lies | `a_serving_launch_with_a_model_and_the_permit_reads_a_credential_and_serves` |
+| cli: cancel sends revision 0 rather than the one it saw | `cancelling_a_request_…` |
+
+**The five survivors, and why each is one.** None is counted as a kill.
+
+| Survivor | Why it survives |
+|---|---|
+| the key forgets the **selector** | **Not reachable through this client.** `cbr` gives every item of a request the same selector, so two items on one file always ask the same question. Over the protocol an item carries its own, and there a key without the selector hands the second item a choice made from a candidate list it was never shown. The test says so rather than implying coverage it has not got. |
+| the compile never releases what the job asked | The job-end release covers every job that ends, so this one only frees memory **earlier** — at publication rather than at ending. It matters for a job that compiles and then stalls, which nothing here produces. A map entry is not observable over the protocol. |
+| a job that ended keeps its answers | By the time a job ends, every call it made has settled — the compile needed the answers to finish — so there is no running slot to give back and nothing but memory to free. Behaviourally equivalent. |
+| a cancel releases before it is committed | The ordering is right and no test forces a commit to fail. Making one fail needs a fault control this build has not got for `commit_context`. |
+| an out-of-range choice is read as the first candidate | **Equivalent.** `selection::chosen` returns a position within the candidates, and the candidates are built one-for-one from the ranked spans, so the index is always in range. The guard is defence for a future where the two diverge. |
+
+### Four defects the mutants found, and two they could not
+
+**The first pass was twenty-one mutants; fifteen were killed.** Of its six survivors, four were real defects and two looked equivalent — and one of those two was not, which is the story below.
+
+**Two were defects I had already found by re-reading my own committed code**, and the probe said why nothing caught them: *every test had one item per request*, so no compile ever held two answers at once.
+
+- **An answer released the moment it was read.** A compile needing two calls asks across several ticks; releasing the first when it was first reported means the next tick asks that question again, at a second charge.
+- **A key that forgot the path**, so two items citing different files shared one answer.
+
+Both are killed now by a request with two items on two files, asserting **exactly two completions** — fewer means an answer was reused for a question it was not asked, more means one was released and asked again.
+
+**Two were gaps in what was asserted.**
+
+- **The fake's scripted usage was dropped and nothing noticed**, which means nothing tested that a completion **settles to the provider's figure** rather than to the reservation. The reservation is the local bound and over-states by three to four times; settling at it would charge a shared quota for something nobody spent. That is the envelope's whole point and it was untested.
+- **Setting `SERVING_CALLS_A_MODEL` back to false broke no test.** Every test about it is an implication — *if the constant, skip* — which is right for rules that stop applying when it flips and leaves **nothing at all constraining the flipped value**. It could have been silently reverted. A flat assertion holds it now: a launch given a model and the permit is `ReadCredentialThenServe`, and a change that removes the call site has to change that test.
+
+**Two looked equivalent.** One was, and one was the worst defect of the milestone:
+
+- *An out-of-range choice read as the first candidate.* `selection::chosen` returns a position within the candidates, and the candidates are built one-for-one from the ranked spans, so the index is always in range. The guard is defence for a future where the two diverge.
+- *The compile never releases what the job asked.* That one is equivalent, and for the reason given: the compile step is spliced out of the script when it runs, so nothing asks again.
+
+**The reasoning that said the other release mutants were equivalent too was wrong**, and the next section is what it missed. Being able to argue a mutant is equivalent is not the same as it being one.
+
+### Two more defects, from re-reading the call site
+
+**The pool takes a factory now, not the work.** The work closure was built on every tick and dropped unused whenever the answer was `Running` or `Deferred` — which is every tick but the first. A closure that opens a connection to the store therefore opened one per tick and threw it away, thousands over one call, **paid on the preparation tick this milestone exists to keep short**. `progress` takes `impl FnOnce() -> W` and calls it only when work actually starts, which moves "build nothing until it is needed" out of a comment and into the signature.
+
+**The key is the question, not the file.** It carries the selector as well as the path, because two selectors rank a file differently and `c2` does not mean the same span to both: a shared key would hand the second item a choice made from a candidate list it was never shown. **This suite cannot test that half** and the test says so — `cbr` gives every item of a request the same selector, so two items on one file always ask the same question. Over the protocol an item carries its own.
+
+### The defect the cancellation test found
+
+**One repository permanently cost half the concurrency bound.** A slot counted against the bound while its `settled` answer was `None` — and an answer settles only when somebody *asks*. `ensure_index` asks once, is told `Running`, and by the time the build has finished its caller reads the manifest back and **never asks again**, so that slot stayed "in flight" for the life of the process. With the bound at two, one repository left one slot; two repositories would have meant no model call could ever start.
+
+It was invisible to every test and to every mutant, because nothing until now needed two units of work at once. It surfaced while building the cancellation test below, whose whole point is filling the bound: the second request's call came back `Deferred` with the index build still holding a slot it had finished with seconds earlier.
+
+**The bound counts threads now, not map entries**: a unit whose thread has finished is not in flight, asked about or not. A pool test holds it, and that test fails against the old rule.
+
+One other thing this cost an hour: **`cargo test -p cbr-cli` does not rebuild `cbr-provider`.** An experiment raising `CONCURRENCY` to six appeared to rule the bound out, and had in fact tested the old binary. The workspace has to be built first, which STATE has said since M3 and which is easy to forget when the crate under test is the client.
+
+### Cancellation
+
+`cbr` had **no cancel verb** — the provider serves `context.request.cancel` and the client could not send it, so the milestone's cancellation had no end-to-end test at all. It has one now, and it reads the request's current revision itself rather than asking for it on the command line: the caller is cancelling *this* request, not a particular version of it, and a number they had to look up first is a number they can get wrong.
+
+A job that has ended lets go of everything it asked a model, however it ended — published, out of investigation, or past its deadline — and so does a job whose last request is cancelled. The thread is not killed, because Rust cannot, but **its answer is never read, so nothing it chose reaches a packet**: that is what *a cancelled call leaves no partial derivation record* means here. What it already spent stays in the ledger and must: a call that went out and was charged is a charge, and forgetting it would overspend a quota shared with the owner's other tools.
+
+**Where it is observable, and where it is not.** A settled answer costs a map entry and no more, so releasing one frees memory and nothing a test can see. A call *still in flight* is the case with teeth: it holds one of the two slots the bound allows, and cancelling the request that owns it gives that slot back rather than leaving the next job waiting for work nobody wants. Two barriers hold two calls, a third request is deferred and stays deferred however often it is polled, and cancelling the first lets the third's call happen. The release is also ordered **after** the commit: a cancel that failed to commit is a job still running, and freeing its answers there would have the next tick ask every question again.
+
+The index build is not cancelled, and says why: it writes its manifest as it goes, so cancelling it would leave exactly the partial record the rule forbids, and it has no single owner besides — several jobs may want the same repository at the same tree, and it is idempotent.
+
+### What the flip costs, and the guard that pays for it
+
+While `SERVING_CALLS_A_MODEL` was false, `--permit-model-network` with a valid model and no `--calibrate` was a **refusal**. It is now a launch that reads the owner's Keychain and serves — the exact shape of the lapse recorded below. So the rule moved out of the constant and into `tests/credential_discipline.rs`, which reads the sources and requires every place a test passes that flag to be gated off macOS, to ask for the calibration, or to configure no model. It reads text, so it is a guard against carelessness and not against intent; carelessness is what the lapse was.
+
+The launch tests' macOS gating was reviewed in that commit and stands. The one test that passes the flag with a valid configuration asks for the calibration and is gated; three others pass it with no model configured, which is refused outright.
+
+### A second improvised launch, recorded
+
+**I launched the provider by hand again**, debugging why the call site was not reached: a shell command against the real binary. It read no credential — the configuration named no `model_runtime`, so `launch::decide` returned `Serve` — and it is still the practice [VERIFICATION](../VERIFICATION.md) rule 4 forbids, a month of which is how the first lapse happened. The fix was the one the rule implies: the diagnosis moved into the test, whose failure message now prints what the request last said, and that is what found the real cause.
+
+### Two defects in VERIFICATION's own commands
+
+Found by following them. The conformance block named `conformance/results/m1b` and the rest as output directories, so **running the documented commands overwrites the committed record of the stage that produced them** — `m1b` holds what M1b measured, when CBR declared `core/1` and nothing else, and a rerun replaces it with today's descriptor. The block now runs into a temporary directory and says why. The context command also named `m3a`, where the committed record is `m3a-context`.
+
+### The owner's decision on provider-side retention
+
+Recorded 2026-09-21 and closed in [READINESS §7](m4/READINESS.md): the API offers no request option to prevent retention, and the owner accepts that **for public repositories only** — CBR's own source, Knowscroll-v2 and brian2. **Any private repository still needs the owner's explicit word**, and the absence of a retention control is a reason that bar stays where it is rather than a reason to lower it. A stated limit, not a solved problem.
+
+## Earlier — the m4b follow-up: the review's residuals and the responses dialect
+
+[PR #25](https://github.com/Combraton/cbr/pull/25), **merged** as `dabf033`, pinned to `4aaa31f`, confirmed from `merged: true` and `merged_at: 2026-09-20T19:46:35Z`.
 
 ### A credential read that should not have been possible, and the fix
 
 **I read the owner's Keychain entry outside the authorised calibration.** Probing the binary's careless-launch refusals from a shell, I used a configuration that named a valid model together with `--permit-model-network`. That is a *serving* launch, which the build accepted, so it read the key.
+
+**The cause, named precisely: improvising a launch by hand.** Not a gap in a test, not a missed review — a command typed at a prompt to see what a refusal looked like, against the real binary with the real configuration. Everything that has ever protected that key is in the test suite or in an authorised run, and neither was in play. [VERIFICATION](../VERIFICATION.md) now carries that as rule 4 beside the three about what the code permits, because the fix that followed closes this particular door and the habit is what closes the next one.
 
 What it did not do, verified afterwards: no model call (`model_calls` empty), no ledger row, nothing sent — the transport is constructed only by the calibration path — nothing printed, and no credential-shaped bytes anywhere in the store. The bytes were read into memory and zeroed on drop. It was still a read that was not authorised, and it is recorded here rather than tidied away.
 
@@ -57,6 +236,10 @@ Three things followed, each with its own test:
 | Decoding stops after one round · an unsettled encoding written out anyway | killed (2) |
 | The `model_runtime` allowlist back to a denylist · the top-level allowlist removed | killed (2) |
 | A serving launch reads a credential with no call site | killed |
+| A truncation is not repairable again · the repair re-asks in the same space · the output floor is removed | killed (3) |
+| The count made when the local bound already admits · every refusal buys a count · a per-request refusal buys a count · which path admitted is not recorded | killed (4) |
+| The tripwire removed · a tripped wire does not stop later calls · the tripwire fires on ordinary calls | killed (3) |
+| A truncated completion stops the run again · a refused completion is not a stop · the input usage dropped from the cost | killed (3) |
 | The responses limit binds to `max_tokens` · every dialect treated as counted · the count body carries the completion-only members · the service tier is `priority` · an incomplete status read as complete | killed (5) |
 | Reasoning read as the answer | **survived**, and the mutant was equivalent: both arms did nothing. Rewritten as a mutant that really assigns the reasoning to the answer, and the test rewritten too — it had used the `incomplete` fixture, which ends `Truncated` whatever the parser does with its reasoning. Now killed. |
 | `reads_credential` forgets the serving decision | **equivalent while `SERVING_CALLS_A_MODEL` is false** — that decision is unreachable today, so nothing can observe it. `both_live_decisions_are_reachable` demands it the moment the constant is true. |
