@@ -96,6 +96,42 @@ Fixed by splitting the check: `covers_derivation` answers the question, `readabl
 
 The three that survived are the useful part of the table. Two of them were cases I had reasoned about and not tested — *the artifact id is content-addressed, so of course two answers are two records* — and one of them was a hole in a place I had not looked at all.
 
+### The reviewer's two corrections
+
+**A rebuild was not deterministic when retained answers disagreed.** `retained()` took the first match in `der.<digest>` order, and that digest covers `made_at` — so with one question answered `c2` once and `c1` once, the same history produced either of two packets, decided by a hash of a timestamp. The reviewer measured it at five runs apiece. m4e reruns the same questions live, so the state is not hypothetical; it is what a second run of a pilot leaves behind.
+
+The rule now: **every covered record is read, and they must agree.** Agreement is the answer; disagreement is `model_answer_ambiguous`, the item's own reason. **A retained failure beside a retained choice counts as a disagreement**, deliberately — preferring the usable one would be the rebuild deciding which of two histories to reproduce, improving on the past rather than replaying it, which is the same fault as taking the first match with better manners. A record this build cannot read counts as its own answer and takes part in the agreement, because a record nobody can read is no evidence the others are right.
+
+**The claims half of the readable set had no end-to-end test.** The reviewer's mutant — `readable_under(assist.view, &[])` — survived all 496 tests, because no test in the suite had a claim in the store at all: both sides of every comparison were empty lists and the property was true by vacuity. A derivation names no claim today, which is why this was a correction rather than a leak; in m4e claims enter the candidate sets and it becomes load-bearing.
+
+`tests/derivation_claims.rs` now proposes a claim, runs a model-assisted request, and takes both arms through all four doors: `inspect`, a listing, `fetch`, and a rebuild. The only difference between the two reader grants is the claim — both cover **both** registered repositories, because the job that sealed the record belongs to the authority, whose view is every registration, and a reader missing one is refused for *that* reason with the claim half never reached.
+
+### Two smaller things the reviewer named
+
+**A purged record could still answer a rebuild.** `state` stays `sealed` through a purge — only the `purge` member and the availability change — so a check on the state alone does not notice, and the object can outlive the purge until collection runs, or indefinitely when another sealed artifact shares the bytes. `retained()` now skips any record carrying a `purge`. The test ingests the record's own bytes as a second artifact first, so that the object survives the purge and the test is about the purge rather than about a missing file; without the fix it fails.
+
+**READINESS §6 named two gated doors and there are three**, and the retention table did not say that the **task and the selector** are kept in the record. They are the requester's own words rather than the repository's, and they are kept because the question's digest is taken over them; both are now stated.
+
+### A probe that reported seven results it never observed
+
+The first run of the correction mutants said **all seven survived**, including one I had just watched a test fail red against. They had not survived: moving `cited_span` into the shared fixture had broken `model_selection.rs`'s import, so `cargo test --workspace` had not compiled since — and the probe decided "killed" by looking for `FAILED` in output that was **empty**. A build that never ran produced a table of survivors.
+
+Fixed in two places: the import, and the probe, which now records `NO-RESULTS` and refuses to call anything a survivor when no `test result` line came back. **The rule this breaks is the one already written down** — do not log a mutant kill you did not observe — and it breaks it in the other direction, which is just as wrong and much easier to miss, because a survivor looks like diligence. Every per-binary run I had done in between compiled fine, which is exactly why the breakage stayed invisible.
+
+### The correction mutants
+
+Seven, each run against the whole workspace suite after the probe was fixed, all killed.
+
+| Mutant | Result | What kills it |
+|---|---|---|
+| `retained()` returns the first match | killed | `a_rebuild_whose_records_disagree_says_so_rather_than_picking_one` |
+| A retained choice is preferred over a retained failure | killed | `a_retained_failure_beside_a_retained_choice_is_a_disagreement` |
+| `retained()` ignores the `purge` member | killed | `a_rebuild_does_not_answer_from_a_record_that_was_purged` |
+| The seal drops the job's claims (**the reviewer's**) | killed | `a_job_that_could_read_a_claim_seals_it_into_the_readable_set`, and all four doors |
+| `covers` drops the claims half | killed | the same, where before only the unit test held it |
+| The reader's claims are computed as empty | killed | `a_reader_with_the_claim_passes_every_door` |
+| The rebuild compares no claims | killed | `a_rebuild_answers_a_reader_with_the_claim_and_not_one_without` |
+
 ### The m4e scope decision, recorded now because m4e depends on it
 
 Model-assisted selection chooses among spans ranked **inside one file the request already named**. It does not touch discovery, so it cannot change *what a packet finds*. **That is why it cannot move brian2**: that question failed twice because the answer never entered the candidate set, and a better choice inside the wrong file is still the wrong file.

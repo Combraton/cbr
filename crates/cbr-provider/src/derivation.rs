@@ -54,6 +54,7 @@ pub const PRODUCER: &str = "cbr-model-runtime/1";
 /// quietly become unreadable.
 pub const REASONS: &[&str] = &[
     "budget_exhausted",
+    "model_answer_ambiguous",
     "index_unavailable",
     "job_over_ceiling",
     "model_answer_malformed",
@@ -79,6 +80,17 @@ pub const REASONS: &[&str] = &[
 pub const UNREADABLE: &str = "model_record_unreadable";
 /// Nothing retained answers this question.
 pub const NOT_RETAINED: &str = "model_answer_not_retained";
+
+/// **Two retained records answer this question differently.**
+///
+/// A model is not a function: two calls can ask the same thing and be
+/// told different things, and m4e reruns the same questions live, so a
+/// store holding both is the ordinary state rather than a corner case.
+/// A rebuild must be a function of the records rather than of the order
+/// they are stored in — the artifact id is a digest covering the
+/// instant each was made, so "the first one" is a hash of a timestamp.
+/// So disagreement is the item's own reason, and the rebuild declines.
+pub const AMBIGUOUS: &str = "model_answer_ambiguous";
 
 /// The admission a call that never reached one had: CBR's own envelope
 /// refused it, so nothing was counted and nothing was sent.

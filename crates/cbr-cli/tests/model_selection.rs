@@ -26,41 +26,9 @@ use cbr_encoding::Value;
 mod serving;
 
 use serving::{
-    Fixture, OUTSIDE, UNASKED, bodies_sent, calls, ledger, poll, prepared, result, submit,
+    Fixture, OUTSIDE, UNASKED, bodies_sent, calls, cited_span, ledger, poll, prepared, result,
+    submit,
 };
-
-/// **Where the packet says the cited span is**, which is the first line
-/// of the section's own content: `app:queue.md lines 21-40 at tree ...`.
-/// The span is not a member of the item; it is what the section says
-/// about itself, and that is the thing a consumer reads.
-fn cited_span(fixture: &Fixture, request: &str) -> String {
-    let printed = fixture.cbr(&["packet", request, "--excerpt", "1000000"]);
-    assert!(
-        printed.status.success(),
-        "packet: {}",
-        String::from_utf8_lossy(&printed.stderr)
-    );
-    let packet = cbr_encoding::parse(String::from_utf8_lossy(&printed.stdout).trim().as_bytes())
-        .expect("canonical JSON");
-    let data = packet
-        .get("excerpt")
-        .and_then(|excerpt| excerpt.get("data_base64"))
-        .and_then(Value::as_str)
-        .unwrap_or_else(|| panic!("no excerpt in {packet:?}"));
-    let sealed = cbr_encoding::parse(&cbr_encoding::decode_base64(data).expect("base64"))
-        .expect("the sealed packet is canonical JSON");
-    sealed
-        .get("sections")
-        .and_then(Value::as_array)
-        .unwrap_or_default()
-        .iter()
-        .find(|section| section.get("section_id").and_then(Value::as_str) == Some("s-q"))
-        .and_then(|section| section.get("content"))
-        .and_then(Value::as_str)
-        .and_then(|content| content.lines().next())
-        .unwrap_or_else(|| panic!("no section s-q in {sealed:?}"))
-        .to_string()
-}
 
 #[test]
 fn a_request_that_authorises_no_investigation_calls_nothing_at_all() {

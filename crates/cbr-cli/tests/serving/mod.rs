@@ -332,6 +332,102 @@ impl Fixture {
         )
     }
 
+    /// Ingest a file and propose a claim that cites it, so the store
+    /// holds a claim a grant can cover or fail to cover.
+    ///
+    /// The job's **readable claims** are half of a derivation's
+    /// readable set, and until a claim exists that half is an empty
+    /// list on both sides of every comparison — which is to say,
+    /// untested.
+    pub fn propose_claim(&self, claim: &str) {
+        let ingested = self.cbr(&[
+            "ingest",
+            self.checkout.join("unasked.md").to_str().expect("utf-8"),
+        ]);
+        assert!(
+            ingested.status.success(),
+            "ingest: {}",
+            String::from_utf8_lossy(&ingested.stderr)
+        );
+        let stdout = String::from_utf8_lossy(&ingested.stdout).to_string();
+        let field = |name: &str| {
+            stdout
+                .lines()
+                .find_map(|line| line.strip_prefix(&format!("{name} ")))
+                .unwrap_or_else(|| panic!("no `{name}` in {stdout}"))
+                .to_string()
+        };
+        let (artifact, digest) = (field("artifact"), field("digest"));
+        let content = format!(
+            r#"{{"plane":"normative",
+                 "statement":{{"subject":{{"kind":"app.service","id":"queue"}},
+                               "predicate":"drains_on_shutdown","value":true,
+                               "cardinality":"single"}},
+                 "scope":{{"id":"svc","qualifiers":{{}}}},
+                 "support":[{{"support_id":"s1",
+                              "evidence":{{"provider":"cbr",
+                                           "artifact":{{"kind":"evidence.artifact","id":"{artifact}"}},
+                                           "digest":"{digest}"}},
+                              "ancestry":{{"completeness":"complete",
+                                           "roots":[{{"kind":"evidence","provider":"cbr",
+                                                      "artifact":{{"kind":"evidence.artifact","id":"{artifact}"}},
+                                                      "digest":"{digest}"}}]}}}}],
+                 "derivation":{{"kind":"human","inputs":[]}}}}"#
+        );
+        // `--content` is a path: the claim goes to a file rather than
+        // into an argument, where a long one is `File name too long`.
+        let file = self.directory.path().join(format!("{claim}.json"));
+        std::fs::write(&file, &content).expect("claim");
+        let proposed = self.cbr(&["propose", claim, "--content", file.to_str().expect("utf-8")]);
+        assert!(
+            proposed.status.success(),
+            "propose: {}",
+            String::from_utf8_lossy(&proposed.stderr)
+        );
+    }
+
+    /// Purge an artifact, as the owner, over raw frames.
+    ///
+    /// `cbr` has no purge verb, and `evidence.purge` needs the
+    /// `evidence.retention_control` feature negotiated — which is the
+    /// point of it: destroying evidence is not something a session gets
+    /// by default.
+    pub fn purge_as_owner(&self, artifact: &str, revision: i64) {
+        use std::io::{BufRead, BufReader, Write};
+        let stream = UnixStream::connect(&self.socket).expect("connects");
+        let mut reader = BufReader::new(stream.try_clone().expect("clone"));
+        let mut writer = stream;
+        let mut call = |frame: String| {
+            writeln!(writer, "{frame}").expect("writes");
+            let mut line = String::new();
+            reader.read_line(&mut line).expect("reads");
+            assert!(line.contains("\"result\""), "{line}");
+        };
+        call(format!(
+            r#"{{"jsonrpc":"2.0","id":1,"method":"core.authenticate","params":{{"operation":"core.authenticate","message_id":"a","payload":{{"credential":"{CREDENTIAL}"}}}}}}"#
+        ));
+        call(
+            r#"{"jsonrpc":"2.0","id":2,"method":"core.negotiate","params":{"operation":"core.negotiate","message_id":"n","payload":{"caller":{"name":"t","version":"1"},"receive_limits":{"max_frame_bytes":1048576},"profiles":[{"name":"core","majors":[1],"required":true,"required_features":["core.events","core.grants"],"optional_features":[]},{"name":"evidence","majors":[1],"required":true,"required_features":["evidence.retention_control"],"optional_features":[]}]}}}"#
+                .to_string(),
+        );
+        let subject = format!(r#"{{"kind":"evidence.artifact","id":"{artifact}"}}"#);
+        let envelope = format!(
+            r#"{{"operation":"evidence.purge","message_id":"p","command_id":"purge-{artifact}","dedupe_generation":1,"subject":{subject},"preconditions":[{{"subject":{subject},"revision":{revision}}}],"requires":[],"payload":{{}}}}"#
+        );
+        let digest = cbr_encoding::command_digest(
+            &cbr_encoding::parse(envelope.as_bytes()).expect("canonical"),
+        )
+        .expect("digest");
+        let envelope = envelope.replacen(
+            r#""payload""#,
+            &format!(r#""command_digest":"{digest}","payload""#),
+            1,
+        );
+        call(format!(
+            r#"{{"jsonrpc":"2.0","id":3,"method":"evidence.purge","params":{envelope}}}"#
+        ));
+    }
+
     /// Issue a grant to the second principal, over raw frames.
     ///
     /// `cbr` has no grant verb — grants are the authority's act and the
@@ -591,4 +687,49 @@ pub fn result(inspected: &Value, item_id: &str) -> (String, String) {
             .unwrap_or_default()
             .to_string(),
     )
+}
+
+/// **Where the packet says the cited span is**, which is the first line
+/// of the section's own content: `app:queue.md lines 21-40 at tree ...`.
+/// The span is not a member of the item; it is what the section says
+/// about itself, and that is the thing a consumer reads.
+pub fn cited_span(fixture: &Fixture, request: &str) -> String {
+    let printed = fixture.cbr(&["packet", request, "--excerpt", "1000000"]);
+    assert!(
+        printed.status.success(),
+        "packet: {}",
+        String::from_utf8_lossy(&printed.stderr)
+    );
+    let packet = cbr_encoding::parse(String::from_utf8_lossy(&printed.stdout).trim().as_bytes())
+        .expect("canonical JSON");
+    let data = packet
+        .get("excerpt")
+        .and_then(|excerpt| excerpt.get("data_base64"))
+        .and_then(Value::as_str)
+        .unwrap_or_else(|| panic!("no excerpt in {packet:?}"));
+    let sealed = cbr_encoding::parse(&cbr_encoding::decode_base64(data).expect("base64"))
+        .expect("the sealed packet is canonical JSON");
+    sealed
+        .get("sections")
+        .and_then(Value::as_array)
+        .unwrap_or_default()
+        .iter()
+        .find(|section| section.get("section_id").and_then(Value::as_str) == Some("s-q"))
+        .and_then(|section| section.get("content"))
+        .and_then(Value::as_str)
+        .and_then(|content| content.lines().next())
+        .unwrap_or_else(|| panic!("no section s-q in {sealed:?}"))
+        .to_string()
+}
+
+/// An artifact's current revision, for a command that has to name one.
+pub fn artifact_revision(data: &Path, id: &str) -> i64 {
+    let connection = rusqlite::Connection::open(data.join("cbr.sqlite")).expect("opens the store");
+    connection
+        .query_row(
+            "SELECT revision FROM subjects WHERE kind = 'evidence.artifact' AND id = ?1",
+            [id],
+            |row| row.get::<_, i64>(0),
+        )
+        .expect("the artifact exists")
 }

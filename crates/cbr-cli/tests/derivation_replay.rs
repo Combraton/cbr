@@ -34,7 +34,7 @@ use cbr_encoding::Value;
 
 mod serving;
 
-use serving::{Fixture, derivations, prepared, result};
+use serving::{Fixture, artifact_revision, cited_span, derivations, prepared, result};
 
 /// The sealed packet's digest, from the reference the request carries.
 fn packet_digest(fixture: &Fixture, request: &str) -> String {
@@ -248,6 +248,161 @@ fn a_rebuild_does_not_answer_from_a_record_made_under_a_wider_view() {
         result(&inspected, "q").1,
         "model_answer_not_retained",
         "a narrower reader was handed a wider job's answer: {inspected:?}"
+    );
+    rebuilding.stop();
+}
+
+#[test]
+fn a_rebuild_whose_records_disagree_says_so_rather_than_picking_one() {
+    // **A rebuild must be a function of the records, not of their
+    // order.** Two calls asked one question and were told different
+    // things; both are retained, and the id they are stored under is a
+    // digest that covers the instant each was made. Taking the first
+    // match makes the rebuilt packet depend on a hash of a timestamp —
+    // the same history producing either of two packets.
+    //
+    // m4e reruns these same questions live, so this state is not
+    // hypothetical: it is what a second run of a pilot leaves behind.
+    let fixture = Fixture::answering(&["choose:c2", "choose:c1"]);
+    let live = fixture.start();
+    ask(&fixture, "first");
+    ask(&fixture, "second");
+    assert_eq!(
+        derivations(&fixture.data()).len(),
+        2,
+        "two records that disagree"
+    );
+    live.stop();
+
+    let rebuilding = fixture.start_replaying();
+    let inspected = ask(&fixture, "third");
+    assert_eq!(
+        result(&inspected, "q"),
+        ("unmet".to_string(), "model_answer_ambiguous".to_string()),
+        "a rebuild chose between two disagreeing records: {inspected:?}"
+    );
+    rebuilding.stop();
+}
+
+#[test]
+fn a_rebuild_uses_an_answer_two_records_agree_on() {
+    // The other arm, and the one that stops the rule above from being
+    // "more than one record is ambiguous". Two calls, one question, the
+    // same answer: there is nothing to choose between, so the rebuild
+    // answers.
+    let fixture = Fixture::answering(&["choose:c2"]);
+    let live = fixture.start();
+    ask(&fixture, "first");
+    ask(&fixture, "second");
+    assert_eq!(
+        derivations(&fixture.data()).len(),
+        2,
+        "two records that agree"
+    );
+    let cited = cited_span(&fixture, "first");
+    live.stop();
+
+    let rebuilding = fixture.start_replaying();
+    let inspected = ask(&fixture, "third");
+    assert_eq!(result(&inspected, "q").0, "satisfied", "{inspected:?}");
+    assert_eq!(
+        cited_span(&fixture, "third"),
+        cited,
+        "and it is the span both records name"
+    );
+    rebuilding.stop();
+}
+
+#[test]
+fn a_rebuild_does_not_answer_from_a_record_that_was_purged() {
+    // **A purge is an order to destroy evidence**, and a rebuild that
+    // answered from a purged record would serve what somebody asked to
+    // be destroyed. `state` stays `sealed` through a purge — only the
+    // `purge` member and the availability change — so a check on
+    // `state` alone does not notice.
+    //
+    // The object has to survive the purge for this test to mean
+    // anything: collection deletes it, and a record whose object is
+    // gone is skipped for that reason instead. So the record's own
+    // bytes are ingested as a second artifact first, and **an object
+    // another sealed artifact names is never collected**. What is left
+    // is exactly the case in question: a purged record whose bytes are
+    // still on disk.
+    let fixture = Fixture::answering(&["choose:c2"]);
+    let live = fixture.start();
+    ask(&fixture, "warm");
+    let found = derivations(&fixture.data());
+    assert_eq!(found.len(), 1);
+    let artifact = found[0].0.clone();
+    let digest = found[0]
+        .1
+        .get("descriptor")
+        .and_then(|descriptor| descriptor.get("digest"))
+        .and_then(Value::as_str)
+        .expect("a digest")
+        .to_string();
+
+    let copy = fixture.directory.path().join("derivation.bytes");
+    let fetched = fixture.cbr(&[
+        "fetch",
+        &artifact,
+        "--digest",
+        &digest,
+        "--out",
+        copy.to_str().expect("utf-8"),
+    ]);
+    assert!(
+        fetched.status.success(),
+        "fetch: {}",
+        String::from_utf8_lossy(&fetched.stderr)
+    );
+    let ingested = fixture.cbr(&["ingest", copy.to_str().expect("utf-8")]);
+    assert!(
+        ingested.status.success(),
+        "ingest: {}",
+        String::from_utf8_lossy(&ingested.stderr)
+    );
+
+    fixture.purge_as_owner(&artifact, artifact_revision(&fixture.data(), &artifact));
+    live.stop();
+
+    let rebuilding = fixture.start_replaying();
+    let inspected = ask(&fixture, "after");
+    assert_eq!(
+        result(&inspected, "q").1,
+        "model_answer_not_retained",
+        "a purged record answered a rebuild: {inspected:?}"
+    );
+    rebuilding.stop();
+}
+
+#[test]
+fn a_retained_failure_beside_a_retained_choice_is_a_disagreement() {
+    // **The decision, tested rather than only written down.** One call
+    // answered with an id that was never offered and is retained as
+    // that failure; a second answered with a candidate. Preferring the
+    // usable one would be the rebuild deciding which of two histories
+    // to reproduce — improving on the past rather than replaying it,
+    // which is the same fault as taking the first match with better
+    // manners.
+    let fixture = Fixture::answering(&["choose:c99", "choose:c2"]);
+    let live = fixture.start();
+    let first = ask(&fixture, "first");
+    assert_eq!(
+        result(&first, "q").1,
+        "model_choice_not_offered",
+        "the first call failed, as the fixture scripted"
+    );
+    assert_eq!(result(&ask(&fixture, "second"), "q").0, "satisfied");
+    assert_eq!(derivations(&fixture.data()).len(), 2);
+    live.stop();
+
+    let rebuilding = fixture.start_replaying();
+    let inspected = ask(&fixture, "third");
+    assert_eq!(
+        result(&inspected, "q"),
+        ("unmet".to_string(), "model_answer_ambiguous".to_string()),
+        "a rebuild preferred the answer that worked: {inspected:?}"
     );
     rebuilding.stop();
 }

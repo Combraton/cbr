@@ -1991,17 +1991,43 @@ impl Provider {
     /// also has.** Without that, replaying would be a way of reading a
     /// wider job's answers from a narrower one — the readable-set gate
     /// on `evidence.fetch` walked around from the inside.
+    ///
+    /// **Every covered record is read, not the first one found.** A
+    /// model is not a function: two calls can ask one question and be
+    /// told different things, and m4e reruns the same questions live, so
+    /// a store holding both is the ordinary state rather than a corner
+    /// case. The id they are stored under is a digest covering the
+    /// instant each was made, so "the first match" would make the
+    /// rebuilt packet depend on a hash of a timestamp — the same history
+    /// producing either of two packets. If every covered record says the
+    /// same thing there is nothing to choose between; if any two differ
+    /// the item is [`crate::derivation::AMBIGUOUS`].
+    ///
+    /// **A retained failure beside a retained choice is a
+    /// disagreement**, and deliberately so. Preferring the choice would
+    /// be the rebuild deciding which of two histories to reproduce —
+    /// improving on the past rather than replaying it — which is the
+    /// same fault as taking the first match, with better manners.
+    ///
+    /// **A purged record is not read at all.** A purge is a deliberate
+    /// act of destroying evidence, and its object can still be on disk
+    /// until collection runs: answering from one would serve what
+    /// somebody ordered destroyed.
     fn retained(
         &self,
         question: &str,
         assist: &Assist<'_>,
     ) -> Result<Option<crate::derivation::Answer>, TickError> {
+        let mut agreed: Option<crate::derivation::Answer> = None;
         for (id, value) in self.store.subjects_of_kind(crate::evidence::ARTIFACT)? {
             if !id.starts_with("der.") {
                 continue;
             }
             let record = parse_record(&value)?;
             if text(&record, &["state"]) != "sealed" {
+                continue;
+            }
+            if !context::is_null(at(&record, &["purge"])) {
                 continue;
             }
             if !crate::derivation::covers(
@@ -2024,12 +2050,23 @@ impl Provider {
                 continue;
             }
             // A record this build cannot read is a failure with a name,
-            // not a question to ask a provider.
-            return Ok(Some(crate::derivation::answer_of(&sealed).unwrap_or(
+            // not a question to ask a provider — and it takes part in
+            // the agreement above, because a record nobody can read is
+            // no evidence that the others are right.
+            let found = crate::derivation::answer_of(&sealed).unwrap_or(
                 crate::derivation::Answer::Unmet(crate::derivation::UNREADABLE),
-            )));
+            );
+            match &agreed {
+                None => agreed = Some(found),
+                Some(already) if *already == found => {}
+                Some(_) => {
+                    return Ok(Some(crate::derivation::Answer::Unmet(
+                        crate::derivation::AMBIGUOUS,
+                    )));
+                }
+            }
         }
-        Ok(None)
+        Ok(agreed)
     }
 
     /// Seal one model exchange as evidence, unless an artifact already
