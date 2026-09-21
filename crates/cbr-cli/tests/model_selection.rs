@@ -19,129 +19,16 @@
 //!
 //! **No model is called.** The transport is the `model.fake` control.
 
-use std::path::Path;
 use std::time::{Duration, Instant};
 
 use cbr_encoding::Value;
 
 mod serving;
 
-use serving::{Fixture, OUTSIDE, UNASKED};
-
-/// Submit one request and poll until it is no longer preparing.
-fn prepared(fixture: &Fixture, request: &str, investigation: &str) -> Value {
-    let submitted = fixture.cbr(&[
-        "context",
-        request,
-        "--repo",
-        fixture.checkout.to_str().expect("utf-8"),
-        "--repo-id",
-        "app",
-        "--selector",
-        "queue drains shutdown",
-        "--task",
-        "what drains the queue",
-        "--capacity",
-        "65536",
-        "--investigation",
-        investigation,
-        "--want",
-        "q=source:queue.md",
-    ]);
-    assert!(
-        submitted.status.success(),
-        "submit: {}",
-        String::from_utf8_lossy(&submitted.stderr)
-    );
-    let started = Instant::now();
-    loop {
-        let polled = fixture.cbr(&["request", request]);
-        assert!(
-            polled.status.success(),
-            "inspect: {}",
-            String::from_utf8_lossy(&polled.stderr)
-        );
-        let inspected =
-            cbr_encoding::parse(String::from_utf8_lossy(&polled.stdout).trim().as_bytes())
-                .expect("canonical JSON");
-        if inspected.get("state").and_then(Value::as_str) != Some("preparing") {
-            return inspected;
-        }
-        assert!(
-            started.elapsed() < Duration::from_secs(60),
-            "{request} never left preparing: {inspected:?}"
-        );
-        std::thread::sleep(Duration::from_millis(20));
-    }
-}
-
-/// **Where the packet says the cited span is**, which is the first line
-/// of the section's own content: `app:queue.md lines 21-40 at tree ...`.
-/// The span is not a member of the item; it is what the section says
-/// about itself, and that is the thing a consumer reads.
-fn cited_span(fixture: &Fixture, request: &str) -> String {
-    let printed = fixture.cbr(&["packet", request, "--excerpt", "1000000"]);
-    assert!(
-        printed.status.success(),
-        "packet: {}",
-        String::from_utf8_lossy(&printed.stderr)
-    );
-    let packet = cbr_encoding::parse(String::from_utf8_lossy(&printed.stdout).trim().as_bytes())
-        .expect("canonical JSON");
-    let data = packet
-        .get("excerpt")
-        .and_then(|excerpt| excerpt.get("data_base64"))
-        .and_then(Value::as_str)
-        .unwrap_or_else(|| panic!("no excerpt in {packet:?}"));
-    let sealed = cbr_encoding::parse(&cbr_encoding::decode_base64(data).expect("base64"))
-        .expect("the sealed packet is canonical JSON");
-    sealed
-        .get("sections")
-        .and_then(Value::as_array)
-        .unwrap_or_default()
-        .iter()
-        .find(|section| section.get("section_id").and_then(Value::as_str) == Some("s-q"))
-        .and_then(|section| section.get("content"))
-        .and_then(Value::as_str)
-        .and_then(|content| content.lines().next())
-        .unwrap_or_else(|| panic!("no section s-q in {sealed:?}"))
-        .to_string()
-}
-
-/// The item's result, and its reason when it has one.
-fn result(inspected: &Value, item_id: &str) -> (String, String) {
-    let item = inspected
-        .get("items")
-        .and_then(Value::as_array)
-        .unwrap_or_default()
-        .iter()
-        .find(|item| item.get("item_id").and_then(Value::as_str) == Some(item_id))
-        .cloned()
-        .unwrap_or_else(|| panic!("no item {item_id} in {inspected:?}"));
-    (
-        item.get("result")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_string(),
-        item.get("reason")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_string(),
-    )
-}
-
-/// Every request body the provider recorded, as text.
-fn bodies_sent(data: &Path) -> Vec<String> {
-    let connection = rusqlite::Connection::open(data.join("cbr.sqlite")).expect("opens the store");
-    let mut statement = connection
-        .prepare("SELECT sent FROM model_calls ORDER BY id")
-        .expect("the recordings table exists");
-    statement
-        .query_map([], |row| row.get::<_, Vec<u8>>(0))
-        .expect("queries")
-        .map(|row| String::from_utf8_lossy(&row.expect("row")).to_string())
-        .collect()
-}
+use serving::{
+    Fixture, OUTSIDE, UNASKED, bodies_sent, calls, cited_span, ledger, poll, prepared, result,
+    submit,
+};
 
 #[test]
 fn a_request_that_authorises_no_investigation_calls_nothing_at_all() {
@@ -414,28 +301,6 @@ fn the_same_question_of_the_same_file_is_asked_once() {
     provider.stop();
 }
 
-/// The ledger rows that are charges, with the request each is for.
-fn ledger(data: &Path) -> Vec<(String, String, i64)> {
-    let connection = rusqlite::Connection::open(data.join("cbr.sqlite")).expect("opens the store");
-    let mut statement = connection
-        .prepare("SELECT request, kind, tokens FROM model_ledger ORDER BY id")
-        .expect("the ledger table exists");
-    let rows: Vec<(String, String, i64)> = statement
-        .query_map([], |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, i64>(2)?,
-            ))
-        })
-        .expect("queries")
-        .map(|row| row.expect("row"))
-        .collect();
-    rows.into_iter()
-        .filter(|(_, kind, _)| !kind.starts_with("admitted_"))
-        .collect()
-}
-
 #[test]
 fn a_completion_settles_to_what_the_provider_said_it_cost() {
     // **The reservation is conservative and the settlement is the
@@ -461,60 +326,6 @@ fn a_completion_settles_to_what_the_provider_said_it_cost() {
         "and settled at what the provider said, not at the reservation: {rows:?}"
     );
     provider.stop();
-}
-
-/// Every recorded exchange, as (job, request, call).
-fn calls(data: &Path) -> Vec<(String, String, String)> {
-    let connection = rusqlite::Connection::open(data.join("cbr.sqlite")).expect("opens the store");
-    let mut statement = connection
-        .prepare("SELECT job, request, call FROM model_calls ORDER BY id")
-        .expect("the recordings table exists");
-    statement
-        .query_map([], |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, String>(2)?,
-            ))
-        })
-        .expect("queries")
-        .map(|row| row.expect("row"))
-        .collect()
-}
-
-/// Submit one request over `file`, without waiting for it.
-fn submit(fixture: &Fixture, request: &str, file: &str) {
-    let want = format!("q=source:{file}");
-    let submitted = fixture.cbr(&[
-        "context",
-        request,
-        "--repo",
-        fixture.checkout.to_str().expect("utf-8"),
-        "--repo-id",
-        "app",
-        "--selector",
-        "queue drains shutdown",
-        "--task",
-        "what drains the queue",
-        "--capacity",
-        "65536",
-        "--investigation",
-        "1",
-        "--want",
-        &want,
-    ]);
-    assert!(
-        submitted.status.success(),
-        "submit {request}: {}",
-        String::from_utf8_lossy(&submitted.stderr)
-    );
-}
-
-/// Poll every request named, so each one's job gets ticks.
-fn poll(fixture: &Fixture, requests: &[&str]) {
-    for request in requests {
-        let _ = fixture.cbr(&["request", request]);
-    }
 }
 
 #[test]

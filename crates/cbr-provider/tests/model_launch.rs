@@ -229,6 +229,77 @@ fn no_model_configured_starts_and_never_mentions_a_credential() {
 }
 
 #[test]
+fn a_rebuild_refuses_every_way_of_being_asked_for_that_would_not_be_offline() {
+    // **An offline rebuild is allowed less than an ordinary launch, not
+    // more**, and each of these is a launch asking to be two things at
+    // once. All three are refused before the Keychain is touched, which
+    // is what makes them safe to run on the owner's machine.
+    for (arguments, expected) in [
+        (
+            vec!["--replay-model", "--permit-model-network"],
+            "is not an offline rebuild",
+        ),
+        (
+            vec![
+                "--replay-model",
+                "--calibrate",
+                "/dev/null",
+                "--permit-model-network",
+                "--model-run-ceiling",
+                "1000",
+            ],
+            "a launch is one or the other",
+        ),
+    ] {
+        let (started, message) = launch_with(&arguments, CONFIGURED);
+        assert!(!started, "{arguments:?} ran: {message}");
+        assert!(message.contains(expected), "{arguments:?}: {message}");
+        assert!(
+            !message.to_lowercase().contains("keychain"),
+            "{arguments:?} reached the credential: {message}"
+        );
+    }
+}
+
+#[test]
+fn a_rebuild_needs_the_model_whose_answers_it_is_replaying() {
+    let directory = tempfile::tempdir().expect("temp dir");
+    let config = directory.path().join("config.json");
+    std::fs::write(&config, r#"{"format":"cbr-config/1","principal":"owner"}"#).expect("config");
+    let output = Command::new(binary())
+        .arg("--data-dir")
+        .arg(directory.path().join("data"))
+        .arg("--config")
+        .arg(&config)
+        .arg("--replay-model")
+        .stdin(Stdio::null())
+        .output()
+        .expect("runs");
+    assert!(!output.status.success(), "it served");
+    let message = String::from_utf8_lossy(&output.stderr).to_string();
+    assert!(
+        message.contains("--replay-model needs a configured model"),
+        "{message}"
+    );
+}
+
+#[test]
+fn a_rebuild_with_a_model_serves_and_never_reads_a_credential() {
+    // The positive arm, and the reason the rule above is not "refuse
+    // every replay". A configured model plus `--replay-model` is a
+    // launch that serves, with a transport that panics if reached — so
+    // it needs no permit and reads no key, which is exactly why it is
+    // safe to run here.
+    let (started, message) = launch_with(&["--replay-model"], CONFIGURED);
+    assert!(started, "a rebuild did not serve: {message}");
+    let message = message.to_lowercase();
+    assert!(
+        !message.contains("keychain") && !message.contains("credential"),
+        "a rebuild said something about a credential: {message}"
+    );
+}
+
+#[test]
 fn the_calibration_refuses_every_way_of_being_asked_for_carelessly() {
     // **Each of these is checked before the Keychain is touched**, which is
     // what makes them safe to run on the owner's machine: a launch that was

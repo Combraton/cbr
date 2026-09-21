@@ -48,6 +48,9 @@ pub struct Launch {
     pub permit_model_network: bool,
     pub calibrate: bool,
     pub model_run_ceiling: Option<u64>,
+    /// `--replay-model`: answer every model question from retained
+    /// derivation records and make no call.
+    pub replay: bool,
 }
 
 /// What the launch does next.
@@ -61,6 +64,11 @@ pub enum Decision {
     ReadCredentialThenServe,
     /// Read the credential once, run the calibration, and exit.
     ReadCredentialThenCalibrate,
+    /// Serve, answering every model question from a retained derivation
+    /// record. **No credential and no network**: an offline rebuild is
+    /// strictly less than an ordinary serving launch, which is why it
+    /// needs less to be allowed.
+    ServeFromRecords,
 }
 
 impl Decision {
@@ -75,6 +83,35 @@ impl Decision {
 
 pub fn decide(launch: &Launch) -> Decision {
     let refuse = |reason: String| Decision::Refuse(reason);
+    // **The replay's own refusals come first**, and every one of them is
+    // about a launch asking to be two things at once. A replay reads no
+    // credential and opens no socket, so the refusals here are about
+    // honesty rather than safety: a rebuild that *could* call a provider
+    // is not the thing INTERNALS section 5 asks for.
+    if launch.replay {
+        if launch.calibrate {
+            return refuse(
+                "--replay-model answers from retained derivation records and --calibrate makes \
+                 live calls; a launch is one or the other"
+                    .into(),
+            );
+        }
+        if launch.permit_model_network {
+            return refuse(
+                "--replay-model needs no network and --permit-model-network opens one; a rebuild \
+                 that could reach a provider is not an offline rebuild"
+                    .into(),
+            );
+        }
+        if !launch.model_configured {
+            return refuse(
+                "--replay-model needs a configured model: a retained answer is found by a \
+                 question that names the model it was asked of"
+                    .into(),
+            );
+        }
+        return Decision::ServeFromRecords;
+    }
     // **The calibration's own refusals come first**, so an operator who
     // asked for it is told about the thing they asked for. Every one of
     // them is still a refusal, and a refusal reads no credential, so the
