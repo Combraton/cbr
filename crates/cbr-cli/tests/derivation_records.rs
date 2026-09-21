@@ -179,6 +179,31 @@ fn an_answer_that_was_never_offered_is_sealed_as_the_failure_it_was() {
 }
 
 #[test]
+fn two_answers_to_one_question_are_two_records() {
+    // **The record is addressed by its own bytes, not by its
+    // question.** A model is not a function: two jobs can ask the same
+    // thing and be told different things, and a store that kept the
+    // first and dropped the second would have a ledger saying two calls
+    // happened and a derivation saying one did.
+    let fixture = Fixture::answering(&["choose:c2", "choose:c1"]);
+    let provider = fixture.start();
+    prepared(&fixture, "first", "1");
+    prepared(&fixture, "second", "1");
+
+    let found = derivations(&fixture.data());
+    assert_eq!(found.len(), 2, "two calls, two records: {found:?}");
+    let chosen: Vec<String> = found
+        .iter()
+        .map(|(id, _)| text(&sealed(&fixture, id), &["answer", "chose"]))
+        .collect();
+    assert!(
+        chosen.contains(&"c2".to_string()) && chosen.contains(&"c1".to_string()),
+        "and they say what each was told: {chosen:?}"
+    );
+    provider.stop();
+}
+
+#[test]
 fn a_request_that_authorises_no_investigation_seals_no_derivation() {
     let fixture = Fixture::answering(&["choose:c1"]);
     let provider = fixture.start();

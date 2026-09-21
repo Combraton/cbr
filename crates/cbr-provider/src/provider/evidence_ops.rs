@@ -727,8 +727,24 @@ impl Provider {
         in_force: Option<&Grant>,
         record: &Value,
     ) -> Result<(), ProtocolError> {
-        let Some(under) = member(record, "readable_under") else {
+        if self.covers_derivation(in_force, record)? {
             return Ok(());
+        }
+        Err(ProtocolError::permission_denied(
+            "derivation_outside_readable_set",
+        ))
+    }
+
+    /// Whether this caller may be shown this record at all. Split out
+    /// because a **listing** hides one where `inspect` refuses it, and
+    /// hiding is not an error.
+    fn covers_derivation(
+        &self,
+        in_force: Option<&Grant>,
+        record: &Value,
+    ) -> Result<bool, ProtocolError> {
+        let Some(under) = member(record, "readable_under") else {
+            return Ok(true);
         };
         let view: Vec<String> = crate::repositories::view(&self.store, in_force)
             .map_err(|_| ProtocolError::new_internal_error())?
@@ -754,12 +770,7 @@ impl Provider {
                 claims.push(claim);
             }
         }
-        if crate::derivation::covers(under, &view, &claims) {
-            return Ok(());
-        }
-        Err(ProtocolError::permission_denied(
-            "derivation_outside_readable_set",
-        ))
+        Ok(crate::derivation::covers(under, &view, &claims))
     }
 
     pub(super) fn evidence_inspect(
@@ -1049,6 +1060,15 @@ impl Provider {
             let Some((_, record)) = self.evidence_record(evidence::ARTIFACT, &id)? else {
                 continue;
             };
+            // A derivation whose readable set this caller does not cover
+            // is hidden here exactly as `inspect` refuses it: a listing
+            // hands back the same descriptor, so a gate on one door and
+            // not the other is a gate with a second entrance. Counted as
+            // filtered, because authorization hid something.
+            if !self.covers_derivation(in_force, &record)? {
+                filtered = true;
+                continue;
+            }
             let descriptor = member(&record, "descriptor")
                 .cloned()
                 .unwrap_or(Value::Null);

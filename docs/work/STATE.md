@@ -61,6 +61,41 @@ Stated in [READINESS §6](m4/READINESS.md#what-is-retained-and-for-how-long) bec
 
 **Nothing ages any of them out.** CBR has no retention policy and the operator's remedy is the data directory. M6 owns the policy; m4d owes it a name to key on and an honest account of what exists. For a public repository this is public text on the owner's own disk; for a private one it would be that repository's text in a second place, kept indefinitely, which is one more reason the bar in §7 stays where it is.
 
+### The listing was a third door, and only the survivor analysis found it
+
+The readable-set gate went on `evidence.fetch` and `evidence.inspect`. **`evidence.query` was left open**, and a listing hands back the same descriptor `inspect` would — so a reader holding `evidence.read` over every artifact could be shown every derivation's job, request and model, having been refused the two doors either side of it. The mutant *remove the gate from `inspect`* surviving is what sent me looking; the hole it pointed at was somewhere else.
+
+Fixed by splitting the check: `covers_derivation` answers the question, `readable_derivation` turns a `false` into `permission_denied`, and the listing hides the row and counts it as filtered, because hiding is not an error.
+
+### The mutant table
+
+**Twenty mutants, twenty killed.** Each was run against the whole workspace suite, not against the tests it was aimed at. Three survived the first pass and were killed only after a test was added; the fourth row of that group is the listing hole above, which the survivors led to.
+
+| Mutant | Result | What kills it |
+|---|---|---|
+| The question's digest drops the candidates offered | killed | `a_candidate_set_with_one_fewer_is_a_different_question`, and the rebuild answering an edited file |
+| …drops the model | killed | `a_different_selector_or_task_or_model_is_a_different_question` |
+| A candidate's text is not digested, so an edit is the same question | killed | `a_question_whose_candidates_changed_is_not_answered_from_an_old_record` |
+| `covers` always true | killed | `a_reader_who_cannot_read_the_repository_cannot_read_the_derivation_about_it` |
+| `covers` checks the view and not the claims | killed | `a_reader_missing_a_repository_or_a_claim_does_not` |
+| An unreadable reason is guessed at as `model_call_failed` | killed | `a_reason_this_build_does_not_know_is_not_guessed_at` |
+| Nothing is sealed when the answer is taken | killed | the three record tests |
+| The record is sealed without its readable set | killed | the readable-set tests |
+| The chosen id resolves by position rather than by id | killed | `the_span_cited_is_the_one_the_model_chose` |
+| **The artifact id is the question's digest, not the record's** | **survived, then killed** | added `two_answers_to_one_question_are_two_records`: a model is not a function, and the second answer was being silently dropped |
+| The replay ignores the question's digest | killed | `a_question_whose_candidates_changed_…` |
+| **The replay ignores the readable set** | **survived, then killed** | added `a_rebuild_does_not_answer_from_a_record_made_under_a_wider_view`: the fetch gate walked around from the inside |
+| The replay falls back to BM25's first when nothing is retained | killed | `a_rebuild_with_nothing_retained_says_so_rather_than_choosing_for_itself` |
+| The gate is removed from `fetch` | killed | `a_reader_who_cannot_read_the_repository_…` |
+| **The gate is removed from `inspect`** | **survived, then killed** | added `a_reader_outside_the_view_cannot_inspect_it_either` — and looking for why it survived found the listing |
+| **The gate is absent from a listing** | killed | `a_reader_outside_the_view_does_not_see_it_in_a_listing`, written red against code that had no gate there |
+| A replay reads a credential | killed | `a_replay_never_reads_a_credential_and_never_opens_the_network` |
+| A replay may be given `--permit-model-network` | killed | the same, and `a_rebuild_refuses_every_way_of_being_asked_for_that_would_not_be_offline` |
+| `debug_launch.sh` passes `--permit-model-network` through | killed | `the_hand_launch_refuses_to_permit_model_network` |
+| `debug_launch.sh`'s own configuration names a `model_runtime` | killed | `the_configuration_this_launch_runs_under_names_no_model` |
+
+The three that survived are the useful part of the table. Two of them were cases I had reasoned about and not tested — *the artifact id is content-addressed, so of course two answers are two records* — and one of them was a hole in a place I had not looked at all.
+
 ### The m4e scope decision, recorded now because m4e depends on it
 
 Model-assisted selection chooses among spans ranked **inside one file the request already named**. It does not touch discovery, so it cannot change *what a packet finds*. **That is why it cannot move brian2**: that question failed twice because the answer never entered the candidate set, and a better choice inside the wrong file is still the wrong file.

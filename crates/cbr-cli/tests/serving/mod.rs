@@ -292,6 +292,46 @@ impl Fixture {
             .expect("cbr runs")
     }
 
+    /// Send one query as the second principal, over raw frames, and
+    /// hand back the whole JSON-RPC response.
+    ///
+    /// `cbr` has no verb for `evidence.inspect` or `evidence.query` —
+    /// they are a reader's operations and the CLI is a consumer's
+    /// client — and adding one to the product so that a test could
+    /// reach it would be the wrong way round.
+    pub fn query_as_reader(&self, grant: &str, operation: &str, payload: &str) -> Value {
+        use std::io::{BufRead, BufReader, Write};
+        let stream = UnixStream::connect(&self.socket).expect("connects");
+        let mut reader = BufReader::new(stream.try_clone().expect("clone"));
+        let mut writer = stream;
+        let mut call = |frame: String, expect_result: bool| -> Value {
+            writeln!(writer, "{frame}").expect("writes");
+            let mut line = String::new();
+            reader.read_line(&mut line).expect("reads");
+            if expect_result {
+                assert!(line.contains("\"result\""), "{line}");
+            }
+            cbr_encoding::parse(line.trim().as_bytes()).expect("canonical JSON")
+        };
+        call(
+            format!(
+                r#"{{"jsonrpc":"2.0","id":1,"method":"core.authenticate","params":{{"operation":"core.authenticate","message_id":"a","payload":{{"credential":"{READER}"}}}}}}"#
+            ),
+            true,
+        );
+        call(
+            r#"{"jsonrpc":"2.0","id":2,"method":"core.negotiate","params":{"operation":"core.negotiate","message_id":"n","payload":{"caller":{"name":"t","version":"1"},"receive_limits":{"max_frame_bytes":1048576},"profiles":[{"name":"core","majors":[1],"required":true,"required_features":["core.events","core.grants"],"optional_features":[]},{"name":"evidence","majors":[1],"required":true,"required_features":[],"optional_features":[]}]}}}"#
+                .to_string(),
+            true,
+        );
+        call(
+            format!(
+                r#"{{"jsonrpc":"2.0","id":3,"method":"{operation}","params":{{"operation":"{operation}","message_id":"q","grant":"{grant}","payload":{payload}}}}}"#
+            ),
+            false,
+        )
+    }
+
     /// Issue a grant to the second principal, over raw frames.
     ///
     /// `cbr` has no grant verb — grants are the authority's act and the

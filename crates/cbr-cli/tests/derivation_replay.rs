@@ -183,3 +183,71 @@ fn a_question_whose_candidates_changed_is_not_answered_from_an_old_record() {
     );
     rebuilding.stop();
 }
+
+#[test]
+fn a_rebuild_does_not_answer_from_a_record_made_under_a_wider_view() {
+    // **The readable-set gate, walked around from the inside.** The
+    // authority's job could read every registered repository, so its
+    // derivation was sealed under that view. A reader whose grant
+    // covers one of them must not get that answer back by asking the
+    // same question under a rebuild — that would be `evidence.fetch`'s
+    // refusal with an extra step in front of it.
+    let fixture = Fixture::answering(&["choose:c2"]);
+    let live = fixture.start();
+    ask(&fixture, "warm");
+    assert_eq!(derivations(&fixture.data()).len(), 1);
+    fixture.issue_grant(
+        "g-app",
+        &["context.request", "context.read", "context.packet.read"],
+        r#"{"kind":"context.request"},{"kind":"context.job"},{"kind":"context.packet"},{"kind":"cbr.repository","id":"app"}"#,
+    );
+    live.stop();
+
+    let rebuilding = fixture.start_replaying();
+    let submitted = fixture.cbr_as_reader(
+        "g-app",
+        &[
+            "context",
+            "narrow",
+            "--repo",
+            fixture.checkout.to_str().expect("utf-8"),
+            "--repo-id",
+            "app",
+            "--selector",
+            "queue drains shutdown",
+            "--task",
+            "what drains the queue",
+            "--capacity",
+            "65536",
+            "--investigation",
+            "1",
+            "--want",
+            "q=source:queue.md",
+        ],
+    );
+    assert!(
+        submitted.status.success(),
+        "submit: {}",
+        String::from_utf8_lossy(&submitted.stderr)
+    );
+    let started = std::time::Instant::now();
+    let inspected = loop {
+        let polled = fixture.cbr_as_reader("g-app", &["request", "narrow"]);
+        let parsed = cbr_encoding::parse(String::from_utf8_lossy(&polled.stdout).trim().as_bytes())
+            .expect("canonical JSON");
+        if parsed.get("state").and_then(Value::as_str) != Some("preparing") {
+            break parsed;
+        }
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(60),
+            "never left preparing: {parsed:?}"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    };
+    assert_eq!(
+        result(&inspected, "q").1,
+        "model_answer_not_retained",
+        "a narrower reader was handed a wider job's answer: {inspected:?}"
+    );
+    rebuilding.stop();
+}

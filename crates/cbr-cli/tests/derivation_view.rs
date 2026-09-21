@@ -106,6 +106,66 @@ fn a_reader_who_cannot_read_the_repository_cannot_read_the_derivation_about_it()
 }
 
 #[test]
+fn a_reader_outside_the_view_cannot_inspect_it_either() {
+    // **`fetch` is not the only door.** `inspect` returns the
+    // descriptor, which says which job made the derivation, for which
+    // request and of which model, so a gate on one and not the other
+    // would be a gate with a second entrance.
+    let fixture = Fixture::answering(&["choose:c2"]);
+    let provider = fixture.start();
+    prepared(&fixture, "inspected", "1");
+    let (artifact, _) = only_derivation(&fixture);
+
+    grant_reading(&fixture, "g-narrow", &["outside"]);
+    let answered = fixture.query_as_reader(
+        "g-narrow",
+        "evidence.inspect",
+        &format!(r#"{{"artifact":{{"kind":"evidence.artifact","id":"{artifact}"}}}}"#),
+    );
+    let code = answered
+        .get("error")
+        .and_then(|error| error.get("data"))
+        .and_then(|data| data.get("code"))
+        .and_then(Value::as_str);
+    assert_eq!(
+        code,
+        Some("permission_denied"),
+        "inspect answered: {answered:?}"
+    );
+    provider.stop();
+}
+
+#[test]
+fn a_reader_outside_the_view_does_not_see_it_in_a_listing() {
+    // The third door. A listing hands back the same descriptor
+    // `inspect` would, so a derivation the reader may not inspect is
+    // one they may not be shown.
+    let fixture = Fixture::answering(&["choose:c2"]);
+    let provider = fixture.start();
+    prepared(&fixture, "listed", "1");
+    let (artifact, _) = only_derivation(&fixture);
+
+    grant_reading(&fixture, "g-narrow", &["outside"]);
+    let answered = fixture.query_as_reader("g-narrow", "evidence.query", "{}");
+    let listed: Vec<String> = answered
+        .get("result")
+        .and_then(|result| result.get("items"))
+        .and_then(Value::as_array)
+        .unwrap_or_else(|| panic!("no items in {answered:?}"))
+        .iter()
+        .filter_map(|item| item.get("artifact"))
+        .filter_map(|subject| subject.get("id"))
+        .filter_map(Value::as_str)
+        .map(str::to_string)
+        .collect();
+    assert!(
+        !listed.contains(&artifact),
+        "the listing named {artifact}: {listed:?}"
+    );
+    provider.stop();
+}
+
+#[test]
 fn a_reader_who_can_read_the_repository_reads_the_derivation() {
     // The other arm, and the one that stops the rule above from being
     // "refuse everybody, which is trivially safe".
