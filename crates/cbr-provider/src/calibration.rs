@@ -102,6 +102,11 @@ pub struct Completion {
     pub counted: Option<u64>,
     /// Set when the bill exceeded the prediction by more than the margin.
     pub prediction_finding: Option<String>,
+    /// What the completion ended as: `answered`, or the typed reason it
+    /// did not. **Carried rather than collapsed into a stop** — a
+    /// sixteen-token limit spent on reasoning is the provider doing what
+    /// it documents, and run 2 reported it as a stopped run.
+    pub outcome: String,
     /// How many repairs it needed. Recorded, because a completion that
     /// needed repairing is a fact about the request rather than noise.
     pub repairs: u32,
@@ -233,51 +238,50 @@ pub fn run(
         },
         &no_barrier,
     );
-    match outcome {
-        Outcome::Answered {
-            reply,
-            usage,
-            input_usage,
-            counted,
-            repairs,
-        } => {
-            // **The second comparison.** The local bound against the
-            // provider's count is one question; the provider's count
-            // against the provider's own bill for the same request is a
-            // different one, and only the second says whether making the
-            // count is worth anything.
-            let prediction_finding = match (counted, input_usage) {
-                (Some(counted), Some(charged))
-                    if charged > counted + counted * PREDICTION_MARGIN_PERCENT / 100 =>
-                {
-                    Some(format!(
-                        "the counting endpoint predicted {counted} input tokens and the \
-                         provider charged {charged} for the same request, which is more \
-                         than the stated margin of {PREDICTION_MARGIN_PERCENT}%"
-                    ))
-                }
-                _ => None,
-            };
-            Report {
-                rows,
-                completion: Some(Completion {
-                    usage: Some(usage),
-                    input_usage,
-                    counted,
-                    prediction_finding,
-                    repairs,
-                    answer: first_line(&reply),
-                }),
-                stopped: None,
-            }
+    let finding = |counted: Option<u64>, charged: Option<u64>| match (counted, charged) {
+        (Some(counted), Some(charged))
+            if charged > counted + counted * PREDICTION_MARGIN_PERCENT / 100 =>
+        {
+            Some(format!(
+                "the counting endpoint predicted {counted} input tokens and the provider \
+                 charged {charged} for the same request, which is more than the stated \
+                 margin of {PREDICTION_MARGIN_PERCENT}%"
+            ))
         }
-        Outcome::Unmet { reason, repairs } => Report {
+        _ => None,
+    };
+    match outcome {
+        // **Answered, or ended some other way — both are completions that
+        // happened.** Only two things stop this run: a count above its
+        // local estimate, and a measurement that could not be obtained.
+        Outcome::Answered { reply, cost } => Report {
             rows,
-            completion: None,
-            stopped: Some(format!(
-                "the completion did not happen: {reason} (after {repairs} repair(s))"
-            )),
+            completion: Some(Completion {
+                usage: cost.usage,
+                input_usage: cost.input_usage,
+                counted: cost.counted,
+                prediction_finding: finding(cost.counted, cost.input_usage),
+                outcome: "answered".into(),
+                repairs: cost.repairs,
+                answer: first_line(&reply),
+            }),
+            stopped: None,
         },
+        Outcome::Unmet { reason, cost } => Report {
+            rows,
+            completion: Some(Completion {
+                usage: cost.usage,
+                input_usage: cost.input_usage,
+                counted: cost.counted,
+                prediction_finding: finding(cost.counted, cost.input_usage),
+                outcome: reason.to_string(),
+                repairs: cost.repairs,
+                answer: String::new(),
+            }),
+            stopped: None,
+        },
+        // A refusal means no completion happened at all, so the run did
+        // not obtain the measurement it came for.
         Outcome::Refused(refusal) => Report {
             rows,
             completion: None,
@@ -334,11 +338,12 @@ impl Report {
                 let figure =
                     |held: Option<u64>| held.map_or_else(|| "-".to_string(), |n| n.to_string());
                 out.push_str(
-                    "| completion | counted | input charged | total | repairs | answer |\n\
-                     |---|---:|---:|---:|---:|---|\n",
+                    "| completion | outcome | counted | input charged | total | repairs | answer |\n\
+                     |---|---|---:|---:|---:|---:|---|\n",
                 );
                 out.push_str(&format!(
-                    "| 16-token | {} | {} | {} | {} | {} |\n",
+                    "| 16-token | {} | {} | {} | {} | {} | {} |\n",
+                    completion.outcome,
                     figure(completion.counted),
                     figure(completion.input_usage),
                     figure(completion.usage),

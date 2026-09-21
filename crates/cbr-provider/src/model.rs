@@ -502,25 +502,36 @@ pub struct Ask<'a> {
     pub body: &'a wire::request::Request,
 }
 
+/// What a question cost, **whatever it ended as**.
+///
+/// Carried by every outcome and not only by the answered one: an answer
+/// that could not be used is still a charge against a shared quota, and a
+/// completion whose whole output budget went on reasoning has a cost and
+/// no text. Collapsing those into "it failed" loses the number, which is
+/// what calibration run 2 found this code doing.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Cost {
+    /// What the provider said the whole call cost.
+    pub usage: Option<u64>,
+    /// What it said the **input** cost, separately.
+    pub input_usage: Option<u64>,
+    /// What the counting endpoint predicted, when a count was made.
+    pub counted: Option<u64>,
+    /// How many repairs it took. Recorded, because a selection that
+    /// needed repairing is a fact about the request.
+    pub repairs: u32,
+}
+
 /// How a question ended.
 #[derive(Debug)]
 pub enum Outcome {
     Answered {
         reply: wire::response::Reply,
-        usage: u64,
-        /// What the provider said the **input** cost.
-        input_usage: Option<u64>,
-        /// What the counting endpoint predicted for the same request, when
-        /// the dialect is one it describes. The calibration compares the
-        /// two: that is the measurement saying whether the count is worth
-        /// making at all.
-        counted: Option<u64>,
-        /// How many repairs it took. Recorded, because a selection that
-        /// needed repairing is a fact about the request.
-        repairs: u32,
+        cost: Cost,
     },
-    /// A typed reason, never retried past the bound above.
-    Unmet { reason: &'static str, repairs: u32 },
+    /// A typed reason, never retried past the bound above — **with what it
+    /// cost**, which is not nothing.
+    Unmet { reason: &'static str, cost: Cost },
     /// Refused by CBR's own envelope, before anything was sent.
     Refused(Refusal),
 }
@@ -559,25 +570,33 @@ impl Runtime<'_> {
                     counted,
                 } => (body, usage, counted),
                 Ended::Refused(refusal) => return Outcome::Refused(refusal),
-                Ended::Unmet(reason) => return Outcome::Unmet { reason, repairs },
-            };
-            let read = wire::response::read_completion(ask.dialect, &body.want, &answered);
-            let unusable = match read.reply {
-                Ok(reply) => {
-                    return Outcome::Answered {
-                        reply,
-                        usage: read.usage.unwrap_or(usage),
-                        input_usage: read.input_usage,
-                        counted,
-                        repairs,
+                // Nothing came back, so nothing is known about the cost
+                // beyond the reservation the ledger already settled.
+                Ended::Unmet(reason) => {
+                    return Outcome::Unmet {
+                        reason,
+                        cost: Cost {
+                            repairs,
+                            ..Cost::default()
+                        },
                     };
                 }
+            };
+            let read = wire::response::read_completion(ask.dialect, &body.want, &answered);
+            let cost = Cost {
+                usage: Some(read.usage.unwrap_or(usage)),
+                input_usage: read.input_usage,
+                counted,
+                repairs,
+            };
+            let unusable = match read.reply {
+                Ok(reply) => return Outcome::Answered { reply, cost },
                 Err(unusable) => unusable,
             };
             if !unusable.repairable() || repairs >= REPAIRS {
                 return Outcome::Unmet {
                     reason: unusable.reason(),
-                    repairs,
+                    cost,
                 };
             }
             // **The model's own answer is not sent back.** Repository text

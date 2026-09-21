@@ -392,3 +392,134 @@ fn an_input_charged_within_the_margin_is_not_a_finding() {
 fn the_margin_is_a_stated_number() {
     assert_eq!(PREDICTION_MARGIN_PERCENT, 2);
 }
+
+// --- a truncated completion is not a stop --------------------------------
+
+/// A Responses completion that ends `incomplete`, its whole output budget
+/// spent on reasoning, exactly as run 2's did.
+fn responses_incomplete() -> Vec<u8> {
+    br#"{"object":"response","status":"incomplete","error":null,
+"incomplete_details":{"reason":"max_output_tokens"},
+"output":[{"type":"reasoning","content":[{"type":"reasoning_text","text":"thinking"}],
+"summary":[]}],"output_text":null,
+"usage":{"input_tokens":28,"output_tokens":16,"total_tokens":44}}"#
+        .to_vec()
+}
+
+fn run_ending_in(body: Vec<u8>, usage: Option<u64>) -> Report {
+    let connection = database();
+    let mut answers: Vec<Answer> = corpus()
+        .iter()
+        .map(|(_, text)| Answer::Counted((text.len() / 4) as u64))
+        .collect();
+    answers.push(Answer::Counted(122));
+    answers.push(Answer::Completed { body, usage });
+    let transport = Recorder::new(answers);
+    run(
+        T0,
+        Ledger::new(&connection).with_run_ceiling(Some(CEILING)),
+        &transport,
+        Dialect::Responses,
+        "MiniMax-M2.7-highspeed",
+    )
+}
+
+#[test]
+fn a_truncated_completion_is_an_outcome_with_a_cost_and_not_a_stop() {
+    // **The defect run 2 exposed in this module.** A sixteen-token limit
+    // spent entirely on reasoning is what the provider documents itself
+    // doing, and the run that produced every measurement it exists for
+    // reported `STOPPED` and exited non-zero.
+    //
+    // A stop means one of two things and no others: a count above its
+    // local estimate, or a measurement that could not be obtained.
+    let report = run_ending_in(responses_incomplete(), Some(44));
+    assert!(
+        report.stopped.is_none(),
+        "a truncated completion stopped the run: {:?}",
+        report.stopped
+    );
+    assert_eq!(report.rows.len(), corpus().len(), "every file was counted");
+    let completion = report.completion.expect("the completion is recorded");
+    assert_eq!(
+        completion.outcome, "model_answer_truncated",
+        "and its outcome is carried rather than collapsed"
+    );
+    assert_eq!(completion.usage, Some(44), "with its cost");
+    assert_eq!(completion.input_usage, Some(28));
+    assert_eq!(completion.counted, Some(122));
+}
+
+#[test]
+fn the_table_of_a_truncated_run_reads_as_a_finished_run() {
+    let report = run_ending_in(responses_incomplete(), Some(44));
+    let table = report.table();
+    assert!(!table.contains("STOPPED"), "{table}");
+    assert!(table.contains("model_answer_truncated"), "{table}");
+    assert!(table.contains("44"), "the cost is in it: {table}");
+}
+
+#[test]
+fn a_count_that_could_not_be_obtained_is_still_a_stop() {
+    // The other half: the exit stays non-zero for the two things that
+    // really are stops, or the change would have made every run succeed.
+    let connection = database();
+    let transport = Recorder::new(vec![Answer::Failed {
+        reason: "provider_status".into(),
+        usage: None,
+    }]);
+    let report = run(
+        T0,
+        Ledger::new(&connection).with_run_ceiling(Some(CEILING)),
+        &transport,
+        Dialect::Responses,
+        "MiniMax-M2.7-highspeed",
+    );
+    assert!(report.stopped.is_some(), "a measurement was not obtained");
+}
+
+#[test]
+fn a_completion_the_envelope_refused_is_still_a_stop() {
+    // **The completion never happened at all**, so the run did not obtain
+    // the measurement it came for. That is a stop, where a completion that
+    // happened and was truncated is not.
+    //
+    // Reached by scripting the completion's own count above the
+    // per-request ceiling, so the refusal lands on the completion rather
+    // than on one of the corpus counts — an earlier version set a low run
+    // ceiling, which stopped the first count instead and tested nothing
+    // about this path.
+    let connection = database();
+    let mut answers: Vec<Answer> = corpus()
+        .iter()
+        .map(|(_, text)| Answer::Counted((text.len() / 4) as u64))
+        .collect();
+    answers.push(Answer::Counted(crate::budget::PER_REQUEST_TOKENS + 1));
+    let transport = Recorder::new(answers);
+    let report = run(
+        T0,
+        Ledger::new(&connection).with_run_ceiling(Some(CEILING)),
+        &transport,
+        Dialect::Responses,
+        "MiniMax-M2.7-highspeed",
+    );
+    assert_eq!(report.rows.len(), corpus().len(), "every file was counted");
+    let stopped = report.stopped.expect("the completion was refused");
+    assert!(stopped.contains("refused"), "{stopped}");
+    assert!(report.completion.is_none(), "and there is no completion");
+}
+
+#[test]
+fn a_run_ceiling_too_low_for_the_corpus_is_a_stop_too() {
+    let connection = database();
+    let transport = Recorder::new(vec![Answer::Counted(10)]);
+    let report = run(
+        T0,
+        Ledger::new(&connection).with_run_ceiling(Some(1_000)),
+        &transport,
+        Dialect::Responses,
+        "MiniMax-M2.7-highspeed",
+    );
+    let stopped = report.stopped.expect("the ceiling stopped it");
+    assert!(stopped.contains("run_over_ceiling"), "{stopped}");
+}

@@ -967,7 +967,10 @@ fn prose_where_a_structure_was_asked_for_is_repaired_once_and_then_answered() {
         &no_barrier,
     );
     match outcome {
-        Outcome::Answered { reply, repairs, .. } => {
+        Outcome::Answered {
+            reply,
+            cost: Cost { repairs, .. },
+        } => {
             assert!(matches!(reply, Reply::Structure(_)), "{reply:?}");
             assert_eq!(repairs, 1, "one repair, not none and not two");
         }
@@ -1012,7 +1015,7 @@ fn the_repair_is_bounded_and_the_outcome_is_reported_rather_than_chased() {
             outcome,
             Outcome::Unmet {
                 reason: "model_output_unstructured",
-                repairs: 1
+                cost: Cost { repairs: 1, .. }
             }
         ),
         "{outcome:?}"
@@ -1051,7 +1054,7 @@ fn an_outcome_that_is_not_repairable_is_reported_without_a_second_call() {
             outcome,
             Outcome::Unmet {
                 reason: "model_reasoning_leaked",
-                repairs: 0
+                cost: Cost { repairs: 0, .. }
             }
         ),
         "{outcome:?}"

@@ -146,6 +146,13 @@ This is the leak M3 shipped and fixed once already: discovery called an operatio
 
 **Any private repository still needs the owner's explicit word before a single byte of it is sent**, exactly as §7 already requires, and that word has not been given for any. The absence of a retention control is a reason that bar stays where it is, not a reason to lower it.
 
+**Two more things are unobservable, and stay stated as such.** Both from calibration run 2, observed 2026-09-21:
+
+- **Whether `service_tier: standard` was honoured is unknown.** CBR sends it explicitly and the response returns `service_tier: null`, so the field is accepted and not reflected. Nothing in a response says which tier served it. CBR keeps sending `standard` because sending nothing would leave a default to change under it; it cannot claim the request was honoured.
+- **`store` came back `false` without being asked.** There is no request parameter for it, so CBR did not ask and cannot; the value observed on one response was `false`. **One response is not a policy**, and this does not soften the retention limit above — it is a single observation recorded next to it.
+
+Both are things CBR **cannot** verify rather than things it has not got round to verifying, which is a different claim and is the one being made.
+
 **The repositories.** brian2 is CeCILL-licensed and public; Knowscroll-v2 is public. Sending their text to a provider is sending public text, and the licence still governs what CBR may **commit** — digests, paths, spans, counts and costs only, which is unchanged. **Any private repository needs the owner's explicit word before a single byte of it is sent**, and CBR has no such word today.
 
 ## 8. Bounded runtime
