@@ -93,16 +93,34 @@ impl Fixture {
     /// are the count's boundaries and a serving call counts only when the
     /// local bound refuses on a counter a tighter figure could satisfy.
     pub fn paused_at(barrier: &str) -> Self {
-        Self::build(Some(barrier), &["choose:c2"], "always")
+        Self::build(&[barrier], &["choose:c2"], "always")
+    }
+
+    /// A fixture that pauses at **two** barriers, which is how two model
+    /// calls are held in flight at once: a barrier pauses only the first
+    /// thread to reach it, so one name holds one call. With
+    /// `counting: always` the first call stops at the count's boundary
+    /// and the second, finding that one used, goes on to the
+    /// completion's.
+    pub fn paused_at_two() -> Self {
+        Self::build(
+            // **After the send, not after the reservation.** A call held
+            // before it sends has recorded nothing, and a test watching
+            // the recordings cannot tell it apart from a call that never
+            // started.
+            &["model.count.after_send", "model.completion.after_send"],
+            &["choose:c1"],
+            "always",
+        )
     }
 
     /// A fixture whose fake model answers `answers`, one per completion,
     /// with the counting a serving call site really uses.
     pub fn answering(answers: &[&str]) -> Self {
-        Self::build(None, answers, "when_it_could_admit")
+        Self::build(&[], answers, "when_it_could_admit")
     }
 
-    fn build(barrier: Option<&str>, answers: &[&str], counting: &str) -> Self {
+    fn build(barriers_enabled: &[&str], answers: &[&str], counting: &str) -> Self {
         let directory = tempfile::tempdir().expect("temp dir");
         let sockets = directory.path().join("s");
         std::fs::create_dir(&sockets).expect("socket dir");
@@ -113,6 +131,13 @@ impl Fixture {
         let checkout = directory.path().join("app");
         std::fs::create_dir_all(&checkout).expect("checkout");
         std::fs::write(checkout.join("queue.md"), many_candidates()).expect("writes");
+        // **A second file an item can name**, so a request can need two
+        // calls. One item per request never exercises a compile holding
+        // two answers at once, which is the case the pool's
+        // keep-until-taken rule exists for.
+        std::fs::write(checkout.join("cache.md"), many_candidates()).expect("writes");
+        // A third, for the request that has to wait for the bound.
+        std::fs::write(checkout.join("index.md"), many_candidates()).expect("writes");
         std::fs::write(checkout.join("unasked.md"), UNASKED).expect("writes");
         git(&checkout, &["init", "-q", "-b", "main"]);
         git(&checkout, &["add", "-A"]);
@@ -133,7 +158,11 @@ impl Fixture {
         // reaching it needs the fake transport, which only a conformance
         // launch may have — a production one serves no test control at
         // all. No fixture of the conformance suite sets it.
-        let enabled = barrier.map_or(String::new(), |barrier| format!("\"{barrier}\""));
+        let enabled = barriers_enabled
+            .iter()
+            .map(|barrier| format!("\"{barrier}\""))
+            .collect::<Vec<_>>()
+            .join(",");
         let scripted = answers
             .iter()
             .map(|answer| format!("\"{answer}\""))

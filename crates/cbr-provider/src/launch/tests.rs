@@ -299,3 +299,28 @@ fn the_calibration_is_never_decided_without_its_ceiling_inside_the_cap() {
         );
     }
 }
+
+#[test]
+fn a_serving_launch_with_a_model_and_the_permit_reads_a_credential_and_serves() {
+    // **What the constant asserts, asserted.** Every other test about
+    // `SERVING_CALLS_A_MODEL` is an implication — `if the constant, skip`
+    // — which is right for rules that stop applying when it flips, and
+    // leaves nothing at all constraining the flipped value. Setting it
+    // back to false broke no test in the suite, which means the fact it
+    // stands for was not held by anything.
+    //
+    // The fact is this: serving has a call site now, so a launch given a
+    // model and the permit has somewhere to spend a credential and is not
+    // refused. A change that removes the call site has to change this
+    // test, which is the point of it.
+    assert_eq!(
+        decide(&Launch {
+            model_configured: true,
+            permit_model_network: true,
+            calibrate: false,
+            model_run_ceiling: None,
+        }),
+        Decision::ReadCredentialThenServe,
+        "serving calls a model, so this launch is not refused"
+    );
+}

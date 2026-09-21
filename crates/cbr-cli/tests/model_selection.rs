@@ -279,3 +279,306 @@ fn nothing_outside_the_requests_view_is_in_a_request_body() {
     }
     provider.stop();
 }
+
+#[test]
+fn a_request_with_two_items_asks_two_questions_and_holds_both_answers() {
+    // **The case one item per request never reaches.** A compile that
+    // needs two calls asks across several ticks: the first answer settles
+    // while the second is still running, and the compile can only finish
+    // when it holds both. Two things would break it and neither shows
+    // with a single item — an answer released the moment it is read, and
+    // a pool key that does not distinguish the two questions.
+    //
+    // Two items, two files, one call each: **exactly two completions**.
+    // Fewer means one answer was reused for a question it was not asked;
+    // more means an answer was released and the question asked again, at
+    // a second charge.
+    let fixture = Fixture::answering(&["choose:c2", "choose:c3"]);
+    let provider = fixture.start();
+    let submitted = fixture.cbr(&[
+        "context",
+        "two",
+        "--repo",
+        fixture.checkout.to_str().expect("utf-8"),
+        "--repo-id",
+        "app",
+        "--selector",
+        "queue drains shutdown",
+        "--task",
+        "what drains the queue",
+        "--capacity",
+        "65536",
+        "--investigation",
+        "2",
+        "--want",
+        "q=source:queue.md",
+        "--want",
+        "c=source:cache.md",
+    ]);
+    assert!(
+        submitted.status.success(),
+        "submit: {}",
+        String::from_utf8_lossy(&submitted.stderr)
+    );
+    let started = Instant::now();
+    let inspected = loop {
+        let polled = fixture.cbr(&["request", "two"]);
+        let inspected =
+            cbr_encoding::parse(String::from_utf8_lossy(&polled.stdout).trim().as_bytes())
+                .expect("canonical JSON");
+        if inspected.get("state").and_then(Value::as_str) != Some("preparing") {
+            break inspected;
+        }
+        assert!(
+            started.elapsed() < Duration::from_secs(60),
+            "never left preparing: {inspected:?}"
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    };
+    assert_eq!(result(&inspected, "q").0, "satisfied", "{inspected:?}");
+    assert_eq!(result(&inspected, "c").0, "satisfied", "{inspected:?}");
+    assert_eq!(
+        bodies_sent(&fixture.data()).len(),
+        2,
+        "two items, two files, two questions — and each asked once"
+    );
+    provider.stop();
+}
+
+#[test]
+fn the_same_question_of_the_same_file_is_asked_once() {
+    // The rule from the other side: **the pool key is the question, not
+    // the item.** Two items asking the same thing of the same file are
+    // one call, not two charges.
+    //
+    // The key also carries the *selector*, and that half is not tested
+    // here — it cannot be, through this client. `cbr` gives every item of
+    // a request the same selector, so two items on one file always ask
+    // the same question. Over the protocol an item carries its own, and
+    // there a key without the selector would hand the second item a
+    // choice made from a candidate list it was never shown: two selectors
+    // rank a file differently, so `c2` does not mean the same span to
+    // both. The key carries it for that case, which this suite reaches
+    // no further than saying.
+    let fixture = Fixture::answering(&["choose:c2", "choose:c2"]);
+    let provider = fixture.start();
+    let submitted = fixture.cbr(&[
+        "context",
+        "same-file",
+        "--repo",
+        fixture.checkout.to_str().expect("utf-8"),
+        "--repo-id",
+        "app",
+        "--selector",
+        "queue drains shutdown",
+        "--task",
+        "what drains the queue",
+        "--capacity",
+        "65536",
+        "--investigation",
+        "2",
+        "--want",
+        "q=source:queue.md",
+        "--want",
+        "o=source:queue.md",
+    ]);
+    assert!(
+        submitted.status.success(),
+        "submit: {}",
+        String::from_utf8_lossy(&submitted.stderr)
+    );
+    let started = Instant::now();
+    loop {
+        let polled = fixture.cbr(&["request", "same-file"]);
+        let inspected =
+            cbr_encoding::parse(String::from_utf8_lossy(&polled.stdout).trim().as_bytes())
+                .expect("canonical JSON");
+        if inspected.get("state").and_then(Value::as_str) != Some("preparing") {
+            break;
+        }
+        assert!(
+            started.elapsed() < Duration::from_secs(60),
+            "never left preparing: {inspected:?}"
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    // The CLI gives every item the request's one selector, so these two
+    // ask the same question of the same file and **are** one question.
+    // What this pins is that the count follows the question rather than
+    // the item: one selector, one call.
+    assert_eq!(
+        bodies_sent(&fixture.data()).len(),
+        1,
+        "the same question of the same file, asked once"
+    );
+    provider.stop();
+}
+
+/// The ledger rows that are charges, with the request each is for.
+fn ledger(data: &Path) -> Vec<(String, String, i64)> {
+    let connection = rusqlite::Connection::open(data.join("cbr.sqlite")).expect("opens the store");
+    let mut statement = connection
+        .prepare("SELECT request, kind, tokens FROM model_ledger ORDER BY id")
+        .expect("the ledger table exists");
+    let rows: Vec<(String, String, i64)> = statement
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, i64>(2)?,
+            ))
+        })
+        .expect("queries")
+        .map(|row| row.expect("row"))
+        .collect();
+    rows.into_iter()
+        .filter(|(_, kind, _)| !kind.starts_with("admitted_"))
+        .collect()
+}
+
+#[test]
+fn a_completion_settles_to_what_the_provider_said_it_cost() {
+    // **The reservation is conservative and the settlement is the
+    // truth.** The reservation is the local bound, which over-states by
+    // three to four times; the row that survives the call must be the
+    // provider's own figure, or a shared quota is charged for something
+    // nobody spent. The fixture's model says 5,000.
+    let fixture = Fixture::answering(&["choose:c1"]);
+    let provider = fixture.start();
+    prepared(&fixture, "settling", "1");
+    let rows = ledger(&fixture.data());
+    let completion: Vec<_> = rows
+        .iter()
+        .filter(|(request, ..)| request == "settling")
+        .collect();
+    assert_eq!(completion.len(), 1, "one completion: {rows:?}");
+    assert_eq!(
+        completion[0].1, "usage",
+        "settled, not left reserved: {rows:?}"
+    );
+    assert_eq!(
+        completion[0].2, 5_000,
+        "and settled at what the provider said, not at the reservation: {rows:?}"
+    );
+    provider.stop();
+}
+
+/// Every recorded exchange, as (job, request, call).
+fn calls(data: &Path) -> Vec<(String, String, String)> {
+    let connection = rusqlite::Connection::open(data.join("cbr.sqlite")).expect("opens the store");
+    let mut statement = connection
+        .prepare("SELECT job, request, call FROM model_calls ORDER BY id")
+        .expect("the recordings table exists");
+    statement
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+            ))
+        })
+        .expect("queries")
+        .map(|row| row.expect("row"))
+        .collect()
+}
+
+/// Submit one request over `file`, without waiting for it.
+fn submit(fixture: &Fixture, request: &str, file: &str) {
+    let want = format!("q=source:{file}");
+    let submitted = fixture.cbr(&[
+        "context",
+        request,
+        "--repo",
+        fixture.checkout.to_str().expect("utf-8"),
+        "--repo-id",
+        "app",
+        "--selector",
+        "queue drains shutdown",
+        "--task",
+        "what drains the queue",
+        "--capacity",
+        "65536",
+        "--investigation",
+        "1",
+        "--want",
+        &want,
+    ]);
+    assert!(
+        submitted.status.success(),
+        "submit {request}: {}",
+        String::from_utf8_lossy(&submitted.stderr)
+    );
+}
+
+/// Poll every request named, so each one's job gets ticks.
+fn poll(fixture: &Fixture, requests: &[&str]) {
+    for request in requests {
+        let _ = fixture.cbr(&["request", request]);
+    }
+}
+
+#[test]
+fn cancelling_a_request_frees_the_bound_its_call_was_holding() {
+    // **What cancellation does, where it is observable.** A settled
+    // answer costs a map entry and no more, so releasing one frees
+    // memory and nothing a test can see. A call *still in flight* is the
+    // case with teeth: it holds one of the two slots the concurrency
+    // bound allows, and cancelling the request that owns it must give
+    // that slot back rather than leave the next job waiting for work
+    // nobody wants.
+    //
+    // Two barriers hold two calls. A third request is then deferred —
+    // the bound is full — and stays deferred however often it is
+    // polled. Cancelling the first request frees its slot, and the third
+    // call happens. Its thread is not killed, and nothing it chose
+    // reaches a packet, because its answer is never read.
+    let fixture = Fixture::paused_at_two();
+    let provider = fixture.start();
+    submit(&fixture, "first", "queue.md");
+    submit(&fixture, "second", "cache.md");
+
+    // Both calls stop at their barriers, each having sent. Three bodies:
+    // the first call's count, the second's count, and the second's
+    // completion — the first is held at its count's boundary and the
+    // second at its completion's.
+    let held = 3;
+    let started = Instant::now();
+    while bodies_sent(&fixture.data()).len() < held {
+        assert!(
+            started.elapsed() < Duration::from_secs(25),
+            "two calls were never held: {:?}",
+            calls(&fixture.data()),
+        );
+        poll(&fixture, &["first", "second"]);
+        std::thread::sleep(Duration::from_millis(20));
+    }
+
+    submit(&fixture, "third", "index.md");
+    for _ in 0..25 {
+        poll(&fixture, &["first", "second", "third"]);
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    assert_eq!(
+        bodies_sent(&fixture.data()).len(),
+        held,
+        "the third is deferred while the bound is full"
+    );
+
+    let cancelled = fixture.cbr(&["cancel", "first"]);
+    assert!(
+        cancelled.status.success(),
+        "cancel: {}",
+        String::from_utf8_lossy(&cancelled.stderr)
+    );
+
+    let started = Instant::now();
+    while bodies_sent(&fixture.data()).len() <= held {
+        assert!(
+            started.elapsed() < Duration::from_secs(20),
+            "the slot the cancelled request held was never given back"
+        );
+        poll(&fixture, &["second", "third"]);
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    provider.stop();
+}

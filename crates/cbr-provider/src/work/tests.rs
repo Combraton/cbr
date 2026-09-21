@@ -18,21 +18,24 @@ fn string(text: &str) -> Value {
 }
 
 /// Work that blocks until the test lets it finish.
-fn held() -> (
-    mpsc::Sender<()>,
-    impl FnOnce() -> Result<Value, &'static str> + Send + 'static,
-) {
+/// The work a factory builds, boxed so `held`'s return type can be
+/// written down.
+type Work = Box<dyn FnOnce() -> Result<Value, &'static str> + Send>;
+
+fn held() -> (mpsc::Sender<()>, impl FnOnce() -> Work) {
     let (release, wait) = mpsc::channel::<()>();
     (release, move || {
-        let _ = wait.recv();
-        Ok(Value::Null)
+        Box::new(move || {
+            let _ = wait.recv();
+            Ok(Value::Null)
+        }) as Work
     })
 }
 
-/// `Ok(Value::Null)`, for the tests that care about the slot rather than
-/// what came out of it.
-fn nothing() -> Result<Value, &'static str> {
-    Ok(Value::Null)
+/// Work that produces nothing, as a factory — which is what `progress`
+/// takes, so that a tick which is only asking builds no work at all.
+fn nothing() -> impl FnOnce() -> Result<Value, &'static str> + Send + 'static {
+    || Ok(Value::Null)
 }
 
 /// `Progress::Done` with nothing in it.
@@ -54,7 +57,7 @@ fn until(check: impl Fn() -> bool) {
 fn work_that_finishes_hands_back_what_it_produced() {
     let pool = Pool::new(CONCURRENCY);
     assert_eq!(
-        pool.progress("a", None, || Ok(string("chosen"))),
+        pool.progress("a", None, || || Ok(string("chosen"))),
         Progress::Running
     );
     until(|| pool.progress("a", None, nothing) != Progress::Running);
@@ -76,8 +79,10 @@ fn a_result_is_kept_until_it_is_taken() {
     let started = Arc::new(AtomicUsize::new(0));
     let counter = Arc::clone(&started);
     pool.progress("a", None, move || {
-        counter.fetch_add(1, Ordering::SeqCst);
-        Ok(string("chosen"))
+        move || {
+            counter.fetch_add(1, Ordering::SeqCst);
+            Ok(string("chosen"))
+        }
     });
     until(|| pool.progress("a", None, nothing) != Progress::Running);
     for _ in 0..5 {
@@ -90,7 +95,7 @@ fn a_result_is_kept_until_it_is_taken() {
 
     pool.release("a");
     assert_eq!(
-        pool.progress("a", None, || Ok(string("again"))),
+        pool.progress("a", None, || || Ok(string("again"))),
         Progress::Running,
         "taken, the key is free for new work"
     );
@@ -109,8 +114,10 @@ fn work_that_fails_reports_its_typed_reason_and_is_not_retried() {
     let started = Arc::new(AtomicUsize::new(0));
     let counter = Arc::clone(&started);
     pool.progress("a", None, move || {
-        counter.fetch_add(1, Ordering::SeqCst);
-        Err("index_unavailable")
+        move || {
+            counter.fetch_add(1, Ordering::SeqCst);
+            Err("index_unavailable")
+        }
     });
     until(|| pool.progress("a", None, nothing) != Progress::Running);
     for _ in 0..5 {
@@ -126,7 +133,7 @@ fn work_that_fails_reports_its_typed_reason_and_is_not_retried() {
     );
 
     let pool = Pool::new(CONCURRENCY);
-    pool.progress("b", None, || panic!("the work died"));
+    pool.progress("b", None, || || panic!("the work died"));
     until(|| pool.progress("b", None, nothing) == Progress::Failed("work_panicked"));
 }
 
@@ -162,15 +169,20 @@ fn the_same_key_is_not_started_twice() {
     let (release, work) = held();
     let counter = Arc::clone(&started);
     pool.progress("a", None, move || {
-        counter.fetch_add(1, Ordering::SeqCst);
-        work()
+        let work = work();
+        move || {
+            counter.fetch_add(1, Ordering::SeqCst);
+            work()
+        }
     });
     for _ in 0..5 {
         let counter = Arc::clone(&started);
         assert_eq!(
             pool.progress("a", None, move || {
-                counter.fetch_add(1, Ordering::SeqCst);
-                Ok(Value::Null)
+                move || {
+                    counter.fetch_add(1, Ordering::SeqCst);
+                    Ok(Value::Null)
+                }
             }),
             Progress::Running
         );
@@ -255,7 +267,7 @@ fn cancelling_discards_the_result_and_frees_the_slot() {
     pool.cancel("a");
     assert_eq!(pool.running(), 0, "the slot is free at once");
     assert_eq!(
-        pool.progress("a", None, || Err("would have failed")),
+        pool.progress("a", None, || || Err("would have failed")),
         Progress::Running,
         "and the next ask is new work, not the cancelled one's answer"
     );
@@ -285,7 +297,7 @@ fn a_job_releases_every_answer_it_asked_for_by_naming_itself() {
     // call and a second charge for a question already answered.
     let pool = Pool::new(4);
     for key in ["model:j1:r1:a.rs", "model:j1:r1:b.rs", "model:j2:r1:a.rs"] {
-        pool.progress(key, None, || Ok(string("c1")));
+        pool.progress(key, None, || || Ok(string("c1")));
         until(|| pool.progress(key, None, nothing) != Progress::Running);
     }
     pool.release_all("model:j1:");
@@ -296,9 +308,87 @@ fn a_job_releases_every_answer_it_asked_for_by_naming_itself() {
     );
     for key in ["model:j1:r1:a.rs", "model:j1:r1:b.rs"] {
         assert_eq!(
-            pool.progress(key, None, || Ok(string("fresh"))),
+            pool.progress(key, None, || || Ok(string("fresh"))),
             Progress::Running,
             "{key} was taken"
         );
     }
+}
+
+#[test]
+fn work_is_built_only_when_it_is_actually_started() {
+    // **The tick that is only asking builds nothing.** `progress` takes a
+    // factory rather than the work, because a caller whose work opens a
+    // connection to the store used to open one on every tick and throw it
+    // away — thousands over one call, paid on the preparation tick this
+    // module exists to keep short.
+    let built = Arc::new(AtomicUsize::new(0));
+    let pool = Pool::new(1);
+    let (release, work) = held();
+    let counter = Arc::clone(&built);
+    pool.progress("a", None, move || {
+        counter.fetch_add(1, Ordering::SeqCst);
+        work()
+    });
+    for _ in 0..5 {
+        let counter = Arc::clone(&built);
+        // Asked again while it runs, and again while the bound is full.
+        pool.progress("a", None, move || {
+            counter.fetch_add(1, Ordering::SeqCst);
+            nothing()
+        });
+        let counter = Arc::clone(&built);
+        assert_eq!(
+            pool.progress("b", None, move || {
+                counter.fetch_add(1, Ordering::SeqCst);
+                nothing()
+            }),
+            Progress::Deferred
+        );
+    }
+    assert_eq!(
+        built.load(Ordering::SeqCst),
+        1,
+        "built once, for the one start"
+    );
+    drop(release);
+    until(|| pool.progress("a", None, nothing) != Progress::Running);
+
+    // And once it is settled, asking again still builds nothing: the
+    // answer is there to be taken.
+    let counter = Arc::clone(&built);
+    pool.progress("a", None, move || {
+        counter.fetch_add(1, Ordering::SeqCst);
+        nothing()
+    });
+    assert_eq!(built.load(Ordering::SeqCst), 1, "still once");
+}
+
+#[test]
+fn a_finished_unit_nobody_asked_about_again_does_not_hold_the_bound() {
+    // **The bound is on threads, not on map entries.** An answer settles
+    // only when somebody asks for it, so a caller that stopped asking —
+    // because it got what it wanted another way — would hold the bound
+    // for ever with a thread that ended long ago.
+    //
+    // Not hypothetical: the index build asks once, is told `Running`, and
+    // by the time it has built its caller reads the manifest and never
+    // asks again. One repository cost half the bound permanently, and two
+    // would have meant no model call could ever start.
+    let pool = Pool::new(2);
+    let (release, work) = held();
+    pool.progress("a", None, work);
+    let (second, work) = held();
+    pool.progress("b", None, work);
+    assert_eq!(pool.progress("c", None, nothing), Progress::Deferred);
+
+    // `a` finishes, and **nothing asks about it again**.
+    drop(release);
+    until(|| pool.running() == 1);
+    assert_eq!(
+        pool.progress("c", None, nothing),
+        Progress::Running,
+        "a thread that has ended is not in flight, asked about or not"
+    );
+    drop(second);
 }

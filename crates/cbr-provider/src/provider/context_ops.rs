@@ -427,10 +427,11 @@ impl Provider {
 
         // **The compile that read the answers is the one that frees
         // them.** Everything this job asked a model has now been used, and
-        // compiling happens once per job: releasing them here is what
-        // keeps a later tick from asking the same question again, and what
-        // keeps a failure from becoming a retry.
-        self.work.release_all(&format!("model:{}:", assist.job));
+        // compiling happens once per job. Until this point the answers
+        // must stay: a key freed as soon as it was read would be asked
+        // afresh by the next tick's compile, which is a second call and a
+        // second charge for a question already answered.
+        self.release_job(assist.job);
 
         let mut steps = compiler::steps(&decided);
         // Step 5's refusal, moved to where a compiled request can know it:
@@ -1045,14 +1046,16 @@ impl Provider {
                 // disagreeing about the same request. What this does owe
                 // is the slot: a job that ends cancels its build.
                 let deadline = None;
-                let building = {
+                let building = || {
                     let (repository, tree) = (repository.to_string(), tree.to_string());
                     let checkout = checkout.to_path_buf();
-                    let beside = self
-                        .store
-                        .open_beside()
-                        .map_err(|_| ProtocolError::new_internal_error())?;
+                    // Opened here, inside the factory, so a tick that is
+                    // only asking opens nothing. A store that cannot be
+                    // opened is this unit's typed reason rather than a
+                    // failure of the whole tick.
+                    let beside = self.store.open_beside();
                     move || {
+                        let beside = beside.map_err(|_| "store_unavailable")?;
                         retrieval::build(&beside, &repository, &checkout, &tree, position)
                             // The build's product is the manifest it
                             // wrote; this job reads it back through its
@@ -1717,6 +1720,23 @@ impl Provider {
         Ok(Choice::Selected(Box::new(selection)))
     }
 
+    /// Let go of everything `job` asked a model.
+    ///
+    /// **This is what cancellation is at this call site.** A thread that
+    /// is mid-call is not killed — Rust cannot — but its answer is never
+    /// read, so nothing it chose reaches a packet: *a cancelled call
+    /// leaves no partial derivation record*. What it already spent stays
+    /// in the ledger, and must: a call that went out and was charged is a
+    /// charge, and forgetting it would overspend a shared quota.
+    ///
+    /// Called when a job ends for any reason, and when the last request
+    /// of one is cancelled. Without it the answers sit in the pool for as
+    /// long as the process lives; with it the memory and, for anything
+    /// still running, the bound come back.
+    fn release_job(&self, job: &str) {
+        self.work.release_all(&format!("model:{job}:"));
+    }
+
     /// Which of the ranked spans to cite, when a model helps choose.
     ///
     /// Answers `Chose(0)` — BM25's own first — whenever there is no model
@@ -1759,9 +1779,20 @@ impl Provider {
             return Ok(Assisted::Chose(0));
         }
 
-        // One key per request and path, so two items citing the same file
-        // of the same request are one question rather than two charges.
-        let key = format!("model:{}:{}:{path}", assist.job, assist.request);
+        // **The key is the question, not the file.** One key per
+        // request, path *and selector*: two items citing the same file of
+        // the same request are one question only when they ask the same
+        // thing, and two selectors rank the file differently. Sharing a
+        // key across them would hand the second item an answer chosen
+        // from a candidate list it was never shown — an index into the
+        // wrong spans. The selector is digested because it is free text
+        // and a key is not.
+        let key = format!(
+            "model:{}:{}:{path}:{}",
+            assist.job,
+            assist.request,
+            cbr_encoding::digest_bytes(query.as_bytes())
+        );
         // **The request's deadline, converted once.** The pool measures
         // monotonic time and the protocol measures instants; converting
         // at the moment of asking is one clock, where keeping a second
@@ -1775,7 +1806,7 @@ impl Provider {
                     + std::time::Duration::from_secs(deadline.saturating_sub(now))
             });
 
-        let asking = {
+        let asking = || {
             let serving = std::sync::Arc::clone(&serving);
             let (job, request) = (assist.job.to_string(), assist.request.to_string());
             let (task, selector, now) = (
@@ -1783,12 +1814,12 @@ impl Provider {
                 query.to_string(),
                 assist.now.clone(),
             );
-            // Its own connection, because it runs off the session's.
-            let beside = self
-                .store
-                .open_beside()
-                .map_err(|_| ProtocolError::new_internal_error())?;
+            // Its own connection, because it runs off the session's,
+            // and opened inside the factory so a tick that is only asking
+            // opens none.
+            let beside = self.store.open_beside();
             move || {
+                let beside = beside.map_err(|_| "store_unavailable")?;
                 // Built here rather than in the caller: the pool drops an
                 // unused closure, and a tick that is only asking should
                 // not pay for a body nobody sends.
@@ -2105,7 +2136,22 @@ impl Provider {
             ("job", subject(JOB, &job_id)),
             ("job_continues", Value::Bool(job_continues)),
         ]);
-        self.commit_context(&command, &request_key, &record, cancelled, also, outcome)
+        let committed =
+            self.commit_context(&command, &request_key, &record, cancelled, also, outcome);
+        // **Cancellation, at this call site — and only once it is a
+        // fact.** A job nobody is waiting for any more lets go of
+        // everything it asked a model: the thread is not killed, but its
+        // answer is never read, so nothing it chose reaches a packet.
+        //
+        // After the commit, not before: a cancel that failed to commit is
+        // a job still running, and freeing its answers there would have
+        // the next tick ask every question again. A job that continues
+        // keeps them either way, because its other requests are waiting
+        // for exactly those answers.
+        if committed.is_ok() && !job_continues {
+            self.release_job(&job_id);
+        }
+        committed
     }
 
     pub(super) fn context_request_inspect(&self, payload: &Value) -> Result<Value, ProtocolError> {
@@ -2358,6 +2404,13 @@ impl Provider {
                                 "context.job.ended",
                                 object(vec![("reason", string(&reason))]),
                             );
+                            // **A job that has ended is a job whose
+                            // answers nobody will ask for**, however it
+                            // ended: published, out of investigation, or
+                            // past its deadline. Here rather than in
+                            // `finish`, because the job record does not
+                            // carry its own id and this is where it is.
+                            self.release_job(&job_id);
                         }
                     }
                     if !tick.batch.writes.is_empty() {

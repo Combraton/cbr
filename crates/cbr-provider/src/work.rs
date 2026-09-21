@@ -85,8 +85,20 @@ struct Slot {
 
 impl Slot {
     /// In flight, and therefore counted against the bound.
+    ///
+    /// **A thread that has finished is not in flight**, whether or not
+    /// anybody has asked about it since. An answer settles only when
+    /// somebody asks, and a caller that stopped asking — because it got
+    /// what it wanted another way — would otherwise hold the bound for
+    /// ever with a thread that ended long ago. That is not hypothetical:
+    /// the index build asks once, is told `Running`, and by the time it
+    /// has built, its caller reads the manifest and never asks again.
     fn running(&self) -> bool {
         self.settled.is_none()
+            && self
+                .handle
+                .as_ref()
+                .is_some_and(|handle| !handle.is_finished())
     }
 }
 
@@ -106,16 +118,23 @@ impl Pool {
     /// Where `key`'s work has got to, starting it if it is not running and
     /// there is room.
     ///
-    /// `work` is taken by value and dropped unused when the answer is
-    /// anything but a fresh start, so a caller that builds an expensive
-    /// closure pays for it either way — which is why the callers build
-    /// cheap ones that capture what they need.
-    pub fn progress(
+    /// **`work` is a factory, called only when work actually starts.**
+    /// It used to be the work itself, dropped unused whenever the answer
+    /// was `Running` or `Deferred` — which is every tick but the first.
+    /// A caller whose closure opens a connection to the store then opened
+    /// one per tick and threw it away, thousands of times over one call,
+    /// on the preparation tick this module exists to keep short. Making
+    /// it a factory moves "build nothing until it is needed" out of a
+    /// comment and into the signature.
+    pub fn progress<W>(
         &self,
         key: &str,
         deadline: Option<Instant>,
-        work: impl FnOnce() -> Result<Value, &'static str> + Send + 'static,
-    ) -> Progress {
+        work: impl FnOnce() -> W,
+    ) -> Progress
+    where
+        W: FnOnce() -> Result<Value, &'static str> + Send + 'static,
+    {
         let mut slots = self.slots.lock().expect("not poisoned");
         if let Some(slot) = slots.get_mut(key) {
             if slot.settled.is_none() {
@@ -157,7 +176,7 @@ impl Pool {
         slots.insert(
             key.to_string(),
             Slot {
-                handle: Some(std::thread::spawn(work)),
+                handle: Some(std::thread::spawn(work())),
                 settled: None,
             },
         );

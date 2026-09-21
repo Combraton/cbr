@@ -72,6 +72,53 @@ Two decisions inside it are worth naming because the obvious alternative is wron
 
 **One rule was loosened, and only one.** Compiling is production-only and the fake transport is a conformance control, so the two could never overlap and the call site could not be reached under `SIGKILL` at all. A conformance launch may now ask to compile, with `context.compile`. No fixture sets it, and `a_conformance_launch_prepares_nothing_unless_it_asks_to_compile` holds both halves.
 
+### Four defects the mutants found, and two they could not
+
+**Twenty-one mutants, each run against every target** — not the binary's unit tests alone, which is the mistake m4b made. Fifteen killed on the first pass. Of the six survivors, four were real and two are equivalent.
+
+**Two were defects I had already found by re-reading my own committed code**, and the probe said why nothing caught them: *every test had one item per request*, so no compile ever held two answers at once.
+
+- **An answer released the moment it was read.** A compile needing two calls asks across several ticks; releasing the first when it was first reported means the next tick asks that question again, at a second charge.
+- **A key that forgot the path**, so two items citing different files shared one answer.
+
+Both are killed now by a request with two items on two files, asserting **exactly two completions** — fewer means an answer was reused for a question it was not asked, more means one was released and asked again.
+
+**Two were gaps in what was asserted.**
+
+- **The fake's scripted usage was dropped and nothing noticed**, which means nothing tested that a completion **settles to the provider's figure** rather than to the reservation. The reservation is the local bound and over-states by three to four times; settling at it would charge a shared quota for something nobody spent. That is the envelope's whole point and it was untested.
+- **Setting `SERVING_CALLS_A_MODEL` back to false broke no test.** Every test about it is an implication — *if the constant, skip* — which is right for rules that stop applying when it flips and leaves **nothing at all constraining the flipped value**. It could have been silently reverted. A flat assertion holds it now: a launch given a model and the permit is `ReadCredentialThenServe`, and a change that removes the call site has to change that test.
+
+**Two are equivalent, and are recorded as survivors rather than counted.**
+
+- *An out-of-range choice read as the first candidate.* `selection::chosen` returns a position within the candidates, and the candidates are built one-for-one from the ranked spans, so the index is always in range. The guard is defence for a future where the two diverge.
+- *The compile never releases what the job asked.* The compile step is spliced out of the script when it runs, so it happens once per job and nothing asks again. It is a memory leak, not a behaviour change, and no test over the protocol can see it.
+
+### Two more defects, from re-reading the call site
+
+**The pool takes a factory now, not the work.** The work closure was built on every tick and dropped unused whenever the answer was `Running` or `Deferred` — which is every tick but the first. A closure that opens a connection to the store therefore opened one per tick and threw it away, thousands over one call, **paid on the preparation tick this milestone exists to keep short**. `progress` takes `impl FnOnce() -> W` and calls it only when work actually starts, which moves "build nothing until it is needed" out of a comment and into the signature.
+
+**The key is the question, not the file.** It carries the selector as well as the path, because two selectors rank a file differently and `c2` does not mean the same span to both: a shared key would hand the second item a choice made from a candidate list it was never shown. **This suite cannot test that half** and the test says so — `cbr` gives every item of a request the same selector, so two items on one file always ask the same question. Over the protocol an item carries its own.
+
+### The defect the cancellation test found
+
+**One repository permanently cost half the concurrency bound.** A slot counted against the bound while its `settled` answer was `None` — and an answer settles only when somebody *asks*. `ensure_index` asks once, is told `Running`, and by the time the build has finished its caller reads the manifest back and **never asks again**, so that slot stayed "in flight" for the life of the process. With the bound at two, one repository left one slot; two repositories would have meant no model call could ever start.
+
+It was invisible to every test and to every mutant, because nothing until now needed two units of work at once. It surfaced while building the cancellation test below, whose whole point is filling the bound: the second request's call came back `Deferred` with the index build still holding a slot it had finished with seconds earlier.
+
+**The bound counts threads now, not map entries**: a unit whose thread has finished is not in flight, asked about or not. A pool test holds it, and that test fails against the old rule.
+
+One other thing this cost an hour: **`cargo test -p cbr-cli` does not rebuild `cbr-provider`.** An experiment raising `CONCURRENCY` to six appeared to rule the bound out, and had in fact tested the old binary. The workspace has to be built first, which STATE has said since M3 and which is easy to forget when the crate under test is the client.
+
+### Cancellation
+
+`cbr` had **no cancel verb** — the provider serves `context.request.cancel` and the client could not send it, so the milestone's cancellation had no end-to-end test at all. It has one now, and it reads the request's current revision itself rather than asking for it on the command line: the caller is cancelling *this* request, not a particular version of it, and a number they had to look up first is a number they can get wrong.
+
+A job that has ended lets go of everything it asked a model, however it ended — published, out of investigation, or past its deadline — and so does a job whose last request is cancelled. The thread is not killed, because Rust cannot, but **its answer is never read, so nothing it chose reaches a packet**: that is what *a cancelled call leaves no partial derivation record* means here. What it already spent stays in the ledger and must: a call that went out and was charged is a charge, and forgetting it would overspend a quota shared with the owner's other tools.
+
+**Where it is observable, and where it is not.** A settled answer costs a map entry and no more, so releasing one frees memory and nothing a test can see. A call *still in flight* is the case with teeth: it holds one of the two slots the bound allows, and cancelling the request that owns it gives that slot back rather than leaving the next job waiting for work nobody wants. Two barriers hold two calls, a third request is deferred and stays deferred however often it is polled, and cancelling the first lets the third's call happen. The release is also ordered **after** the commit: a cancel that failed to commit is a job still running, and freeing its answers there would have the next tick ask every question again.
+
+The index build is not cancelled, and says why: it writes its manifest as it goes, so cancelling it would leave exactly the partial record the rule forbids, and it has no single owner besides — several jobs may want the same repository at the same tree, and it is idempotent.
+
 ### What the flip costs, and the guard that pays for it
 
 While `SERVING_CALLS_A_MODEL` was false, `--permit-model-network` with a valid model and no `--calibrate` was a **refusal**. It is now a launch that reads the owner's Keychain and serves — the exact shape of the lapse recorded below. So the rule moved out of the constant and into `tests/credential_discipline.rs`, which reads the sources and requires every place a test passes that flag to be gated off macOS, to ask for the calibration, or to configure no model. It reads text, so it is a guard against carelessness and not against intent; carelessness is what the lapse was.
