@@ -32,6 +32,7 @@ use std::time::Duration;
 use crate::clock::Clock;
 use crate::config::Config;
 use crate::provider::Provider;
+use crate::provider::Serving;
 use crate::session;
 use crate::work::Pool;
 
@@ -67,6 +68,7 @@ pub fn serve(
     config: Config,
     clock: Arc<Clock>,
     work: Arc<Pool>,
+    model: Option<Arc<Serving>>,
     data_dir: PathBuf,
 ) -> Result<(), String> {
     check_directory(socket)?;
@@ -92,8 +94,9 @@ pub fn serve(
         }
         let (config, clock, data_dir) = (config.clone(), clock.clone(), data_dir.clone());
         let work = work.clone();
+        let model = model.clone();
         std::thread::spawn(move || {
-            if let Err(error) = serve_connection(stream, config, clock, work, &data_dir) {
+            if let Err(error) = serve_connection(stream, config, clock, work, model, &data_dir) {
                 eprintln!("cbr-provider: session: {error}");
             }
         });
@@ -106,11 +109,13 @@ fn serve_connection(
     config: Config,
     clock: Arc<Clock>,
     work: Arc<Pool>,
+    model: Option<Arc<Serving>>,
     data_dir: &Path,
 ) -> Result<(), String> {
     let mut provider = Provider::connect(config, clock, data_dir)
         .map_err(|error| format!("opening the store: {error}"))?
-        .with_work(work);
+        .with_work(work)
+        .with_model(model);
     let writer = stream.try_clone().map_err(|error| error.to_string())?;
     let closer = stream.try_clone().map_err(|error| error.to_string())?;
     stream

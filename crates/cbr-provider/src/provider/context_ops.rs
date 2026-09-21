@@ -164,6 +164,51 @@ impl From<crate::store::StoreError> for TickError {
     }
 }
 
+/// What a model call at this call site needs to know about the request it
+/// serves: who it is charged to, what it was asked, and whether it may be
+/// made at all.
+struct Assist<'a> {
+    job: &'a str,
+    request: &'a str,
+    task: &'a str,
+    /// The request's investigation budget.
+    ///
+    /// **Zero is the deterministic path.** A request that authorised no
+    /// investigation gets exactly the compiler M3 shipped, which is what
+    /// makes the same binary the baseline m4e's journeys are scored
+    /// against rather than a second build nobody ran. MODEL-RUNTIME §63
+    /// is where the meaning comes from: *an investigation can use several
+    /// turns: select a source, inspect it, update findings*.
+    investigation: i64,
+    /// The request's own deadline and the tick's instant, both as the
+    /// protocol writes them. Their difference is what the pool is given.
+    deadline: &'a str,
+    /// Owned, because the tick it comes from is borrowed mutably by
+    /// everything this is passed to.
+    now: String,
+}
+
+/// What selecting a source decided.
+enum Choice {
+    Selected(Box<Selection>),
+    /// Nothing of that path at this basis.
+    Absent,
+    /// A model call this request asked for, which could not be made or
+    /// could not be used. **A typed reason the item carries**, never a
+    /// quiet fall back to the span BM25 ranked first: that would report a
+    /// model-assisted selection no model made.
+    Unmet(&'static str),
+}
+
+/// What asking the model came to, this tick.
+enum Assisted {
+    /// The index into the candidates it chose.
+    Chose(usize),
+    /// Nothing yet. Ask again next tick; nothing is written meanwhile.
+    NotReady,
+    Unmet(&'static str),
+}
+
 impl Provider {
     // ---- shared ------------------------------------------------------------
 
@@ -362,8 +407,16 @@ impl Provider {
             .tick_record(tick, REQUEST, &request)?
             .map(|(_, record)| record)
             .unwrap_or(Value::Null);
+        let assist = Assist {
+            job: text(&record, &["job"]),
+            request: &request,
+            task: text(&record, &["consumer", "task"]),
+            investigation: int(job, &["limits", "investigation", "amount"]),
+            deadline: text(&record, &["limits", "deadline"]),
+            now: tick.now.clone(),
+        };
         for item in list(job, &["items"]) {
-            self.decide_item(item, &record, &trees, &mut decided, tick)?;
+            self.decide_item(item, &record, &trees, &assist, &mut decided, tick)?;
         }
 
         // Step 3 again, for what no item named: the task is a question, and
@@ -371,6 +424,13 @@ impl Provider {
         // list. Everything here is advisory and is dropped by capacity
         // before anything an item required.
         self.discover(&record, job, &trees, &mut decided, tick)?;
+
+        // **The compile that read the answers is the one that frees
+        // them.** Everything this job asked a model has now been used, and
+        // compiling happens once per job: releasing them here is what
+        // keeps a later tick from asking the same question again, and what
+        // keeps a failure from becoming a retry.
+        self.work.release_all(&format!("model:{}:", assist.job));
 
         let mut steps = compiler::steps(&decided);
         // Step 5's refusal, moved to where a compiled request can know it:
@@ -1213,6 +1273,7 @@ impl Provider {
         item: &Value,
         record: &Value,
         trees: &[Frontier],
+        assist: &Assist<'_>,
         decided: &mut Decided,
         tick: &mut Tick,
     ) -> Result<(), TickError> {
@@ -1262,14 +1323,21 @@ impl Provider {
                         return Ok(());
                     }
                 };
-                match self.select_source(frontier, item, &read, tick)? {
-                    Some(mut selection) => {
+                match self.select_source(frontier, item, &read, assist, tick)? {
+                    Choice::Selected(selection) => {
+                        let mut selection = *selection;
                         selection.via = via;
                         decided.selections.push(selection);
                     }
-                    None => decided.unmet.push(Unmet {
+                    Choice::Absent => decided.unmet.push(Unmet {
                         item: item_id,
                         reason: "source_absent_at_basis".into(),
+                    }),
+                    // **Failure is an item's unmet reason, never a hang
+                    // and never a silent downgrade** (READINESS §8).
+                    Choice::Unmet(reason) => decided.unmet.push(Unmet {
+                        item: item_id,
+                        reason: reason.into(),
                     }),
                 }
             }
@@ -1522,15 +1590,16 @@ impl Provider {
         frontier: &Frontier,
         item: &Value,
         path: &str,
+        assist: &Assist<'_>,
         tick: &mut Tick,
-    ) -> Result<Option<Selection>, TickError> {
+    ) -> Result<Choice, TickError> {
         use cbr_memory::retrieval::{Ask, Bounds, Origin, Readable};
         let entries = match cbr_identity::tree_entries(&frontier.checkout, &frontier.tree) {
             Ok(entries) => entries,
-            Err(_) => return Ok(None),
+            Err(_) => return Ok(Choice::Absent),
         };
         let Some(entry) = entries.into_iter().find(|entry| entry.path == path) else {
-            return Ok(None);
+            return Ok(Choice::Absent);
         };
         // Bounded before the read: a repository nobody in this process
         // controls should not be able to make it allocate a blob in order to
@@ -1541,7 +1610,7 @@ impl Provider {
             &entry.blob,
             cbr_memory::index::MAX_BLOB_BYTES as u64,
         ) else {
-            return Ok(None);
+            return Ok(Choice::Absent);
         };
 
         let readable = [Readable {
@@ -1570,7 +1639,19 @@ impl Provider {
             )
             .map_err(|_| ProtocolError::new_internal_error())?;
         }
-        let (start_byte, end_byte, start_line, end_line, origin) = match answer.found.first() {
+        // **Model-assisted selection, when the request asked for one.**
+        // BM25 ranked these spans; which of them actually answers the
+        // question is a judgement, and a request that authorised an
+        // investigation is a request that asked for one to be made. Every
+        // bound is already in place: a closed set of CBR's own
+        // candidates, one call, this request's deadline, and the pool's
+        // concurrency.
+        let ranked = match self.assist(&answer.found, &bytes, path, &query, assist)? {
+            Assisted::Chose(index) => index,
+            Assisted::NotReady => return Err(TickError::NotReady),
+            Assisted::Unmet(reason) => return Ok(Choice::Unmet(reason)),
+        };
+        let (start_byte, end_byte, start_line, end_line, origin) = match answer.found.get(ranked) {
             Some(found) => (
                 found.start_byte,
                 found.end_byte,
@@ -1633,7 +1714,115 @@ impl Provider {
             excerpt: compiler::excerpt(&bytes, start_byte, end_byte, &terms),
         };
         self.seal_source(tick, &selection, &bytes)?;
-        Ok(Some(selection))
+        Ok(Choice::Selected(Box::new(selection)))
+    }
+
+    /// Which of the ranked spans to cite, when a model helps choose.
+    ///
+    /// Answers `Chose(0)` — BM25's own first — whenever there is no model
+    /// to ask, no investigation authorised, or nothing to choose between,
+    /// so the deterministic path is the same code rather than a branch
+    /// around it.
+    fn assist(
+        &self,
+        found: &[cbr_memory::retrieval::Found],
+        bytes: &[u8],
+        path: &str,
+        query: &str,
+        assist: &Assist<'_>,
+    ) -> Result<Assisted, TickError> {
+        let Some(serving) = self.model.clone() else {
+            return Ok(Assisted::Chose(0));
+        };
+        if assist.investigation <= 0 {
+            return Ok(Assisted::Chose(0));
+        }
+        let candidates: Vec<crate::selection::Candidate> = found
+            .iter()
+            .enumerate()
+            .map(|(index, found)| crate::selection::Candidate {
+                id: format!("c{}", index + 1),
+                path: path.to_string(),
+                start_line: found.start_line as usize,
+                end_line: found.end_line as usize,
+                text: String::from_utf8_lossy(
+                    usize::try_from(found.start_byte)
+                        .ok()
+                        .zip(usize::try_from(found.end_byte).ok())
+                        .and_then(|(start, end)| bytes.get(start..end))
+                        .unwrap_or_default(),
+                )
+                .to_string(),
+            })
+            .collect();
+        if !crate::selection::worth_asking(&candidates) {
+            return Ok(Assisted::Chose(0));
+        }
+
+        // One key per request and path, so two items citing the same file
+        // of the same request are one question rather than two charges.
+        let key = format!("model:{}:{}:{path}", assist.job, assist.request);
+        // **The request's deadline, converted once.** The pool measures
+        // monotonic time and the protocol measures instants; converting
+        // at the moment of asking is one clock, where keeping a second
+        // deadline beside the protocol's would be two of them disagreeing
+        // about the same request. A deadline CBR cannot read is no
+        // deadline rather than a guess.
+        let deadline = crate::clock::unix_of(assist.deadline)
+            .zip(crate::clock::unix_of(&assist.now))
+            .map(|(deadline, now)| {
+                std::time::Instant::now()
+                    + std::time::Duration::from_secs(deadline.saturating_sub(now))
+            });
+
+        let asking = {
+            let serving = std::sync::Arc::clone(&serving);
+            let (job, request) = (assist.job.to_string(), assist.request.to_string());
+            let (task, selector, now) = (
+                assist.task.to_string(),
+                query.to_string(),
+                assist.now.clone(),
+            );
+            // Its own connection, because it runs off the session's.
+            let beside = self
+                .store
+                .open_beside()
+                .map_err(|_| ProtocolError::new_internal_error())?;
+            move || {
+                // Built here rather than in the caller: the pool drops an
+                // unused closure, and a tick that is only asking should
+                // not pay for a body nobody sends.
+                let body = crate::selection::ask(&serving.model, &task, &selector, &candidates);
+                match serving.ask(&beside, &now, &job, &request, &body) {
+                    crate::model::Outcome::Answered { reply, .. } => {
+                        crate::selection::chosen(&reply, &candidates)
+                            .map(|index| Value::Int(index as i64))
+                    }
+                    crate::model::Outcome::Unmet { reason, .. } => Err(reason),
+                    crate::model::Outcome::Refused(refusal) => Err(refusal.reason()),
+                }
+            }
+        };
+        Ok(match self.work.progress(&key, deadline, asking) {
+            // Started, or waiting for room. Nothing is written and
+            // nothing is logged; the next tick asks again.
+            crate::work::Progress::Running | crate::work::Progress::Deferred => Assisted::NotReady,
+            // **Not released here.** The compile releases everything this
+            // job asked once it has produced its script: freeing a key the
+            // moment it was read would have the next tick's compile ask
+            // the same question again, at a second charge.
+            crate::work::Progress::Done(value) => match value {
+                Value::Int(index) if usize::try_from(index).is_ok_and(|i| i < found.len()) => {
+                    Assisted::Chose(index as usize)
+                }
+                // It answered with something that is not one of the
+                // candidates it was offered. Nothing guesses on its
+                // behalf.
+                _ => Assisted::Unmet(crate::selection::NOT_OFFERED),
+            },
+            crate::work::Progress::Failed(reason) => Assisted::Unmet(reason),
+            crate::work::Progress::TimedOut => Assisted::Unmet("model_call_timed_out"),
+        })
     }
 
     /// Seal a cited file as evidence, unless an artifact already holds it.
@@ -1797,12 +1986,24 @@ impl Provider {
             // Compiling is a production capability, and a conformance
             // launch is a test harness: there, a request with no script is
             // still a request nothing prepares, which is what every context
-            // fixture was measured against. The two never overlap, because a
-            // production launch serves no test control at all.
-            if script.is_empty()
-                && self.config.mode == crate::config::Mode::Production
-                && self.config.context.0 == Value::Null
-            {
+            // fixture was measured against.
+            //
+            // **A conformance launch may ask for it, with
+            // `context.compile`.** m4c is why: the model call site lives
+            // inside compiling, and reaching it needs the fake transport,
+            // which only a conformance launch may have — a production one
+            // serves no test control at all. Without the opt-in the two
+            // could never overlap and the call site could not be tested
+            // under `SIGKILL` at all. **No fixture sets it**, so no
+            // fixture's expectations move; `a_conformance_launch_prepares_
+            // nothing_unless_it_asks_to_compile` is what holds that.
+            let compiling = match self.config.mode {
+                crate::config::Mode::Production => self.config.context.0 == Value::Null,
+                crate::config::Mode::Conformance => {
+                    *at(&self.config.context.0, &["compile"]) == Value::Bool(true)
+                }
+            };
+            if script.is_empty() && compiling {
                 // Nothing scripts this request, so it is compiled. The marker
                 // is the first step, and compiling replaces it with what it
                 // decided.

@@ -6,10 +6,11 @@
 //! there is no HTTP, no TLS and no credential anywhere in this crate, and
 //! [`budget::tests`] asserts that against the workspace lock file.
 //!
-//! So a [`Transport`] is a trait with exactly one implementation, [`Recorder`],
-//! which records what it was asked to send and returns what a test told it to.
-//! It is reachable only under the `model.fake` test control, which a
-//! production launch configuration refuses like every other control.
+//! So at m4a a [`Transport`] was a trait with exactly one
+//! implementation, `Recorder`, which records what it was asked to send and
+//! returns what a test told it to. m4b added the live one and m4c the
+//! serving call site, and this module still has no HTTP in it: what it
+//! knows is admission, settlement and the typed outcomes.
 //!
 //! # The count call is a send
 //!
@@ -71,14 +72,23 @@ pub trait Transport {
     fn send(&self, call: Call, body: &[u8]) -> Exchange;
 }
 
-/// The fake. It records the exact bytes it was asked to send, counts a count
-/// call as a send, and returns what it was scripted to return.
+/// The fake a **unit test** scripts: it records the exact bytes it was
+/// asked to send, counts a count call as a send, and returns the exact
+/// answers it was given, in order, whichever call asks.
+///
+/// Test-only since m4c, and that is the whole story of this milestone in
+/// one type. Until then it was the only thing in the build that reached a
+/// transport, because there was no other; now [`Fake`] serves the call
+/// site and [`crate::wire::http::Http`] serves a live one, and this is
+/// what is left: the transport a test scripts an exact exchange with.
+#[cfg(test)]
 #[derive(Debug, Default)]
 pub struct Recorder {
     sent: Mutex<Vec<(Call, Vec<u8>)>>,
     answers: Mutex<Vec<(Answer, Vec<u8>)>>,
 }
 
+#[cfg(test)]
 impl Recorder {
     /// `answers` are returned in order; when they run out the call is
     /// answered as a count of the body's byte length, which is what a
@@ -107,6 +117,7 @@ impl Recorder {
     }
 }
 
+#[cfg(test)]
 impl Transport for Recorder {
     fn send(&self, call: Call, body: &[u8]) -> Exchange {
         self.sent
@@ -809,3 +820,97 @@ pub fn no_barrier(_: &'static str) {}
 
 #[cfg(test)]
 mod tests;
+
+/// The fake transport **for the serving call site**, under the `model.fake`
+/// control.
+///
+/// Separate from [`Recorder`], which answers from one list whatever it is
+/// asked: that is right for a unit test scripting an exact exchange, and
+/// wrong here, because a count call would eat the completion's answer and
+/// the caller would believe it had reached a completion it never made.
+/// This one answers a count **as a count**, always, and scripts only the
+/// completion — which is the answer a caller reads.
+///
+/// Nothing it returns is recorded by it. The recording boundary above it
+/// writes every exchange to the store, redacted, and that is what a test
+/// asserts over: a fake that kept its own second copy would let an
+/// assertion pass against bytes the store never saw.
+pub struct Fake {
+    dialect: Dialect,
+    answers: Vec<String>,
+    usage: Option<u64>,
+    next: Mutex<usize>,
+}
+
+impl Fake {
+    pub fn new(dialect: Dialect, answers: Vec<String>, usage: Option<u64>) -> Self {
+        Fake {
+            dialect,
+            answers,
+            usage,
+            next: Mutex::new(0),
+        }
+    }
+
+    /// The script, one answer per completion, **the last one repeated**. A
+    /// repair is a second completion, and a control that ran out would
+    /// turn every repair into a different failure from the one under test.
+    fn scripted(&self) -> Answer {
+        let mut next = self.next.lock().expect("not poisoned");
+        let answer = self
+            .answers
+            .get(*next)
+            .or_else(|| self.answers.last())
+            .cloned()
+            .unwrap_or_default();
+        *next += 1;
+        drop(next);
+        match answer.split_once(':') {
+            Some(("choose", id)) => Answer::Completed {
+                body: wire::response::scripted(
+                    self.dialect,
+                    &format!("{{\"id\":\"{id}\"}}"),
+                    self.usage,
+                ),
+                usage: self.usage,
+            },
+            Some(("text", text)) => Answer::Completed {
+                body: wire::response::scripted(self.dialect, text, self.usage),
+                usage: self.usage,
+            },
+            _ if answer == "provider_exhausted" => Answer::ProviderExhausted,
+            _ if answer == "failed" => Answer::Failed {
+                reason: "scripted".into(),
+                usage: self.usage,
+            },
+            _ if answer == "not_sent" => Answer::NotSent("scripted".into()),
+            // Anything else is a malformed body, which is a real outcome
+            // and not a reason to panic in a provider.
+            _ => Answer::Completed {
+                body: Vec::new(),
+                usage: self.usage,
+            },
+        }
+    }
+}
+
+impl Transport for Fake {
+    fn send(&self, call: Call, body: &[u8]) -> Exchange {
+        match call {
+            // What a provider that agreed exactly with the local bound
+            // would say. The count is never the scripted answer.
+            Call::Count => Exchange {
+                answer: Answer::Counted(body.len() as u64),
+                raw: Vec::new(),
+            },
+            Call::Completion => {
+                let answer = self.scripted();
+                let raw = match &answer {
+                    Answer::Completed { body, .. } => body.clone(),
+                    _ => Vec::new(),
+                };
+                Exchange { answer, raw }
+            }
+        }
+    }
+}

@@ -453,3 +453,34 @@ pub fn read_count(body: &[u8]) -> Option<u64> {
     }
     found
 }
+
+/// A dialect-shaped completion carrying `text`, for the `model.fake`
+/// control alone.
+///
+/// **It exists so the fake transport is a transport.** A control that
+/// returned bytes this module could not read would make every test above
+/// it vacuous: the call site would see a malformed answer whatever it
+/// asked for, and a crash-matrix row would pass at the wrong boundary for
+/// the wrong reason. `scripted_round_trips` is what keeps it honest.
+///
+/// It is never reached in production: the control that builds it is
+/// refused by a production configuration like every other test control.
+pub fn scripted(dialect: Dialect, text: &str, usage: Option<u64>) -> Vec<u8> {
+    let quoted = String::from_utf8(cbr_encoding::to_canonical(&cbr_encoding::Value::String(
+        text.to_string(),
+    )))
+    .expect("canonical JSON is utf-8");
+    let spent = usage.unwrap_or(0);
+    match dialect {
+        Dialect::Responses => format!(
+            r#"{{"id":"resp_scripted","object":"response","status":"completed","output":[{{"type":"message","role":"assistant","content":[{{"type":"output_text","text":{quoted}}}]}}],"output_text":{quoted},"error":null,"usage":{{"input_tokens":0,"output_tokens":{spent},"total_tokens":{spent}}}}}"#
+        ),
+        Dialect::OpenAi => format!(
+            r#"{{"id":"chatcmpl_scripted","object":"chat.completion","choices":[{{"index":0,"finish_reason":"stop","message":{{"role":"assistant","content":{quoted}}}}}],"usage":{{"prompt_tokens":0,"completion_tokens":{spent},"total_tokens":{spent}}}}}"#
+        ),
+        Dialect::Anthropic => format!(
+            r#"{{"id":"msg_scripted","type":"message","role":"assistant","stop_reason":"end_turn","content":[{{"type":"text","text":{quoted}}}],"usage":{{"input_tokens":0,"output_tokens":{spent}}}}}"#
+        ),
+    }
+    .into_bytes()
+}

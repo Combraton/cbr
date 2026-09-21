@@ -173,6 +173,22 @@ impl Pool {
         self.slots.lock().expect("not poisoned").remove(key);
     }
 
+    /// Take every answer whose key begins with `prefix`.
+    ///
+    /// **A job releases its own calls by naming itself.** It is the job,
+    /// not an item, that knows when the answers have been used: a compile
+    /// that produced its script has read every one it asked for, and a
+    /// job that published or ended will not ask again. Releasing one at a
+    /// time as it was read would free a key the next tick's compile would
+    /// then ask afresh — a second call, and a second charge, for a
+    /// question already answered.
+    pub fn release_all(&self, prefix: &str) {
+        self.slots
+            .lock()
+            .expect("not poisoned")
+            .retain(|key, _| !key.starts_with(prefix));
+    }
+
     /// Stop waiting for `key`.
     ///
     /// The thread is not killed — Rust has no way to — but its result is

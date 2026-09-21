@@ -50,6 +50,42 @@ Run 2's completion spent all sixteen of its output tokens on reasoning and retur
 
 **m4b had truncation as not repairable**, reasoning that asking again under the same limit gives the same answer. True, and beside the point: the repair asks again with a **larger** limit. Under the old rule run 2's call was simply lost. It is repairable now, it consumes a repair, and when the repair is spent it ends as the item's typed unmet reason.
 
+### The stall, measured away
+
+M3 recorded the index build holding the preparation tick as a known limit and READINESS §8 made resolving it m4c's first job. `work::Pool` bounds work in flight at two, answers every ask with a typed `Progress`, and blocks no caller, so the tick that asks is the tick that returns. **Measured before and after with the same instrument, on the same machine and the same three trees** ([STALL](m4/STALL.md)), an unrelated job's worst wait falls from 8.5s, 11.1s and 3.4s to 0.13s, 0.23s and 0.15s — 65×, 49× and 23×. Time to first packet is unchanged, which is the expected result: the build costs what it costs, and the provider stops holding everything else while it pays.
+
+Two decisions inside it are worth naming because the obvious alternative is wrong in each.
+
+**Deferred, not queued.** Work beyond the bound is refused for now and asked about again next tick. A queue would be a promise to do work nobody may want any more, made at the moment CBR has least idea whether it is still wanted.
+
+**A settled answer is kept until its caller takes it.** Releasing on first report breaks any compile needing two calls — the first answer would be gone by the tick the second arrived — and, worse, a released *failure* is a retry: the next tick asks again, the key is free, and the pool starts the work afresh. That is not the bounded repair READINESS §8 allows; it is an unbounded loop spending a shared quota.
+
+### Serving calls a model
+
+`SERVING_CALLS_A_MODEL` is true, in the commit that gave serving a call site. A request that authorised an investigation now asks a model, while preparing, which of the spans BM25 ranked inside the file an item named to cite. **No live call was made: the transport is the `model.fake` control.**
+
+**The answer cannot widen what is cited**, and that is the whole design. The model is shown a closed set of CBR's own candidates and answers with one of their ids — never a path, a line or a repository — so the worst any answer can do is choose a worse candidate from that list. An id it was never offered, a structure that is not a choice, a provider failure, a refusal at admission and a timeout all end as **the item's typed unmet reason**, never as the span BM25 would have chosen, which would report a model-assisted selection that no model made. There is no repair for an answer that is well formed and wrong: asking again would spend a shared quota on the same question.
+
+**A request that authorised no investigation calls nothing**, and gets exactly the compiler M3 shipped — from the same binary, which is what makes it m4e's baseline rather than a second build nobody ran.
+
+**The fake became a transport for the call site** rather than a scripted call at startup, and the six model crash rows moved with it: they now kill a provider in the middle of preparing a real request. They live in `cbr-cli`'s tests, because reaching that call site means submitting a request and `cbr` is the client that submits one.
+
+**One rule was loosened, and only one.** Compiling is production-only and the fake transport is a conformance control, so the two could never overlap and the call site could not be reached under `SIGKILL` at all. A conformance launch may now ask to compile, with `context.compile`. No fixture sets it, and `a_conformance_launch_prepares_nothing_unless_it_asks_to_compile` holds both halves.
+
+### What the flip costs, and the guard that pays for it
+
+While `SERVING_CALLS_A_MODEL` was false, `--permit-model-network` with a valid model and no `--calibrate` was a **refusal**. It is now a launch that reads the owner's Keychain and serves — the exact shape of the lapse recorded below. So the rule moved out of the constant and into `tests/credential_discipline.rs`, which reads the sources and requires every place a test passes that flag to be gated off macOS, to ask for the calibration, or to configure no model. It reads text, so it is a guard against carelessness and not against intent; carelessness is what the lapse was.
+
+The launch tests' macOS gating was reviewed in that commit and stands. The one test that passes the flag with a valid configuration asks for the calibration and is gated; three others pass it with no model configured, which is refused outright.
+
+### A second improvised launch, recorded
+
+**I launched the provider by hand again**, debugging why the call site was not reached: a shell command against the real binary. It read no credential — the configuration named no `model_runtime`, so `launch::decide` returned `Serve` — and it is still the practice [VERIFICATION](../VERIFICATION.md) rule 4 forbids, a month of which is how the first lapse happened. The fix was the one the rule implies: the diagnosis moved into the test, whose failure message now prints what the request last said, and that is what found the real cause.
+
+### Two defects in VERIFICATION's own commands
+
+Found by following them. The conformance block named `conformance/results/m1b` and the rest as output directories, so **running the documented commands overwrites the committed record of the stage that produced them** — `m1b` holds what M1b measured, when CBR declared `core/1` and nothing else, and a rerun replaces it with today's descriptor. The block now runs into a temporary directory and says why. The context command also named `m3a`, where the committed record is `m3a-context`.
+
 ### The owner's decision on provider-side retention
 
 Recorded 2026-09-21 and closed in [READINESS §7](m4/READINESS.md): the API offers no request option to prevent retention, and the owner accepts that **for public repositories only** — CBR's own source, Knowscroll-v2 and brian2. **Any private repository still needs the owner's explicit word**, and the absence of a retention control is a reason that bar stays where it is rather than a reason to lower it. A stated limit, not a solved problem.

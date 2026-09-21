@@ -187,10 +187,11 @@ pub struct Config {
     /// `None` in production, where the member is refused outright — there is
     /// no transport in this build and nothing else may pretend there is.
     pub model: Option<FakeModel>,
-    /// The `context.script` test control (CONTEXT section 12): scripted
-    /// preparation per request, and the peers a context provider reaches over
-    /// the public protocol. `Null` when absent. It holds peer credentials, so
-    /// it is never logged or echoed.
+    /// The `context` test control (CONTEXT section 12): scripted
+    /// preparation per request, the peers a context provider reaches over
+    /// the public protocol, and `compile` — the one member that asks a
+    /// conformance launch to compile as a production one does. `Null` when
+    /// absent. It holds peer credentials, so it is never logged or echoed.
     pub context: ContextControl,
 }
 
@@ -208,21 +209,38 @@ pub struct ModelRuntime {
     pub model: String,
 }
 
-/// The `model.fake` control's value: what to call with, and what the fake
-/// transport should answer.
+/// The `model.fake` control's value: **a fake transport for the serving
+/// call site**, and the model identity to use with it.
+///
+/// Before m4c this scripted one call at startup, because there was no
+/// serving call site for the ledger's crash boundaries to belong to. Now
+/// there is, so the control does what a test control should: it stands in
+/// for the network at the place the real thing will be, and changes
+/// nothing else about the path.
+///
+/// **It carries the model identity itself** rather than leaning on
+/// `model_runtime`, and that is the point: `model_runtime`'s presence is
+/// the only thing that makes a launch read a credential, so a test that
+/// needs a model call still needs no Keychain. A production configuration
+/// refuses this member like every other control.
 #[derive(Debug, Clone)]
 pub struct FakeModel {
-    pub job: String,
-    pub request: String,
-    pub body: String,
-    /// `usage:<n>`, `provider_exhausted`, `failed` or `not_sent`. It is the
-    /// **completion's** answer; the count is always answered as a count.
-    pub answer: String,
-    /// The generation limit the body declares and the reservation covers.
-    pub generation: u64,
-    /// Which dialect the scripted body is framed in, so that the guard on
-    /// the generation limit reads the member that dialect binds it to.
+    /// Which dialect the fake frames its answers in, and which the call
+    /// site serializes for.
     pub dialect: crate::wire::Dialect,
+    /// One of [`crate::wire::MODELS`], recorded like a real one.
+    pub model: String,
+    /// What the fake's **completion** answers, in order, one per call:
+    /// `choose:<id>` for a selection, `text:<...>`, `provider_exhausted`,
+    /// `failed` or `not_sent`. The count is always answered as a count.
+    /// A call past the end of the list gets the last answer again.
+    pub answers: Vec<String>,
+    /// What the provider says each completion cost.
+    pub usage: Option<u64>,
+    /// Whether the provider's count is made. Serving's own answer is
+    /// `WhenItCouldAdmit`; `"counting":"always"` is how the crash matrix
+    /// reaches the three count boundaries, which are the count.
+    pub counting: crate::model::Counting,
 }
 
 /// The `context.script` control's value. Its `Debug` form names nothing it
@@ -515,36 +533,40 @@ impl Config {
             };
         }
         if let Some(model) = value.get("model") {
+            let answers: Vec<String> = model
+                .get("answers")
+                .and_then(Value::as_array)
+                .unwrap_or_default()
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::to_string)
+                .collect();
             config.model = Some(FakeModel {
-                job: model
-                    .get("job")
-                    .and_then(Value::as_str)
-                    .unwrap_or("model-fake")
-                    .to_string(),
-                request: model
-                    .get("request")
-                    .and_then(Value::as_str)
-                    .unwrap_or("call")
-                    .to_string(),
-                body: model
-                    .get("body")
-                    .and_then(Value::as_str)
-                    .unwrap_or("{\"max_tokens\":64}")
-                    .to_string(),
-                answer: model
-                    .get("answer")
-                    .and_then(Value::as_str)
-                    .unwrap_or("usage:64")
-                    .to_string(),
-                generation: match model.get("generation") {
-                    Some(Value::Int(generation)) => (*generation).max(0) as u64,
-                    _ => 64,
-                },
                 dialect: model
                     .get("dialect")
                     .and_then(Value::as_str)
                     .and_then(crate::wire::Dialect::parse)
-                    .unwrap_or(crate::wire::Dialect::OpenAi),
+                    // The primary wire, and the only one the counting
+                    // endpoint describes.
+                    .unwrap_or(crate::wire::Dialect::Responses),
+                model: model
+                    .get("model")
+                    .and_then(Value::as_str)
+                    .unwrap_or(crate::wire::MODELS[0])
+                    .to_string(),
+                answers: if answers.is_empty() {
+                    vec!["choose:c1".to_string()]
+                } else {
+                    answers
+                },
+                usage: match model.get("usage") {
+                    Some(Value::Int(usage)) => Some((*usage).max(0) as u64),
+                    _ => None,
+                },
+                counting: match model.get("counting").and_then(Value::as_str) {
+                    Some("always") => crate::model::Counting::Always,
+                    _ => crate::model::Counting::WhenItCouldAdmit,
+                },
             });
         }
         // **Validated here, which is before any credential is read.** A

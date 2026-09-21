@@ -276,3 +276,29 @@ fn cancelling_work_that_was_never_started_is_harmless() {
 fn the_default_bound_is_a_stated_number() {
     assert_eq!(CONCURRENCY, 2);
 }
+
+#[test]
+fn a_job_releases_every_answer_it_asked_for_by_naming_itself() {
+    // The compile that read them is the compile that frees them, and it
+    // frees them together: an answer released the moment it was read
+    // would be asked again by the next tick's compile, which is a second
+    // call and a second charge for a question already answered.
+    let pool = Pool::new(4);
+    for key in ["model:j1:r1:a.rs", "model:j1:r1:b.rs", "model:j2:r1:a.rs"] {
+        pool.progress(key, None, || Ok(string("c1")));
+        until(|| pool.progress(key, None, nothing) != Progress::Running);
+    }
+    pool.release_all("model:j1:");
+    assert_eq!(
+        pool.progress("model:j2:r1:a.rs", None, nothing),
+        Progress::Done(string("c1")),
+        "another job's answer is untouched"
+    );
+    for key in ["model:j1:r1:a.rs", "model:j1:r1:b.rs"] {
+        assert_eq!(
+            pool.progress(key, None, || Ok(string("fresh"))),
+            Progress::Running,
+            "{key} was taken"
+        );
+    }
+}

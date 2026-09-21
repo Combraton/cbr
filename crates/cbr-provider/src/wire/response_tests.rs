@@ -621,3 +621,33 @@ fn the_repair_asks_for_more_room_rather_than_the_same_room_again() {
     assert!(second > first, "{first} -> {second}");
     assert_eq!(second, first * 2, "doubled, once");
 }
+
+#[test]
+fn a_scripted_completion_round_trips_through_this_parser() {
+    // **A test control that lies makes every test above it vacuous.** If
+    // the fake transport returned bytes this parser could not read, the
+    // serving call site would see a malformed answer whatever it asked
+    // for, and a crash-matrix row would pass at the wrong boundary for the
+    // wrong reason. So the control is held to the parser, in all three
+    // dialects, for both shapes a caller asks for.
+    let structure = Want::Structure {
+        schema: Value::Object(Vec::new()),
+    };
+    for dialect in [Dialect::Responses, Dialect::OpenAi, Dialect::Anthropic] {
+        let body = scripted(dialect, r#"{"id":"c2"}"#, Some(1_234));
+        let read = read_completion(dialect, &structure, &body);
+        assert_eq!(
+            read.reply.expect("a structure"),
+            Reply::Structure(Value::Object(vec![(
+                "id".into(),
+                Value::String("c2".into())
+            )])),
+            "{dialect:?}"
+        );
+        assert_eq!(read.usage, Some(1_234), "{dialect:?} reports what it cost");
+
+        let read = read_completion(dialect, &Want::Text, &scripted(dialect, "plain", None));
+        assert_eq!(read.reply.expect("text"), Reply::Text("plain".into()));
+        assert_eq!(read.usage, Some(0), "{dialect:?} with no usage scripted");
+    }
+}

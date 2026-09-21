@@ -318,6 +318,10 @@ pub struct Provider {
     /// index build again on every poll and finish none of them — which is
     /// exactly what happened the first time this was written.
     work: std::sync::Arc<crate::work::Pool>,
+    /// The model this launch may call, when it has one. **Absent is the
+    /// ordinary case**, and then preparation is the deterministic path M3
+    /// shipped.
+    model: Option<std::sync::Arc<Serving>>,
     /// Whether this session is on a transport many processes can reach, where
     /// it starts unauthenticated (CORE section 18.2).
     shared_transport: bool,
@@ -333,6 +337,106 @@ pub struct Provider {
     next_subscription: u64,
 }
 
+/// What a model call opens, when serving makes one.
+///
+/// Held as the pieces a transport is built from rather than as a
+/// transport, because a call runs on the work pool's thread:
+/// [`crate::wire::http::Http`] borrows its credential, and a pool thread
+/// can hold neither a borrow nor a lifetime.
+pub enum Wire {
+    /// The fake, under the `model.fake` control. **No credential exists
+    /// in this launch**: the control carries the model identity itself,
+    /// so a test that needs a model call still needs no Keychain.
+    Fake(crate::model::Fake),
+    /// The live one. Reached only by a launch that was given a model, the
+    /// permit and a credential, which `launch::decide` alone grants.
+    Live(crate::keychain::Secret),
+}
+
+/// The model this launch may call, and how it reaches it.
+pub struct Serving {
+    pub dialect: crate::wire::Dialect,
+    pub model: String,
+    pub wire: Wire,
+    /// Whether the provider's count is worth making. Serving's answer is
+    /// `WhenItCouldAdmit`; the `model.fake` control can say `Always`,
+    /// because the crash matrix's three count boundaries are the count.
+    pub counting: crate::model::Counting,
+    /// A ceiling for this whole run, carried here so a pool thread has it
+    /// without reaching back into the configuration.
+    pub run_ceiling: Option<u64>,
+}
+
+/// How long a live call may take before the transport gives up on it. The
+/// request's own deadline is separate and is the pool's business.
+const CALL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(120);
+
+impl Serving {
+    /// One question, through whichever transport this launch has.
+    ///
+    /// **Runs on the work pool's thread**, with its own connection to the
+    /// store, so nothing here holds the preparation tick. Everything it
+    /// exchanges goes through the recording boundary first: redacted and
+    /// written before the answer gets back to the caller, exactly as the
+    /// calibration's one live call did.
+    pub fn ask(
+        &self,
+        connection: &rusqlite::Connection,
+        now: &str,
+        job: &str,
+        request: &str,
+        body: &crate::wire::request::Request,
+    ) -> crate::model::Outcome {
+        let live;
+        let scrubber;
+        let transport: &dyn crate::model::Transport = match &self.wire {
+            Wire::Fake(fake) => {
+                scrubber = None;
+                fake
+            }
+            Wire::Live(secret) => {
+                // The gate to a socket. A launch without the permit
+                // cannot build a transport at all, which is what makes
+                // "CI opens no socket" a property of the build.
+                let Some(permit) = crate::wire::net::permit() else {
+                    return crate::model::Outcome::Unmet {
+                        reason: "model_network_not_permitted",
+                        cost: crate::model::Cost::default(),
+                    };
+                };
+                scrubber = Some(secret.scrubber());
+                live = crate::wire::http::Http::new(permit, self.dialect, secret, CALL_TIMEOUT);
+                &live
+            }
+        };
+        let recording = crate::wire::record::Recording {
+            inner: transport,
+            store: connection,
+            now,
+            job,
+            request,
+            model: &self.model,
+            dialect: self.dialect,
+            scrubber: scrubber.as_ref(),
+        };
+        let runtime = crate::model::Runtime {
+            ledger: crate::budget::Ledger::new(connection).with_run_ceiling(self.run_ceiling),
+            transport: &recording,
+        };
+        runtime.ask(
+            now,
+            &crate::model::Ask {
+                job,
+                request,
+                dialect: self.dialect,
+                body,
+                counting: self.counting,
+            },
+            &|name| crate::barriers::pause(name),
+        )
+    }
+}
+
 impl Provider {
     /// Open the provider over its data directory, advancing the deduplication
     /// generation for this process.
@@ -340,85 +444,6 @@ impl Provider {
     /// is deliberate: a registration whose checkout cannot be read would
     /// otherwise look, to every later search, like a repository with nothing
     /// in it.
-    /// One call through [`crate::model::Runtime`] against the fake
-    /// transport, so the ledger's three crash boundaries belong to a running
-    /// process the crash matrix can kill at.
-    ///
-    /// **It selects nothing.** No packet changes because of it; it exists to
-    /// make the envelope's own failure modes reachable under `SIGKILL`.
-    /// Reached only when `model.fake` is configured, which a production
-    /// launch configuration refuses.
-    pub fn run_fake_model_call(&mut self, fake: &crate::config::FakeModel) {
-        use crate::model::{Answer, Recorder, Runtime};
-        // **Both answers are scripted.** A single scripted answer was
-        // consumed by the count call, and a `Completed` returned to a count
-        // took the failure arm, so the process paused at the count's first
-        // boundary in every row while the test believed it had reached the
-        // completion. The count is answered as a count; the control's own
-        // answer is the completion's.
-        let completion = match fake.answer.split_once(':') {
-            Some(("usage", tokens)) => Answer::Completed {
-                body: Vec::new(),
-                usage: tokens.parse().ok(),
-            },
-            _ if fake.answer == "provider_exhausted" => Answer::ProviderExhausted,
-            _ if fake.answer == "failed" => Answer::Failed {
-                reason: "scripted".into(),
-                usage: None,
-            },
-            _ if fake.answer == "not_sent" => Answer::NotSent("scripted".into()),
-            _ => Answer::Completed {
-                body: Vec::new(),
-                usage: Some(0),
-            },
-        };
-        let counted = Answer::Counted(fake.body.len() as u64);
-        let transport = Recorder::new(vec![counted, completion]);
-        let now = self.clock.now();
-        // **Wrapped in the recording boundary**, so the only path in this
-        // build that reaches a transport reaches it the same way a live
-        // one will: everything it exchanges is redacted and written before
-        // the answer gets back to the caller.
-        let recording = crate::wire::record::Recording {
-            inner: &transport,
-            store: self.store.connection(),
-            now: &now,
-            job: &fake.job,
-            request: &fake.request,
-            model: "fake",
-            dialect: fake.dialect,
-            // The fake transport is reached without a credential, so there
-            // is none to scrub. The live path passes one.
-            scrubber: None,
-        };
-        let runtime = Runtime {
-            ledger: crate::budget::Ledger::new(self.store.connection())
-                .with_run_ceiling(self.config.model_run_ceiling),
-            transport: &recording,
-        };
-        runtime.call(
-            &now,
-            &crate::model::Attempt {
-                job: &fake.job,
-                request: &fake.request,
-                body: fake.body.as_bytes(),
-                // The fake counts the same body it completes. It is a
-                // fault injector, and its job is to reach the count
-                // boundaries the crash matrix kills at — which a dialect
-                // that skips the count call would never do.
-                count_body: Some(fake.body.as_bytes()),
-                messages: 1,
-                generation: fake.generation,
-                dialect: fake.dialect,
-                // The fault injector's job is to reach the count
-                // boundaries the crash matrix kills at, which a call that
-                // decided it did not need a count would never do.
-                counting: crate::model::Counting::Always,
-            },
-            &|name| crate::barriers::pause(name),
-        );
-    }
-
     pub fn register_repositories(
         &mut self,
         registrations: &[crate::repositories::Registration],
@@ -488,6 +513,7 @@ impl Provider {
             config,
             clock: std::sync::Arc::new(clock),
             work: std::sync::Arc::new(crate::work::Pool::new(crate::work::CONCURRENCY)),
+            model: None,
             store,
             shared_transport: false,
             authenticated: true,
@@ -521,6 +547,7 @@ impl Provider {
             clock,
             store,
             work: std::sync::Arc::new(crate::work::Pool::new(crate::work::CONCURRENCY)),
+            model: None,
             shared_transport: true,
             authenticated: false,
             negotiated: None,
@@ -545,6 +572,17 @@ impl Provider {
     /// Use the process's pool rather than one of this session's own.
     pub fn with_work(mut self, work: std::sync::Arc<crate::work::Pool>) -> Self {
         self.work = work;
+        self
+    }
+
+    /// The model this process may call, shared by every session of it, so
+    /// that a credential is held once and a fake's script is one script.
+    pub fn shared_model(&self) -> Option<std::sync::Arc<Serving>> {
+        self.model.clone()
+    }
+
+    pub fn with_model(mut self, model: Option<std::sync::Arc<Serving>>) -> Self {
+        self.model = model;
         self
     }
 
