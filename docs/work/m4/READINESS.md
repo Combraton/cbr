@@ -193,7 +193,7 @@ Both are things CBR **cannot** verify rather than things it has not got round to
 
 ## 8. Bounded runtime
 
-**Model work leaves the preparation tick.** M3 measured the cost of doing long work inside it: the index build holds the tick throughout, **7.2s** on CBR's own 1,066 blobs, **12.8s** on brian2's 553 blobs and 5.3 MB, and **3.9s** on Knowscroll's 145, with every other job on that provider waiting it out. A model call is longer and less predictable than any of those, so M4 is where this is resolved — for the index build as well as for the model.
+**Model work leaves the preparation tick.** M3 measured the cost of doing long work inside it: the index build holds the tick throughout, **7.2s** on CBR's own 1,066 blobs, **12.8s** on brian2's 553 blobs and 5.3 MB, and **3.9s** on Knowscroll's 145, with every other job on that provider waiting it out. A model call is longer and less predictable than any of those, so M4 is where this is resolved — for the index build as well as for the model. m4c moves the build; [STALL](STALL.md) is the before-and-after measurement.
 
 - **Deadlines** are the request's, already in the protocol, and a call that would outlast one is not started.
 - **Cancellation** drops the request; a cancelled call leaves no partial derivation record.
