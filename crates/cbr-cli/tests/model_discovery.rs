@@ -166,10 +166,10 @@ fn every_step_is_a_recorded_derivation() {
 
     let terms = recorded
         .iter()
-        .find(|(selector, _)| selector.starts_with("discovery.terms"))
+        .find(|(_, selector, _)| selector.starts_with("discovery.terms"))
         .unwrap_or_else(|| panic!("no terms record in {recorded:?}"));
     assert_eq!(
-        terms.1.get("proposed").and_then(Value::as_array),
+        terms.2.get("proposed").and_then(Value::as_array),
         Some(
             &[
                 Value::String("tombstone".into()),
@@ -181,10 +181,10 @@ fn every_step_is_a_recorded_derivation() {
 
     let choice = recorded
         .iter()
-        .find(|(selector, _)| selector.starts_with("discovery.choose"))
+        .find(|(_, selector, _)| selector.starts_with("discovery.choose"))
         .unwrap_or_else(|| panic!("no choice record in {recorded:?}"));
     assert_eq!(
-        choice.1.get("chose_ids").and_then(Value::as_array),
+        choice.2.get("chose_ids").and_then(Value::as_array),
         Some(&[Value::String("d1".into()), Value::String("d3".into())][..]),
         "the record does not hold the ids that were chosen: {recorded:?}"
     );
@@ -233,8 +233,8 @@ fn failing(request: &str, script: &[&str]) -> (Vec<String>, Vec<String>, Vec<(St
         .collect();
     let mut reasons: Vec<(String, String)> = answers(&fixture)
         .into_iter()
-        .filter(|(selector, _)| selector.starts_with("discovery."))
-        .map(|(selector, answer)| {
+        .filter(|(_, selector, _)| selector.starts_with("discovery."))
+        .map(|(_, selector, answer)| {
             (
                 selector
                     .split_whitespace()
@@ -410,10 +410,10 @@ fn negative_control_5_a_planted_file_reaches_the_model_and_changes_nothing() {
     let recorded = answers(&fixture);
     let terms = recorded
         .iter()
-        .find(|(selector, _)| selector.starts_with("discovery.terms"))
+        .find(|(_, selector, _)| selector.starts_with("discovery.terms"))
         .unwrap_or_else(|| panic!("no terms record in {recorded:?}"));
     assert_eq!(
-        terms.1.get("proposed").and_then(Value::as_array),
+        terms.2.get("proposed").and_then(Value::as_array),
         Some(&[Value::String("../../etc/passwd".into())][..]),
         "{recorded:?}"
     );
@@ -481,6 +481,95 @@ fn a_rebuild_with_no_record_for_a_step_says_so_rather_than_deciding_for_itself()
     assert!(
         serving::derivations(&fixture.data()).is_empty(),
         "and nothing was sealed"
+    );
+    rebuilding.stop();
+}
+
+#[test]
+fn a_purge_makes_an_ambiguous_question_replayable_again() {
+    // **The remedy, end to end, rather than a sentence in a document.**
+    //
+    // Two live runs of one question propose different terms. The terms
+    // question is the same question — same task, same candidates — so
+    // the two records disagree and a rebuild declines it, which is the
+    // ambiguity rule doing exactly what it says. Both terms find
+    // nothing, so both runs offer the same union and the only thing
+    // separating their *choice* questions is the terms in the selector.
+    //
+    // Then the owner purges one terms record, which is the remedy
+    // READINESS section 6 states: an authority's act, under
+    // `evidence.retention_control`, on the record that should not have
+    // survived. The question is replayable again — and the right choice
+    // record is found, which is what the terms in the selector are for.
+    let fixture = Fixture::answering(&["choose:c1", "terms:zzzz", "ids:d1"]);
+    let first = fixture.start();
+    prepared(&fixture, "first", BOTH_STEPS);
+    first.stop();
+
+    let second = fixture.start_answering(&["choose:c1", "terms:yyyy", "ids:d2"]);
+    prepared(&fixture, "second", BOTH_STEPS);
+
+    // Six records: one item question and two discovery steps, twice.
+    // The two terms records disagree; the two choice records answer
+    // different questions, because the terms they were asked under are
+    // part of each question. Read while a provider is up, because a
+    // record's bytes are fetched the way a reader fetches them.
+    let recorded = answers(&fixture);
+    second.stop();
+    assert_eq!(recorded.len(), 6, "{recorded:?}");
+    let choices: Vec<&String> = recorded
+        .iter()
+        .filter(|(_, selector, _)| selector.starts_with("discovery.choose"))
+        .map(|(_, selector, _)| selector)
+        .collect();
+    assert_eq!(choices.len(), 2);
+    assert_ne!(
+        choices[0], choices[1],
+        "two choices asked under different terms are one question: {choices:?}"
+    );
+
+    // The rebuild declines, on the terms step, and says so.
+    let rebuilding = fixture.start_replaying();
+    prepared(&fixture, "before", BOTH_STEPS);
+    assert_eq!(
+        omissions(&fixture, "before")
+            .into_iter()
+            .filter(|(section, _)| section.starts_with("d-model-"))
+            .collect::<Vec<_>>(),
+        vec![("d-model-terms".to_string(), "unavailable".to_string())],
+        "the rebuild did not decline the ambiguous step"
+    );
+    rebuilding.stop();
+
+    // The remedy: purge the later record, by the authority, under the
+    // retention feature. The ledger row it charged stays where it is.
+    let purging = fixture.start();
+    let doomed = answers(&fixture)
+        .into_iter()
+        .find(|(_, selector, answer)| {
+            selector.starts_with("discovery.terms")
+                && answer
+                    .get("proposed")
+                    .and_then(Value::as_array)
+                    .is_some_and(|terms| terms.contains(&Value::String("yyyy".into())))
+        })
+        .map(|(id, ..)| id)
+        .expect("the record that proposed yyyy");
+    fixture.purge_as_owner(
+        &doomed,
+        serving::artifact_revision(&fixture.data(), &doomed),
+    );
+    purging.stop();
+
+    let rebuilding = fixture.start_replaying();
+    let inspected = prepared(&fixture, "after", BOTH_STEPS);
+    assert_eq!(result(&inspected, "q").0, "satisfied", "{inspected:?}");
+    assert!(
+        omissions(&fixture, "after")
+            .iter()
+            .all(|(section, _)| !section.starts_with("d-model-")),
+        "the question is still unreplayable after the remedy: {:?}",
+        omissions(&fixture, "after")
     );
     rebuilding.stop();
 }

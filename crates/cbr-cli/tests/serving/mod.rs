@@ -48,6 +48,18 @@ pub fn commit(repository: &Path, message: &str) {
     git(repository, &["commit", "-q", "-m", message]);
 }
 
+/// The tree of the checkout's current commit, which a condition names.
+pub fn tree_of(repository: &Path) -> String {
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(repository)
+        .args(["rev-parse", "HEAD^{tree}"])
+        .output()
+        .expect("git runs");
+    assert!(output.status.success(), "git rev-parse");
+    String::from_utf8_lossy(&output.stdout).trim().to_string()
+}
+
 fn git(repository: &Path, arguments: &[&str]) {
     let output = Command::new("git")
         .arg("-C")
@@ -271,6 +283,30 @@ impl Fixture {
         Running(child)
     }
 
+    /// Start again over the same data directory with a **different
+    /// script**.
+    ///
+    /// A launch's fake answers from one list, so two runs that answer
+    /// the same question differently are two launches. That state is
+    /// not exotic — it is what a call that failed and a rerun that
+    /// worked leave behind — and it is the only way to build it here.
+    pub fn start_answering(&self, answers: &[&str]) -> Running {
+        let scripted = answers
+            .iter()
+            .map(|answer| format!("\"{answer}\""))
+            .collect::<Vec<_>>()
+            .join(",");
+        let config = self.directory.path().join("cbr-again.json");
+        std::fs::write(
+            &config,
+            format!(
+                r#"{{"format":"combraton-conformance-config/1","principal":"owner","authority_principals":["owner"],"credentials":[{{"credential":"{CREDENTIAL}"}},{{"credential":"{READER}"}}],"context":{{"compile":true}},"model":{{"dialect":"responses","model":"MiniMax-M2.7-highspeed","answers":[{scripted}],"usage":5000,"counting":"when_it_could_admit"}}}}"#
+            ),
+        )
+        .expect("config");
+        self.launch(&config, &[])
+    }
+
     /// Start again over the same data directory as an **offline
     /// rebuild**: no fake transport, no credential, no permit, and a
     /// transport that panics if it is ever reached.
@@ -364,6 +400,21 @@ impl Fixture {
     /// list on both sides of every comparison — which is to say,
     /// untested.
     pub fn propose_claim(&self, claim: &str) {
+        self.propose(claim, false)
+    }
+
+    /// The same, with a **condition naming this basis**, which is what
+    /// makes the claim *applicable* and therefore current.
+    ///
+    /// A claim with no condition at all is `unknown` at every basis and
+    /// so is never current, whatever an authority decided about it —
+    /// which is `knowledge::result_of` over an empty finding list, and
+    /// is why a binding claim needs one.
+    pub fn propose_checkable_claim(&self, claim: &str) {
+        self.propose(claim, true)
+    }
+
+    fn propose(&self, claim: &str, checkable: bool) {
         let ingested = self.cbr(&[
             "ingest",
             self.checkout.join("unasked.md").to_str().expect("utf-8"),
@@ -382,8 +433,16 @@ impl Fixture {
                 .to_string()
         };
         let (artifact, digest) = (field("artifact"), field("digest"));
+        let conditions = if checkable {
+            format!(
+                r#""conditions":[{{"condition_id":"at-tree","kind":"repository_tree","repository":"app","expected":"{}"}}],"#,
+                tree_of(&self.checkout)
+            )
+        } else {
+            String::new()
+        };
         let content = format!(
-            r#"{{"plane":"normative",
+            r#"{{"plane":"normative",{conditions}
                  "statement":{{"subject":{{"kind":"app.service","id":"queue"}},
                                "predicate":"drains_on_shutdown","value":true,
                                "cardinality":"single"}},
@@ -407,6 +466,37 @@ impl Fixture {
             proposed.status.success(),
             "propose: {}",
             String::from_utf8_lossy(&proposed.stderr)
+        );
+    }
+
+    /// Accept a proposed claim as **binding**, which is an authority's
+    /// act and is what makes it a claim a model may not drop.
+    pub fn make_binding(&self, claim: &str) {
+        // A claim is accepted by the authority **bound to its scope**,
+        // not by whoever happens to be an authority principal. The
+        // fixture's claim is scoped `svc`, so that is what is bound.
+        let bound = self.cbr(&["authority", "bind", "svc", "--authority", "owner"]);
+        assert!(
+            bound.status.success(),
+            "authority bind: {}",
+            String::from_utf8_lossy(&bound.stderr)
+        );
+        let decided = self.cbr(&[
+            "decide",
+            &format!("bind-{claim}"),
+            "--claim",
+            claim,
+            "--decision",
+            "accepted_for_use",
+            "--use",
+            "binding",
+            "--rationale",
+            "the authority said so",
+        ]);
+        assert!(
+            decided.status.success(),
+            "decide: {}",
+            String::from_utf8_lossy(&decided.stderr)
         );
     }
 
@@ -852,13 +942,13 @@ pub fn offered_as(body: &str, id: &str) -> String {
     rest[..to].to_string()
 }
 
-/// Every sealed derivation's answer, as `(selector, answer)`.
+/// Every sealed derivation, as `(artifact id, selector, answer)`.
 ///
 /// The selector says which question it was — an item's selector, or
 /// `discovery.terms`/`discovery.choose` — and the answer is the object
 /// the record carries, so a test can say *this step proposed these
 /// terms* rather than *some record exists*.
-pub fn answers(fixture: &Fixture) -> Vec<(String, Value)> {
+pub fn answers(fixture: &Fixture) -> Vec<(String, String, Value)> {
     let data = fixture.data();
     derivations(&data)
         .into_iter()
@@ -891,7 +981,7 @@ pub fn answers(fixture: &Fixture) -> Vec<(String, Value)> {
                 .unwrap_or_default()
                 .to_string();
             let answer = sealed.get("answer").cloned().unwrap_or(Value::Null);
-            (selector, answer)
+            (id, selector, answer)
         })
         .collect()
 }

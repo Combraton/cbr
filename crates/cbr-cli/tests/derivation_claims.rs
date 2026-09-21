@@ -321,10 +321,10 @@ fn a_candidate_set_that_held_a_claim_is_sealed_under_that_claim() {
     let recorded = answers(&fixture);
     let choice = recorded
         .iter()
-        .find(|(selector, _)| selector.starts_with("discovery.choose"))
+        .find(|(_, selector, _)| selector.starts_with("discovery.choose"))
         .unwrap_or_else(|| panic!("no choice record in {recorded:?}"));
     assert_eq!(
-        choice.1.get("chose_ids").and_then(Value::as_array),
+        choice.2.get("chose_ids").and_then(Value::as_array),
         Some(&[Value::String("k1".into())][..]),
         "the claim the model chose is not the one the record says: {recorded:?}"
     );
@@ -364,6 +364,71 @@ fn a_candidate_set_that_held_a_claim_is_sealed_under_that_claim() {
             .and_then(Value::as_str),
         Some("permission_denied"),
         "a reader who cannot read the claim was served a record built from it: {inspected:?}"
+    );
+    running.stop();
+}
+
+#[test]
+fn a_binding_claim_is_carried_whether_the_model_listed_it_or_not() {
+    // **A model may not unmark a binding claim by leaving it out of a
+    // list.** The rule that it may never *mark* one binding is worth
+    // nothing without this one: `binding` is an authority's act, and
+    // INTERNALS section 5 step 3 says of this rank that losing it loses
+    // the answer.
+    //
+    // The model is offered the claim and chooses only a span. The
+    // packet carries the claim regardless, and its label is still the
+    // authority's.
+    let fixture = Fixture::answering(&["choose:c2", "terms:tombstone", "ids:d1"]);
+    let running = fixture.start();
+    fixture.propose_checkable_claim(CLAIM);
+    fixture.make_binding(CLAIM);
+    prepared(&fixture, "binding", BOTH_STEPS);
+
+    let recorded = answers(&fixture);
+    let choice = recorded
+        .iter()
+        .find(|(_, selector, _)| selector.starts_with("discovery.choose"))
+        .unwrap_or_else(|| panic!("no choice record in {recorded:?}"));
+    assert_eq!(
+        choice.2.get("chose_ids").and_then(Value::as_array),
+        Some(&[Value::String("d1".into())][..]),
+        "the model chose no claim, which is what this test needs: {recorded:?}"
+    );
+
+    let printed = fixture.cbr(&["packet", "binding", "--excerpt", "1000000"]);
+    assert!(
+        printed.status.success(),
+        "packet: {}",
+        String::from_utf8_lossy(&printed.stderr)
+    );
+    let inspected = cbr_encoding::parse(String::from_utf8_lossy(&printed.stdout).trim().as_bytes())
+        .expect("canonical JSON");
+    let sealed = cbr_encoding::parse(
+        &cbr_encoding::decode_base64(
+            inspected
+                .get("excerpt")
+                .and_then(|excerpt| excerpt.get("data_base64"))
+                .and_then(Value::as_str)
+                .expect("an excerpt"),
+        )
+        .expect("base64"),
+    )
+    .expect("the sealed packet");
+    let carried = sealed
+        .get("sections")
+        .and_then(Value::as_array)
+        .unwrap_or_default()
+        .iter()
+        .find(|section| {
+            section.get("section_id").and_then(Value::as_str) == Some(&format!("d-claim-{CLAIM}"))
+        })
+        .cloned()
+        .unwrap_or_else(|| panic!("the binding claim was dropped: {sealed:?}"));
+    assert_eq!(
+        carried.get("label").and_then(Value::as_str),
+        Some("binding"),
+        "and it is carried as something other than binding: {carried:?}"
     );
     running.stop();
 }

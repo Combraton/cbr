@@ -1129,10 +1129,19 @@ impl Provider {
     ) {
         let mut carried = 0;
         for (_, claim, discovered) in ranked {
-            let wanted = match chosen {
-                Some(chosen) => chosen.contains(&claim),
-                None => true,
-            };
+            // **A binding claim is carried whether a model listed it or
+            // not.** `binding` is an authority's act, and the rule that
+            // a model may never mark a claim binding is worth nothing if
+            // a model may quietly unmark one by leaving it out of a
+            // list. INTERNALS section 5 step 3 puts it plainly about
+            // this rank: losing it loses the answer. The cap still
+            // applies, and so does every other claim's eligibility.
+            let binding = discovered.rank == compiler::Rank::BindingClaim;
+            let wanted = binding
+                || match chosen {
+                    Some(chosen) => chosen.contains(&claim),
+                    None => true,
+                };
             if wanted && carried < compiler::CARRIED_CLAIMS {
                 carried += 1;
                 decided.discovered.push(discovered);
@@ -1169,6 +1178,15 @@ impl Provider {
             return Ok(deterministic());
         };
         if assist.investigation <= 0 {
+            return Ok(deterministic());
+        }
+        // **Nothing readable is not the same as nothing found.** An
+        // empty *result* is exactly the case the terms step exists for —
+        // brian2's, where the ordinary reading finds nothing useful. An
+        // empty *view* is a request with no repository to search, where
+        // every term would be run against nothing, so the call could not
+        // change the answer and is not made.
+        if trees.is_empty() {
             return Ok(deterministic());
         }
         // **A flow that cannot finish is not started.** The terms step's
