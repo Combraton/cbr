@@ -1777,6 +1777,7 @@ impl Provider {
             .enumerate()
             .map(|(index, found)| crate::selection::Candidate {
                 id: format!("c{}", index + 1),
+                kind: crate::selection::KIND_SPAN,
                 path: path.to_string(),
                 start_line: found.start_line as usize,
                 end_line: found.end_line as usize,
@@ -1858,6 +1859,14 @@ impl Provider {
                     }
                 }
                 Some(crate::derivation::Answer::Unmet(reason)) => Assisted::Unmet(reason),
+                // **A record of another step's question, which cannot
+                // happen and is not therefore assumed away.** A
+                // discovery record answers a question whose selector
+                // names its step, so its digest is never this one's;
+                // if one ever arrived here the record would have been
+                // read and still not answer what was asked, which is
+                // what `UNREADABLE` means.
+                Some(_) => Assisted::Unmet(crate::derivation::UNREADABLE),
                 // **Never a call, and never BM25's own first.** A
                 // question nothing retained an answer to is an item
                 // this rebuild cannot honestly satisfy, and saying so
@@ -1970,7 +1979,9 @@ impl Provider {
                         }
                     }
                     Some(crate::derivation::Answer::Unmet(reason)) => Assisted::Unmet(reason),
-                    None => Assisted::Unmet(crate::derivation::UNREADABLE),
+                    // As above: a record shaped for another step is one
+                    // this call site cannot read as an answer.
+                    Some(_) | None => Assisted::Unmet(crate::derivation::UNREADABLE),
                 }
             }
             crate::work::Progress::Failed(reason) => Assisted::Unmet(reason),

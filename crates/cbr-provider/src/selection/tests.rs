@@ -12,6 +12,7 @@ use crate::wire::Dialect;
 fn candidate(id: &str, path: &str, text: &str) -> Candidate {
     Candidate {
         id: id.to_string(),
+        kind: KIND_SPAN,
         path: path.to_string(),
         start_line: 1,
         end_line: 20,

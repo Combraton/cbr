@@ -15,6 +15,7 @@ mod config;
 mod context;
 mod credentials;
 mod derivation;
+mod discovery;
 mod effects;
 mod envelope;
 mod errors;

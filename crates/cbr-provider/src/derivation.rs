@@ -23,6 +23,16 @@
 //! digest of the text shown. A file edited since the call is a different
 //! question and finds nothing, which is the answer a replay should give.
 //!
+//! # Why the format is `/2`
+//!
+//! m4e offers a model **claims** as well as spans, and a claim has no
+//! line range. So a candidate says which kind it is, that member is part
+//! of the question's digest, and a record sealed by m4d never answers a
+//! question asked by this build. Nothing is lost by that: it is the
+//! honest answer, because the two questions showed the model different
+//! things. No `/1` record exists anywhere but in a test store — m4d made
+//! no live call, and neither has anything else.
+//!
 //! # What a record cannot be used for
 //!
 //! Widening. Everything about the record is a fact about a question CBR
@@ -41,7 +51,7 @@ use crate::context::{at, canonical, list, object, string, text};
 pub const RETENTION_CLASS: &str = "model-derivation";
 pub const MEDIA_TYPE: &str = "application/json";
 pub const SOURCE_KIND: &str = "model_derivation";
-pub const PRODUCER: &str = "cbr-model-runtime/1";
+pub const PRODUCER: &str = "cbr-model-runtime/2";
 
 /// Every typed unmet reason a record may carry.
 ///
@@ -58,6 +68,7 @@ pub const REASONS: &[&str] = &[
     "index_unavailable",
     "job_over_ceiling",
     "model_answer_malformed",
+    "model_answer_over_bound",
     "model_answer_not_structured",
     "model_answer_truncated",
     "model_call_failed",
@@ -101,11 +112,21 @@ pub fn reason(text: &str) -> Option<&'static str> {
     REASONS.iter().copied().find(|known| *known == text)
 }
 
-/// One candidate as the record remembers it: where it was, and the digest
-/// of the text that was shown — never the text.
+/// One candidate as the record remembers it: what it was, where it was,
+/// and the digest of the text that was shown — never the text.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Offered {
     pub id: String,
+    /// [`crate::selection::KIND_SPAN`] or [`crate::selection::KIND_CLAIM`].
+    ///
+    /// **Added at m4e, which is why the format is `/2`.** A claim has no
+    /// line range, so without this a record would say `lines 0-0` of a
+    /// path that is a claim id and read as a span of a file. It is part
+    /// of the question's digest, so a `/1` record never answers a `/2`
+    /// question — which is correct, because the two showed the model
+    /// different things.
+    pub kind: String,
+    /// The path of the span, or the id of the claim.
     pub path: String,
     pub start_line: usize,
     pub end_line: usize,
@@ -118,6 +139,7 @@ pub fn offered(candidates: &[crate::selection::Candidate]) -> Vec<Offered> {
         .iter()
         .map(|candidate| Offered {
             id: candidate.id.clone(),
+            kind: candidate.kind.to_string(),
             path: candidate.path.clone(),
             start_line: candidate.start_line,
             end_line: candidate.end_line,
@@ -152,6 +174,7 @@ impl Question<'_> {
                         .map(|offered| {
                             object(vec![
                                 ("id", string(&offered.id)),
+                                ("kind", string(&offered.kind)),
                                 ("path", string(&offered.path)),
                                 ("start_line", Value::Int(offered.start_line as i64)),
                                 ("end_line", Value::Int(offered.end_line as i64)),
@@ -175,6 +198,18 @@ impl Question<'_> {
 pub enum Answer {
     /// One of the ids that were offered. Never a path, a line or a label.
     Chose(String),
+    /// **The search terms a discovery step proposed, as the model wrote
+    /// them**, every bound having held.
+    ///
+    /// The raw strings rather than the words CBR tokenised them into:
+    /// tokenisation is a function of these, so a replay re-derives it,
+    /// and a record of what CBR made of an answer is not a record of the
+    /// answer. It is also the evidence that a planted file's instruction
+    /// reached no further than a term.
+    Proposed(Vec<String>),
+    /// Several of the ids that were offered, in the order they were
+    /// offered. Never a path, a line or a label.
+    ChoseMany(Vec<String>),
     Unmet(&'static str),
 }
 
@@ -214,7 +249,7 @@ pub fn record(made: &Made<'_>) -> Value {
     let mut question = made.question.to_value();
     crate::context::set(&mut question, "digest", string(&made.question.digest()));
     object(vec![
-        ("format", string("cbr-model-derivation/1")),
+        ("format", string("cbr-model-derivation/2")),
         ("model", string(made.question.model)),
         ("admission", string(made.spend.admission)),
         (
@@ -232,6 +267,14 @@ pub fn record(made: &Made<'_>) -> Value {
             "answer",
             match &made.answer {
                 Answer::Chose(id) => object(vec![("chose", string(id))]),
+                Answer::Proposed(terms) => object(vec![(
+                    "proposed",
+                    Value::Array(terms.iter().map(|term| string(term)).collect()),
+                )]),
+                Answer::ChoseMany(ids) => object(vec![(
+                    "chose_ids",
+                    Value::Array(ids.iter().map(|id| string(id)).collect()),
+                )]),
                 Answer::Unmet(reason) => object(vec![("unmet", string(reason))]),
             },
         ),
@@ -264,8 +307,24 @@ pub fn answer_of(record: &Value) -> Option<Answer> {
     if let Some(chose) = answer.get("chose").and_then(Value::as_str) {
         return Some(Answer::Chose(chose.to_string()));
     }
+    // **A list whose members are not strings is not a list this build can
+    // read**, and is the unreadable record's own reason rather than a
+    // shorter list with the unreadable members dropped.
+    if let Some(terms) = answer.get("proposed").and_then(Value::as_array) {
+        return strings(terms).map(Answer::Proposed);
+    }
+    if let Some(ids) = answer.get("chose_ids").and_then(Value::as_array) {
+        return strings(ids).map(Answer::ChoseMany);
+    }
     let unmet = answer.get("unmet").and_then(Value::as_str)?;
     Some(Answer::Unmet(reason(unmet)?))
+}
+
+fn strings(values: &[Value]) -> Option<Vec<String>> {
+    values
+        .iter()
+        .map(|value| value.as_str().map(str::to_string))
+        .collect()
 }
 
 /// What a reader must be able to read before this derivation is served to
