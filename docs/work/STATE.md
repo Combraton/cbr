@@ -2,14 +2,74 @@
 
 This is a dated navigation snapshot. Reconcile it with Git, linked issues and current task evidence before acting. Issues own live progress; this file does not grant authority or maintain a second backlog.
 
-- **Updated:** 2026-09-20.
-- **Owner/task:** Claude Code session as implementation lead for standalone CBR. **M1 and M2 are complete**; M1's closing record is [m1/CLOSEOUT.md](m1/CLOSEOUT.md). Active task: **M3, [issue #15](https://github.com/Combraton/cbr/issues/15)**, in four pull requests against `main`, each reviewed at its head before merging: m3a the Context profile (**merged**), m3b retrieval and the dependency evaluator (**merged**) and m3c the packet compiler on a real repository (**merged**); m3d the journey-6 pilots (**merged**) and m3e what the pilots found plus the close-out (**merged**). **M3 is complete and [issue #15](https://github.com/Combraton/cbr/issues/15) is closed.** Active task: **M4, the bounded model runtime, [issue #21](https://github.com/Combraton/cbr/issues/21)**. The readiness document and **m4a, the envelope, are merged**; **m4b, the wire, is merged** as `025ddfb`, pinned to `324b1cc`, confirmed from `merged: true` and `merged_at: 2026-09-20T17:38:03Z`. **One live call has been made**, in the authorised calibration run, which stopped at its first request; see below. Next: m4c, the bounded runtime, beginning with three residuals from the m4b review. Parent: [issue #1](https://github.com/Combraton/cbr/issues/1). An independent reviewer session reviews this read-only.
+- **Updated:** 2026-09-21.
+- **Owner/task:** Claude Code session as implementation lead for standalone CBR. **M1 and M2 are complete**; M1's closing record is [m1/CLOSEOUT.md](m1/CLOSEOUT.md). Active task: **M3, [issue #15](https://github.com/Combraton/cbr/issues/15)**, in four pull requests against `main`, each reviewed at its head before merging: m3a the Context profile (**merged**), m3b retrieval and the dependency evaluator (**merged**) and m3c the packet compiler on a real repository (**merged**); m3d the journey-6 pilots (**merged**) and m3e what the pilots found plus the close-out (**merged**). **M3 is complete and [issue #15](https://github.com/Combraton/cbr/issues/15) is closed.** Active task: **M4, the bounded model runtime, [issue #21](https://github.com/Combraton/cbr/issues/21)**. The readiness document and **m4a, the envelope, are merged**; **m4b, the wire, is merged** as `025ddfb`, pinned to `324b1cc`, confirmed from `merged: true` and `merged_at: 2026-09-20T17:38:03Z`. **One live call has been made**, in the authorised calibration run, which stopped at its first request; see below. **m4c, the bounded runtime, is merged** as `4a690ae`, pinned to `f53da84`, confirmed from `merged: true` and `merged_at: 2026-09-21T12:36:47Z`, the draft marked ready first. Next: **m4d, derivation records and replay**, in progress below. **Two live calls have been made**, both in authorised calibration runs; nothing else has ever called a model, and m4d makes none. Parent: [issue #1](https://github.com/Combraton/cbr/issues/1). An independent reviewer session reviews this read-only.
 - **Merged:** PR #2 as `d68e9d6`, pinned to `877139f`; PR #4 as `a939446`, pinned to `630011c`; PR #5 (c1) as `8b75129`; PR #6 (c2) as `da1e650`, pinned to `b00ec49`; **PR #7 (c3) as `8ba2594`, pinned to `5b98a9f`, confirmed from `merged: true` and `merged_at: 2026-09-16T15:31:51Z`**. Earlier: PR #6 pinned to `b00ec49`, confirmed from `merged: true` and `merged_at: 2026-09-16T14:26:34Z`**, the draft marked ready first and the head re-read unchanged before merging. Every owner decision, including the ceiling, is in [ADR 001](../decisions/001-standalone-v0.1-scope-and-stack.md). **PR #8 (owner follow-ups) as `f00faaf`, pinned to `40cb30b`, `merged_at: 2026-09-16T16:57:29Z`; PR #9 (c4) as `9a7b8f5`, pinned to `5db9d7c`, `merged_at: 2026-09-16T16:57:53Z`**, in that order, each confirmed from `merged` and `merged_at`. **PR #10 (d) as `96a33f2`, pinned to `a1048e6`, `merged_at: 2026-09-16T18:17:38Z`; then PR #11 (e) as `6c63d91`, pinned to `c2a262d`, `merged_at: 2026-09-16T18:17:56Z`**. PR #11 was stacked on #10's branch, so it was retargeted to `main` after #10 merged and before its own merge; retargeting leaves the head unchanged, and `c2a262d` was re-read before merging. **PR #13 (M1 close-out, README) as `5c667ed`, pinned to `507fc77`, `merged_at: 2026-09-16T18:58:44Z`; then PR #14 (M2) as `39113b2`, pinned to `62cbb99`, `merged_at: 2026-09-16T18:59:00Z`**, #14 retargeted to `main` first. **PR #16 (m3a) as `cbfaebe`, pinned to `1bd9a7a`, confirmed from `merged: true` and `merged_at: 2026-09-19T14:48:17Z`**, the draft marked ready first and the head re-read unchanged; the merge commit's second parent is `1bd9a7a`, so the reviewed head is on `main` unaltered. **PR #17 (m3b) as `c3cdf51`, pinned to `fb67250`, confirmed from `merged: true` and `merged_at: 2026-09-19T15:55:37Z`**, second parent `fb67250`. **PR #18 (m3c) as `2cf6b97`, pinned to `81c5f0e`, confirmed from `merged: true` and `merged_at: 2026-09-20T04:35:37Z`**, second parent `81c5f0e`. **PR #19 (m3d) as `17cc54c`, pinned to `52305b3`, confirmed from `merged: true` and `merged_at: 2026-09-20T07:28:00Z`**, second parent `52305b3`.
 - **Merge rule, 2026-09-16, superseded the same day.** This session ran `gh pr merge` on PR #2 after the owner replied "you can merge PR 2" in-session, having first reported the contradicting claim with evidence and waited. It landed the exact reviewed head `877139f` and is kept. A stricter rule was then recorded, and the owner then **granted merge authority under four conditions**, now in [AGENTS.md](../../AGENTS.md): pin with `--match-head-commit`; the head's CI is green; the reviewer has seen that head; no squash. Confirm from `merged` and `merged_at` afterwards, **never `merge_commit_sha`** — GitHub populates that on an open pull request with the test-merge candidate. Tags and releases remain the owner's alone.
 - **Owner decision, 2026-09-20, recorded at the m3c review: m3d has two pilot repositories**, as an amendment to [ADR 001](../decisions/001-standalone-v0.1-scope-and-stack.md) question 6. Knowscroll-v2 stays the decision-memory pilot; the owner's **brian2 fork** is added as a brownfield pilot, registered read-only, whose journey tests discovery and code flow rather than decision memory, whose oracle the owner writes before the run, and whose dirty working tree makes it the first journey to exercise the dirty path. **brian2 is CeCILL-licensed and this repository is MIT, so none of its bytes, excerpts or packets are committed here** — digests, paths, spans, counts and costs only. It is recorded now and acted on only after m3c is cleared; no other brian2 work belongs in this pull request.
 - **Inspected revisions:** protocol `v0.1.0` = `cbf8e4df9df2ca8a9b50264df6acace6e4c3a0fc`; combraton `9af69ce`; pio `e65b7c0`; benchmarks `c8d5878`.
 
-## This change — M4c, the bounded runtime
+## This change — M4d, derivation records and replay
+
+[PR #27](https://github.com/Combraton/cbr/pull/27) against `main`, for [issue #21](https://github.com/Combraton/cbr/issues/21). **In progress. No model was called.**
+
+### The permitted hand launch, because a rule broken twice is not working
+
+[VERIFICATION rule 4](../VERIFICATION.md) has been written down, broken, restated and broken again — the second time by me, while debugging m4c. The reviewer's instruction was to stop restating it and **make the permitted path easier than the forbidden one**, and that is `scripts/debug_launch.sh`: a throwaway data directory, a socket, and the credential file `cbr` wants, printed in the form it wants them.
+
+It **cannot be talked into calling a model**. It writes its own configuration, in the production format, naming no `model_runtime`; `--config` is refused, so it cannot be handed one that does; `--permit-model-network` and `--calibrate` are refused by name before anything starts. `launch::decide` then returns `Serve`, which reads no credential, and no permit exists so nothing in the process can open a socket to a provider.
+
+The tests read the **argument vector back from a stub the script execs**, and parse the configuration file that vector points at. "It passes no model" is therefore checked at the exec rather than by reading the script for reassuring text — which is the failure mode the whole rule exists because of. One more test drives the launch end to end through `cbr` over the socket it printed, because a permitted path nobody can use will be walked around a third time.
+
+### What a derivation record holds, and the design change inside it
+
+READINESS §6 said a record would hold repository excerpts and claim text. **It holds none.** What was shown is identified by path, line range and the digest of the text; the bytes are the source artifact the packet already cites, sealed once and shared. So a store that keeps derivations for ever keeps no second copy of anybody's repository, and the retention question below has a much smaller answer than it would have had.
+
+It holds what the reviewer asked for: the model id, the admission path — CBR's local bound alone, or the provider's count — the token usage, the latency, the candidate set offered, and the id chosen.
+
+**A retained answer is found by the digest of its whole question**: the model, the task, the selector, and every candidate in the order it was offered. The answer is an id out of a closed set, so reusing it for a different set would be choosing from a list the model never saw. A file edited since the call is a different question and finds nothing.
+
+### Cancellation, failure, and what each leaves behind
+
+**Taking the answer is what seals the record.** A call whose answer is never taken — the request was cancelled, or its job ended — seals nothing, because the compile that would have read it never ran. What it **spent** stays in the ledger and must: a call that went out was charged.
+
+The test has teeth rather than relying on timing: it holds the call *after it has sent*, cancels the request, and only then releases the barrier. The call completes, settles into a slot nobody will ever ask about again, the ledger carries the charge, and no derivation exists.
+
+A call that was made and could not be used **is** recorded, with the reason it failed for. Recording only the answers that worked would make the ledger and the derivations disagree about how many calls there were.
+
+### Readable only under the job's own view
+
+The readable set is sealed on the artifact record and checked in `evidence.fetch` and `evidence.inspect`, **after** step 6 has decided the caller may read artifacts at all. Only derivations carry the member, so anything sealed before m4d is read exactly as it was. The answer is `permission_denied` rather than `not_found`: the caller is authorised for the subject and what they lack is the content behind it.
+
+**Both arms are tested.** A reader holding `evidence.read` over every artifact but not the repository is refused; a reader who holds the repository is not. Without the second, "refuse everybody" would pass.
+
+The same check gates replay, so a narrow job cannot read a wider one's answers from the inside — the gate walked around from within, which is the shape of the M3 leak.
+
+And the m3c byte-identity assertion applied to derivations: the packet a reader outside the job's view receives is byte-identical to the one they would have received in a store where no model was ever called. **Nothing today puts a derivation into a packet.** That assertion is a gate for what someone later might do, not a bug it found.
+
+### The rebuild, and the one claim I had to change
+
+`--replay-model` answers every question from a retained record, charges nothing, seals nothing, reads no credential and is refused the permit. Its transport is `model::Panicking`, which panics if reached — contained by the pool as the typed `work_panicked`, so the worst case of a call site that one day forgets is a failure with a name rather than a call an offline rebuild promised not to make.
+
+**The gate compares digests across two stores, where READINESS said within one.** That caveat is about *ingested* artifacts, whose ids embed the instant they were ingested; a model-assisted packet of this shape cites *source* artifacts, whose ids are the blob and are the same in any store with the same tree. So one store rebuilds `probe` from what a different request retained, a second store answers `probe` live, and the two sealed packets are the same bytes. The ingested-artifact caveat is unchanged and still reported.
+
+A question nothing retained an answer for is the item's own typed reason, `model_answer_not_retained`, and **never a quiet fall back to BM25's first**. Without that the digest comparison would pass for the wrong reason on any question nobody retained.
+
+### What is retained, and for how long
+
+Stated in [READINESS §6](m4/READINESS.md#what-is-retained-and-for-how-long) because a request body holds repository text. Three things a call leaves: the ledger row (tokens, no content), the recorded exchange (`model_calls`, redacted — **the only place a request body is kept**), and the derivation record (no repository text, retention class `model-derivation`).
+
+**Nothing ages any of them out.** CBR has no retention policy and the operator's remedy is the data directory. M6 owns the policy; m4d owes it a name to key on and an honest account of what exists. For a public repository this is public text on the owner's own disk; for a private one it would be that repository's text in a second place, kept indefinitely, which is one more reason the bar in §7 stays where it is.
+
+### The m4e scope decision, recorded now because m4e depends on it
+
+Model-assisted selection chooses among spans ranked **inside one file the request already named**. It does not touch discovery, so it cannot change *what a packet finds*. **That is why it cannot move brian2**: that question failed twice because the answer never entered the candidate set, and a better choice inside the wrong file is still the wrong file.
+
+So m4e needs **model-assisted discovery**, designed now in [READINESS §5](m4/READINESS.md#model-assisted-discovery-designed-before-m4e-builds-it) inside the same safety property: the model may propose a bounded number of **search terms**, which are untrusted query input and never paths — CBR runs them through its own index, inside the view, exactly as it runs the task's own words; the union is a larger closed set it chooses ids from; every step is a recorded derivation. It still never names a file, a span or a label, and negative control 5 is re-run against both steps.
+
+**What it cannot do:** a term the model proposes still has to occur in the repository. This makes CBR look where its own reading of the task did not suggest; it does not make CBR find what is not written down.
+
+## Earlier — M4c, the bounded runtime
 
 [PR #26](https://github.com/Combraton/cbr/pull/26) against `main`, for [issue #21](https://github.com/Combraton/cbr/issues/21). **In progress.** Its first commit is the record of calibration run 2.
 
