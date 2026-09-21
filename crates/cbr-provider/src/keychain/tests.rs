@@ -26,6 +26,32 @@ fn fake_tool(directory: &std::path::Path, name: &str, body: &str) -> PathBuf {
     path
 }
 
+/// `read_from`, retried past a **transient failure to start the tool**.
+///
+/// `Refused::Unavailable` is what CBR reports when the child could not be
+/// started at all, and on Linux that happens for a reason which has
+/// nothing to do with the tool under test: another thread of this process
+/// forking while the script's write handle is still open leaves its child
+/// holding that handle, and the `exec` which follows fails with
+/// `ETXTBSY`. The window is the few instructions between creating the
+/// file and closing it, and it is crossed more often the more tests run
+/// beside it — which is how it appeared, once, on CI at m4c, with the
+/// suite grown by a hundred tests that start processes.
+///
+/// **Only that one refusal is retried.** A tool that is genuinely
+/// unstartable still refuses, a few milliseconds later; every other
+/// outcome comes back from the first attempt. So this makes the tests
+/// survive a fork race without softening what any of them assert.
+fn read_fake(tool: &Path, timeout: Duration) -> Result<Secret, Refused> {
+    for _ in 0..4 {
+        match read_from(tool, timeout) {
+            Err(Refused::Unavailable) => std::thread::sleep(Duration::from_millis(20)),
+            other => return other,
+        }
+    }
+    read_from(tool, timeout)
+}
+
 fn temporary() -> tempfile::TempDir {
     tempfile::tempdir().expect("a temporary directory")
 }
@@ -85,7 +111,7 @@ fn the_child_gets_no_environment() {
     );
     // SAFETY: single-threaded test setup, before the child is spawned.
     unsafe { std::env::set_var("CBR_KEYCHAIN_TEST_MARKER", "must-not-reach-the-child") };
-    let read = read_from(&tool, Duration::from_secs(5));
+    let read = read_fake(&tool, Duration::from_secs(5));
     unsafe { std::env::remove_var("CBR_KEYCHAIN_TEST_MARKER") };
     assert!(read.is_ok(), "the fake tool answered: {read:?}");
     let seen = std::fs::read_to_string(&witness).expect("the child wrote its environment");
@@ -109,7 +135,7 @@ fn the_child_gets_nothing_on_standard_input() {
         "security",
         &format!("cat > {} \necho the-key", witness.display()),
     );
-    let read = read_from(&tool, Duration::from_secs(5));
+    let read = read_fake(&tool, Duration::from_secs(5));
     assert!(read.is_ok(), "the fake tool answered: {read:?}");
     let seen = std::fs::read(&witness).expect("the child wrote what it read");
     assert!(seen.is_empty(), "the child read {} bytes", seen.len());
@@ -124,7 +150,7 @@ fn the_trailing_newline_is_stripped_and_nothing_else_is() {
     // space, which is why this key has one.
     let directory = temporary();
     let tool = fake_tool(directory.path(), "security", "printf 'sk-abc 123\\n'");
-    let secret = read_from(&tool, Duration::from_secs(5)).expect("the fake tool answered");
+    let secret = read_fake(&tool, Duration::from_secs(5)).expect("the fake tool answered");
     assert_eq!(secret.expose(), "sk-abc 123");
 }
 
@@ -139,7 +165,7 @@ fn a_message_on_standard_error_never_reaches_the_refusal() {
         "security",
         "echo 'SecKeychainSearchCopyNext: SECRET-LEAK-CANARY' >&2\nexit 44",
     );
-    let refused = read_from(&tool, Duration::from_secs(5)).expect_err("a failing tool refuses");
+    let refused = read_fake(&tool, Duration::from_secs(5)).expect_err("a failing tool refuses");
     assert_eq!(refused, Refused::NotFound);
     let rendered = format!("{refused:?} {}", refused.reason());
     assert!(
@@ -153,7 +179,7 @@ fn a_non_zero_exit_refuses_the_launch() {
     let directory = temporary();
     let tool = fake_tool(directory.path(), "security", "exit 44");
     assert_eq!(
-        refusal(read_from(&tool, Duration::from_secs(5))),
+        refusal(read_fake(&tool, Duration::from_secs(5))),
         Refused::NotFound
     );
 }
@@ -166,7 +192,7 @@ fn empty_output_refuses_the_launch() {
     let directory = temporary();
     let tool = fake_tool(directory.path(), "security", "exit 0");
     assert_eq!(
-        refusal(read_from(&tool, Duration::from_secs(5))),
+        refusal(read_fake(&tool, Duration::from_secs(5))),
         Refused::Empty
     );
 }
@@ -179,7 +205,7 @@ fn output_that_is_not_a_single_line_refuses_the_launch() {
     let directory = temporary();
     let tool = fake_tool(directory.path(), "security", "printf 'one\\ntwo\\n'");
     assert_eq!(
-        refusal(read_from(&tool, Duration::from_secs(5))),
+        refusal(read_fake(&tool, Duration::from_secs(5))),
         Refused::Malformed
     );
 }
@@ -192,7 +218,7 @@ fn a_tool_that_hangs_is_killed_and_the_launch_refused() {
     let directory = temporary();
     let tool = fake_tool(directory.path(), "security", "sleep 30\necho the-key");
     let started = std::time::Instant::now();
-    let refused = read_from(&tool, Duration::from_millis(300)).expect_err("a hung tool refuses");
+    let refused = read_fake(&tool, Duration::from_millis(300)).expect_err("a hung tool refuses");
     assert_eq!(refused, Refused::TimedOut);
     assert!(
         started.elapsed() < Duration::from_secs(10),
@@ -223,7 +249,7 @@ fn there_is_no_fallback_to_the_environment_when_the_tool_fails() {
     // SAFETY: single-threaded test setup, before the child is spawned.
     unsafe { std::env::set_var("MINIMAX_API_KEY", "sk-from-the-environment") };
     unsafe { std::env::set_var("minimax_api_key", "sk-from-the-environment") };
-    let read = read_from(&tool, Duration::from_secs(5));
+    let read = read_fake(&tool, Duration::from_secs(5));
     unsafe { std::env::remove_var("MINIMAX_API_KEY") };
     unsafe { std::env::remove_var("minimax_api_key") };
     assert_eq!(
@@ -286,7 +312,7 @@ fn the_secret_never_prints_itself() {
         "security",
         "printf 'sk-PRINTED-CANARY\\n'",
     );
-    let secret = read_from(&tool, Duration::from_secs(5)).expect("the fake tool answered");
+    let secret = read_fake(&tool, Duration::from_secs(5)).expect("the fake tool answered");
     let rendered = format!("{secret:?}");
     assert!(
         !rendered.contains("CANARY"),
@@ -316,7 +342,7 @@ fn no_model_configured_never_reaches_the_keychain() {
         "security",
         &format!("echo ran >> {} \necho the-key", witness.display()),
     );
-    let held = for_launch(false, || read_from(&tool, Duration::from_secs(5)))
+    let held = for_launch(false, || read_fake(&tool, Duration::from_secs(5)))
         .expect("no model configured is not a refusal");
     assert!(
         held.is_none(),
@@ -340,7 +366,7 @@ fn a_configured_model_reads_the_keychain_once() {
         "security",
         &format!("echo ran >> {} \necho the-key", witness.display()),
     );
-    let held = for_launch(true, || read_from(&tool, Duration::from_secs(5)))
+    let held = for_launch(true, || read_fake(&tool, Duration::from_secs(5)))
         .expect("the fake tool answered");
     assert!(held.is_some(), "a configured model needs its credential");
     let ran = std::fs::read_to_string(&witness).expect("the child ran");
@@ -354,7 +380,7 @@ fn a_configured_model_whose_credential_is_unreadable_refuses_the_launch() {
     // configuration error discovered one call at a time.
     let directory = temporary();
     let tool = fake_tool(directory.path(), "security", "exit 44");
-    let refused = for_launch(true, || read_from(&tool, Duration::from_secs(5)))
+    let refused = for_launch(true, || read_fake(&tool, Duration::from_secs(5)))
         .expect_err("an unreadable credential refuses the launch");
     assert_eq!(refused, Refused::NotFound);
 }
@@ -365,7 +391,7 @@ fn the_credential_leaves_this_module_as_a_header_value_and_nothing_else() {
     // outside this module is the header value it is going into.
     let directory = temporary();
     let tool = fake_tool(directory.path(), "security", "printf 'sk-HEADERCANARY\\n'");
-    let secret = read_from(&tool, Duration::from_secs(5)).expect("the fake tool answered");
+    let secret = read_fake(&tool, Duration::from_secs(5)).expect("the fake tool answered");
     let authorization = secret.authorization();
     assert_eq!(authorization.value(), "Bearer sk-HEADERCANARY");
     assert!(!format!("{authorization:?}").contains("CANARY"));

@@ -72,9 +72,56 @@ Two decisions inside it are worth naming because the obvious alternative is wron
 
 **One rule was loosened, and only one.** Compiling is production-only and the fake transport is a conformance control, so the two could never overlap and the call site could not be reached under `SIGKILL` at all. A conformance launch may now ask to compile, with `context.compile`. No fixture sets it, and `a_conformance_launch_prepares_nothing_unless_it_asks_to_compile` holds both halves.
 
+### A CI flake this milestone made likely
+
+`a_configured_model_whose_credential_is_unreadable_refuses_the_launch` failed once on Linux at `db17494` — `Unavailable` where `NotFound` was expected — while the same commit's other run passed. `Unavailable` is what CBR reports when the child could not be **started**, which has nothing to do with the exit code the test is about.
+
+**The cause is a fork race, and it is the suite's own.** Another thread forking while the fake tool's write handle is still open leaves its child holding that handle, and the `exec` which follows fails with `ETXTBSY`. The window is the few instructions between creating the script and closing it, and it is crossed more often the more tests run beside it — this milestone added a hundred, most of which start processes. [VERIFICATION](../VERIFICATION.md) already records one timing assertion rewritten for the same reason at m3c; this is the second.
+
+The fake-tool reads retry past that one refusal and nothing else, so a tool that is genuinely unstartable still refuses and every other outcome comes back from the first attempt. **No assertion was softened.**
+
+### The mutant table
+
+**Twenty-seven mutants, twenty-two killed, five surviving** — each run against *every* target, not the binary's unit tests alone, which is the mistake m4b made and which returned two false survivors then.
+
+| Mutant | Killed by |
+|---|---|
+| pool: `Done` releases the slot, as it did before | `a_request_with_two_items_asks_two_questions_and_holds_both_answers` |
+| pool: the bound counts settled answers too | `a_result_waiting_to_be_taken_does_not_hold_the_bound` |
+| pool: **the bound counts map entries, not threads** | `a_finished_unit_nobody_asked_about_again_does_not_hold_the_bound` |
+| pool: `release_all` matches nothing | `a_job_releases_every_answer_it_asked_for_by_naming_itself` |
+| pool: a panicking unit is reported `Done` | `work_that_fails_reports_its_typed_reason_and_is_not_retried` |
+| pool: a passed deadline does not time the work out | `a_deadline_that_passes_ends_the_work_as_timed_out` |
+| selection: an id that was not offered selects the first candidate | `an_id_that_was_never_offered_leaves_the_item_unmet` |
+| selection: the schema offers no closed set of ids | `the_schema_offers_exactly_the_candidates_and_nothing_else` |
+| selection: one candidate is worth asking about | `one_candidate_is_not_a_question_worth_paying_for` |
+| selection: a non-string id is read as the first candidate | `an_answer_of_the_wrong_shape_is_refused_rather_than_guessed_at` |
+| call site: the investigation budget is ignored | `a_request_that_authorises_no_investigation_calls_nothing_at_all` |
+| call site: a failed call falls back to the span BM25 ranked first | `a_call_that_fails_leaves_the_item_unmet_with_the_reason_it_failed_for` |
+| call site: the answer is released the moment it is read | `a_request_with_two_items_…` |
+| call site: the key forgets the path, so two files share one answer | `a_request_with_two_items_…` |
+| call site: a cancelled job keeps its answers | `cancelling_a_request_frees_the_bound_its_call_was_holding` |
+| clock: an instant without its `Z` is still an instant | `anything_that_is_not_an_instant_is_refused_rather_than_guessed_at` |
+| clock: the month and day are not checked | as above |
+| conformance: a launch that did not ask to compile compiles anyway | `a_conformance_launch_prepares_nothing_unless_it_asks_to_compile` |
+| fake transport: a count call eats the scripted completion answer | three of the six crash rows |
+| fake transport: the scripted usage is dropped | `a_completion_settles_to_what_the_provider_said_it_cost` |
+| launch: `SERVING_CALLS_A_MODEL` is false, so the constant lies | `a_serving_launch_with_a_model_and_the_permit_reads_a_credential_and_serves` |
+| cli: cancel sends revision 0 rather than the one it saw | `cancelling_a_request_…` |
+
+**The five survivors, and why each is one.** None is counted as a kill.
+
+| Survivor | Why it survives |
+|---|---|
+| the key forgets the **selector** | **Not reachable through this client.** `cbr` gives every item of a request the same selector, so two items on one file always ask the same question. Over the protocol an item carries its own, and there a key without the selector hands the second item a choice made from a candidate list it was never shown. The test says so rather than implying coverage it has not got. |
+| the compile never releases what the job asked | The job-end release covers every job that ends, so this one only frees memory **earlier** — at publication rather than at ending. It matters for a job that compiles and then stalls, which nothing here produces. A map entry is not observable over the protocol. |
+| a job that ended keeps its answers | By the time a job ends, every call it made has settled — the compile needed the answers to finish — so there is no running slot to give back and nothing but memory to free. Behaviourally equivalent. |
+| a cancel releases before it is committed | The ordering is right and no test forces a commit to fail. Making one fail needs a fault control this build has not got for `commit_context`. |
+| an out-of-range choice is read as the first candidate | **Equivalent.** `selection::chosen` returns a position within the candidates, and the candidates are built one-for-one from the ranked spans, so the index is always in range. The guard is defence for a future where the two diverge. |
+
 ### Four defects the mutants found, and two they could not
 
-**Twenty-one mutants, each run against every target** — not the binary's unit tests alone, which is the mistake m4b made. Fifteen killed on the first pass. Of the six survivors, four were real and two are equivalent.
+**The first pass was twenty-one mutants; fifteen were killed.** Of its six survivors, four were real defects and two looked equivalent — and one of those two was not, which is the story below.
 
 **Two were defects I had already found by re-reading my own committed code**, and the probe said why nothing caught them: *every test had one item per request*, so no compile ever held two answers at once.
 
@@ -88,10 +135,12 @@ Both are killed now by a request with two items on two files, asserting **exactl
 - **The fake's scripted usage was dropped and nothing noticed**, which means nothing tested that a completion **settles to the provider's figure** rather than to the reservation. The reservation is the local bound and over-states by three to four times; settling at it would charge a shared quota for something nobody spent. That is the envelope's whole point and it was untested.
 - **Setting `SERVING_CALLS_A_MODEL` back to false broke no test.** Every test about it is an implication — *if the constant, skip* — which is right for rules that stop applying when it flips and leaves **nothing at all constraining the flipped value**. It could have been silently reverted. A flat assertion holds it now: a launch given a model and the permit is `ReadCredentialThenServe`, and a change that removes the call site has to change that test.
 
-**Two are equivalent, and are recorded as survivors rather than counted.**
+**Two looked equivalent.** One was, and one was the worst defect of the milestone:
 
 - *An out-of-range choice read as the first candidate.* `selection::chosen` returns a position within the candidates, and the candidates are built one-for-one from the ranked spans, so the index is always in range. The guard is defence for a future where the two diverge.
-- *The compile never releases what the job asked.* The compile step is spliced out of the script when it runs, so it happens once per job and nothing asks again. It is a memory leak, not a behaviour change, and no test over the protocol can see it.
+- *The compile never releases what the job asked.* That one is equivalent, and for the reason given: the compile step is spliced out of the script when it runs, so nothing asks again.
+
+**The reasoning that said the other release mutants were equivalent too was wrong**, and the next section is what it missed. Being able to argue a mutant is equivalent is not the same as it being one.
 
 ### Two more defects, from re-reading the call site
 
