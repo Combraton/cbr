@@ -1830,3 +1830,60 @@ fn a_completion_that_reports_no_input_usage_cannot_trip_it() {
     let ended = runtime.call(T0, &asked_with(&body, 64), &no_barrier);
     assert!(matches!(ended, Ended::Completed { .. }), "{ended:?}");
 }
+
+#[test]
+fn a_truncated_answer_is_repaired_with_a_wider_limit() {
+    // **What run 2 lost.** Sixteen tokens, all reasoning, no answer, and
+    // the call gone. The repair asks again with twice the room, so the
+    // second body binds a larger `max_output_tokens` than the first.
+    let connection = database();
+    let truncated = br#"{"object":"response","status":"incomplete","error":null,
+"incomplete_details":{"reason":"max_output_tokens"},
+"output":[{"type":"reasoning","content":[{"type":"reasoning_text","text":"..."}],"summary":[]}],
+"output_text":null,"usage":{"input_tokens":28,"output_tokens":16,"total_tokens":44}}"#;
+    let transport = Recorder::new(vec![
+        counted(),
+        Answer::Completed {
+            body: truncated.to_vec(),
+            usage: Some(44),
+        },
+        counted(),
+        answered("calibrated."),
+    ]);
+    let runtime = Runtime {
+        ledger: Ledger::new(&connection),
+        transport: &transport,
+    };
+    let outcome = runtime.ask(
+        T0,
+        &Ask {
+            job: "job",
+            request: "r",
+            dialect: Dialect::Responses,
+            body: &asking(Want::Text),
+            counting: Counting::Always,
+        },
+        &no_barrier,
+    );
+    assert!(
+        matches!(outcome, Outcome::Answered { .. }),
+        "the wider limit got an answer: {outcome:?}"
+    );
+    let sent = transport.sent();
+    let limit = |bytes: &[u8]| -> i64 {
+        cbr_encoding::parse(bytes)
+            .expect("its own body")
+            .get("max_output_tokens")
+            .and_then(|value| match value {
+                cbr_encoding::Value::Int(number) => Some(*number),
+                _ => None,
+            })
+            .expect("bound")
+    };
+    let first = limit(&sent[1].1);
+    let second = limit(&sent[3].1);
+    assert!(
+        second > first,
+        "the repair asked for {second} after {first}"
+    );
+}

@@ -267,6 +267,24 @@ impl Request {
     }
 }
 
+/// The generation budget for an answer that itself needs `answer` tokens.
+///
+/// See [`crate::budget::REASONING_HEADROOM`] for why this is generous: an
+/// under-sized limit costs the whole call and returns nothing, while an
+/// over-sized one costs only what is produced.
+#[cfg_attr(not(test), allow(dead_code))]
+pub fn generation_for(answer: u64) -> u64 {
+    answer
+        .saturating_mul(crate::budget::REASONING_HEADROOM)
+        .max(crate::budget::MIN_OUTPUT_TOKENS)
+}
+
+/// The budget a repair asks for after a truncation: **more room, not the
+/// same room again**. Doubling once, and the repair bound stops it there.
+pub fn widened(generation: u64) -> u64 {
+    generation.saturating_mul(2)
+}
+
 /// What CBR says when it asks again. **Its own words**, naming the shape
 /// rather than quoting the answer that did not have it.
 pub fn repair_instruction(want: &Want) -> &'static str {

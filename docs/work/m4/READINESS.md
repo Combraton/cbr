@@ -126,12 +126,20 @@ Tests with a fake transport that asserts it was never called when admission refu
 
 ## 4. Provider facts that are design inputs, not discoveries
 
-Four behaviours are already recorded in [STACK §8.1](../readiness/STACK.md) and are stated by the owner independently of any call CBR has made. M4 designs for them:
+Five behaviours are already recorded in [STACK §8.1](../readiness/STACK.md) and are stated by the owner independently of any call CBR has made. M4 designs for them:
 
 1. **`response_format` and `json_schema` are silently ignored** — HTTP 200 with free-form prose. So **CBR parses and validates every model output**, and a schema is a thing CBR checks rather than a thing the provider guarantees.
-2. **`tool_choice: "required"` is silently ignored** while `"none"` is honoured. A text response where a tool call was demanded is therefore an **ordinary outcome to repair**, not a transport error. Repair spends real tokens, so the repair budget is bounded and debited from the same envelope.
-3. **`MiniMax-M3` embeds `<think>…</think>` in `message.content`** unless `reasoning_split` is set. Reasoning text reaching a sealed derivation record as if it were output would be a correctness problem, so the split is set and the parser refuses content that still carries the marker.
-4. **There is no `data: [DONE]` sentinel**, so **M4 does not stream**; whole responses only.
+2. **`tool_choice: "required"` is silently ignored** while `"none"` is honoured. (Confirmed: the Responses API documents `none` and `auto` only, so a call cannot be demanded there at all.) A text response where a tool call was demanded is therefore an **ordinary outcome to repair**, not a transport error. Repair spends real tokens, so the repair budget is bounded and debited from the same envelope.
+3. **Reasoning spends the output budget, and on the M2.x models it cannot be turned off** (observed, calibration run 2). `max_output_tokens` must therefore cover **reasoning plus the answer**, and the service reports **no breakdown** — there is no `output_tokens_details` — so CBR cannot learn the split by measuring.
+
+   **The sizing rule, and why.** The generation budget is four times what the answer itself needs, never below 512 tokens, and a truncation is repaired once by **doubling** rather than by asking again in the same space. The multiplier is not an estimate of how much a model thinks; it follows from an asymmetry. **Billing is by tokens produced**, so a limit that is too large costs nothing that is not used, while a limit that is too small costs the whole call and returns nothing — which is exactly what run 2 did with sixteen tokens. Generosity is the cheap error here and parsimony the expensive one. m4e measures what is actually used and replaces the multiplier with a figure.
+
+   **`status: incomplete` with no text is a first-class outcome**: recorded with its usage, counted against the bounded repair, and ending as the item's typed unmet reason when the repair is spent. m4b had it as *not* repairable, reasoning that asking again under the same limit gives the same answer — true, and beside the point, because the repair asks again with a larger one.
+
+   **For m4e:** run model-assisted selection on `MiniMax-M3`, whose documentation says reasoning is off by default, **beside** `MiniMax-M2.7-highspeed`, and compare tokens, latency and outcome. Two models on the same question is a comparison the owner will want and neither model alone provides.
+
+4. **`MiniMax-M3` embeds `<think>…</think>` in `message.content`** unless `reasoning_split` is set. Reasoning text reaching a sealed derivation record as if it were output would be a correctness problem, so the split is set and the parser refuses content that still carries the marker.
+5. **There is no `data: [DONE]` sentinel**, so **M4 does not stream**; whole responses only.
 
 The rule under all four: **nothing downstream trusts a shape the model was only asked for.** Invalid output is a **recorded failure with a bounded retry**, and the failure is in the derivation record — not swallowed, not retried until it looks right.
 

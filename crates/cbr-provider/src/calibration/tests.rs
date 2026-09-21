@@ -436,12 +436,21 @@ fn responses_incomplete() -> Vec<u8> {
         .to_vec()
 }
 
+/// A run whose completion answers `body` **and whose repair answers it
+/// again**. A truncation is repairable now — the repair asks with twice
+/// the room — so a run that truncates twice is what spends the repair and
+/// ends as the typed reason.
 fn run_ending_in(body: Vec<u8>, usage: Option<u64>) -> Report {
     let connection = database();
     let mut answers: Vec<Answer> = corpus()
         .iter()
         .map(|(_, text)| Answer::Counted((text.len() / 4) as u64))
         .collect();
+    answers.push(Answer::Counted(122));
+    answers.push(Answer::Completed {
+        body: body.clone(),
+        usage,
+    });
     answers.push(Answer::Counted(122));
     answers.push(Answer::Completed { body, usage });
     let transport = Recorder::new(answers);
@@ -474,6 +483,10 @@ fn a_truncated_completion_is_an_outcome_with_a_cost_and_not_a_stop() {
     assert_eq!(
         completion.outcome, "model_answer_truncated",
         "and its outcome is carried rather than collapsed"
+    );
+    assert_eq!(
+        completion.repairs, 1,
+        "the repair was spent asking again with more room"
     );
     assert_eq!(completion.usage, Some(44), "with its cost");
     assert_eq!(completion.input_usage, Some(28));

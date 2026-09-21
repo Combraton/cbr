@@ -9,7 +9,9 @@ use cbr_encoding::Value;
 
 use super::Dialect;
 use super::request::Want;
+use super::request::generation_for;
 use super::response::*;
+use crate::budget::{MIN_OUTPUT_TOKENS, REASONING_HEADROOM};
 
 macro_rules! unverified_fixture {
     ($name:literal) => {
@@ -194,18 +196,19 @@ fn a_structured_answer_outside_the_protocols_domain_is_not_structured() {
 // --- what is not repairable ----------------------------------------------
 
 #[test]
-fn a_truncated_answer_is_reported_rather_than_repaired() {
-    // The generation limit was reached. Asking again under the same limit
-    // produces the same truncation, so a repair would spend twice for one
-    // outcome. It is reported with its own reason instead.
+fn a_truncated_answer_is_repaired_with_more_room_and_then_reported() {
+    // m4b reported this and did not repair it, reasoning that asking again
+    // under the same limit gives the same truncation. True, and beside the
+    // point: the repair asks again with a **larger** limit. Run 2 spent a
+    // whole call on sixteen tokens of reasoning and returned nothing.
     let read = read_completion(
         Dialect::OpenAi,
         &Want::Structure { schema: schema() },
         UNVERIFIED_OPENAI_TRUNCATED,
     );
     assert_eq!(read.reply, Err(Unusable::Truncated));
-    assert!(!Unusable::Truncated.repairable());
-    assert_eq!(read.usage, Some(1196));
+    assert!(Unusable::Truncated.repairable());
+    assert_eq!(read.usage, Some(1196), "and it cost what it cost");
 }
 
 #[test]
@@ -442,8 +445,8 @@ fn an_incomplete_answer_with_no_text_is_an_outcome_with_usage_not_a_failure() {
     assert_eq!(read.usage, Some(44), "and it cost what it cost");
     assert_eq!(read.input_usage, Some(28), "of which the input was 28");
     assert!(
-        !Unusable::Truncated.repairable(),
-        "asking again under the same limit gets the same answer"
+        Unusable::Truncated.repairable(),
+        "the repair asks again with more room, not the same room again"
     );
     assert_eq!(Unusable::Truncated.reason(), "model_answer_truncated");
 }
@@ -568,4 +571,53 @@ fn a_failed_status_is_a_failure_even_with_no_error_member() {
     let read = read_completion(Dialect::Responses, &Want::Text, body);
     assert_eq!(read.reply, Err(Unusable::ProviderError), "{read:?}");
     assert_eq!(read.usage, Some(5), "and it still cost something");
+}
+
+// --- reasoning spends the output budget ----------------------------------
+
+#[test]
+fn a_truncated_answer_is_repairable_now_that_the_repair_widens_the_limit() {
+    // **m4b had this wrong, and run 2 showed why.** It reasoned that
+    // asking again under the same limit produces the same truncation, so
+    // truncation was not repairable. The premise was the mistake: the
+    // repair does not ask again under the same limit, it asks again with a
+    // larger one.
+    //
+    // Run 2 spent all sixteen output tokens on reasoning and returned no
+    // answer. Under the old rule that call was simply lost.
+    assert!(Unusable::Truncated.repairable());
+    assert_eq!(Unusable::Truncated.reason(), "model_answer_truncated");
+}
+
+#[test]
+fn the_sizing_rule_covers_reasoning_as_well_as_the_answer() {
+    // Reasoning cannot be disabled on the M2.x models and the service
+    // reports no breakdown, so `max_output_tokens` has to cover both and
+    // CBR cannot learn the split by measurement.
+    // Never below the floor, whatever the answer needs.
+    assert_eq!(generation_for(1), MIN_OUTPUT_TOKENS);
+    assert_eq!(generation_for(0), MIN_OUTPUT_TOKENS);
+    // Above it, headroom over what the answer itself needs.
+    let wanted = MIN_OUTPUT_TOKENS * 2;
+    assert_eq!(generation_for(wanted), wanted * REASONING_HEADROOM);
+    // And it is a widening function: more answer never means less budget.
+    let mut last = 0;
+    for answer in [0, 1, 100, MIN_OUTPUT_TOKENS, 10_000] {
+        let got = generation_for(answer);
+        assert!(got >= last, "{answer} gave {got} after {last}");
+        assert!(
+            got >= answer,
+            "the answer itself must fit: {answer} -> {got}"
+        );
+        last = got;
+    }
+}
+
+#[test]
+fn the_repair_asks_for_more_room_rather_than_the_same_room_again() {
+    use super::request::widened;
+    let first = generation_for(100);
+    let second = widened(first);
+    assert!(second > first, "{first} -> {second}");
+    assert_eq!(second, first * 2, "doubled, once");
 }

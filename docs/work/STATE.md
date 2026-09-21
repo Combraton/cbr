@@ -42,6 +42,14 @@ Two rules overlap and the order is pinned by a test: a charge above the **local 
 
 **A constant died of it.** m4a's `estimate` added a fixed 4,096-token generation reserve because admission happened before the request's own limit was known. Every call site knows it now, so the reservation carries the real figure — `estimate` had no caller left and `RESERVED_GENERATION_TOKENS` with it. Clippy found that, not me. The three tests m4b wrote to kill the mutants in those constants are rewritten around `input_bound`, and the property the reserve carried is asserted where the reservation is now made. It is also what made run 2's ratio column measure the reservation instead of the bound.
 
+### Reasoning spends the output budget, and m4b had a rule wrong
+
+Run 2's completion spent all sixteen of its output tokens on reasoning and returned no answer. On the M2.x models reasoning cannot be turned off, and the service reports **no breakdown**, so `max_output_tokens` has to cover reasoning *plus* the answer and CBR cannot learn the split by measuring.
+
+**The sizing rule: four times what the answer needs, never below 512, and a truncation repaired once by doubling.** The multiplier is not an estimate of how much a model thinks — it follows from an asymmetry. Billing is by tokens **produced**, so an over-sized limit costs nothing that is not used, while an under-sized one costs the whole call and returns nothing. Generosity is the cheap error here. m4e replaces the multiplier with a measurement.
+
+**m4b had truncation as not repairable**, reasoning that asking again under the same limit gives the same answer. True, and beside the point: the repair asks again with a **larger** limit. Under the old rule run 2's call was simply lost. It is repairable now, it consumes a repair, and when the repair is spent it ends as the item's typed unmet reason.
+
 ### The owner's decision on provider-side retention
 
 Recorded 2026-09-21 and closed in [READINESS §7](m4/READINESS.md): the API offers no request option to prevent retention, and the owner accepts that **for public repositories only** — CBR's own source, Knowscroll-v2 and brian2. **Any private repository still needs the owner's explicit word**, and the absence of a retention control is a reason that bar stays where it is rather than a reason to lower it. A stated limit, not a solved problem.
@@ -96,6 +104,7 @@ Three things followed, each with its own test:
 | Decoding stops after one round · an unsettled encoding written out anyway | killed (2) |
 | The `model_runtime` allowlist back to a denylist · the top-level allowlist removed | killed (2) |
 | A serving launch reads a credential with no call site | killed |
+| A truncation is not repairable again · the repair re-asks in the same space · the output floor is removed | killed (3) |
 | The count made when the local bound already admits · every refusal buys a count · a per-request refusal buys a count · which path admitted is not recorded | killed (4) |
 | The tripwire removed · a tripped wire does not stop later calls · the tripwire fires on ordinary calls | killed (3) |
 | A truncated completion stops the run again · a refused completion is not a stop · the input usage dropped from the cost | killed (3) |

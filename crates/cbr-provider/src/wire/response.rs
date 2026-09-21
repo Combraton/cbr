@@ -89,11 +89,23 @@ impl Unusable {
     }
 
     /// Whether asking again, once, could plausibly produce something
-    /// different. Only the two outcomes the provider's own documented
-    /// behaviour produces; everything else would spend twice for one
-    /// answer.
+    /// different.
+    ///
+    /// Two of these are what the provider's documented behaviour produces:
+    /// prose where a structure was asked for, and text where a tool call
+    /// was demanded. **The third is truncation**, which m4b had as *not*
+    /// repairable on the reasoning that asking again under the same limit
+    /// gives the same answer. That premise was the mistake: the repair
+    /// asks again with a **larger** limit. Run 2 spent a whole call on
+    /// sixteen tokens of reasoning and returned nothing, and under the old
+    /// rule that call was simply lost.
+    ///
+    /// Everything else would spend twice for one answer.
     pub fn repairable(self) -> bool {
-        matches!(self, Unusable::NotStructured | Unusable::NoToolCall)
+        matches!(
+            self,
+            Unusable::NotStructured | Unusable::NoToolCall | Unusable::Truncated
+        )
     }
 }
 

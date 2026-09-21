@@ -736,15 +736,25 @@ impl Runtime<'_> {
                     cost,
                 };
             }
-            // **The model's own answer is not sent back.** Repository text
-            // is untrusted and so is what a model made of it; echoing it
-            // into the next request gives text that arrived from a
-            // repository a second chance to be read as an instruction, and
-            // charges for the privilege. The repair is CBR's own sentence.
-            body.messages.push(wire::request::Message {
-                role: wire::request::Role::User,
-                text: wire::request::repair_instruction(&body.want).to_string(),
-            });
+            // **A truncation is repaired with more room, not more words.**
+            // The answer was not wrong; there was nowhere to put it, and on
+            // these models reasoning spends the same budget. Saying it
+            // again in a smaller space would waste a second call exactly as
+            // the first was wasted.
+            if unusable == wire::response::Unusable::Truncated {
+                body.generation = wire::request::widened(body.generation);
+            } else {
+                // **The model's own answer is not sent back.** Repository
+                // text is untrusted and so is what a model made of it;
+                // echoing it into the next request gives text that arrived
+                // from a repository a second chance to be read as an
+                // instruction, and charges for the privilege. The repair is
+                // CBR's own sentence.
+                body.messages.push(wire::request::Message {
+                    role: wire::request::Role::User,
+                    text: wire::request::repair_instruction(&body.want).to_string(),
+                });
+            }
             repairs += 1;
         }
     }

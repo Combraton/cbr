@@ -67,6 +67,32 @@ pub const MESSAGE_OVERHEAD_TOKENS: u64 = 8;
 /// table's ratio column measure the reservation rather than the bound.
 pub const SAFETY_MARGIN_TOKENS: u64 = 1_024;
 
+/// The smallest generation budget worth asking for.
+///
+/// **Reasoning cannot be disabled on the M2.x models**, and the service
+/// reports no breakdown, so `max_output_tokens` has to cover reasoning
+/// *plus* the answer and CBR cannot learn the split by measuring. Below
+/// this a model cannot finish a thought, and calibration run 2 proved what
+/// that costs: sixteen tokens, all of them reasoning, no answer, and the
+/// whole call wasted.
+// Read by `wire::request::generation_for`, which m4c's selection call site
+// calls. The calibration deliberately does not: READINESS §10 fixes its
+// completion at sixteen tokens so the path is exercised end to end and
+// cannot cost much even if everything else is wrong.
+#[cfg_attr(not(test), allow(dead_code))]
+pub const MIN_OUTPUT_TOKENS: u64 = 512;
+
+/// How much room reasoning is given relative to the answer itself.
+///
+/// **The asymmetry decides this, not an estimate of how much a model
+/// thinks.** Billing is by tokens produced, so a limit that is too large
+/// costs nothing that is not used; a limit that is too small costs the
+/// whole call and returns nothing. Generosity is therefore the cheap
+/// error and parsimony the expensive one, and the multiplier is set
+/// accordingly rather than tuned. m4e measures what is actually used.
+#[cfg_attr(not(test), allow(dead_code))]
+pub const REASONING_HEADROOM: u64 = 4;
+
 /// How far below the local byte bound a provider's own count may fall before
 /// it is disbelieved. The bound runs **three to four times** the real count
 /// for prose, measured on this crate's own sources, so a figure below an
