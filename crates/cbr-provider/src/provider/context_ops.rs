@@ -39,6 +39,16 @@ use crate::store::{Change, Commit, NewEvent, ProviderEvent, ProviderWrite, Subje
 /// link to a link is ordinary; eight of them is a loop or a trap.
 const LINK_HOPS: usize = 8;
 
+/// The request authorised an investigation and it did not stretch this
+/// far.
+///
+/// The same name the job's own `investigate` script step ends a job
+/// with, because it is the same limit reached in two places: there by a
+/// script asking for more turns than the request allowed, here by a
+/// compile asking for more questions than it allowed. One limit, one
+/// name.
+const INVESTIGATION_EXHAUSTED: &str = "investigation_budget_exhausted";
+
 /// A symbolic link's blob holds a path. Anything longer than this is not
 /// one, and is refused without being read into memory.
 const LINK_TARGET_BYTES: u64 = 4096;
@@ -171,7 +181,7 @@ struct Assist<'a> {
     job: &'a str,
     request: &'a str,
     task: &'a str,
-    /// The request's investigation budget.
+    /// The request's investigation budget, **in questions**.
     ///
     /// **Zero is the deterministic path.** A request that authorised no
     /// investigation gets exactly the compiler M3 shipped, which is what
@@ -179,7 +189,26 @@ struct Assist<'a> {
     /// against rather than a second build nobody ran. MODEL-RUNTIME §63
     /// is where the meaning comes from: *an investigation can use several
     /// turns: select a source, inspect it, update findings*.
+    ///
+    /// **It counts at m4e, where at m4c it only gated.** m4c asked a
+    /// model for every item of any request whose budget was above zero,
+    /// so the number said *whether* and not *how much*. m4e adds two
+    /// more questions per request, and a limit that counted some kinds
+    /// of call and not others would be two meanings for one number. So
+    /// every distinct question a compile puts to a model spends one,
+    /// items first because an item is what the request required and
+    /// discovery is advisory.
     investigation: i64,
+    /// Every distinct question this compile has put to a model, in the
+    /// order it asked.
+    ///
+    /// **One compile pass, recomputed each tick.** A compile asks the
+    /// same questions in the same order every tick — the basis is fixed
+    /// by the job and the pool keeps a settled answer until its caller
+    /// takes it — so counting inside one pass gives the same numbers on
+    /// each of them. A question already in this list is free: the answer
+    /// is the pool's and no second call is made for it.
+    asked: std::cell::RefCell<Vec<String>>,
     /// The request's own deadline and the tick's instant, both as the
     /// protocol writes them. Their difference is what the pool is given.
     deadline: &'a str,
@@ -191,6 +220,40 @@ struct Assist<'a> {
     /// preparation never computes one and so cannot widen it.
     view: &'a [String],
     claims: &'a [String],
+}
+
+impl Assist<'_> {
+    /// Whether `key` may be put to a model: either this compile has
+    /// asked it already, or the investigation budget has room for one
+    /// more question.
+    ///
+    /// **Counted here rather than where the call is made**, because a
+    /// question deferred by the work pool is still a question this
+    /// compile asked, and a budget that only counted settled answers
+    /// would admit as many calls as there are ticks.
+    fn admits(&self, key: &str) -> bool {
+        let mut asked = self.asked.borrow_mut();
+        if asked.iter().any(|already| already == key) {
+            return true;
+        }
+        if (asked.len() as i64) >= self.investigation {
+            return false;
+        }
+        asked.push(key.to_string());
+        true
+    }
+
+    /// Whether the budget has room for `count` more distinct questions.
+    ///
+    /// **A flow that cannot finish is not started.** Discovery is two
+    /// questions and the second one is what turns the first one's terms
+    /// into sections; asking for terms with no room left to choose from
+    /// them would spend a shared quota on an answer nothing can use.
+    fn room_for(&self, count: usize) -> bool {
+        self.investigation
+            .saturating_sub(self.asked.borrow().len() as i64)
+            >= count as i64
+    }
 }
 
 /// What selecting a source decided.
@@ -426,6 +489,7 @@ impl Provider {
             now: tick.now.clone(),
             view: &view,
             claims: &claims,
+            asked: std::cell::RefCell::new(Vec::new()),
         };
         for item in list(job, &["items"]) {
             self.decide_item(item, &record, &trees, &assist, &mut decided, tick)?;
@@ -1809,6 +1873,18 @@ impl Provider {
             assist.request,
             cbr_encoding::digest_bytes(query.as_bytes())
         );
+        // **The budget is spent here, on a question rather than on a
+        // call.** A question this compile has already asked costs
+        // nothing more; a new one costs one unit, and a request whose
+        // budget is gone gets the typed reason and not BM25's own first,
+        // which would report a model-assisted selection no model made.
+        //
+        // Nothing is sealed for it: a derivation record is one model
+        // exchange, and no exchange happened. Only a call that was made
+        // has something to say.
+        if !assist.admits(&key) {
+            return Ok(Assisted::Unmet(INVESTIGATION_EXHAUSTED));
+        }
         // **The request's deadline, converted once.** The pool measures
         // monotonic time and the protocol measures instants; converting
         // at the moment of asking is one clock, where keeping a second
@@ -2780,7 +2856,7 @@ impl Provider {
                     // The investigation budget is its own limit: exhausting it
                     // ends the job with that reason and no other.
                     if spent > int(job, &["limits", "investigation", "amount"]) {
-                        let reason = "investigation_budget_exhausted";
+                        let reason = INVESTIGATION_EXHAUSTED;
                         self.finish(job, tick, reason)?;
                         return Ok(Some(reason.into()));
                     }
