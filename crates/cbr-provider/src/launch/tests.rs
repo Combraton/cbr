@@ -21,6 +21,7 @@ fn rows() -> Vec<(Launch, Decision)> {
                 model_configured: false,
                 permit_model_network: false,
                 calibrate: false,
+                replay: false,
                 model_run_ceiling: None,
             },
             Decision::Serve,
@@ -33,6 +34,7 @@ fn rows() -> Vec<(Launch, Decision)> {
                 model_configured: false,
                 permit_model_network: false,
                 calibrate: false,
+                replay: false,
                 model_run_ceiling: Some(1_000),
             },
             Decision::Serve,
@@ -43,6 +45,7 @@ fn rows() -> Vec<(Launch, Decision)> {
                 model_configured: false,
                 permit_model_network: true,
                 calibrate: false,
+                replay: false,
                 model_run_ceiling: None,
             },
             refuse("--permit-model-network needs a configured model"),
@@ -53,6 +56,7 @@ fn rows() -> Vec<(Launch, Decision)> {
                 model_configured: true,
                 permit_model_network: false,
                 calibrate: false,
+                replay: false,
                 model_run_ceiling: None,
             },
             refuse("--permit-model-network was not given"),
@@ -63,6 +67,7 @@ fn rows() -> Vec<(Launch, Decision)> {
                 model_configured: true,
                 permit_model_network: true,
                 calibrate: false,
+                replay: false,
                 model_run_ceiling: None,
             },
             if SERVING_CALLS_A_MODEL {
@@ -77,6 +82,7 @@ fn rows() -> Vec<(Launch, Decision)> {
                 model_configured: false,
                 permit_model_network: true,
                 calibrate: true,
+                replay: false,
                 model_run_ceiling: Some(100_000),
             },
             refuse("--calibrate needs a configured model"),
@@ -86,6 +92,7 @@ fn rows() -> Vec<(Launch, Decision)> {
                 model_configured: true,
                 permit_model_network: false,
                 calibrate: true,
+                replay: false,
                 model_run_ceiling: Some(100_000),
             },
             refuse("--calibrate makes live calls and needs --permit-model-network"),
@@ -95,6 +102,7 @@ fn rows() -> Vec<(Launch, Decision)> {
                 model_configured: true,
                 permit_model_network: true,
                 calibrate: true,
+                replay: false,
                 model_run_ceiling: None,
             },
             refuse("--calibrate needs --model-run-ceiling"),
@@ -104,6 +112,7 @@ fn rows() -> Vec<(Launch, Decision)> {
                 model_configured: true,
                 permit_model_network: true,
                 calibrate: true,
+                replay: false,
                 model_run_ceiling: Some(100_001),
             },
             refuse("is above the calibration's cap"),
@@ -113,6 +122,7 @@ fn rows() -> Vec<(Launch, Decision)> {
                 model_configured: true,
                 permit_model_network: true,
                 calibrate: true,
+                replay: false,
                 model_run_ceiling: Some(100_000),
             },
             Decision::ReadCredentialThenCalibrate,
@@ -122,11 +132,89 @@ fn rows() -> Vec<(Launch, Decision)> {
                 model_configured: true,
                 permit_model_network: true,
                 calibrate: true,
+                replay: false,
                 model_run_ceiling: Some(1),
             },
             Decision::ReadCredentialThenCalibrate,
         ),
+        // The offline rebuild, and the three ways of asking for one that
+        // would not be offline.
+        (
+            Launch {
+                model_configured: true,
+                permit_model_network: false,
+                calibrate: false,
+                replay: true,
+                model_run_ceiling: None,
+            },
+            Decision::ServeFromRecords,
+        ),
+        (
+            Launch {
+                model_configured: false,
+                permit_model_network: false,
+                calibrate: false,
+                replay: true,
+                model_run_ceiling: None,
+            },
+            refuse("--replay-model needs a configured model"),
+        ),
+        (
+            Launch {
+                model_configured: true,
+                permit_model_network: true,
+                calibrate: false,
+                replay: true,
+                model_run_ceiling: None,
+            },
+            refuse("is not an offline rebuild"),
+        ),
+        (
+            Launch {
+                model_configured: true,
+                permit_model_network: true,
+                calibrate: true,
+                replay: true,
+                model_run_ceiling: Some(100_000),
+            },
+            refuse("a launch is one or the other"),
+        ),
     ]
+}
+
+#[test]
+fn a_replay_never_reads_a_credential_and_never_opens_the_network() {
+    // Stated over **every** input rather than over the table. The whole
+    // claim of an offline rebuild is that it cannot call anything, and
+    // the two things that would let it are a credential and the permit.
+    for model_configured in [false, true] {
+        for permit_model_network in [false, true] {
+            for calibrate in [false, true] {
+                for model_run_ceiling in [None, Some(1), Some(100_000), Some(100_001)] {
+                    let launch = Launch {
+                        model_configured,
+                        permit_model_network,
+                        calibrate,
+                        replay: true,
+                        model_run_ceiling,
+                    };
+                    let decided = decide(&launch);
+                    assert!(
+                        !decided.reads_credential(),
+                        "{launch:?} reads a credential: {decided:?}"
+                    );
+                    if decided == Decision::ServeFromRecords {
+                        assert!(
+                            !permit_model_network && !calibrate && model_configured,
+                            "{launch:?} was allowed to replay"
+                        );
+                    } else {
+                        assert!(matches!(decided, Decision::Refuse(_)), "{decided:?}");
+                    }
+                }
+            }
+        }
+    }
 }
 
 #[test]
@@ -189,6 +277,7 @@ fn a_serving_launch_reads_no_credential_while_nothing_serving_can_use_one() {
             model_configured: true,
             permit_model_network: true,
             calibrate: false,
+            replay: false,
             model_run_ceiling,
         };
         let decided = decide(&launch);
@@ -215,6 +304,7 @@ fn the_only_launch_that_reads_a_credential_today_is_the_calibration() {
                         model_configured,
                         permit_model_network,
                         calibrate,
+                        replay: false,
                         model_run_ceiling,
                     };
                     let decided = decide(&launch);
@@ -266,17 +356,20 @@ fn a_credential_is_read_only_when_a_model_is_configured_and_permitted() {
         for permit_model_network in [false, true] {
             for calibrate in [false, true] {
                 for model_run_ceiling in [None, Some(1), Some(100_000), Some(100_001)] {
-                    let launch = Launch {
-                        model_configured,
-                        permit_model_network,
-                        calibrate,
-                        model_run_ceiling,
-                    };
-                    if decide(&launch).reads_credential() {
-                        assert!(
-                            model_configured && permit_model_network,
-                            "{launch:?} reads a credential"
-                        );
+                    for replay in [false, true] {
+                        let launch = Launch {
+                            model_configured,
+                            permit_model_network,
+                            calibrate,
+                            replay,
+                            model_run_ceiling,
+                        };
+                        if decide(&launch).reads_credential() {
+                            assert!(
+                                model_configured && permit_model_network && !replay,
+                                "{launch:?} reads a credential"
+                            );
+                        }
                     }
                 }
             }
@@ -291,6 +384,7 @@ fn the_calibration_is_never_decided_without_its_ceiling_inside_the_cap() {
             model_configured: true,
             permit_model_network: true,
             calibrate: true,
+            replay: false,
             model_run_ceiling,
         };
         assert!(
@@ -318,6 +412,7 @@ fn a_serving_launch_with_a_model_and_the_permit_reads_a_credential_and_serves() 
             model_configured: true,
             permit_model_network: true,
             calibrate: false,
+            replay: false,
             model_run_ceiling: None,
         }),
         Decision::ReadCredentialThenServe,

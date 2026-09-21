@@ -351,6 +351,12 @@ pub enum Wire {
     /// The live one. Reached only by a launch that was given a model, the
     /// permit and a credential, which `launch::decide` alone grants.
     Live(crate::keychain::Secret),
+    /// **An offline rebuild.** Every question is answered from a
+    /// retained derivation record and no call is made, so this carries
+    /// no credential and needs no permit. The transport behind it
+    /// panics, which is what makes "no call was made" a property of the
+    /// build rather than of the test watching it.
+    Replay,
 }
 
 /// The model this launch may call, and how it reaches it.
@@ -393,6 +399,14 @@ impl Serving {
             Wire::Fake(fake) => {
                 scrubber = None;
                 fake
+            }
+            // Unreachable: a replay launch answers in `assist` and never
+            // asks. Held rather than left out so that a call site which
+            // one day forgets ends at a named panic instead of at a
+            // provider.
+            Wire::Replay => {
+                scrubber = None;
+                &crate::model::PANICKING
             }
             Wire::Live(secret) => {
                 // The gate to a socket. A launch without the permit

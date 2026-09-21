@@ -32,11 +32,6 @@
 //!
 //! [READINESS §6]: ../../docs/work/m4/READINESS.md
 
-// The call site, the readable-set gate and the replay arrive in the
-// three commits after this one; until then this module is the shape
-// they are written against, stated on its own and tested on its own.
-#![allow(dead_code)]
-
 use cbr_encoding::Value;
 
 use crate::context::{at, canonical, list, object, string, text};
@@ -238,10 +233,6 @@ pub fn record(made: &Made<'_>) -> Value {
 /// The bytes that are sealed, and the digest they are sealed under.
 pub fn bytes(record: &Value) -> Vec<u8> {
     canonical(record).into_bytes()
-}
-
-pub fn digest_of(record: &Value) -> String {
-    cbr_encoding::digest_bytes(&bytes(record))
 }
 
 /// Content-addressed, like a cited blob: the same record sealed twice is

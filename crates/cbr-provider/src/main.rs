@@ -74,6 +74,13 @@ struct Args {
     ///
     /// [READINESS §10]: ../../docs/work/m4/READINESS.md
     calibrate: Option<PathBuf>,
+    /// **Rebuild offline.** Every model question is answered from a
+    /// retained derivation record; the transport is one that panics if
+    /// it is ever reached. No credential is read and no socket to a
+    /// provider can be opened, which is what INTERNALS section 5 means
+    /// by *reproducible from the retained records without calling the
+    /// model again*.
+    replay_model: bool,
 }
 
 fn parse_args() -> Result<Args, String> {
@@ -88,6 +95,7 @@ fn parse_args() -> Result<Args, String> {
         model_run_ceiling: None,
         permit_model_network: false,
         calibrate: None,
+        replay_model: false,
     };
     let mut argv = std::env::args().skip(1);
     while let Some(flag) = argv.next() {
@@ -104,6 +112,7 @@ fn parse_args() -> Result<Args, String> {
                 args.socket = Some(PathBuf::from(argv.next().ok_or("--socket needs a value")?));
             }
             "--permit-model-network" => args.permit_model_network = true,
+            "--replay-model" => args.replay_model = true,
             "--calibrate" => {
                 args.calibrate = Some(PathBuf::from(
                     argv.next()
@@ -190,6 +199,7 @@ fn run() -> Result<(), String> {
         permit_model_network: args.permit_model_network,
         calibrate: args.calibrate.is_some(),
         model_run_ceiling: args.model_run_ceiling,
+        replay: args.replay_model,
     });
     if let launch::Decision::Refuse(reason) = &decision {
         return Err(reason.clone());
@@ -289,26 +299,57 @@ fn run() -> Result<(), String> {
     // with the permit and the credential `launch::decide` already
     // insisted on. Absent is the ordinary case, and then preparation is
     // the deterministic path M3 shipped.
-    let serving = match (
-        config.model.clone(),
-        config.model_runtime.clone(),
-        credential,
-    ) {
-        (Some(fake), _, _) => Some(std::sync::Arc::new(provider::Serving {
-            dialect: fake.dialect,
-            model: fake.model.clone(),
-            counting: fake.counting,
-            run_ceiling: config.model_run_ceiling,
-            wire: provider::Wire::Fake(model::Fake::new(fake.dialect, fake.answers, fake.usage)),
-        })),
-        (None, Some(runtime), Some(credential)) => Some(std::sync::Arc::new(provider::Serving {
+    // **An offline rebuild, when this launch is one.** It answers from
+    // retained derivation records and its transport panics if reached,
+    // so it takes the model identity from the configuration and nothing
+    // else: no fake, no credential, no permit.
+    if args.replay_model && config.model.is_some() {
+        return Err(
+            "`model.fake` and --replay-model are two different transports and a launch \
+                    has one; a rebuild that could be answered by a fake is not a rebuild"
+                .into(),
+        );
+    }
+    let serving = if args.replay_model {
+        let runtime = config
+            .model_runtime
+            .clone()
+            .ok_or("--replay-model needs a configured model")?;
+        Some(std::sync::Arc::new(provider::Serving {
             dialect: runtime.dialect,
             model: runtime.model.clone(),
             counting: model::Counting::WhenItCouldAdmit,
             run_ceiling: config.model_run_ceiling,
-            wire: provider::Wire::Live(credential),
-        })),
-        _ => None,
+            wire: provider::Wire::Replay,
+        }))
+    } else {
+        match (
+            config.model.clone(),
+            config.model_runtime.clone(),
+            credential,
+        ) {
+            (Some(fake), _, _) => Some(std::sync::Arc::new(provider::Serving {
+                dialect: fake.dialect,
+                model: fake.model.clone(),
+                counting: fake.counting,
+                run_ceiling: config.model_run_ceiling,
+                wire: provider::Wire::Fake(model::Fake::new(
+                    fake.dialect,
+                    fake.answers,
+                    fake.usage,
+                )),
+            })),
+            (None, Some(runtime), Some(credential)) => {
+                Some(std::sync::Arc::new(provider::Serving {
+                    dialect: runtime.dialect,
+                    model: runtime.model.clone(),
+                    counting: model::Counting::WhenItCouldAdmit,
+                    run_ceiling: config.model_run_ceiling,
+                    wire: provider::Wire::Live(credential),
+                }))
+            }
+            _ => None,
+        }
     };
     let mut provider = provider.with_model(serving);
 

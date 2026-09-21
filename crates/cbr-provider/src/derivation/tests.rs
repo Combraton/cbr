@@ -141,15 +141,15 @@ fn the_artifact_id_is_the_records_own_digest() {
     let first = record(&made(&question(&offered), Answer::Chose("c1".into())));
     let second = record(&made(&question(&offered), Answer::Chose("c2".into())));
     assert_ne!(
-        artifact_id(&digest_of(&first)),
-        artifact_id(&digest_of(&second)),
+        artifact_id(&cbr_encoding::digest_bytes(&bytes(&first))),
+        artifact_id(&cbr_encoding::digest_bytes(&bytes(&second))),
         "two answers to one question are two records"
     );
     assert_eq!(
-        artifact_id(&digest_of(&first)),
-        artifact_id(&digest_of(&first))
+        artifact_id(&cbr_encoding::digest_bytes(&bytes(&first))),
+        artifact_id(&cbr_encoding::digest_bytes(&bytes(&first)))
     );
-    assert!(artifact_id(&digest_of(&first)).starts_with("der."));
+    assert!(artifact_id(&cbr_encoding::digest_bytes(&bytes(&first))).starts_with("der."));
 }
 
 #[test]

@@ -41,6 +41,13 @@ pub fn provider_binary() -> PathBuf {
     binary
 }
 
+/// Commit whatever is in the checkout now, so a test can move the tree
+/// a request is about.
+pub fn commit(repository: &Path, message: &str) {
+    git(repository, &["add", "-A"]);
+    git(repository, &["commit", "-q", "-m", message]);
+}
+
 fn git(repository: &Path, arguments: &[&str]) {
     let output = Command::new("git")
         .arg("-C")
@@ -203,11 +210,21 @@ impl Fixture {
     }
 
     pub fn start(&self) -> Running {
+        self.launch(&self.directory.path().join("cbr.json"), &[])
+    }
+
+    fn launch(&self, config: &Path, extra: &[&str]) -> Running {
+        // A stopped provider leaves its socket file behind, so a second
+        // launch over the same directory would find a path that exists
+        // and refuses connections. The provider unlinks it itself; this
+        // is so the wait below cannot see the old one.
+        let _ = std::fs::remove_file(&self.socket);
         let child = Command::new(provider_binary())
             .arg("--data-dir")
             .arg(self.data())
             .arg("--config")
-            .arg(self.directory.path().join("cbr.json"))
+            .arg(config)
+            .args(extra)
             .arg("--socket")
             .arg(&self.socket)
             .arg("--register-repository")
@@ -228,6 +245,27 @@ impl Fixture {
             std::thread::sleep(Duration::from_millis(20));
         }
         Running(child)
+    }
+
+    /// Start again over the same data directory as an **offline
+    /// rebuild**: no fake transport, no credential, no permit, and a
+    /// transport that panics if it is ever reached.
+    ///
+    /// The configuration is a second file this fixture writes, because
+    /// a replay names its model in `model_runtime` — a retained answer
+    /// is found by a question that says which model was asked — where a
+    /// live fixture names it in the `model.fake` control. A launch has
+    /// one transport, and a launch given both is refused.
+    pub fn start_replaying(&self) -> Running {
+        let config = self.directory.path().join("cbr-replay.json");
+        std::fs::write(
+            &config,
+            format!(
+                r#"{{"format":"combraton-conformance-config/1","principal":"owner","authority_principals":["owner"],"credentials":[{{"credential":"{CREDENTIAL}"}},{{"credential":"{READER}"}}],"context":{{"compile":true}},"model_runtime":{{"provider":"minimax","dialect":"responses","model":"MiniMax-M2.7-highspeed"}}}}"#
+            ),
+        )
+        .expect("config");
+        self.launch(&config, &["--replay-model"])
     }
 
     pub fn cbr(&self, arguments: &[&str]) -> Output {

@@ -771,6 +771,30 @@ impl Runtime<'_> {
     }
 }
 
+/// A transport that is **never called**, and says so loudly if it is.
+///
+/// Held by a replay launch, which answers every question from retained
+/// derivation records and reaches no wire at all. Reaching this is a
+/// bug in the call site rather than a configuration mistake, and the
+/// panic is contained: model work runs on the pool, which turns a
+/// panicking unit into the typed `work_panicked`. So the worst case is
+/// a failure with a name, and never a call to a provider that an
+/// offline rebuild was promised not to make.
+pub struct Panicking;
+
+/// One of them, because it has nothing in it and a pool thread needs a
+/// reference that outlives the call.
+pub static PANICKING: Panicking = Panicking;
+
+impl Transport for Panicking {
+    fn send(&self, _call: Call, _body: &[u8]) -> Exchange {
+        panic!(
+            "a replay launch reached the transport: an offline rebuild answers from retained \
+             derivation records and may make no call"
+        )
+    }
+}
+
 /// Per call, so a crash-matrix row cannot pass at the wrong boundary.
 pub const COUNT_AFTER_RESERVATION: &str = "model.count.after_reservation";
 pub const COUNT_AFTER_SEND: &str = "model.count.after_send";

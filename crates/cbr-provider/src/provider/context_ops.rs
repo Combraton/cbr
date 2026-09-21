@@ -1833,6 +1833,39 @@ impl Provider {
             .map(|candidate| candidate.id.clone())
             .collect();
         let item = text(item, &["item_id"]).to_string();
+
+        // **An offline rebuild answers here and asks nothing.** The
+        // question's digest is what a retained record is found by — the
+        // model, the task, the selector and every candidate in the
+        // order it was offered — so a file edited since the call is a
+        // different question and finds nothing, which is the answer a
+        // rebuild should give. Nothing is charged and nothing is
+        // sealed: the record it read is the record it would write.
+        if matches!(serving.wire, crate::provider::Wire::Replay) {
+            let wanted = crate::derivation::Question {
+                model: &serving.model,
+                dialect: serving.dialect.name(),
+                task: assist.task,
+                selector: query,
+                offered: &offered,
+            }
+            .digest();
+            return Ok(match self.retained(&wanted, assist)? {
+                Some(crate::derivation::Answer::Chose(id)) => {
+                    match ids.iter().position(|offered| *offered == id) {
+                        Some(index) if index < found.len() => Assisted::Chose(index),
+                        _ => Assisted::Unmet(crate::selection::NOT_OFFERED),
+                    }
+                }
+                Some(crate::derivation::Answer::Unmet(reason)) => Assisted::Unmet(reason),
+                // **Never a call, and never BM25's own first.** A
+                // question nothing retained an answer to is an item
+                // this rebuild cannot honestly satisfy, and saying so
+                // is the difference between a rebuild and a rerun.
+                None => Assisted::Unmet(crate::derivation::NOT_RETAINED),
+            });
+        }
+
         let asking = || {
             let serving = std::sync::Arc::clone(&serving);
             let (job, request) = (assist.job.to_string(), assist.request.to_string());
@@ -1943,6 +1976,60 @@ impl Provider {
             crate::work::Progress::Failed(reason) => Assisted::Unmet(reason),
             crate::work::Progress::TimedOut => Assisted::Unmet("model_call_timed_out"),
         })
+    }
+
+    /// The answer a retained derivation holds for this exact question,
+    /// if this job may read it.
+    ///
+    /// **Scanned, and only by a replay launch.** An ordinary serving
+    /// launch never reaches this; a rebuild is an offline operation
+    /// where a scan per question costs nothing anybody is waiting on.
+    /// An index would be a second place for the truth to live, and the
+    /// truth is the sealed record.
+    ///
+    /// **A retained answer is reused only under a readable set this job
+    /// also has.** Without that, replaying would be a way of reading a
+    /// wider job's answers from a narrower one — the readable-set gate
+    /// on `evidence.fetch` walked around from the inside.
+    fn retained(
+        &self,
+        question: &str,
+        assist: &Assist<'_>,
+    ) -> Result<Option<crate::derivation::Answer>, TickError> {
+        for (id, value) in self.store.subjects_of_kind(crate::evidence::ARTIFACT)? {
+            if !id.starts_with("der.") {
+                continue;
+            }
+            let record = parse_record(&value)?;
+            if text(&record, &["state"]) != "sealed" {
+                continue;
+            }
+            if !crate::derivation::covers(
+                at(&record, &["readable_under"]),
+                assist.view,
+                assist.claims,
+            ) {
+                continue;
+            }
+            let Some(bytes) = self
+                .store
+                .read_object(text(&record, &["descriptor", "digest"]))?
+            else {
+                continue;
+            };
+            let Ok(sealed) = cbr_encoding::parse(&bytes) else {
+                continue;
+            };
+            if crate::derivation::question_digest_of(&sealed) != question {
+                continue;
+            }
+            // A record this build cannot read is a failure with a name,
+            // not a question to ask a provider.
+            return Ok(Some(crate::derivation::answer_of(&sealed).unwrap_or(
+                crate::derivation::Answer::Unmet(crate::derivation::UNREADABLE),
+            )));
+        }
+        Ok(None)
     }
 
     /// Seal one model exchange as evidence, unless an artifact already
