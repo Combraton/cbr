@@ -420,3 +420,84 @@ fn a_usage_that_differs_from_the_estimate_is_reconciled_and_the_divergence_kept(
 // `wire::net::tests` when m4b gave the crate one, and became two tests
 // there: the four crates that do not need a network client still have
 // none, and the one that does names exactly what it added.
+
+#[test]
+fn two_admissions_racing_for_the_last_of_a_window_admit_exactly_one() {
+    // **The property m4a claimed and m4c needs.** `BEGIN IMMEDIATE` takes
+    // the write lock before the read, so a check-then-write race cannot
+    // have both readers see the same room and both write against it.
+    // Until m4c there was no concurrency to test it under; there is now.
+    //
+    // Two connections to one file, two threads, one barrier, and exactly
+    // enough window left for one of the two requests.
+    let directory = tempfile::tempdir().expect("temp dir");
+    let path = directory.path().join("ledger.sqlite");
+    let open = || {
+        let connection = Connection::open(&path).expect("opens");
+        connection
+            .pragma_update(None, "journal_mode", "WAL")
+            .expect("wal");
+        connection
+            .busy_timeout(std::time::Duration::from_secs(10))
+            .expect("busy timeout");
+        connection
+    };
+    let setup = open();
+    Ledger::migrate(&setup).expect("migrates");
+
+    // Leave room for exactly one request of `each`.
+    let each = 10_000;
+    let ledger = Ledger::new(&setup);
+    let mut spent = 0;
+    let mut job = 0;
+    while spent + PER_REQUEST_TOKENS <= WINDOW_TOKENS - each {
+        ledger
+            .admit(T0, &format!("filler-{job}"), "r", PER_REQUEST_TOKENS)
+            .expect("admits")
+            .expect("room");
+        spent += PER_REQUEST_TOKENS;
+        job += 1;
+    }
+    let remaining = WINDOW_TOKENS - each - spent;
+    if remaining > 0 {
+        ledger
+            .admit(T0, "filler-top", "r", remaining)
+            .expect("admits")
+            .expect("room");
+    }
+    assert_eq!(
+        ledger.spend(T0, "none").expect("spend").window,
+        WINDOW_TOKENS - each,
+        "exactly one request's worth is left"
+    );
+    drop(setup);
+
+    let start = std::sync::Barrier::new(2);
+    let admitted = std::sync::atomic::AtomicUsize::new(0);
+    std::thread::scope(|scope| {
+        for racer in 0..2 {
+            let start = &start;
+            let admitted = &admitted;
+            let open = &open;
+            scope.spawn(move || {
+                let connection = open();
+                let ledger = Ledger::new(&connection);
+                start.wait();
+                if let Ok(Ok(_)) = ledger.admit(T0, &format!("racer-{racer}"), "r", each) {
+                    admitted.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                }
+            });
+        }
+    });
+
+    assert_eq!(
+        admitted.load(std::sync::atomic::Ordering::SeqCst),
+        1,
+        "exactly one of the two was admitted"
+    );
+    let after = open();
+    assert!(
+        Ledger::new(&after).spend(T0, "none").expect("spend").window <= WINDOW_TOKENS,
+        "and the window was never over-committed"
+    );
+}
