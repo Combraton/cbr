@@ -9,18 +9,35 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
+use cbr_encoding::Value;
+
 use super::*;
+
+fn string(text: &str) -> Value {
+    Value::String(text.to_string())
+}
 
 /// Work that blocks until the test lets it finish.
 fn held() -> (
     mpsc::Sender<()>,
-    impl FnOnce() -> Result<(), &'static str> + Send + 'static,
+    impl FnOnce() -> Result<Value, &'static str> + Send + 'static,
 ) {
     let (release, wait) = mpsc::channel::<()>();
     (release, move || {
         let _ = wait.recv();
-        Ok(())
+        Ok(Value::Null)
     })
+}
+
+/// `Ok(Value::Null)`, for the tests that care about the slot rather than
+/// what came out of it.
+fn nothing() -> Result<Value, &'static str> {
+    Ok(Value::Null)
+}
+
+/// `Progress::Done` with nothing in it.
+fn done() -> Progress {
+    Progress::Done(Value::Null)
 }
 
 /// Waits for `check` to hold, so no test depends on a sleep being long
@@ -34,27 +51,106 @@ fn until(check: impl Fn() -> bool) {
 }
 
 #[test]
-fn work_that_finishes_is_reported_done_once() {
+fn work_that_finishes_hands_back_what_it_produced() {
     let pool = Pool::new(CONCURRENCY);
-    assert_eq!(pool.progress("a", None, || Ok(())), Progress::Running);
-    until(|| pool.progress("a", None, || Ok(())) == Progress::Done);
-    // And the slot is gone: a second ask starts new work rather than
-    // reporting the old result for ever.
-    assert_eq!(pool.progress("a", None, || Ok(())), Progress::Running);
+    assert_eq!(
+        pool.progress("a", None, || Ok(string("chosen"))),
+        Progress::Running
+    );
+    until(|| pool.progress("a", None, nothing) != Progress::Running);
+    assert_eq!(
+        pool.progress("a", None, nothing),
+        Progress::Done(string("chosen")),
+        "the caller gets the value the work produced"
+    );
 }
 
 #[test]
-fn work_that_fails_reports_its_typed_reason() {
+fn a_result_is_kept_until_it_is_taken() {
+    // **A compile that needs two calls asks across several ticks.** If
+    // `Done` released the slot, the first answer would be gone by the tick
+    // the second arrived, and the compile could never see both. So a
+    // finished slot holds its result until the caller takes it, and until
+    // then every ask gets the same answer.
+    let pool = Pool::new(CONCURRENCY);
+    let started = Arc::new(AtomicUsize::new(0));
+    let counter = Arc::clone(&started);
+    pool.progress("a", None, move || {
+        counter.fetch_add(1, Ordering::SeqCst);
+        Ok(string("chosen"))
+    });
+    until(|| pool.progress("a", None, nothing) != Progress::Running);
+    for _ in 0..5 {
+        assert_eq!(
+            pool.progress("a", None, nothing),
+            Progress::Done(string("chosen"))
+        );
+    }
+    assert_eq!(started.load(Ordering::SeqCst), 1, "and it ran once");
+
+    pool.release("a");
+    assert_eq!(
+        pool.progress("a", None, || Ok(string("again"))),
+        Progress::Running,
+        "taken, the key is free for new work"
+    );
+}
+
+#[test]
+fn work_that_fails_reports_its_typed_reason_and_is_not_retried() {
     // **Every failure ends as a typed reason**, which is what an item
     // carries. A panic in the work is the same: a unit that died is a unit
     // that did not finish, and the caller is told so rather than left.
+    //
+    // A failure is kept like an answer, because the next tick asks again
+    // and a released failure would be a retry nobody asked for. READINESS
+    // §8 allows a bounded repair inside one call and no retry beyond it.
     let pool = Pool::new(CONCURRENCY);
-    pool.progress("a", None, || Err("index_unavailable"));
-    until(|| matches!(pool.progress("a", None, || Ok(())), Progress::Failed(_)));
+    let started = Arc::new(AtomicUsize::new(0));
+    let counter = Arc::clone(&started);
+    pool.progress("a", None, move || {
+        counter.fetch_add(1, Ordering::SeqCst);
+        Err("index_unavailable")
+    });
+    until(|| pool.progress("a", None, nothing) != Progress::Running);
+    for _ in 0..5 {
+        assert_eq!(
+            pool.progress("a", None, nothing),
+            Progress::Failed("index_unavailable")
+        );
+    }
+    assert_eq!(
+        started.load(Ordering::SeqCst),
+        1,
+        "it ran once, and was not retried"
+    );
 
     let pool = Pool::new(CONCURRENCY);
     pool.progress("b", None, || panic!("the work died"));
-    until(|| pool.progress("b", None, || Ok(())) == Progress::Failed("work_panicked"));
+    until(|| pool.progress("b", None, nothing) == Progress::Failed("work_panicked"));
+}
+
+#[test]
+fn a_result_waiting_to_be_taken_does_not_hold_the_bound() {
+    // The bound is on work **in flight**, because that is what is heavy.
+    // A finished unit costs a map entry, and holding the bound with one
+    // would stall the next job for as long as nobody took the answer.
+    let pool = Pool::new(2);
+    let (first, work) = held();
+    pool.progress("a", None, work);
+    let (second, work) = held();
+    pool.progress("b", None, work);
+    assert_eq!(pool.progress("c", None, nothing), Progress::Deferred);
+
+    drop(first);
+    until(|| pool.progress("a", None, nothing) != Progress::Running);
+    assert_eq!(pool.running(), 1, "only the unfinished one is in flight");
+    assert_eq!(
+        pool.progress("c", None, nothing),
+        Progress::Running,
+        "and the deferred work starts, though `a` has not been taken"
+    );
+    drop(second);
 }
 
 #[test]
@@ -74,13 +170,13 @@ fn the_same_key_is_not_started_twice() {
         assert_eq!(
             pool.progress("a", None, move || {
                 counter.fetch_add(1, Ordering::SeqCst);
-                Ok(())
+                Ok(Value::Null)
             }),
             Progress::Running
         );
     }
     drop(release);
-    until(|| pool.progress("a", None, || Ok(())) == Progress::Done);
+    until(|| pool.progress("a", None, nothing) == done());
     assert_eq!(started.load(Ordering::SeqCst), 1, "started once");
 }
 
@@ -97,15 +193,15 @@ fn the_bound_defers_work_beyond_it_rather_than_queueing_it() {
     let (second, work) = held();
     assert_eq!(pool.progress("b", None, work), Progress::Running);
     assert_eq!(
-        pool.progress("c", None, || Ok(())),
+        pool.progress("c", None, nothing),
         Progress::Deferred,
         "the third is deferred"
     );
     assert_eq!(pool.running(), 2);
     drop(first);
-    until(|| pool.progress("a", None, || Ok(())) == Progress::Done);
+    until(|| pool.progress("a", None, nothing) == done());
     // With room again, the deferred one starts.
-    assert_eq!(pool.progress("c", None, || Ok(())), Progress::Running);
+    assert_eq!(pool.progress("c", None, nothing), Progress::Running);
     drop(second);
 }
 
@@ -118,11 +214,19 @@ fn a_deadline_that_passes_ends_the_work_as_timed_out() {
     let deadline = Instant::now() - Duration::from_millis(1);
     assert_eq!(pool.progress("a", Some(deadline), work), Progress::Running);
     assert_eq!(
-        pool.progress("a", Some(deadline), || Ok(())),
+        pool.progress("a", Some(deadline), nothing),
         Progress::TimedOut
     );
-    // The slot is released, so the bound is not held by work nobody wants.
+    // The bound is not held by work nobody wants.
     assert_eq!(pool.running(), 0);
+    // And it is not started again: a request whose deadline has passed is
+    // not a request to try once more.
+    for _ in 0..5 {
+        assert_eq!(
+            pool.progress("a", Some(deadline), nothing),
+            Progress::TimedOut
+        );
+    }
     drop(release);
 }
 
@@ -133,7 +237,7 @@ fn a_deadline_in_the_future_does_not_end_it() {
     let deadline = Instant::now() + Duration::from_secs(30);
     pool.progress("a", Some(deadline), work);
     assert_eq!(
-        pool.progress("a", Some(deadline), || Ok(())),
+        pool.progress("a", Some(deadline), nothing),
         Progress::Running
     );
     drop(release);

@@ -994,7 +994,11 @@ impl Provider {
                         .map_err(|_| ProtocolError::new_internal_error())?;
                     move || {
                         retrieval::build(&beside, &repository, &checkout, &tree, position)
-                            .map(|_| ())
+                            // The build's product is the manifest it
+                            // wrote; this job reads it back through its
+                            // own connection, so there is nothing to
+                            // carry out of the thread.
+                            .map(|_| Value::Null)
                             .map_err(|_| "index_unavailable")
                     }
                 };
@@ -1006,7 +1010,11 @@ impl Provider {
                     }
                     // Built. Read back what it wrote, through this
                     // connection, and carry on.
-                    crate::work::Progress::Done => {
+                    crate::work::Progress::Done(_) => {
+                        // Taken, so the key is free. A settled answer is
+                        // kept until its caller has used it, and this one
+                        // has: what follows reads the manifest itself.
+                        self.work.release(&key);
                         match retrieval::manifest(connection, repository).ok().flatten() {
                             Some(manifest) => Ok(manifest),
                             // It said it built and there is no manifest.

@@ -28,6 +28,8 @@ use std::sync::Mutex;
 use std::thread::JoinHandle;
 use std::time::Instant;
 
+use cbr_encoding::Value;
+
 /// How many units of work may be in flight at once.
 ///
 /// Two, because the work this bounds is a **whole-repository index build**
@@ -37,24 +39,55 @@ use std::time::Instant;
 pub const CONCURRENCY: usize = 2;
 
 /// Where a unit of work has got to.
+///
+/// The three settled answers — [`Progress::Done`], [`Progress::Failed`]
+/// and [`Progress::TimedOut`] — are **kept until the caller takes them**
+/// with [`Pool::release`], and every ask until then gets the same one.
+/// Two reasons, and the second is the one with teeth:
+///
+/// * A compile that needs two calls asks across several ticks. If the
+///   first answer were released when it was first reported, it would be
+///   gone by the tick the second arrived, and the compile could never
+///   hold both.
+/// * A released failure is a **retry**. The next tick asks again, and the
+///   pool would start the work afresh — which is not a bounded repair
+///   inside one call ([READINESS §8](../../docs/work/m4/READINESS.md))
+///   but an unbounded loop spending a shared quota.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Progress {
     /// Started, or already running. Ask again next tick.
     Running,
     /// Not started: the bound is full. Ask again next tick.
     Deferred,
-    /// Finished, and the result is taken. **Reported once**: the slot is
-    /// released with it, so a later ask starts new work rather than
-    /// answering with an old result for ever.
-    Done,
+    /// Finished, with what it produced.
+    Done(Value),
     /// Finished badly, with the reason an item carries.
     Failed(&'static str),
     /// The request's deadline passed while it ran.
     TimedOut,
 }
 
+/// A settled answer, held until it is taken.
+enum Settled {
+    Done(Value),
+    Failed(&'static str),
+    TimedOut,
+}
+
 struct Slot {
-    handle: JoinHandle<Result<(), &'static str>>,
+    /// Dropped when the answer settles. A timed-out unit's thread is
+    /// **detached** rather than waited for: Rust cannot kill a thread, and
+    /// waiting for one nobody wants is the stall this module exists to
+    /// remove.
+    handle: Option<JoinHandle<Result<Value, &'static str>>>,
+    settled: Option<Settled>,
+}
+
+impl Slot {
+    /// In flight, and therefore counted against the bound.
+    fn running(&self) -> bool {
+        self.settled.is_none()
+    }
 }
 
 pub struct Pool {
@@ -81,39 +114,63 @@ impl Pool {
         &self,
         key: &str,
         deadline: Option<Instant>,
-        work: impl FnOnce() -> Result<(), &'static str> + Send + 'static,
+        work: impl FnOnce() -> Result<Value, &'static str> + Send + 'static,
     ) -> Progress {
         let mut slots = self.slots.lock().expect("not poisoned");
-        if let Some(slot) = slots.get(key) {
-            if slot.handle.is_finished() {
-                let slot = slots.remove(key).expect("just seen");
-                // A unit that died is a unit that did not finish, and the
-                // caller is told so rather than left waiting for it.
-                return match slot.handle.join() {
-                    Ok(Ok(())) => Progress::Done,
-                    Ok(Err(reason)) => Progress::Failed(reason),
-                    Err(_) => Progress::Failed("work_panicked"),
-                };
+        if let Some(slot) = slots.get_mut(key) {
+            if slot.settled.is_none() {
+                let finished = slot
+                    .handle
+                    .as_ref()
+                    .is_some_and(std::thread::JoinHandle::is_finished);
+                if finished {
+                    // A unit that died is a unit that did not finish, and
+                    // the caller is told so rather than left waiting.
+                    slot.settled = Some(match slot.handle.take().expect("just seen").join() {
+                        Ok(Ok(value)) => Settled::Done(value),
+                        Ok(Err(reason)) => Settled::Failed(reason),
+                        Err(_) => Settled::Failed("work_panicked"),
+                    });
+                } else if deadline.is_some_and(|deadline| Instant::now() >= deadline) {
+                    // **The deadline is the request's.** A unit that
+                    // outlives one is not something anybody is still
+                    // waiting for, and counting its slot would hold the
+                    // bound against work that is.
+                    slot.handle = None;
+                    slot.settled = Some(Settled::TimedOut);
+                }
             }
-            // **The deadline is the request's.** A unit that outlives one
-            // is not something anybody is still waiting for, and holding
-            // its slot would hold the bound against work that is.
-            if deadline.is_some_and(|deadline| Instant::now() >= deadline) {
-                slots.remove(key);
-                return Progress::TimedOut;
-            }
-            return Progress::Running;
+            return match &slot.settled {
+                None => Progress::Running,
+                Some(Settled::Done(value)) => Progress::Done(value.clone()),
+                Some(Settled::Failed(reason)) => Progress::Failed(reason),
+                Some(Settled::TimedOut) => Progress::TimedOut,
+            };
         }
-        if slots.len() >= self.bound {
+        // **The bound is on work in flight**, which is what is heavy. A
+        // settled answer nobody has taken costs a map entry; holding the
+        // bound with one would stall the next job for as long as it sat
+        // there.
+        if slots.values().filter(|slot| slot.running()).count() >= self.bound {
             return Progress::Deferred;
         }
         slots.insert(
             key.to_string(),
             Slot {
-                handle: std::thread::spawn(work),
+                handle: Some(std::thread::spawn(work)),
+                settled: None,
             },
         );
         Progress::Running
+    }
+
+    /// Take `key`'s answer and free the key.
+    ///
+    /// The caller that reads a settled answer is the caller that releases
+    /// it, once it has been used — the compile that put it in a packet, or
+    /// the job that ended. Until then every ask gets the same answer.
+    pub fn release(&self, key: &str) {
+        self.slots.lock().expect("not poisoned").remove(key);
     }
 
     /// Stop waiting for `key`.
@@ -133,13 +190,18 @@ impl Pool {
     /// the same tree, and it is idempotent.
     #[cfg_attr(not(test), allow(dead_code))]
     pub fn cancel(&self, key: &str) {
-        self.slots.lock().expect("not poisoned").remove(key);
+        self.release(key);
     }
 
-    /// How many units hold a slot.
+    /// How many units are **in flight**, which is what the bound counts.
     #[cfg_attr(not(test), allow(dead_code))]
     pub fn running(&self) -> usize {
-        self.slots.lock().expect("not poisoned").len()
+        self.slots
+            .lock()
+            .expect("not poisoned")
+            .values()
+            .filter(|slot| slot.running())
+            .count()
     }
 }
 
