@@ -33,6 +33,7 @@ use crate::clock::Clock;
 use crate::config::Config;
 use crate::provider::Provider;
 use crate::session;
+use crate::work::Pool;
 
 /// How often an idle session wakes to re-check its subscriptions and deliver
 /// events other sessions committed. Well inside the 2-second bound CORE
@@ -65,6 +66,7 @@ pub fn serve(
     socket: &Path,
     config: Config,
     clock: Arc<Clock>,
+    work: Arc<Pool>,
     data_dir: PathBuf,
 ) -> Result<(), String> {
     check_directory(socket)?;
@@ -89,8 +91,9 @@ pub fn serve(
             continue;
         }
         let (config, clock, data_dir) = (config.clone(), clock.clone(), data_dir.clone());
+        let work = work.clone();
         std::thread::spawn(move || {
-            if let Err(error) = serve_connection(stream, config, clock, &data_dir) {
+            if let Err(error) = serve_connection(stream, config, clock, work, &data_dir) {
                 eprintln!("cbr-provider: session: {error}");
             }
         });
@@ -102,10 +105,12 @@ fn serve_connection(
     stream: UnixStream,
     config: Config,
     clock: Arc<Clock>,
+    work: Arc<Pool>,
     data_dir: &Path,
 ) -> Result<(), String> {
     let mut provider = Provider::connect(config, clock, data_dir)
-        .map_err(|error| format!("opening the store: {error}"))?;
+        .map_err(|error| format!("opening the store: {error}"))?
+        .with_work(work);
     let writer = stream.try_clone().map_err(|error| error.to_string())?;
     let closer = stream.try_clone().map_err(|error| error.to_string())?;
     stream

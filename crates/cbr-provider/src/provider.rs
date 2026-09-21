@@ -309,6 +309,15 @@ pub struct Provider {
     pub config: Config,
     clock: std::sync::Arc<crate::clock::Clock>,
     store: Store,
+    /// Work that has left the preparation tick: the index build, and from
+    /// m4c's call site the model call. Bounded, so the machine the owner
+    /// is also using is not asked to do everything at once.
+    ///
+    /// **Shared across sessions, like the clock.** A socket connection
+    /// gets its own `Provider`, so a per-session pool would start the same
+    /// index build again on every poll and finish none of them — which is
+    /// exactly what happened the first time this was written.
+    work: std::sync::Arc<crate::work::Pool>,
     /// Whether this session is on a transport many processes can reach, where
     /// it starts unauthenticated (CORE section 18.2).
     shared_transport: bool,
@@ -478,6 +487,7 @@ impl Provider {
         let provider = Self {
             config,
             clock: std::sync::Arc::new(clock),
+            work: std::sync::Arc::new(crate::work::Pool::new(crate::work::CONCURRENCY)),
             store,
             shared_transport: false,
             authenticated: true,
@@ -510,6 +520,7 @@ impl Provider {
             config,
             clock,
             store,
+            work: std::sync::Arc::new(crate::work::Pool::new(crate::work::CONCURRENCY)),
             shared_transport: true,
             authenticated: false,
             negotiated: None,
@@ -524,6 +535,17 @@ impl Provider {
     /// The clock every session of this process shares.
     pub fn shared_clock(&self) -> std::sync::Arc<crate::clock::Clock> {
         self.clock.clone()
+    }
+
+    /// The work pool this process shares across its sessions.
+    pub fn shared_work(&self) -> std::sync::Arc<crate::work::Pool> {
+        self.work.clone()
+    }
+
+    /// Use the process's pool rather than one of this session's own.
+    pub fn with_work(mut self, work: std::sync::Arc<crate::work::Pool>) -> Self {
+        self.work = work;
+        self
     }
 
     /// `core.authenticate` (CORE section 18.2).

@@ -33,6 +33,7 @@ mod session;
 mod socket;
 mod store;
 mod wire;
+mod work;
 
 use std::path::PathBuf;
 
@@ -302,8 +303,12 @@ fn run() -> Result<(), String> {
         }
         // Each session connects to the store this start already prepared.
         let clock = provider.shared_clock();
+        // One pool for the process, shared by every connection's provider:
+        // an index build started on one poll has to be the same build the
+        // next poll finds running.
+        let work = provider.shared_work();
         drop(provider);
-        return socket::serve(socket, config, clock, data_dir);
+        return socket::serve(socket, config, clock, work, data_dir);
     }
 
     let stdin = std::io::stdin();

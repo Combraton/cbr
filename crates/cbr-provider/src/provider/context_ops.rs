@@ -144,6 +144,12 @@ struct Tick {
 enum TickError {
     Protocol(ProtocolError),
     NotSealed(NotSealed),
+    /// **Work this job needs has left the preparation tick and has not
+    /// finished.** Nothing of this step is committed and the job is left
+    /// exactly as it was, so the next tick asks again — which is the whole
+    /// point of the work leaving: the tick that asks is the tick that
+    /// returns, and every other job on this provider carries on.
+    NotReady,
 }
 
 impl From<ProtocolError> for TickError {
@@ -959,9 +965,92 @@ impl Provider {
             .and_then(|epoch| self.store.last_sequence(epoch))
             .unwrap_or(0);
         let existing = retrieval::manifest(connection, repository).ok().flatten();
-        let manifest = match existing {
+        let manifest: Result<retrieval::Manifest, cbr_memory::index::IndexError> = match existing {
+            // Already built for this tree: nothing leaves the tick, and
+            // the overwhelmingly common case stays as fast as it was.
             Some(manifest) if manifest.frontier == tree => Ok(manifest),
-            _ => retrieval::build(connection, repository, checkout, tree, position),
+            // **Not built. This is the long one, and it leaves.**
+            //
+            // M3 measured it holding the tick throughout — 7.2s on CBR's
+            // own blobs, 12.8s on brian2's, 3.9s on Knowscroll's — with
+            // every other job on the provider waiting it out. Now the tick
+            // starts it and returns, and this job waits while the others
+            // carry on.
+            _ => {
+                let key = format!("index:{repository}:{tree}");
+                // **No deadline here**: the request has one of its own,
+                // in protocol instants, and `advance` already publishes
+                // what a job has when it passes. A second deadline in
+                // monotonic time beside it would be two clocks
+                // disagreeing about the same request. What this does owe
+                // is the slot: a job that ends cancels its build.
+                let deadline = None;
+                let building = {
+                    let (repository, tree) = (repository.to_string(), tree.to_string());
+                    let checkout = checkout.to_path_buf();
+                    let beside = self
+                        .store
+                        .open_beside()
+                        .map_err(|_| ProtocolError::new_internal_error())?;
+                    move || {
+                        retrieval::build(&beside, &repository, &checkout, &tree, position)
+                            .map(|_| ())
+                            .map_err(|_| "index_unavailable")
+                    }
+                };
+                match self.work.progress(&key, deadline, building) {
+                    // Started, or already running, or waiting for room.
+                    // Either way this job has nothing to do this tick.
+                    crate::work::Progress::Running | crate::work::Progress::Deferred => {
+                        return Err(TickError::NotReady);
+                    }
+                    // Built. Read back what it wrote, through this
+                    // connection, and carry on.
+                    crate::work::Progress::Done => {
+                        match retrieval::manifest(connection, repository).ok().flatten() {
+                            Some(manifest) => Ok(manifest),
+                            // It said it built and there is no manifest.
+                            // Reported rather than retried: a build that
+                            // succeeds and leaves nothing is a fault to
+                            // see, not one to paper over with another run.
+                            None => {
+                                return Ok(Reach {
+                                    repository: repository.to_string(),
+                                    frontier: tree.to_string(),
+                                    state: "unavailable".into(),
+                                    gaps: vec![
+                                        "the projection could not be built \
+                                         (index_missing_after_build)"
+                                            .into(),
+                                    ],
+                                });
+                            }
+                        }
+                    }
+                    // **Every failure is a typed reason an item carries.**
+                    crate::work::Progress::Failed(reason) => {
+                        return Ok(Reach {
+                            repository: repository.to_string(),
+                            frontier: tree.to_string(),
+                            state: "unavailable".into(),
+                            // Descriptive **and** typed: a reader of the
+                            // coverage learns what happened, and a
+                            // consumer gets the reason it can act on.
+                            gaps: vec![format!("the projection could not be built ({reason})")],
+                        });
+                    }
+                    crate::work::Progress::TimedOut => {
+                        return Ok(Reach {
+                            repository: repository.to_string(),
+                            frontier: tree.to_string(),
+                            state: "unavailable".into(),
+                            gaps: vec![
+                                "the projection could not be built (index_build_timed_out)".into(),
+                            ],
+                        });
+                    }
+                }
+            }
         };
         Ok(match manifest {
             Ok(manifest) => {
@@ -2081,6 +2170,9 @@ impl Provider {
                     );
                     self.keep_captures(&job_id, &not_sealed.captures)?;
                 }
+                // Nothing is written and nothing is logged: this is the
+                // ordinary state of a job waiting for work that is running.
+                Err(TickError::NotReady) => continue,
                 Err(TickError::Protocol(error)) => return Err(error),
             }
         }
