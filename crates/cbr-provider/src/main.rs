@@ -14,6 +14,7 @@ mod compiler;
 mod config;
 mod context;
 mod credentials;
+mod derivation;
 mod effects;
 mod envelope;
 mod errors;
