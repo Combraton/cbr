@@ -55,6 +55,34 @@ Every row is the owner's, recorded before M4 and unchanged by it. The right-hand
 
 The quota is **shared with the owner's other tools** ([STACK §8.1](../readiness/STACK.md)), so an overspend degrades their working environment rather than merely costing money. That is why admission is m4a — before any transport — and why exhaustion is a typed result and never a retry.
 
+### Admission is one step, and the count is a second only when it can change the answer
+
+**Revised 2026-09-21, from what calibration run 2 measured.** The design below was written before any call had been made. What the run found:
+
+- **The count sends the repository text a second time.** Everything §7 says about what may be sent applies to it twice over.
+- **The provider does not price it.** Its response carries no usage member, so CBR settles a count at the figure it counted — the conservative reading of silence. **15,538 of the 15,582 tokens that run were CBR charging itself for seven counts the provider never priced.**
+- **It over-predicted the bill by 4.4×** on the one completion where both figures exist: 122 predicted, 28 charged. That is conservatism the local bound already provides.
+
+So **the local bound admits, alone, and the call settles by usage** — which was always the truth of it. The provider count is made only where it **can change a decision**: the local bound would refuse on the window, the month, the job or the run ceiling, and a tighter figure could admit. **Not** on the per-request ceiling, which is a policy limit on how large one request may be; the local bound is deliberately the conservative measure of that, and letting the provider's figure talk CBR into sending a bigger request inverts the direction the bound protects.
+
+**Which path admitted a call is recorded** — `admitted_local` or `admitted_count` in the ledger, and carried into the derivation record — because a selection admitted on the local bound and one admitted on the provider's count were decided by different evidence.
+
+**One data point is not a rule.** The 4.4× and the unpriced count are one run of six files and one completion, on requests far smaller than a real packet. m4e's requests are realistic sizes and will say more; until then this is the reading of one measurement, and it is the reading that spends less. A caller whose purpose *is* the count — the calibration — asks for it explicitly.
+
+**And the count is still settled at the figure it counted**, not at zero, until an observation says the provider charges nothing. The documentation makes no statement about billing for that endpoint, and "unbilled because a page says so" is what the calibration exists to avoid.
+
+### The tripwire: the calibration's stop rule, kept alive
+
+Six files cannot prove a bound; a tripwire can hold it. **At every settlement, a `usage.input_tokens` above the local input bound for that request means the bound is wrong** — and every admission CBR has ever made rests on it. It is recorded as its own ledger kind, `bound_unsound`; no further model call is admitted; and the call ends with the typed reason `local_bound_unsound`.
+
+**Held in the ledger rather than in a process flag**, which is stronger than "for the process": the bound is a property of the code, so a restart with the same code has the same bound, and forgetting at restart would forget the one observation that invalidates everything the store has admitted.
+
+Two rules that overlap, in order: a charge above the **local bound** stops everything, because the bound is wrong; a charge above the **count endpoint's prediction** by more than the stated margin is a finding, because the prediction is poor. The first is the graver claim and it wins.
+
+### The original two-step design, and what remains of it
+
+The count call **is** a send, and everything below about that remains true — it is admitted, recorded, charged and under the same view rule. What changed is when it is made.
+
 ### Admission is two steps, because the count call is itself a send
 
 `POST /v1/responses/input_tokens` carries **the fully serialized request to the provider**. It is a send. An admission design that counts there first has already sent the body it was deciding whether to send, which defeats the point twice over: it spends whatever the count costs, and it puts content on the wire before anything decided that the content was permitted to go.

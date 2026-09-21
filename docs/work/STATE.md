@@ -30,6 +30,18 @@ Four things the run found that no fixture had:
 
 **And a defect in the calibration itself:** it reports `STOPPED` and exits non-zero for a *truncated* completion, which is an ordinary outcome with a cost. A run that obtained every measurement it exists for is recorded as having stopped. Fixed in this milestone.
 
+### The count becomes conditional, and the bound gets a tripwire
+
+**What run 2 measured, turned into design.** The count is no longer made before every call: the **local bound admits alone and the call settles by usage**, and the provider count is made only when it can change a decision — a refusal on the window, the month, the job or the run ceiling, where a tighter figure could admit. Not on the per-request ceiling, which is a limit on how large one request may be and which the local bound is the conservative measure of. Which evidence admitted a call is recorded, `admitted_local` or `admitted_count`. [ADR 001 question 15](../decisions/001-standalone-v0.1-scope-and-stack.md) and [READINESS §3](m4/READINESS.md).
+
+**A caller whose purpose is the count asks for it**: `Counting::Always`, used by the calibration, because a comparison with no count is no comparison. Making that explicit rather than implicit is what kept the calibration's second measurement alive through the change.
+
+**The tripwire** keeps §10's stop rule alive in production: a `usage.input_tokens` above the local input bound for that request means the bound is wrong, which is recorded as its own ledger kind and admits no further model call. **Held in the ledger rather than a process flag** — stronger than the rule asked for, because the bound is a property of the code and a restart with the same code has the same bound.
+
+Two rules overlap and the order is pinned by a test: a charge above the **local bound** stops everything; a charge above the **count's prediction** is a finding. The first is the graver claim and wins.
+
+**A constant died of it.** m4a's `estimate` added a fixed 4,096-token generation reserve because admission happened before the request's own limit was known. Every call site knows it now, so the reservation carries the real figure — `estimate` had no caller left and `RESERVED_GENERATION_TOKENS` with it. Clippy found that, not me. The three tests m4b wrote to kill the mutants in those constants are rewritten around `input_bound`, and the property the reserve carried is asserted where the reservation is now made. It is also what made run 2's ratio column measure the reservation instead of the bound.
+
 ### The owner's decision on provider-side retention
 
 Recorded 2026-09-21 and closed in [READINESS §7](m4/READINESS.md): the API offers no request option to prevent retention, and the owner accepts that **for public repositories only** — CBR's own source, Knowscroll-v2 and brian2. **Any private repository still needs the owner's explicit word**, and the absence of a retention control is a reason that bar stays where it is rather than a reason to lower it. A stated limit, not a solved problem.
@@ -84,6 +96,9 @@ Three things followed, each with its own test:
 | Decoding stops after one round · an unsettled encoding written out anyway | killed (2) |
 | The `model_runtime` allowlist back to a denylist · the top-level allowlist removed | killed (2) |
 | A serving launch reads a credential with no call site | killed |
+| The count made when the local bound already admits · every refusal buys a count · a per-request refusal buys a count · which path admitted is not recorded | killed (4) |
+| The tripwire removed · a tripped wire does not stop later calls · the tripwire fires on ordinary calls | killed (3) |
+| A truncated completion stops the run again · a refused completion is not a stop · the input usage dropped from the cost | killed (3) |
 | The responses limit binds to `max_tokens` · every dialect treated as counted · the count body carries the completion-only members · the service tier is `priority` · an incomplete status read as complete | killed (5) |
 | Reasoning read as the answer | **survived**, and the mutant was equivalent: both arms did nothing. Rewritten as a mutant that really assigns the reasoning to the answer, and the test rewritten too — it had used the `incomplete` fixture, which ends `Truncated` whatever the parser does with its reasoning. Now killed. |
 | `reads_credential` forgets the serving decision | **equivalent while `SERVING_CALLS_A_MODEL` is false** — that decision is unreachable today, so nothing can observe it. `both_live_decisions_are_reachable` demands it the moment the constant is true. |

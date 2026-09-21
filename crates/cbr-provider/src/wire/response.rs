@@ -414,6 +414,13 @@ pub fn accounting(dialect: Dialect, raw: &[u8]) -> (Option<u64>, Option<Unusable
     (usage(dialect, &read), provider_failure(&read))
 }
 
+/// What the provider said the **input** of a completion cost, for the
+/// tripwire that compares it against the bound that admitted the call.
+pub fn input_usage_of(dialect: Dialect, raw: &[u8]) -> Option<u64> {
+    let _ = dialect;
+    input_usage(&json::read(raw)?)
+}
+
 /// The provider's own token count, from `POST /v1/responses/input_tokens`.
 pub fn read_count(body: &[u8]) -> Option<u64> {
     let read = json::read(body)?;

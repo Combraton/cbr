@@ -35,7 +35,7 @@
 //! other thing this run is for.
 
 use crate::budget::Ledger;
-use crate::model::{Ask, Attempt, Outcome, Runtime, Transport, no_barrier};
+use crate::model::{Ask, Attempt, Counting, Outcome, Runtime, Transport, no_barrier};
 use crate::wire::Dialect;
 use crate::wire::request::{Message, Request, Role, Want};
 
@@ -93,6 +93,7 @@ pub struct Row {
 pub const PREDICTION_MARGIN_PERCENT: u64 = 2;
 
 /// What the one completion cost, and what it took.
+#[derive(Debug)]
 pub struct Completion {
     /// What the provider said it cost, when it said anything.
     pub usage: Option<u64>,
@@ -185,6 +186,8 @@ pub fn run(
                 messages: request.framed_messages(dialect),
                 generation: GENERATION,
                 dialect,
+                // The count *is* the measurement here.
+                counting: Counting::Always,
             },
             &no_barrier,
         );
@@ -235,6 +238,10 @@ pub fn run(
             request: "completion",
             dialect,
             body: &request,
+            // So that the completion's count can be compared against what
+            // the provider then charges for the same request, which is the
+            // second measurement this run exists for.
+            counting: Counting::Always,
         },
         &no_barrier,
     );

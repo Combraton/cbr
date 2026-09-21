@@ -401,6 +401,10 @@ impl Provider {
                 messages: 1,
                 generation: fake.generation,
                 dialect: fake.dialect,
+                // The fault injector's job is to reach the count
+                // boundaries the crash matrix kills at, which a call that
+                // decided it did not need a count would never do.
+                counting: crate::model::Counting::Always,
             },
             &|name| crate::barriers::pause(name),
         );

@@ -160,6 +160,22 @@ impl Ended {
     }
 }
 
+/// When the provider's count is worth the call it costs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Counting {
+    /// **The default, and what every serving path uses.** Only when the
+    /// local bound refuses on a counter a tighter figure could satisfy.
+    // Constructed by m4c's serving call site; until then the only callers
+    // are the calibration and the fault injector, whose purpose is the
+    // count itself.
+    #[cfg_attr(not(test), allow(dead_code))]
+    WhenItCouldAdmit,
+    /// Always, for a caller whose purpose **is** the count: the
+    /// calibration compares it against what the provider then charges, and
+    /// a comparison with no count is no comparison.
+    Always,
+}
+
 /// One attempt at a model call: the body, and everything about it the
 /// envelope has to know.
 ///
@@ -185,6 +201,8 @@ pub struct Attempt<'a> {
     /// Which dialect framed `body`, and therefore which member the limit
     /// has to be bound to for this request to be allowed out.
     pub dialect: Dialect,
+    /// Whether the provider's count is worth making for this call.
+    pub counting: Counting,
 }
 
 /// One model call, from admission to settlement.
@@ -208,42 +226,116 @@ impl<'a> Runtime<'a> {
             job,
             request,
             body,
+            count_body,
+            messages,
             generation,
-            ..
+            dialect,
+            counting,
         } = *attempt;
-        // The guard on the generation limit lives in `count`, which is the
-        // first thing that could send anything, so both callers get it.
-        let counted = match self.count(now, attempt, barrier) {
-            Ok(counted) => counted,
-            Err(ended) => return ended,
-        };
-        let refined = counted.believed;
-
-        // Step 3: the completion, reserved for **everything it can cost** —
-        // the refined input count, the generation the request asked for, and
-        // the margin. Reserving the input count alone drops the two parts
-        // that are not in it and trusts the provider's figure to bound a
-        // cost the provider has not incurred yet.
-        let wanted = refined
+        // **The reservation covers a generation the request actually asks
+        // for.** A body that does not bind its limit could spend more than
+        // was reserved, so it does not leave the process.
+        if !wire::request::declares_generation(dialect, body, generation) {
+            return Ended::Unmet("generation_limit_not_declared");
+        }
+        // A caller whose purpose is the count gets it before anything is
+        // admitted, because the figure is the point rather than a way of
+        // being allowed to send.
+        if counting == Counting::Always && count_body.is_some() {
+            let counted = match self.count(now, attempt, barrier) {
+                Ok(counted) => counted,
+                Err(ended) => return ended,
+            };
+            let wanted = counted
+                .believed
+                .saturating_add(generation)
+                .saturating_add(budget::SAFETY_MARGIN_TOKENS);
+            let reservation = match self.ledger.admit(now, job, request, wanted) {
+                Ok(Ok(reservation)) => reservation,
+                Ok(Err(refusal)) => return Ended::Refused(refusal),
+                Err(_) => return Ended::Unmet("ledger_unavailable"),
+            };
+            let _ = self
+                .ledger
+                .note(now, job, request, ADMITTED_COUNT, 0, wanted);
+            barrier(COMPLETION_AFTER_RESERVATION);
+            let answer = self.transport.send(Call::Completion, body).answer;
+            barrier(COMPLETION_AFTER_SEND);
+            return self.settle_completion(
+                now,
+                attempt,
+                &reservation,
+                answer,
+                barrier,
+                wanted,
+                counted.reported,
+            );
+        }
+        // Once the bound is known to be wrong, nothing is admitted on it.
+        if self.ledger.bound_is_unsound().unwrap_or(false) {
+            return Ended::Unmet(BOUND_UNSOUND_REASON);
+        }
+        // **The local bound decides, and usually decides alone.**
+        //
+        // Calibration run 2 measured what a count costs: it sends the
+        // repository text a second time, the provider prices it at
+        // nothing so CBR charges itself for it — 15,538 of the 15,582
+        // tokens that run — and the one comparison available had it
+        // over-predict the bill by 4.4 times, which is conservatism the
+        // local bound already provides. So the count is made only where it
+        // can change the answer, and the answer it can change is a refusal
+        // on a counter with room for what the request really costs.
+        //
+        // **One data point is not a rule.** m4e's requests are realistic
+        // sizes and will say more; until then this is the reading of one
+        // measurement, and it is the reading that spends less.
+        let wanted = budget::input_bound(body, messages)
             .saturating_add(generation)
             .saturating_add(budget::SAFETY_MARGIN_TOKENS);
-        let reservation = match self.ledger.admit(now, job, request, wanted) {
-            Ok(Ok(reservation)) => reservation,
-            Ok(Err(refusal)) => return Ended::Refused(refusal),
+        let (reservation, admission, counted) = match self.ledger.admit(now, job, request, wanted) {
+            Ok(Ok(reservation)) => (reservation, ADMITTED_LOCAL, None),
+            Ok(Err(refusal)) => {
+                // Nothing tighter exists, or nothing tighter would
+                // help: the refusal stands and nothing is sent.
+                if count_body.is_none() || !refusal.a_tighter_figure_could_admit() {
+                    return Ended::Refused(refusal);
+                }
+                let counted = match self.count(now, attempt, barrier) {
+                    Ok(counted) => counted,
+                    Err(ended) => return ended,
+                };
+                let wanted = counted
+                    .believed
+                    .saturating_add(generation)
+                    .saturating_add(budget::SAFETY_MARGIN_TOKENS);
+                match self.ledger.admit(now, job, request, wanted) {
+                    Ok(Ok(reservation)) => (reservation, ADMITTED_COUNT, counted.reported),
+                    // The count was worth asking for and did not
+                    // answer for this request. The refusal stands.
+                    Ok(Err(refusal)) => return Ended::Refused(refusal),
+                    Err(_) => return Ended::Unmet("ledger_unavailable"),
+                }
+            }
             Err(_) => return Ended::Unmet("ledger_unavailable"),
         };
+        // **Which path admitted it is a fact about the call**, and a
+        // derivation record carries it: a selection admitted on the local
+        // bound and one admitted on the provider's count were decided by
+        // different evidence.
+        let _ = self
+            .ledger
+            .note(now, job, request, admission, 0, reservation.estimate);
         barrier(COMPLETION_AFTER_RESERVATION);
         let answer = self.transport.send(Call::Completion, body).answer;
         barrier(COMPLETION_AFTER_SEND);
         self.settle_completion(
             now,
-            job,
-            request,
+            attempt,
             &reservation,
             answer,
             barrier,
-            wanted,
-            counted.reported,
+            reservation.estimate,
+            counted,
         )
     }
 
@@ -264,6 +356,7 @@ impl<'a> Runtime<'a> {
             messages,
             generation,
             dialect,
+            ..
         } = *attempt;
         // **The reservation covers a generation the request actually asks
         // for.** A body that does not bind its limit could spend more than
@@ -274,7 +367,7 @@ impl<'a> Runtime<'a> {
         if !wire::request::declares_generation(dialect, body, generation) {
             return Err(Ended::Unmet("generation_limit_not_declared"));
         }
-        let local = budget::estimate(body, messages);
+        let local = budget::input_bound(body, messages);
         // No counting endpoint for this dialect, so nothing is sent and
         // the local bound stands. Admission is complete without it, which
         // is the property the byte bound exists for.
@@ -285,16 +378,20 @@ impl<'a> Runtime<'a> {
                 believed: local,
             });
         };
+        // **A count call generates nothing**, so it reserves its input and
+        // not a generation it will never use.
+        let counting_costs = budget::input_bound(count_body, messages);
 
         // Step 1: the count call is a send, so it is admitted first.
-        let counting = match self
-            .ledger
-            .admit(now, job, &format!("{request}.count"), local)
-        {
-            Ok(Ok(reservation)) => reservation,
-            Ok(Err(refusal)) => return Err(Ended::Refused(refusal)),
-            Err(_) => return Err(Ended::Unmet("ledger_unavailable")),
-        };
+        let counting =
+            match self
+                .ledger
+                .admit(now, job, &format!("{request}.count"), counting_costs)
+            {
+                Ok(Ok(reservation)) => reservation,
+                Ok(Err(refusal)) => return Err(Ended::Refused(refusal)),
+                Err(_) => return Err(Ended::Unmet("ledger_unavailable")),
+            };
         barrier(COUNT_AFTER_RESERVATION);
         let counted = self.transport.send(Call::Count, count_body).answer;
         barrier(COUNT_AFTER_SEND);
@@ -381,19 +478,48 @@ impl<'a> Runtime<'a> {
         Ok(counted)
     }
 
+    /// Whether what the provider charged for the input exceeds what the
+    /// local bound said it could, and if so, shut the process's model
+    /// calls down.
+    ///
+    /// Checked at settlement because that is where the provider's own
+    /// figure arrives. `input_bound` is the same function admission used,
+    /// so the comparison is against the number that admitted this call.
+    fn check_the_bound(
+        &self,
+        now: &str,
+        job: &str,
+        request: &str,
+        body: &[u8],
+        messages: usize,
+        charged: Option<u64>,
+    ) -> bool {
+        let bound = budget::input_bound(body, messages);
+        // Silence is not evidence: a provider that did not say what the
+        // input cost has not said the bound is wrong.
+        let Some(charged) = charged else { return false };
+        if charged <= bound {
+            return false;
+        }
+        let _ = self
+            .ledger
+            .note(now, job, request, BOUND_UNSOUND, charged, bound);
+        true
+    }
+
     /// What a completion's answer settles to, and what the caller is told.
     #[allow(clippy::too_many_arguments)]
     fn settle_completion(
         &self,
         now: &str,
-        job: &str,
-        request: &str,
+        attempt: &Attempt<'_>,
         reservation: &Reservation,
         answer: Answer,
         barrier: &dyn Fn(&'static str),
         wanted: u64,
         counted: Option<u64>,
     ) -> Ended {
+        let (job, request) = (attempt.job, attempt.request);
         match answer {
             Answer::Completed { body, usage } => {
                 self.finish(
@@ -403,6 +529,15 @@ impl<'a> Runtime<'a> {
                     barrier,
                     COMPLETION_DURING_RECONCILIATION,
                 );
+                // **The tripwire**, read from the response itself rather
+                // than from a second figure that could disagree with it.
+                let charged = wire::response::accounting(attempt.dialect, &body)
+                    .0
+                    .and(wire::response::input_usage_of(attempt.dialect, &body));
+                if self.check_the_bound(now, job, request, attempt.body, attempt.messages, charged)
+                {
+                    return Ended::Unmet(BOUND_UNSOUND_REASON);
+                }
                 // An unpriced completion is reported at what it was
                 // reserved for, so the caller is told what it is being
                 // charged rather than told it was free.
@@ -500,6 +635,7 @@ pub struct Ask<'a> {
     pub request: &'a str,
     pub dialect: Dialect,
     pub body: &'a wire::request::Request,
+    pub counting: Counting,
 }
 
 /// What a question cost, **whatever it ended as**.
@@ -560,6 +696,7 @@ impl Runtime<'_> {
                     messages: body.framed_messages(ask.dialect),
                     generation: body.generation,
                     dialect: ask.dialect,
+                    counting: ask.counting,
                 },
                 barrier,
             );
@@ -620,6 +757,32 @@ pub const COUNT_DURING_RECONCILIATION: &str = "model.count.during_reconciliation
 pub const COMPLETION_AFTER_RESERVATION: &str = "model.completion.after_reservation";
 pub const COMPLETION_AFTER_SEND: &str = "model.completion.after_send";
 pub const COMPLETION_DURING_RECONCILIATION: &str = "model.completion.during_reconciliation";
+
+/// Ledger note kinds recording **which evidence admitted a call**. Neither
+/// is a spend; both are facts a derivation record carries.
+pub const ADMITTED_LOCAL: &str = "admitted_local";
+pub const ADMITTED_COUNT: &str = "admitted_count";
+
+/// The ledger kind for the one observation that invalidates every
+/// admission CBR has ever made. Its own kind, not an anomaly among others.
+///
+/// **The calibration's stop condition, kept alive in production.**
+/// [READINESS §10](../../docs/work/m4/READINESS.md) stops M4 if one
+/// provider count comes in above its local estimate. That run measured six
+/// files, which cannot prove a bound; this holds it. Every admission rests
+/// on the byte bound never falling below the truth, so the first time a
+/// provider charges more for an input than the bound said it could cost,
+/// no further model call is admitted.
+///
+/// **Held in the ledger rather than in a process flag**, which is stronger
+/// than the rule asked for: the bound is a property of the code, so a
+/// restart with the same code has the same bound, and forgetting at
+/// restart would forget the one observation that invalidates every
+/// admission the store has ever made.
+pub const BOUND_UNSOUND: &str = "bound_unsound";
+
+/// The reason a call reports once the bound is known to be wrong.
+pub const BOUND_UNSOUND_REASON: &str = "local_bound_unsound";
 
 /// A failure after the send, settled by whether the provider said anything
 /// about what it charged.

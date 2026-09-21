@@ -78,7 +78,9 @@ fn the_whole_corpus_fits_under_the_run_ceiling() {
     // than a larger ceiling.
     let total: u64 = corpus()
         .iter()
-        .map(|(_, text)| budget::estimate(text.as_bytes(), 2))
+        .map(|(_, text)| {
+            budget::input_bound(text.as_bytes(), 2) + 64 + budget::SAFETY_MARGIN_TOKENS
+        })
         .sum();
     assert!(
         total < CEILING,
@@ -329,6 +331,30 @@ fn run_with_completion(counted: u64, input: u64) -> Report {
     )
 }
 
+/// The input bound of the calibration's own completion request — the
+/// figure the tripwire compares a charge against. Tests about the
+/// *prediction* must stay under it, or they are testing the tripwire.
+fn completion_bound() -> u64 {
+    let request = asking(
+        "MiniMax-M2.7-highspeed",
+        "Reply with the single word: calibrated.",
+    );
+    let body = request.serialize(Dialect::Responses);
+    crate::budget::input_bound(&body, request.framed_messages(Dialect::Responses))
+}
+
+#[test]
+fn an_input_charged_above_the_local_bound_trips_the_wire_before_any_finding() {
+    // The two rules overlap, and the order matters. A charge above the
+    // *local bound* means the bound is wrong, which stops everything; a
+    // charge above the *count endpoint's prediction* means the prediction
+    // is poor, which is a finding. The first is the graver claim and it
+    // wins.
+    let report = run_with_completion(100, completion_bound() + 1);
+    let completion = report.completion.expect("the completion is recorded");
+    assert_eq!(completion.outcome, "local_bound_unsound", "{completion:?}");
+}
+
 #[test]
 fn the_completion_compares_its_count_against_what_its_input_actually_cost() {
     // **The measurement that says whether the count endpoint predicts what
@@ -336,11 +362,11 @@ fn the_completion_compares_its_count_against_what_its_input_actually_cost() {
     // question; the provider's count against the provider's own bill for
     // the same request is a different one, and only the second says the
     // count is worth making.
-    let report = run_with_completion(1_000, 1_000);
+    let report = run_with_completion(100, 100);
     let table = report.table();
     let completion = report.completion.expect("the completion ran");
-    assert_eq!(completion.counted, Some(1_000), "what was predicted");
-    assert_eq!(completion.input_usage, Some(1_000), "what was charged");
+    assert_eq!(completion.counted, Some(100), "what was predicted");
+    assert_eq!(completion.input_usage, Some(100), "what was charged");
     assert!(completion.prediction_finding.is_none(), "and they agree");
     assert!(table.contains("counted"), "the table carries both: {table}");
     assert!(table.contains("input charged"), "{table}");
@@ -352,15 +378,19 @@ fn an_input_charged_above_its_count_beyond_the_margin_is_a_finding_not_a_stop() 
     // being wrong, because the whole admission design rests on it. A count
     // that under-predicts the bill is a fact about the count endpoint, and
     // it is reported so the owner can decide what it means.
-    let over = 1_000 + 1_000 * PREDICTION_MARGIN_PERCENT / 100 + 1;
-    let report = run_with_completion(1_000, over);
+    let over = 100 + 100 * PREDICTION_MARGIN_PERCENT / 100 + 1;
+    assert!(
+        over <= completion_bound(),
+        "the charge stays under the local bound, or this tests the tripwire"
+    );
+    let report = run_with_completion(100, over);
     let table = report.table();
     let stopped = report.stopped.clone();
     let completion = report.completion.expect("the completion ran");
     let finding = completion
         .prediction_finding
         .expect("a finding was recorded");
-    assert!(finding.contains("1000"), "naming the count: {finding}");
+    assert!(finding.contains("100"), "naming the count: {finding}");
     assert!(
         finding.contains(&over.to_string()),
         "and the charge: {finding}"
@@ -375,8 +405,8 @@ fn an_input_charged_above_its_count_beyond_the_margin_is_a_finding_not_a_stop() 
 #[test]
 fn an_input_charged_within_the_margin_is_not_a_finding() {
     // The negative control: a margin that flags everything reports nothing.
-    let within = 1_000 + 1_000 * PREDICTION_MARGIN_PERCENT / 100;
-    let report = run_with_completion(1_000, within);
+    let within = 100 + 100 * PREDICTION_MARGIN_PERCENT / 100;
+    let report = run_with_completion(100, within);
     let completion = report.completion.expect("the completion ran");
     assert!(
         completion.prediction_finding.is_none(),
@@ -384,7 +414,7 @@ fn an_input_charged_within_the_margin_is_not_a_finding() {
         completion.prediction_finding
     );
     // And an input charged *below* its count is the expected direction.
-    let report = run_with_completion(1_000, 400);
+    let report = run_with_completion(100, 40);
     assert!(report.completion.expect("ran").prediction_finding.is_none());
 }
 

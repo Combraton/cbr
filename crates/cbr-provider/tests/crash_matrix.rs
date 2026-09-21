@@ -813,6 +813,16 @@ fn wait_for_marker(data: &Data, barrier: &str) {
 
 /// What the ledger says, read from the store the killed process left behind:
 /// the request id, the kind, the tokens and the estimate.
+/// Ledger rows that are **charges**. The note recording which evidence
+/// admitted a call sits beside them and is not one, so a row count that
+/// includes it is counting two different things.
+fn ledger_spend(data: &Data) -> Vec<(String, String, i64, i64)> {
+    ledger_rows(data)
+        .into_iter()
+        .filter(|(_, kind, _, _)| !kind.starts_with("admitted_"))
+        .collect()
+}
+
 fn ledger_rows(data: &Data) -> Vec<(String, String, i64, i64)> {
     let connection = rusqlite::Connection::open(data.path().join("data").join("cbr.sqlite"))
         .expect("opens the store");
@@ -851,7 +861,7 @@ fn row(barrier: &str) -> Vec<(String, String, i64, i64)> {
     let child = start_paused_at(&data, barrier);
     wait_for_marker(&data, barrier);
     kill(child);
-    let rows = ledger_rows(&data);
+    let rows = ledger_spend(&data);
     assert!(
         counted(&rows) > 0,
         "the spend is counted, never zero, at {barrier}: {rows:?}"
@@ -944,9 +954,9 @@ fn with_no_model_configured_nothing_is_reserved_and_the_ledger_stays_empty() {
     let provider = data.start(&[]);
     drop(provider);
     assert!(
-        ledger_rows(&data).is_empty(),
+        ledger_spend(&data).is_empty(),
         "no model, no reservation: {:?}",
-        ledger_rows(&data)
+        ledger_spend(&data)
     );
 }
 
