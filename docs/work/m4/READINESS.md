@@ -337,7 +337,7 @@ This is the leak M3 shipped and fixed once already: discovery called an operatio
 
 Both are things CBR **cannot** verify rather than things it has not got round to verifying, which is a different claim and is the one being made.
 
-**The repositories.** brian2 is CeCILL-licensed and public; Knowscroll-v2 is public. Sending their text to a provider is sending public text, and the licence still governs what CBR may **commit** — digests, paths, spans, counts and costs only, which is unchanged. **Any private repository needs the owner's explicit word before a single byte of it is sent**, and CBR has no such word today.
+**The repositories.** brian2 is CeCILL-licensed and public; Knowscroll-v2 is public — **and that was not true when this sentence was first written.** At the round-40 review the reviewer found it private on the GitHub API while this document and the harness both called it public; the owner has since made it public and the reviewer re-verified. The correction is not the sentence, which was restored to true by somebody else's action: it is that **a document cannot hold a fact about an account it does not control**, so the harness now asks the API in live mode and the reviewer asks again at authorisation time. Sending their text to a provider is sending public text, and the licence still governs what CBR may **commit** — digests, paths, spans, counts and costs only, which is unchanged. **Any private repository needs the owner's explicit word before a single byte of it is sent**, and CBR has no such word today.
 
 ## 8. Bounded runtime
 
@@ -398,6 +398,16 @@ These are estimates, and the first thing m4e produces is the measurement that re
 
 Per run it launches a provider **over a data directory under `--out`**, registers the repository, submits one context request, polls until it settles, writes the packet where the reviewer can score it, reads the ledger, and then relaunches the same store with `--replay-model` for the replay gate above. The store is where the ledger and the records are, which is to say it is the evidence the report is a summary of; it is not a temporary directory a reboot empties, and nothing in the harness deletes one.
 
+#### The visibility check, and what it deliberately is not
+
+**It runs in live mode alone.** A dry run sends nothing off the machine, and **no test in the suite opens a socket to GitHub** — the call has no test, and this says so rather than leaving a reader to infer it from a suite that passes. What is tested is the parser, on canned bodies: a 200 saying public, a 200 saying private, a 404, a 403, a 301, a body that is not JSON, a body with no `private` member, and `"false"` as a string rather than the boolean.
+
+**It is unauthenticated, and that is the point.** `GET https://api.github.com/repos/<owner>/<name>` with no token, no `gh`, no proxy taken from the environment, no `.netrc`, a timeout, and no redirect followed. A call carrying the owner's credential would answer a different question — *can they see it* rather than *can anyone* — and a private repository answers the first one yes. Two tests hold that: one reads the harness's own code, with its prose stripped by a parser rather than by a text search, and asserts that no name on the path can reach a credential.
+
+**Only one answer admits a repository**: HTTP 200 carrying `"private"` exactly `false`. A 404 — which is also what a private repository returns to a caller with no credential — a 403, a rate limit, a timeout, an unreadable body and a missing member are each a refusal by name, before any provider launches. **Unknown belongs on the same side as private**, because the failure this exists to prevent is a third party's private text reaching a provider.
+
+**It is checked again at authorisation time, by the reviewer.** A constant committed weeks earlier cannot know what an account did yesterday, and neither can a check made at the start of a run that then takes an hour.
+
 **Every run's report says how many of its records were discovery's.** Two is the flow; one is a flow that stopped at the terms step; none is a run that never reached discovery. Without that number a baseline packet and a packet the model did not widen read alike, and the run that measured nothing would be the one nobody noticed.
 
 **Every rule in this document that the harness can enforce is a refusal it makes before a provider is launched**, so a run that breaks one costs nothing:
@@ -406,6 +416,7 @@ Per run it launches a provider **over a data directory under `--out`**, register
 |---|---|
 | A repository id outside `cbr`, `brian2`, `knowscroll` | §7: the owner's word covers those three, and all three are public. A private repository needs the owner's explicit word before a single byte of it is sent. |
 | **A checkout whose `origin` is not that repository's** | An id is a label the manifest typed. Checked against the label alone, `{"id": "brian2", "path": <any checkout>}` was admitted — so the origin is read from the checkout, in both modes, before anything is launched. The owner's word covers repositories, not names. |
+| **An origin the API does not say is public** — live mode only | Pinning an origin proves a checkout **is** the repository it claims to be. It does not prove that repository is public, which is a live fact about an account somebody else controls: at the round-40 review one of the three pinned origins was private on the API while this document called it public. Asked once per distinct origin, before any provider is launched. |
 | **A checkout off the commit the manifest pins**, when it pins one | A pilot question was sealed against a tree. Answering it over a different one measures something else. |
 | **An investigation budget the items would exhaust** | §3: items are asked first and a flow that cannot finish is not started, so such a run asks discovery nothing and says so nowhere. |
 | A model outside the three of §2 | The registry admits three; a harness that could name a fourth would be a way round it. |

@@ -35,6 +35,14 @@ What it refuses, before anything starts:
   * a repository whose **origin** is not one the owner's word in
     READINESS section 7 covers, read from the checkout rather than
     taken from the id the manifest typed;
+  * **in live mode only**, an origin that `api.github.com` does not say
+    is public -- asked once per distinct origin, unauthenticated, with
+    no token, no `gh`, no proxy from the environment and no redirect
+    followed. Only HTTP 200 with `"private": false` admits one;
+    a 404, a 403, a rate limit, a timeout or an unreadable body are all
+    refusals, because *unknown* belongs on the same side as *private*.
+    **A dry run sends nothing off this machine, and no test in the suite
+    makes this call**; only its parser is tested, on canned bodies;
   * a checkout that is not at the commit the manifest pins, when it
     pins one;
   * an investigation budget the items would exhaust before discovery
@@ -65,6 +73,8 @@ import sqlite3
 import subprocess
 import sys
 import time
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -107,6 +117,16 @@ PUBLIC_REPOSITORIES = {
 # twice, so the difference is the model and nothing else.
 MODELS = ("MiniMax-M2.7-highspeed", "MiniMax-M2.7", "MiniMax-M3")
 
+# The visibility check of READINESS section 7. Pinning an origin proves
+# a checkout is the repository it claims to be; it says nothing about
+# whether that repository is public, which is a live fact that can change
+# under a table committed weeks earlier -- and did: at the round-40
+# review one of the three pinned origins was private on the API while
+# this file called it public.
+GITHUB_HOST = "github.com/"
+GITHUB_API = "https://api.github.com/repos/"
+GITHUB_TIMEOUT_SECONDS = 10
+
 PRINCIPAL = "owner"
 DRY_RUN_CREDENTIAL = "ccred1.owner.m4e-dry-run"
 
@@ -144,6 +164,122 @@ def normalised_origin(url):
     if text.endswith(".git"):
         text = text[: -len(".git")]
     return text.rstrip("/").lower()
+
+
+class _NoRedirects(urllib.request.HTTPRedirectHandler):
+    """Follow nothing.
+
+    A redirect is a second request to an address the answer chose, and
+    the point of this check is that one named repository answered. A
+    blocked redirect surfaces as its own status and is refused like any
+    other non-200.
+    """
+
+    def redirect_request(self, request, fp, code, message, headers, newurl):
+        return None
+
+
+def ask_github(name, timeout=GITHUB_TIMEOUT_SECONDS):
+    """One **unauthenticated** GET of `api.github.com/repos/<owner>/<name>`.
+
+    Returns `(status, body)`, or `(None, why)` when nothing came back at
+    all -- a timeout, a DNS failure, a TLS failure, a blocked redirect.
+
+    **No credential is read, built or sent on this path.** No token, no
+    `gh`, no environment variable, no `.netrc`: the opener is built from
+    an empty `ProxyHandler`, so not even a proxy comes from the
+    environment, and the only headers are an `Accept` and a `User-Agent`.
+    A public repository answers this call from anywhere; a check that
+    needed the owner's credential would be asking a different question --
+    *can I see it* rather than *can anyone*.
+    """
+    opener = urllib.request.build_opener(
+        urllib.request.ProxyHandler({}),
+        _NoRedirects(),
+    )
+    request = urllib.request.Request(
+        f"{GITHUB_API}{name}",
+        method="GET",
+        headers={"Accept": "application/vnd.github+json", "User-Agent": "cbr-m4e-run"},
+    )
+    try:
+        with opener.open(request, timeout=timeout) as answer:
+            return answer.status, answer.read().decode("utf-8", "replace")
+    except urllib.error.HTTPError as answered:
+        # A 404, a 403, a rate limit, a blocked redirect: an answer, and
+        # not one that admits anything.
+        return answered.code, answered.read().decode("utf-8", "replace")
+    except Exception as nothing:
+        return None, f"{type(nothing).__name__}: {nothing}"
+
+
+def not_public(name, status, body):
+    """Why `name` may not be read, or `None` when it is public.
+
+    **One answer admits a repository**: HTTP 200 carrying `"private"`
+    exactly `false`. Everything else is a refusal by name -- a 404
+    (which is also what a private repository returns to a caller with no
+    credential), a 403, a rate limit, a body that is not JSON, a body
+    with no `private` member, a `private` that is not the boolean
+    `false`. The failure this exists to prevent is sending a third
+    party's private text to a provider, so *unknown* has to land on the
+    same side as *private*.
+    """
+    if status != 200:
+        return (
+            f"api.github.com answered HTTP {status} for {name}. Only a 200 "
+            "saying the repository is public admits it; a 404 is also what a "
+            "private repository answers to a caller with no credential, and "
+            "this path deliberately has none."
+        )
+    try:
+        parsed = json.loads(body)
+    except (ValueError, TypeError):
+        return (
+            f"api.github.com answered 200 for {name} with a body that is not "
+            "JSON, so nothing said the repository is public."
+        )
+    if not isinstance(parsed, dict) or "private" not in parsed:
+        return (
+            f"api.github.com answered 200 for {name} with no `private` "
+            "member, so nothing said the repository is public."
+        )
+    if parsed["private"] is not False:
+        return (
+            f"{name} is not public: the API says `private` is "
+            f"{parsed['private']!r}. Sending a private repository's text to a "
+            "provider needs the owner's explicit word, and READINESS section 7 "
+            "is not it."
+        )
+    return None
+
+
+def refuse_unless_public(checkouts):
+    """Ask, once per distinct origin, before any provider is launched.
+
+    **This is the only thing in the harness that opens a socket to
+    anywhere but the provider**, and it is reached in live mode alone: a
+    dry run sends nothing off the machine, and no test in the suite
+    exercises this call.
+    """
+    for origin in sorted({checkout["origin"] for checkout in checkouts.values()}):
+        if not origin.startswith(GITHUB_HOST):
+            refuse(
+                f"{origin} is not on {GITHUB_HOST.rstrip('/')}, so this cannot "
+                "ask whether it is public. Every pinned origin is, and a new "
+                "host needs its own answer to that question."
+            )
+        name = origin[len(GITHUB_HOST) :]
+        status, body = ask_github(name)
+        if status is None:
+            refuse(
+                f"nothing came back from api.github.com for {name} ({body}). "
+                "Whether it is public is then unknown, and unknown is refused "
+                "for the same reason private is."
+            )
+        why = not_public(name, status, body)
+        if why:
+            refuse(why)
 
 
 def git_says(path, arguments, why):
@@ -270,6 +406,20 @@ def check(manifest, out, live, permit, ceiling, stop):
                 "its budget before discovery was reached and report nothing "
                 f"about it. It needs at least {len(wants) + 2}."
             )
+
+    # **Last, and only when something will actually be sent.** Every
+    # refusal above reads the manifest and the disk; this one opens a
+    # socket, so it is worth making only once the cheap answers are in --
+    # and worth making at all only in live mode, where a third party's
+    # bytes leave the machine.
+    #
+    # Pinning an origin says a checkout *is* the repository it claims to
+    # be. It does not say that repository is public, which is a live fact
+    # about an account somebody else controls; at the round-40 review one
+    # of the three pinned origins was private on the API while this file
+    # called it public.
+    if live:
+        refuse_unless_public(checkouts)
     return out, checkouts
 
 
