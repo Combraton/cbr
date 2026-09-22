@@ -166,6 +166,34 @@ The reviewer's mutant, and one for each correction it took. All ten killed, each
 
 **The gate now says what differs.** Reporting only that two things are unequal made its reader open six packets to find out. It names the leaf, and carries the values only when they cannot be somebody else's source: an identifier-shaped string is printed, anything else becomes its length and a digest.
 
+### Round 48: the fix that broke the thing beside it
+
+**Run 2 stopped at its first run's replay stage**, 8,473 tokens in, on `authentication_failed`. The cause was m4f's own correction: making the live rebuild launch under the production configuration changed which credential that launch had to present, and the call site chose one from whether the *run* was live — a line written when the rebuild was always a conformance launch. **A configuration and the credential that authenticates against it are one decision, and they were two.**
+
+They are one now. `credential_file` takes the configuration being launched and reads the credential off it, so the bug class disappears with the signature rather than being guarded against: a caller that has the configuration cannot present the wrong credential for it.
+
+**The dry run's blindness here is structural.** In dry mode both launches are conformance and both carry the dry-run credential, so the production side of this rule has no test and cannot have one short of a live run. What is testable is the decision — for each launch the harness makes, what its configuration admits against what it presents — and that is what the test asserts, without launching anything. Said plainly rather than left to a reader of a passing suite.
+
+**And a second drift, found by the reviewer reading rather than by anything failing.** `scripts/m4e_run.py` still refused runs against `WORST_CASE_FLOW_TOKENS = 363_966` while the figure it guards became 373,188 at m4f — the stop was 9,222 short of the flow it bounds. The Python constant is now read by the Rust test that computes the figure, so the two doors cannot drift again. **A number that lives in two languages needs a test that crosses the boundary**, and this one did not have it because the boundary was invisible from either side.
+
+**What the fragment still established.** The one flow that ran was the one run 1 had lost, and both m4f fixes worked on it: `j1-m27hs` completed both discovery steps at 511 and 676 output tokens with no repair, where run 1 truncated at 512; and the ADR span run 1 never offered was candidate `d7` and was chosen. One flow of six, from a run that did not finish — recorded as partial, because the alternative is to say nothing about the only evidence the run produced.
+
+### The m4g mutants, and one that was not a mutant
+
+**Five run, three killed, two surviving — and only one of the two is a gap.**
+
+| Mutant | Result | What kills it |
+|---|---|---|
+| **The credential chosen from the run rather than the configuration** | killed | `every_launch_presents_a_credential_its_own_configuration_admits` |
+| A production configuration treated as admitting a written credential | killed | the same |
+| The rebuild handed the serving stage's credential | **survived** | nothing — below |
+| **The harness's worst case drifted from the computed one** | killed | `the_harness_stops_against_the_same_worst_case_this_module_computes` |
+| The drift test's assertion made a tautology | **survived** | nothing, and it should not have been written — below |
+
+**The survivor that is a gap, and cannot stop being one here.** Handing the rebuild the serving stage's configuration changes nothing in a dry run: both launches are conformance and both carry the dry-run credential, so `admits` returns the same string either way. Only a live launch tells the two apart. What is done about it is structural rather than a test — `configuration` now returns the path **and** the body from one call, so a caller cannot pair one launch's path with another's body — and what is asserted is the decision, for every launch the harness makes, without launching anything.
+
+**The one that should not have been written.** Turning `assert_eq!(x, PUBLISHED_FLOW)` into `assert_eq!(x, x)` survives by construction: it is a mutation of an assertion into a tautology, and the thing that would have to catch it is the test it just emptied. It is recorded because it was run, not because it means anything. **A mutant on an assertion measures nothing**; mutate what the assertion is about.
+
 ### The m4f mutant table
 
 **Thirteen mutants, all killed** — two at the union and two at the gate as the reviewer asked, and one for each correction. Three survived the first pass and were killed by tests added after it, which is where the exercise earns its keep.

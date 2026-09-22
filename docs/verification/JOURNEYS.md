@@ -214,6 +214,27 @@ Packet digests, in the same order: `79762ecf…`, `116922fa…`, `32f52cd2…`, 
 
 **Knowscroll ran with zero claims in the store.** The harness registers a repository and asks a question; it ingests no decisions, so nothing in that run exercised decision memory at all. Its result is **lexical discovery only**, and is not evidence about the decision-memory path that the m3d/m3e pilot was about.
 
+#### Run 2, 2026-09-22: aborted at its first run, and what the fragment still showed
+
+**It stopped, and the reason was a defect in the harness introduced by the corrections to the harness.** Authorised once, over the same six questions re-pinned to `7edc199`, it refused at the first run's *replay* stage:
+
+```
+m4e_run: j1-m27hs: submit failed: cbr: core.authenticate: authentication_failed {}
+```
+
+The live half had completed — packet written, two discovery records sealed, **8,473 tokens** charged — and the rebuild could not authenticate. m4f made the live rebuild launch under the *production* configuration so that citations would name the same provider on both sides; the credential it presented was still chosen from whether the run was live, by a call site written when the rebuild was always a conformance launch. A production configuration names no `credentials` member, so the rebuild offered one the provider had never heard of.
+
+**A configuration and the credential that authenticates against it are one decision**, and they were two. They are one now: `credential_file` reads the credential off the configuration being launched, so a caller holding the configuration cannot present the wrong credential for it.
+
+**No dry run could have caught it, and that is structural rather than an oversight.** In dry mode both launches are conformance and both carry the dry-run credential, so the production side of this rule has no test and cannot have one short of a live run. It is asserted where it can be — over the harness's own decision about each launch, without launching anything — and the gap is named here rather than left to be inferred from a suite that passes.
+
+**What the fragment established, and it is only a fragment.** Both m4f fixes worked on the one flow that ran, which is worth recording because the flow in question is the one run 1 lost:
+
+- **The reasoning budget holds.** `j1-m27hs` completed *both* discovery steps, at 511 and 676 output tokens, with no repair. In run 1 the same flow truncated at the 512-token floor and its choice step was never reached.
+- **The ADR was offered, and chosen.** The span run 1 never put in front of the model was candidate `d7` and the model took it — which is the per-path cap doing exactly what it was added for.
+
+Neither is a score and neither is a measurement: it is one flow of six, from a run that did not finish. It is recorded as what a partial run established, labelled partial, because the alternative is to say nothing about the only evidence the run produced.
+
 #### The scores, which are the reviewer's and are in the reviewer's words
 
 > brian2-m3 1/3 (fundamentalunits.py 301-340, first time the file is cited); brian2-m27hs 2/3 (fundamentalunits.py 1661-1700 + unitsafefunctions.py 61-120); knowscroll-m3 3/3 with zero claims (DECISIONS.md 621-660 + _spike.mjs 1-40); knowscroll-m27hs 1/3 (choice truncated); j1-m27hs both facts via the deterministic fallback; j1-m3 code only (ADR never offered — item 4). No trap triggered anywhere.

@@ -94,7 +94,7 @@ RUN_CEILING_TOKENS = 5_000_000
 # cost, computed by `discovery::tests` against the real constants rather
 # than estimated here. The run stops *before* a run that could cross the
 # stop, not after one that did.
-WORST_CASE_FLOW_TOKENS = 363_966
+WORST_CASE_FLOW_TOKENS = 373_188
 
 # READINESS section 7: the owner's word covers these three and no
 # others, and all three are public.
@@ -510,10 +510,17 @@ def configuration(work, run, live, dry_answers, replay=False):
     In live mode both launches are pointed at the same path holding the
     same bytes: one configuration, two launches, nothing that can drift
     between them.
+
+    **Returns the path and the body together**, because a launch needs
+    both -- the path to be pointed at and the body to know which
+    credential it admits -- and a caller that fetched them separately
+    could pair one launch's path with another's body. That is the shape
+    of the defect run 2 stopped on, one level down.
     """
+    body = config_of(run, live, dry_answers, replay)
     path = work / ("cbr-replay.json" if replay and not live else "cbr.json")
-    path.write_text(json.dumps(config_of(run, live, dry_answers, replay)))
-    return path
+    path.write_text(json.dumps(body))
+    return path, body
 
 def launch(provider, work, run, config, extra):
     sockets = work / "s"
@@ -561,13 +568,47 @@ def stop(child):
     child.wait()
 
 
-def credential_file(work, live):
-    if live:
+def admits(config):
+    """The credential a launch under `config` will accept, or `None` when
+    the provider issues its own at start.
+
+    **A configuration and the credential that authenticates against it
+    are one decision.** They were two until run 2 of 2026-09-22 failed
+    on it: the rebuild took the credential from whether the *run* was
+    live, while m4f had changed which configuration the rebuild launches
+    under. A production configuration names no `credentials` member, so
+    the dry-run credential it was handed was one the provider had never
+    heard of, and the whole run stopped at `authentication_failed`.
+    """
+    credentials = config.get("credentials") or []
+    return credentials[0]["credential"] if credentials else None
+
+
+def credential_for(run, live, dry_answers, replay=False):
+    """The credential a given launch will present.
+
+    The composition `one_run` performs, stated once so that a test can
+    assert it without launching anything: the configuration decides, and
+    the credential is read off it.
+    """
+    return admits(config_of(run, live, dry_answers, replay))
+
+
+def credential_file(work, config):
+    """Where that credential is, for a launch under `config`.
+
+    **Derived from the configuration rather than passed beside it**, so
+    there is nothing left to keep in step: a caller that has the
+    configuration it is launching under cannot present the wrong
+    credential for it.
+    """
+    admitted = admits(config)
+    if admitted is None:
         # A production launch issues its own credential at start, which
         # is the same path `scripts/debug_launch.sh` prints.
         return work / "data" / "credentials" / PRINCIPAL
     path = work / "credential"
-    path.write_text(DRY_RUN_CREDENTIAL)
+    path.write_text(admitted)
     return path
 
 
@@ -877,7 +918,7 @@ def one_run(run, out, provider, client, live, ceiling, checkout):
         "launch_ceiling": ceiling,
         "data": str(work / "data"),
     }
-    config = configuration(work, run, live, run.get("dry_answers", []))
+    config, config_body = configuration(work, run, live, run.get("dry_answers", []))
     # **The ceiling goes to every launch, in both modes.**
     # `Ledger::run_spend` sums the store it was opened over, and
     # every run opens a new one, so a ceiling passed once per launch
@@ -888,7 +929,7 @@ def one_run(run, out, provider, client, live, ceiling, checkout):
     if live:
         extra = ["--permit-model-network", *extra]
     child, endpoint = launch(provider, work, run, config, extra)
-    credential = credential_file(work, live)
+    credential = credential_file(work, config_body)
     try:
         inspected = submit_and_settle(client, endpoint, credential, run, "live")
         digest = packet_digest(inspected)
@@ -926,7 +967,7 @@ def one_run(run, out, provider, client, live, ceiling, checkout):
     # retained or not at all.
     # **The same configuration the live launch used.** In live mode
     # this is literally the same file; see `configuration`.
-    replay_config = configuration(
+    replay_config, replay_config_body = configuration(
         work, run, live, run.get("dry_answers", []), replay=True
     )
     child, endpoint = launch(
@@ -939,7 +980,7 @@ def one_run(run, out, provider, client, live, ceiling, checkout):
         # launch, bounded the same way.
         ["--replay-model", "--model-run-ceiling", str(ceiling)],
     )
-    credential = credential_file(work, False)
+    credential = credential_file(work, replay_config_body)
     try:
         rebuilt = submit_and_settle(client, endpoint, credential, run, "replay")
         rebuilt_sections = (

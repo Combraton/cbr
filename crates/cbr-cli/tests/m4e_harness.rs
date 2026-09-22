@@ -594,6 +594,16 @@ fn each_launch_is_given_what_is_left_of_the_run_and_not_the_whole_of_it() {
     // Lowered to a little over one flow's worst case, the first run is
     // started and the second is not — because what it *could* cost
     // would cross it, which is knowable before any of it is spent.
+    //
+    // The bound is read out of the report rather than written here: it
+    // moved at m4f when the discovery steps were given room to reason,
+    // and a figure typed into a test is one more place for the number
+    // to drift.
+    let worst = match report.get("worst_case_flow_tokens") {
+        Some(Value::Int(tokens)) => *tokens,
+        other => panic!("the report does not say what a flow can cost: {other:?}"),
+    };
+    let stop = (worst + 1).to_string();
     let out = directory.join("stopped");
     let (ok, stdout, stderr) = harness(&[
         "--manifest",
@@ -602,7 +612,7 @@ fn each_launch_is_given_what_is_left_of_the_run_and_not_the_whole_of_it() {
         out.to_str().expect("utf-8"),
         "--dry-run",
         "--stop-tokens",
-        "370000",
+        &stop,
     ]);
     assert!(ok, "the dry run failed:\n{stdout}\n{stderr}");
     let report: Value =
@@ -851,6 +861,61 @@ print(json.dumps(getattr(module, sys.argv[2])(*[json.loads(a) for a in sys.argv[
     );
     cbr_encoding::parse(String::from_utf8_lossy(&output.stdout).trim().as_bytes())
         .expect("the answer is JSON")
+}
+
+#[test]
+fn every_launch_presents_a_credential_its_own_configuration_admits() {
+    // **Run 2 of 2026-09-22 stopped here**, and the shape is worth
+    // keeping. m4f made the live rebuild launch under the production
+    // configuration; the credential it presented was still chosen from
+    // whether the *run* was live, by a call site that had been written
+    // when the rebuild was always a conformance launch. A production
+    // configuration names no `credentials` member, so the rebuild
+    // offered one the provider had never heard of and the run stopped at
+    // `authentication_failed` with the live half already paid for.
+    //
+    // A configuration and the credential that authenticates against it
+    // are **one decision**, and this asserts them as one: for every
+    // launch the harness makes, what the configuration admits is what
+    // the launch presents.
+    //
+    // **Only a live run exercises the production side of this**, and
+    // that is the whole reason it reached a live run: in dry mode both
+    // launches are conformance and both carry the dry-run credential, so
+    // every test in this file passed while the live path was broken.
+    // What is asserted here is the decision, which is testable; the
+    // launch it drives is not.
+    let run = r#"{"id": "one", "model": "MiniMax-M3",
+                  "repository": {"id": "cbr", "path": "/nowhere"}}"#;
+
+    for (live, replay, wanted) in [
+        ("true", "false", None),
+        // The one that failed: a live rebuild is a production launch and
+        // takes the credential the provider issued, not a written one.
+        ("true", "true", None),
+        ("false", "false", Some("ccred1.owner.m4e-dry-run")),
+        ("false", "true", Some("ccred1.owner.m4e-dry-run")),
+    ] {
+        let configuration = harness_says("config_of", &[run, live, "[]", replay]);
+        let admitted = harness_says("credential_for", &[run, live, "[]", replay]);
+        assert_eq!(
+            admitted.as_str(),
+            wanted,
+            "a launch with live={live} replay={replay} presents a credential its \
+             configuration does not admit"
+        );
+        // And the two halves agree about which case this is: a
+        // configuration naming its own credential is a conformance one,
+        // and a production configuration is the one the provider issues
+        // for.
+        let names_its_own = configuration.get("credentials").is_some();
+        assert_eq!(
+            names_its_own,
+            wanted.is_some(),
+            "live={live} replay={replay}: the configuration and the credential \
+             disagree about which kind of launch this is"
+        );
+    }
 }
 
 #[test]
