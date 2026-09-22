@@ -127,10 +127,12 @@ Neither one loops. A retry loop against a shared quota is a denial of service ag
 | | Worst case, tokens | Against |
 |---|---:|---|
 | One item's selection | 39,612 | per-request 250,000 |
-| Discovery's terms step | 31,406 | per-request 250,000 |
-| Discovery's choice step | 89,916 | per-request 250,000 |
-| **The whole two-step flow**, each step counted with its one permitted repair and its count call | **363,966** | per-job 1,000,000 |
-| **Six such flows**, which is the six runs §9 names | **2,183,796** | m4e's run ceiling 5,000,000 |
+| Discovery's terms step | 32,943 | per-request 250,000 |
+| Discovery's choice step | 91,453 | per-request 250,000 |
+| **The whole two-step flow**, each step counted with its one permitted repair and its count call | **373,188** | per-job 1,000,000 |
+| **Six such flows**, which is the six runs §9 names | **2,239,128** | m4e's run ceiling 5,000,000 |
+
+**The figures above moved at m4f**, because both discovery steps now ask for room to reason: the live run measured `MiniMax-M2.7-highspeed` spending 277 to 512 output tokens thinking before it wrote anything, and truncating two of its three flows at the 512-token floor both steps had been sitting on. `budget::DISCOVERY_MIN_OUTPUT_TOKENS` is 2,048, and a test computes all four figures above from the real bodies and fails when the table drifts from them. **Selection's bound is deliberately unchanged**: nothing measured truncated there, and raising a bound against no measurement is the estimating these constants exist to stop — it is open, and it is the owner's to decide if a later run shows it.
 
 **Six, because §9 names six runs**: J1 revisited and both sealed pilot questions, each against two models. An earlier draft of this table said five, which was a number chosen to show the ceiling was not close rather than the number the plan runs.
 
@@ -229,11 +231,21 @@ Every other input to a model call is built by CBR out of its own candidates. A t
 
 `discovery::words` is `lexical::query_terms` **and nothing else** — the same tokeniser the request's own words go through, producing the same alphanumeric tokens, which go into the same parameterised `MATCH` expression where every element is one of those tokens quoted. There is no expression a term can write, no path it can name and no second query language with its own bugs. What comes back is a span CBR found, at a path CBR resolved, in a repository the grant admitted.
 
+#### The candidate set is what the packet could publish
+
+**Both halves of the union are built under the packet's own per-path cap**, `compiler::DISCOVERED_PER_PATH`, and the live run is why. Until m4f the question's half was the raw top of the ranking while the cap was applied at publish, so a file that out-ranked the rest filled the set: J1's twenty candidates held thirteen spans of one file and **no span of the file the deterministic packet cites**. The model was asked to choose a packet out of a set that could not contain the packet CBR would otherwise have published, and the nine ids it chose were capped to five on the way out.
+
+**An offer the packet cannot honour is not an offer, and a fact never offered cannot be kept.** `j1-m3` returned code only for exactly this reason, and its score measures the candidate set rather than the model.
+
+A consequence worth stating, because it changed behaviour elsewhere: a capped union is smaller, so on a small view it can fall to or below `DISCOVERED_SPANS` — at which point `worth_choosing` correctly declines to ask a question that could not change the answer, and the union stands. That is the rule working, not the cap failing.
+
 #### The reservation, which the first version did not have and needed
 
 **The ordinary reading takes a reserved share of the candidate set and no more**: at most **10** of the **20** candidates offered come from the question's own words, and at most **6** are claims.
 
 Without a reservation the step is pointless, and this is not a hypothetical: the first version had none, and on a repository where the ordinary reading returns more candidates than the set can hold it filled every slot, so a proposed term could contribute nothing. That is exactly backwards for the question this step exists for — brian2's, where the ordinary reading returned plenty of confident near-misses and missed the answer. A test caught it.
+
+The reserved share is therefore *up to* `FROM_QUESTION` rather than exactly it — the question contributes as many spans as its own capped reading has. What makes it meaningful is the floor: **the model is offered at least as many of the question's spans as the packet would publish**, which one test states as a count and another as which files they come from.
 
 #### What a failed step leaves, which is not the same for the two
 
@@ -253,7 +265,7 @@ The eligible claims are offered beside the spans, which is what makes m4d's read
 
 Two gaps, recorded rather than described as covered.
 
-- **The choice that would decide nothing is never skipped end to end.** `worth_choosing` returns false when everything offered is going in anyway, and the flow then keeps the union without spending the second unit. `discovery::tests` covers the function; no suite test produces a view small enough to reach the false branch through a whole compile, because the fixture that makes a union worth choosing is the same fixture every other discovery test needs. What is untested is therefore the *wiring*, not the rule.
+- ~~**The choice that would decide nothing is never skipped end to end.**~~ **Closed at m4f.** It became reachable when the candidate set started being built under the per-path cap: a capped union of a narrow view falls below what the packet publishes, so everything offered is going in anyway. `a_choice_that_could_not_change_the_answer_is_not_asked` runs the whole of it — the terms step widens, the choice is not asked, the union stands, and the packet declares no step unavailable, because none failed.
 - **A span candidate id is a position among the spans that were kept**, and a mutant taking it from the input position survives. The two differ only when a blob in the offered list cannot be read, which the indexer's own size skip makes unreachable from a request. It is written here as a survivor rather than claimed equivalent.
 
 #### What it cannot do, stated before anybody hopes otherwise
@@ -442,6 +454,8 @@ Written out so that the owner's file can be written without reading the script, 
 | `capacity` | the packet's byte capacity |
 | `investigation` | at least `len(wants) + 2`, so discovery is reached |
 | `dry_answers` | dry runs only: what the fake answers, in the order a compile asks |
+
+**The run happened.** On 2026-09-22, once, authorised by the owner: six runs, 65,144 tokens, every item satisfied, no ambiguous question, the credential absent from every store, and every launch ceiling the cap less what the launches before it spent. The record — digests, repository commits, token counts, per-step outcomes and the reviewer's scores in the reviewer's words — is in [JOURNEYS](../../verification/JOURNEYS.md#the-m4e-live-run-2026-09-22-both-pilots-and-j1-with-a-model). What it found is in §5 and §3 above, and it is the point of having run it: **three of the four defects it exposed were invisible to a fake transport**, because a fake answers instantly, in the shape it was scripted with, at whatever length the script says.
 
 **The stop is checked between runs, not inside one.** Halting mid-call would leave a charge nobody reconciled; halting between them leaves the ledger settled and lets the report say what was spent and on what.
 

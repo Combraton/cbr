@@ -48,6 +48,11 @@ const ITEM_ONLY: &str = "2";
 /// of ids and this would fail.
 const CANDIDATES: usize = 20;
 const FROM_QUESTION: usize = 10;
+/// What the packet publishes, which is the floor the reserved share has
+/// to clear for the offer to be one the packet could honour.
+const DISCOVERED_SPANS: usize = 8;
+/// And at most this many of them from any one file.
+const DISCOVERED_PER_PATH: usize = 2;
 
 /// The body of the terms step, and the body of the choose step.
 ///
@@ -118,13 +123,163 @@ fn a_term_the_model_proposed_widens_what_discovery_offers() {
 }
 
 #[test]
+fn no_file_fills_the_candidate_set_whichever_half_reaches_it() {
+    // **The cap, stated as the property rather than as an arrangement.**
+    // Three mutants live here and the first version of this file's tests
+    // caught none of them: the question's half taken raw, the term's
+    // half taken raw, and the two halves counting against separate
+    // tallies so a file the question reached twice could be reached
+    // twice more by a term.
+    //
+    // The term is chosen to reach a file the question already reaches,
+    // which is what makes the third one visible at all.
+    let fixture = Fixture::answering(&["choose:c1", "terms:drain", "ids:d1"]);
+    let provider = fixture.start();
+    prepared(&fixture, "capped", BOTH_STEPS);
+    let (_, choose) = steps(&fixture);
+    provider.stop();
+
+    let mut per_path: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
+    for id in 1..=CANDIDATES {
+        if !choose.contains(&format!("[d{id}] ")) {
+            continue;
+        }
+        let shown = offered_as(&choose, &format!("d{id}"));
+        let path = shown.split(' ').next().unwrap_or_default().to_string();
+        *per_path.entry(path).or_default() += 1;
+    }
+    assert!(
+        per_path.len() > 1,
+        "one file reached everything, so this proves nothing: {per_path:?}"
+    );
+    for (path, offered) in &per_path {
+        assert!(
+            *offered <= DISCOVERED_PER_PATH,
+            "{path} was offered {offered} times, and the packet publishes at most \
+             {DISCOVERED_PER_PATH} of any one file: {per_path:?}"
+        );
+    }
+}
+
+#[test]
+fn a_choice_that_could_not_change_the_answer_is_not_asked() {
+    // **A gap this file recorded and could not reach, now reachable.**
+    // `worth_choosing` declines to spend a unit when everything offered
+    // is going into the packet anyway — and until the candidate set was
+    // built under the packet's per-path cap, no view in this suite was
+    // small enough to get there. A capped union of a narrow view is,
+    // which is the rule and the fix meeting.
+    //
+    // What must hold: the terms step happens and widens, the choice is
+    // **not asked**, the union stands, and the packet does not claim a
+    // step failed — because none did.
+    let fixture = Fixture::narrow(&["choose:c1", "terms:tombstone", "ids:d1"]);
+    let provider = fixture.start();
+    let inspected = prepared(&fixture, "narrow", BOTH_STEPS);
+    assert_eq!(result(&inspected, "q").0, "satisfied", "{inspected:?}");
+
+    let bodies = bodies_sent(&fixture.data());
+    assert_eq!(
+        bodies.len(),
+        2,
+        "the choice was asked over a set it could not change: {:?}",
+        bodies.iter().map(String::len).collect::<Vec<_>>()
+    );
+    // And the one that was asked is the terms step, not the choice: the
+    // choice question carries the terms it is choosing under, and no
+    // terms had been proposed when this body went out.
+    assert!(
+        !bodies[1].contains("tombstone"),
+        "the one question asked was the choice: {}",
+        &bodies[1][..bodies[1].len().min(200)]
+    );
+    assert!(
+        bodies[1].contains("terms"),
+        "the one question asked was not the terms step: {}",
+        &bodies[1][..bodies[1].len().min(200)]
+    );
+
+    // The term still widened, and what it reached is in the packet
+    // without anything having chosen it — which is exactly what the
+    // choice would have done.
+    assert!(
+        discovered_spans(&fixture, "narrow")
+            .iter()
+            .any(|(id, _)| id.contains("merger.md")),
+        "the union did not stand: {:?}",
+        discovered_spans(&fixture, "narrow")
+    );
+    assert!(
+        !omissions(&fixture, "narrow")
+            .iter()
+            .any(|(section, _)| section.starts_with("d-model-")),
+        "a step that was never asked was declared unavailable"
+    );
+    provider.stop();
+}
+
+#[test]
+fn every_span_the_packet_would_publish_is_offered_to_the_model() {
+    // **The defect the live run found, as a test.** The packet publishes
+    // at most `DISCOVERED_PER_PATH` spans of any one file; the candidate
+    // set had no such rule, so one file that out-ranks the rest ten
+    // times over filled it and the other files the packet cites were
+    // never offered at all. The model was then asked to choose a packet
+    // out of a set that could not contain the packet CBR would
+    // otherwise have published — and a fact it is never offered is one
+    // it cannot keep.
+    //
+    // Two compiles over the same tree, and the comparison between them:
+    // what the deterministic reading publishes, against what the model
+    // is shown.
+    let wanted = {
+        let fixture = Fixture::dominated(&[]);
+        let provider = fixture.start();
+        prepared(&fixture, "baseline", "0");
+        let paths = serving::discovered_paths(&fixture, "baseline");
+        provider.stop();
+        paths
+    };
+    assert!(
+        wanted
+            .iter()
+            .collect::<std::collections::BTreeSet<_>>()
+            .len()
+            >= 3,
+        "the baseline packet rests on too few files for this to test anything: {wanted:?}"
+    );
+
+    let fixture = Fixture::dominated(&["choose:c1", "terms:tombstone", "ids:d1"]);
+    let provider = fixture.start();
+    prepared(&fixture, "offered", BOTH_STEPS);
+    let (_, choose) = steps(&fixture);
+    provider.stop();
+
+    let offered: std::collections::BTreeSet<String> = (1..=CANDIDATES)
+        .filter(|id| choose.contains(&format!("[d{id}] ")))
+        .map(|id| {
+            let shown = offered_as(&choose, &format!("d{id}"));
+            shown.split(' ').next().unwrap_or_default().to_string()
+        })
+        .collect();
+
+    for path in wanted.iter().collect::<std::collections::BTreeSet<_>>() {
+        assert!(
+            offered.contains(path),
+            "the packet publishes {path} and the model was never offered it. \
+             Offered: {offered:?}"
+        );
+    }
+}
+
+#[test]
 fn the_union_is_bounded_however_far_a_term_reaches() {
     // **The cap on the union, which the fixture had never reached.** A
     // term is one word from a model and it is run against a whole
     // repository, so what it matches is not something the bound can be
-    // left to chance about: `bloom.md` is sixteen sheets of chunks that
-    // only the term "bloom" reaches, which is more than the candidate
-    // set holds.
+    // left to chance about: the `bloom-*.md` files are chunks that only
+    // the term "bloom" reaches, across more files than the candidate set
+    // holds spans for.
     //
     // Asserted on **the body that went out**, because that is the thing
     // the bound exists to size: the request CBR composes out of a
@@ -148,20 +303,33 @@ fn the_union_is_bounded_however_far_a_term_reaches() {
         "a term reached past the candidate set: {choose}"
     );
 
-    // **And the reservation is still a reservation.** The first share is
-    // the request's own reading, which the term cannot take; the rest is
-    // what the term widened to, which is the whole point of asking.
-    for id in 1..=FROM_QUESTION {
+    // **And the reservation is still a reservation.** The question's own
+    // reading comes first and the term's spans follow it; the two do not
+    // interleave, and the term cannot take a slot the reading would have
+    // used.
+    //
+    // The share is *up to* `FROM_QUESTION` rather than exactly it: both
+    // halves are built under the packet's per-path cap, so the question
+    // contributes as many spans as its own capped reading has. What
+    // makes that share meaningful is the floor — **the model is offered
+    // at least as many of the question's spans as the packet would have
+    // published** — which is the same property
+    // `every_span_the_packet_would_publish_is_offered_to_the_model`
+    // states about which files they come from.
+    let reserved = (1..=CANDIDATES)
+        .take_while(|id| !offered_as(&choose, &format!("d{id}")).starts_with("bloom-"))
+        .count();
+    assert!(
+        (DISCOVERED_SPANS..=FROM_QUESTION).contains(&reserved),
+        "the question's own reading kept {reserved} of the offered set, which is not a \
+         reserved share between {DISCOVERED_SPANS} and {FROM_QUESTION}"
+    );
+    for id in reserved + 1..=CANDIDATES {
         assert!(
-            !offered_as(&choose, &format!("d{id}")).starts_with("bloom.md"),
-            "the term took a slot the ordinary reading had reserved: d{id}"
+            offered_as(&choose, &format!("d{id}")).starts_with("bloom-"),
+            "the two halves of the union interleave at d{id}: {choose}"
         );
     }
-    assert!(
-        (FROM_QUESTION + 1..=CANDIDATES)
-            .any(|id| offered_as(&choose, &format!("d{id}")).starts_with("bloom.md")),
-        "the term reached nothing at all, so the bound was never tested: {choose}"
-    );
     provider.stop();
 }
 

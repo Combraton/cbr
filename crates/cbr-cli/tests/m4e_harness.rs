@@ -471,6 +471,11 @@ fn a_dry_run_drives_every_stage_and_reports_what_it_found() {
         "the rebuild did not reproduce the packet's content: {replay:?}"
     );
     assert_eq!(
+        replay.get("differences").and_then(Value::as_array),
+        Some(&[][..]),
+        "a rebuild that matched still named a differing leaf: {replay:?}"
+    );
+    assert_eq!(
         replay.get("ambiguous").and_then(Value::as_array),
         Some(&[][..]),
         "a run nobody repeated has an ambiguous question: {replay:?}"
@@ -742,6 +747,31 @@ print(ast.unparse(tree))
 }
 
 #[test]
+fn the_gate_derives_whether_it_matched_from_the_leaves_it_found() {
+    // **One answer, reported two ways.** `sections_identical` is derived
+    // from the differences, so the report cannot say "differs" and name
+    // nothing, or name something and call itself identical — which is
+    // what the first live run did six times over.
+    //
+    // Asserted by reading the source, and that is a weaker thing than
+    // the rest of this file: no dry run produces a rebuild that
+    // differs, because both launches are over one store and the rebuild
+    // reproduces the packet. The reporting branch is therefore not
+    // observable from any test here, only the function it calls is
+    // (above). Recorded as a gap in STATE rather than described as
+    // covered.
+    let source = std::fs::read_to_string(script()).expect("the harness");
+    assert!(
+        source.contains("differences = differing_leaves(live_sections, rebuilt_sections)")
+            && source.contains(
+                "result[\"replay\"][\"sections_identical\"] = live_sections is not None \
+                 and not differences"
+            ),
+        "the gate no longer derives `sections_identical` from the leaves it found"
+    );
+}
+
+#[test]
 fn the_visibility_call_is_live_only_and_carries_no_credential() {
     // **Two rules about the one path that opens a socket to anywhere
     // but the provider.** Like `credential_discipline.rs` this reads the
@@ -794,6 +824,148 @@ fn the_visibility_call_is_live_only_and_carries_no_credential() {
         source.contains("netrc"),
         "the prose no longer names what the code must not, so this proves less than it reads"
     );
+}
+
+/// Call one of the harness's own functions with JSON arguments, without
+/// running it: the module is imported by path and the function is
+/// applied, which is how a pure rule in it is tested without a socket.
+fn harness_says(call: &str, arguments: &[&str]) -> Value {
+    let program = r#"
+import importlib.util, json, sys
+spec = importlib.util.spec_from_file_location("m4e_run", sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+print(json.dumps(getattr(module, sys.argv[2])(*[json.loads(a) for a in sys.argv[3:]])))
+"#;
+    let output = Command::new("python3")
+        .args(["-c", program])
+        .arg(script())
+        .arg(call)
+        .args(arguments)
+        .output()
+        .expect("python3 runs");
+    assert!(
+        output.status.success(),
+        "{call} could not be called: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    cbr_encoding::parse(String::from_utf8_lossy(&output.stdout).trim().as_bytes())
+        .expect("the answer is JSON")
+}
+
+#[test]
+fn the_gate_says_which_leaf_differs_and_carries_no_repository_text() {
+    // **The live run of 2026-09-22 reported six differences and named
+    // none of them.** The one differing leaf in every store was
+    // `citations[].evidence.provider`, and finding that out meant
+    // opening six packets by hand. A gate that reports only *that* two
+    // things are unequal makes its reader do the work it existed to do.
+    //
+    // The two halves of the rule: the leaf is named, and the values are
+    // carried only when they cannot be somebody else's source.
+    let live = r#"[{"section_id": "s-q", "content": "The queue drains on shutdown, and the drain is ordered.",
+                    "citations": [{"evidence": {"provider": "cbr"}}]}]"#;
+    let rebuilt = r#"[{"section_id": "s-q", "content": "The queue drains on shutdown, and the drain is ordered.",
+                       "citations": [{"evidence": {"provider": "conformance-provider"}}]}]"#;
+    let differences = harness_says("differing_leaves", &[live, rebuilt]);
+    let found = differences.as_array().expect("a list");
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert_eq!(
+        found[0].get("at").and_then(Value::as_str),
+        Some("[0].citations[0].evidence.provider"),
+        "the differing leaf is not named: {found:?}"
+    );
+    // An identifier is carried as it is, because that is what makes the
+    // report diagnosable and an identifier is not repository text.
+    assert_eq!(found[0].get("live").and_then(Value::as_str), Some("cbr"));
+    assert_eq!(
+        found[0].get("rebuilt").and_then(Value::as_str),
+        Some("conformance-provider")
+    );
+
+    // **And a differing excerpt is not.** The report is the thing most
+    // likely to be pasted somewhere, and the licence rule for the
+    // pilots is digests, paths, spans, counts and costs.
+    let one =
+        r#"[{"content": "The queue drains on shutdown, case 1.0, and the drain is ordered."}]"#;
+    let other =
+        r#"[{"content": "The queue drains on shutdown, case 2.0, and the drain is ordered."}]"#;
+    let differences = harness_says("differing_leaves", &[one, other]);
+    let found = differences.as_array().expect("a list");
+    assert_eq!(found.len(), 1, "{found:?}");
+    for side in ["live", "rebuilt"] {
+        let carried = found[0]
+            .get(side)
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        assert!(
+            carried.starts_with('<') && carried.contains("sha256:"),
+            "{side} carries the text itself: {carried}"
+        );
+        assert!(
+            !carried.contains("drains on shutdown"),
+            "{side} carries repository text: {carried}"
+        );
+    }
+
+    // A tree that matches has nothing to say about itself.
+    let same = harness_says("differing_leaves", &[live, live]);
+    assert_eq!(same.as_array().map(<[Value]>::len), Some(0), "{same:?}");
+
+    // And a missing leaf is a difference rather than a match, which is
+    // the case a walk that only visited shared keys would miss.
+    let short = r#"[{"section_id": "s-q"}]"#;
+    let long = r#"[{"section_id": "s-q", "label": "queue"}]"#;
+    let found = harness_says("differing_leaves", &[short, long]);
+    let found = found.as_array().expect("a list");
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert_eq!(
+        found[0].get("live").and_then(Value::as_str),
+        Some("<absent>")
+    );
+}
+
+#[test]
+fn a_live_rebuild_is_launched_under_the_configuration_the_live_run_used() {
+    // **The defect the gate's six false differences came from.** The
+    // rebuild used to be launched under a conformance configuration,
+    // whose `provider_id` defaults to `conformance-provider`; every
+    // citation in every rebuilt packet then named a different provider
+    // from the live one, and the gate dutifully reported a difference
+    // the harness had created itself.
+    //
+    // `--replay-model` with a production configuration and no permit is
+    // `ServeFromRecords`: no transport is built and no credential is
+    // read, so there is nothing the live configuration buys the rebuild
+    // except being the same.
+    let run = r#"{"id": "one", "model": "MiniMax-M3",
+                  "repository": {"id": "cbr", "path": "/nowhere"}}"#;
+
+    let serving = harness_says("config_of", &[run, "true", "[]", "false"]);
+    let rebuild = harness_says("config_of", &[run, "true", "[]", "true"]);
+    assert_eq!(
+        serving, rebuild,
+        "a live rebuild is configured differently from the run it rebuilds"
+    );
+
+    // A dry run cannot do the same, and the asymmetry is the provider's
+    // rule: `--replay-model` needs a configured model, and a *serving*
+    // launch carrying one without the permit is refused. Both launches
+    // are conformance either way, so both name the same provider and
+    // the gate is not misled.
+    let serving = harness_says("config_of", &[run, "false", "[]", "false"]);
+    let rebuild = harness_says("config_of", &[run, "false", "[]", "true"]);
+    assert_ne!(
+        serving, rebuild,
+        "the dry rebuild has no configured model, so --replay-model would be refused"
+    );
+    for configuration in [&serving, &rebuild] {
+        assert_eq!(
+            configuration.get("format").and_then(Value::as_str),
+            Some("combraton-conformance-config/1"),
+            "a dry run launched something that is not a conformance launch"
+        );
+    }
 }
 
 #[test]

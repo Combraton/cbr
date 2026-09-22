@@ -104,10 +104,56 @@ pub const CLAIMS_SHOWN: usize = 6;
 /// and a test caught it: `merger.md` never reached the candidate set.
 pub const FROM_QUESTION: usize = 10;
 
+/// **The same per-path cap the packet publishes under**, applied to the
+/// candidate set before the model ever sees it.
+///
+/// The live run of 2026-09-22 found this the hard way. J1's twenty
+/// candidates held thirteen spans of one file and no span of the file
+/// the deterministic packet cites — because the union's question half
+/// was the raw top of the ranking, while [`crate::compiler::
+/// DISCOVERED_PER_PATH`] is applied at publish. So the model was asked
+/// to choose a packet out of a set that could not contain the packet
+/// CBR would otherwise have published, and the nine ids it chose were
+/// then capped to five on the way out.
+///
+/// **An offer the packet cannot honour is not an offer**, and a fact
+/// never offered cannot be kept. Both halves of the union are built
+/// under the cap, so what is shown is what could be published.
+pub fn per_path_capped(
+    found: &[cbr_memory::retrieval::Found],
+    want: usize,
+    taken: &mut std::collections::BTreeMap<String, usize>,
+) -> Vec<cbr_memory::retrieval::Found> {
+    let mut kept = Vec::new();
+    for span in found {
+        if kept.len() >= want {
+            break;
+        }
+        let seen = taken.entry(span.path.clone()).or_default();
+        if *seen >= crate::compiler::DISCOVERED_PER_PATH {
+            continue;
+        }
+        *seen += 1;
+        kept.push(span.clone());
+    }
+    kept
+}
+
 /// The answer is a short list of short strings.
 const TERMS_ANSWER_TOKENS: u64 = 96;
 /// And this one is a short list of ids.
 const CHOSEN_ANSWER_TOKENS: u64 = 128;
+
+/// What a discovery step asks the provider to generate: its answer,
+/// multiplied as every call site multiplies it, and then **not below the
+/// room the M2.x models need to think**.
+///
+/// Both answers here are small, so both would sit on
+/// [`crate::budget::MIN_OUTPUT_TOKENS`] — which is exactly the figure
+/// the live run measured two truncations at.
+fn discovery_generation(answer: u64) -> u64 {
+    generation_for(answer).max(crate::budget::DISCOVERY_MIN_OUTPUT_TOKENS)
+}
 
 /// The model wrote more terms than the bound, a term longer than the
 /// bound, or a term with characters a term does not have.
@@ -257,7 +303,7 @@ pub fn propose(model: &str, task: &str, seen: &[Candidate]) -> Request {
             role: Role::User,
             text,
         }],
-        generation: generation_for(TERMS_ANSWER_TOKENS),
+        generation: discovery_generation(TERMS_ANSWER_TOKENS),
         want: Want::Structure {
             schema: schema_of(
                 "terms",
@@ -291,7 +337,7 @@ pub fn choose(model: &str, task: &str, terms: &[String], candidates: &[Candidate
             role: Role::User,
             text,
         }],
-        generation: generation_for(CHOSEN_ANSWER_TOKENS),
+        generation: discovery_generation(CHOSEN_ANSWER_TOKENS),
         want: Want::Structure {
             schema: schema_of(
                 "ids",

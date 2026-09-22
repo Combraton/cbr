@@ -82,6 +82,30 @@ pub const SAFETY_MARGIN_TOKENS: u64 = 1_024;
 #[cfg_attr(not(test), allow(dead_code))]
 pub const MIN_OUTPUT_TOKENS: u64 = 512;
 
+/// The floor a **discovery** step's generation limit gets, whatever its
+/// answer is worth.
+///
+/// **Measured, on the live run of 2026-09-22**, which is what this
+/// milestone existed to measure. `MiniMax-M3` used 13 to 32 output
+/// tokens for every step of six flows. `MiniMax-M2.7-highspeed` used
+/// 277 to 512 tokens of reasoning *before* the answer, truncated two of
+/// its three flows at the 512 of [`MIN_OUTPUT_TOKENS`], and truncated
+/// one of them again at the 1,024 its repair asked for.
+///
+/// So reasoning is not proportional to the answer and cannot be sized
+/// from it: [`REASONING_HEADROOM`] multiplies a figure that is already
+/// small, and four times a short list of ids is still less room than
+/// this model needs to think. The floor is set above every figure
+/// measured, on the asymmetry that governs the whole rule — an unused
+/// limit costs nothing, and a limit one token short costs the call.
+///
+/// **Selection is deliberately not changed.** No selection call
+/// truncated in that run, and raising a bound that nothing has been
+/// measured against would be the estimating this constant exists to
+/// stop. [READINESS §3](../../docs/work/m4/READINESS.md) records it as
+/// open.
+pub const DISCOVERY_MIN_OUTPUT_TOKENS: u64 = 2_048;
+
 /// How much room reasoning is given relative to the answer itself.
 ///
 /// **The asymmetry decides this, not an estimate of how much a model

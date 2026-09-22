@@ -66,8 +66,10 @@ checked by a test rather than remembered.
 
 import argparse
 import base64
+import hashlib
 import json
 import os
+import re
 import socket
 import sqlite3
 import subprocess
@@ -435,18 +437,33 @@ def binaries(directory):
     return provider, client
 
 
-def configuration(work, run, live, dry_answers):
-    """The launch configuration, which decides what transport exists.
+def config_of(run, live, dry_answers, replay=False):
+    """The configuration body a launch gets.
 
     A live run is a **production** configuration naming a
     `model_runtime`, which is the member a credential read comes from. A
     dry run is a **conformance** configuration carrying the fake, which
     a production launch refuses outright -- so the two can never be
     confused for one another by a flag.
+
+    **In live mode the rebuild gets the very same body**, and the live
+    run of 2026-09-22 is why. The replay used to be launched under a
+    conformance configuration, whose `provider_id` defaults to
+    `conformance-provider`; every citation in every rebuilt packet then
+    carried a different provider from the live one, and the gate
+    reported six differences the harness had created itself.
+    `--replay-model` with a production configuration and no permit is
+    `ServeFromRecords`: no transport, no credential, same provider id.
+
+    A dry run cannot do the same, and the asymmetry is the provider's
+    rule rather than a choice here: `--replay-model` needs a configured
+    `model_runtime`, and a *serving* launch carrying one without
+    `--permit-model-network` is refused. Both launches of a dry run are
+    conformance either way, so both name the same provider and the gate
+    is not misled.
     """
-    path = work / "cbr.json"
     if live:
-        body = {
+        return {
             "format": "cbr-config/1",
             "principal": PRINCIPAL,
             "authority_principals": [PRINCIPAL],
@@ -456,24 +473,47 @@ def configuration(work, run, live, dry_answers):
                 "model": run["model"],
             },
         }
-    else:
-        body = {
-            "format": "combraton-conformance-config/1",
-            "principal": PRINCIPAL,
-            "authority_principals": [PRINCIPAL],
-            "credentials": [{"credential": DRY_RUN_CREDENTIAL}],
-            "context": {"compile": True},
-            "model": {
-                "dialect": "responses",
-                "model": run["model"],
-                "answers": dry_answers,
-                "usage": 5000,
-                "counting": "when_it_could_admit",
-            },
+    body = {
+        "format": "combraton-conformance-config/1",
+        "principal": PRINCIPAL,
+        "authority_principals": [PRINCIPAL],
+        "credentials": [{"credential": DRY_RUN_CREDENTIAL}],
+        "context": {"compile": True},
+        "model": {
+            "dialect": "responses",
+            "model": run["model"],
+            "answers": dry_answers,
+            "usage": 5000,
+            "counting": "when_it_could_admit",
+        },
+    }
+    if replay:
+        # **The fake goes, and a configured model takes its place.** A
+        # launch has one transport: `model.fake` beside `--replay-model`
+        # is refused by name, because a rebuild a fake could answer is
+        # not a rebuild. The `model_runtime` is here only so that
+        # `--replay-model` is not refused for having no model
+        # configured; nothing is called, since the decision is
+        # `ServeFromRecords` before any transport is built.
+        del body["model"]
+        body["model_runtime"] = {
+            "provider": "minimax",
+            "dialect": "responses",
+            "model": run["model"],
         }
-    path.write_text(json.dumps(body))
-    return path
+    return body
 
+
+def configuration(work, run, live, dry_answers, replay=False):
+    """Where that body is written, and what a launch is pointed at.
+
+    In live mode both launches are pointed at the same path holding the
+    same bytes: one configuration, two launches, nothing that can drift
+    between them.
+    """
+    path = work / ("cbr-replay.json" if replay and not live else "cbr.json")
+    path.write_text(json.dumps(config_of(run, live, dry_answers, replay)))
+    return path
 
 def launch(provider, work, run, config, extra):
     sockets = work / "s"
@@ -597,7 +637,66 @@ def sealed_sections(printed):
     if not excerpt:
         return None
     packet = json.loads(base64.b64decode(excerpt))
-    return json.dumps(packet.get("sections"), sort_keys=True)
+    return packet.get("sections")
+
+
+ABSENT = object()
+
+
+def shown(value):
+    """A value the report may carry, or its shape when it may not.
+
+    The report holds digests, paths, spans, counts and costs and **no
+    repository text**, which is the licence rule for the pilots. A
+    differing leaf could be either: `provider` is an identifier, and an
+    excerpt is somebody else's source. So a short identifier-shaped
+    string is printed as it is, and everything else becomes its length
+    and a digest -- which still says *that* it differs and *by how
+    much*, without carrying a byte of it.
+    """
+    if value is ABSENT:
+        return "<absent>"
+    if value is None or isinstance(value, (bool, int, float)):
+        return value
+    text = value if isinstance(value, str) else json.dumps(value, sort_keys=True)
+    if isinstance(value, str) and len(text) <= 64 and re.fullmatch(r"[A-Za-z0-9_.:/@-]*", text):
+        return text
+    digest = hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
+    return f"<{len(text)} chars, sha256:{digest}>"
+
+
+def differing_leaves(live, rebuilt, limit=32):
+    """Every leaf at which two sealed section trees differ.
+
+    **So that the next difference is diagnosable from the report.** The
+    live run of 2026-09-22 reported `sections_identical: false` six
+    times and said nothing else, and the one differing leaf in every
+    store turned out to be `citations[].evidence.provider` -- a fact
+    that took a reader opening six packets to find and that this would
+    have printed.
+    """
+    found = []
+
+    def walk(one, other, path):
+        if len(found) >= limit:
+            return
+        if isinstance(one, dict) and isinstance(other, dict):
+            for key in sorted(set(one) | set(other)):
+                walk(one.get(key, ABSENT), other.get(key, ABSENT), f"{path}.{key}")
+        elif isinstance(one, list) and isinstance(other, list):
+            for at in range(max(len(one), len(other))):
+                walk(
+                    one[at] if at < len(one) else ABSENT,
+                    other[at] if at < len(other) else ABSENT,
+                    f"{path}[{at}]",
+                )
+        elif one != other:
+            found.append(
+                {"at": path.lstrip(".") or "<root>", "live": shown(one), "rebuilt": shown(other)}
+            )
+
+    walk(live, rebuilt, "")
+    return found
 
 
 def inspect_packet(client, endpoint, credential, run, request):
@@ -825,22 +924,10 @@ def one_run(run, out, provider, client, live, ceiling, checkout):
     # **The replay gate.** The same store, no transport, no
     # credential, no permit: every question answered from what was
     # retained or not at all.
-    replay_config = work / "cbr-replay.json"
-    replay_config.write_text(
-        json.dumps(
-            {
-                "format": "combraton-conformance-config/1",
-                "principal": PRINCIPAL,
-                "authority_principals": [PRINCIPAL],
-                "credentials": [{"credential": DRY_RUN_CREDENTIAL}],
-                "context": {"compile": True},
-                "model_runtime": {
-                    "provider": "minimax",
-                    "dialect": "responses",
-                    "model": run["model"],
-                },
-            }
-        )
+    # **The same configuration the live launch used.** In live mode
+    # this is literally the same file; see `configuration`.
+    replay_config = configuration(
+        work, run, live, run.get("dry_answers", []), replay=True
     )
     child, endpoint = launch(
         provider,
@@ -879,9 +966,15 @@ def one_run(run, out, provider, client, live, ceiling, checkout):
     # packet digest covers the request's own id and two requests can
     # never be byte-identical; byte identity across two stores is the
     # suite's gate, not this one's.
-    result["replay"]["sections_identical"] = (
-        live_sections is not None and live_sections == rebuilt_sections
-    )
+    # **One answer, reported two ways.** A gate that reports only that
+    # two things are unequal makes its reader do the work the gate was
+    # for -- the first live run said "differs" six times and named
+    # nothing, and the one differing leaf took six packets opened by
+    # hand to find. So the leaves are what is computed, and "identical"
+    # is derived from them: the two cannot disagree with each other.
+    differences = differing_leaves(live_sections, rebuilt_sections)
+    result["replay"]["differences"] = differences
+    result["replay"]["sections_identical"] = live_sections is not None and not differences
     result["replay"].update(ambiguity(work / "data"))
     # **Nothing here deletes a store.** The ledger and the records
     # are what the report is a summary of, so they outlive the thing
