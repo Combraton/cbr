@@ -6,6 +6,7 @@ fn candidates() -> Vec<Candidate> {
     vec![
         Candidate {
             id: "c1".into(),
+            kind: crate::selection::KIND_SPAN,
             path: "queue.md".into(),
             start_line: 1,
             end_line: 20,
@@ -13,6 +14,7 @@ fn candidates() -> Vec<Candidate> {
         },
         Candidate {
             id: "c2".into(),
+            kind: crate::selection::KIND_SPAN,
             path: "queue.md".into(),
             start_line: 21,
             end_line: 40,
@@ -194,6 +196,7 @@ fn every_reason_the_runtime_can_produce_is_one_a_record_can_carry() {
     let mut produced: Vec<&'static str> = vec![
         crate::selection::NOT_OFFERED,
         crate::selection::NOT_STRUCTURED,
+        crate::discovery::OVER_BOUND,
         // The four the call site itself names, which belong to no enum.
         "model_call_timed_out",
         "store_unavailable",
@@ -278,4 +281,95 @@ fn a_reader_who_can_read_more_than_the_job_could_reads_it() {
         &["app".to_string(), "outside".to_string()],
         &["adapter".to_string()]
     ));
+}
+
+#[test]
+fn a_proposal_reads_back_as_the_terms_the_model_wrote() {
+    // **The terms live in the terms step's own record**, which is what
+    // makes the step auditable: what was proposed, and therefore what
+    // CBR then searched for, is a fact about the exchange rather than
+    // something re-derived from a later one.
+    let offered = offered(&candidates());
+    let terms = vec!["src/queue.rs".to_string(), "drain".to_string()];
+    let value = record(&made(&question(&offered), Answer::Proposed(terms.clone())));
+    assert_eq!(answer_of(&value), Some(Answer::Proposed(terms)));
+}
+
+#[test]
+fn a_multiple_choice_reads_back_as_the_ids_it_chose() {
+    let offered = offered(&candidates());
+    let ids = vec!["c2".to_string(), "c1".to_string()];
+    let value = record(&made(&question(&offered), Answer::ChoseMany(ids.clone())));
+    assert_eq!(answer_of(&value), Some(Answer::ChoseMany(ids)));
+}
+
+#[test]
+fn a_list_whose_members_are_not_strings_is_an_unreadable_record() {
+    // Not a shorter list with the unreadable members dropped: a record
+    // this build cannot read is its own failure with its own name, and
+    // silently reading four of five ids would be a rebuild inventing a
+    // history.
+    let offered = offered(&candidates());
+    let mut value = record(&made(
+        &question(&offered),
+        Answer::ChoseMany(vec!["c1".into()]),
+    ));
+    crate::context::set(
+        &mut value,
+        "answer",
+        crate::context::object(vec![("chose_ids", Value::Array(vec![Value::Int(1)]))]),
+    );
+    assert_eq!(answer_of(&value), None);
+}
+
+#[test]
+fn a_claim_candidate_is_remembered_as_a_claim() {
+    // Without the kind, a claim in a candidate set reads back as `lines
+    // 0-0` of a path that is a claim id — a span of a file that does not
+    // exist. m4e is where claims enter candidate sets, so m4e is where
+    // the record learns to say which it was.
+    let offered = offered(&[Candidate {
+        id: "k1".into(),
+        kind: crate::selection::KIND_CLAIM,
+        path: "drains".into(),
+        start_line: 0,
+        end_line: 0,
+        text: "the queue drains on shutdown".into(),
+    }]);
+    assert_eq!(offered[0].kind, crate::selection::KIND_CLAIM);
+    let value = record(&made(
+        &question(&offered),
+        Answer::ChoseMany(vec!["k1".into()]),
+    ));
+    let shown = list(&value, &["question", "offered"]);
+    assert_eq!(
+        text(&shown[0], &["kind"]),
+        crate::selection::KIND_CLAIM,
+        "{value:?}"
+    );
+}
+
+#[test]
+fn a_question_that_showed_a_claim_is_not_a_question_that_showed_a_span() {
+    // The kind is part of the digest, which is the point of putting it
+    // there: two questions that showed the model different things are
+    // two questions, and a retained answer to one never answers the
+    // other.
+    let as_span = offered(&[Candidate {
+        id: "d1".into(),
+        kind: crate::selection::KIND_SPAN,
+        path: "drains".into(),
+        start_line: 0,
+        end_line: 0,
+        text: "the queue drains on shutdown".into(),
+    }]);
+    let as_claim = offered(&[Candidate {
+        id: "d1".into(),
+        kind: crate::selection::KIND_CLAIM,
+        path: "drains".into(),
+        start_line: 0,
+        end_line: 0,
+        text: "the queue drains on shutdown".into(),
+    }]);
+    assert_ne!(question(&as_span).digest(), question(&as_claim).digest());
 }

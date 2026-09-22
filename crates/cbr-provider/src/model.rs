@@ -898,6 +898,27 @@ impl Fake {
                 ),
                 usage: self.usage,
             },
+            // **Discovery's two answers.** `terms:` proposes, `ids:`
+            // chooses several; both are written the long way so that a
+            // test can script an answer that breaks a bound — an empty
+            // list, a term with a space in it, more ids than were
+            // offered — which is the control negative control 5 needs.
+            Some(("terms", list)) => Answer::Completed {
+                body: wire::response::scripted(
+                    self.dialect,
+                    &format!("{{\"terms\":{}}}", Fake::quoted(list)),
+                    self.usage,
+                ),
+                usage: self.usage,
+            },
+            Some(("ids", list)) => Answer::Completed {
+                body: wire::response::scripted(
+                    self.dialect,
+                    &format!("{{\"ids\":{}}}", Fake::quoted(list)),
+                    self.usage,
+                ),
+                usage: self.usage,
+            },
             Some(("text", text)) => Answer::Completed {
                 body: wire::response::scripted(self.dialect, text, self.usage),
                 usage: self.usage,
@@ -915,6 +936,20 @@ impl Fake {
                 usage: self.usage,
             },
         }
+    }
+}
+
+impl Fake {
+    /// A comma-separated script as a JSON array of strings. An empty
+    /// script is an empty array, which is a model answering "no terms"
+    /// and is an ordinary answer rather than a malformed one.
+    fn quoted(list: &str) -> String {
+        let members: Vec<String> = list
+            .split(',')
+            .filter(|member| !member.is_empty())
+            .map(|member| format!("\"{member}\""))
+            .collect();
+        format!("[{}]", members.join(","))
     }
 }
 

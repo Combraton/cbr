@@ -393,3 +393,73 @@ fn cancelling_a_request_frees_the_bound_its_call_was_holding() {
     }
     provider.stop();
 }
+
+#[test]
+fn the_investigation_limit_counts_questions_and_the_budget_runs_out() {
+    // **At m4c this number gated; at m4e it counts.** Two items, two
+    // questions and a budget of one: the first is asked and the second
+    // is not, because the budget is spent. The second item's reason
+    // says so rather than the packet quietly citing the span BM25 would
+    // have chosen, which is the rule m4c wrote down about reporting a
+    // model-assisted selection no model made.
+    //
+    // Items come first because an item is what the request *required*,
+    // and discovery is advisory.
+    let fixture = Fixture::answering(&["choose:c2"]);
+    let provider = fixture.start();
+    let submitted = fixture.cbr(&[
+        "context",
+        "one-unit",
+        "--repo",
+        fixture.checkout.to_str().expect("utf-8"),
+        "--repo-id",
+        "app",
+        "--selector",
+        "queue drains shutdown",
+        "--task",
+        "what drains the queue",
+        "--capacity",
+        "65536",
+        "--investigation",
+        "1",
+        "--want",
+        "q=source:queue.md",
+        "--want",
+        "c=source:cache.md",
+    ]);
+    assert!(
+        submitted.status.success(),
+        "submit: {}",
+        String::from_utf8_lossy(&submitted.stderr)
+    );
+    let started = Instant::now();
+    let inspected = loop {
+        let polled = fixture.cbr(&["request", "one-unit"]);
+        let inspected =
+            cbr_encoding::parse(String::from_utf8_lossy(&polled.stdout).trim().as_bytes())
+                .expect("canonical JSON");
+        if inspected.get("state").and_then(Value::as_str) != Some("preparing") {
+            break inspected;
+        }
+        assert!(
+            started.elapsed() < Duration::from_secs(60),
+            "never left preparing: {inspected:?}"
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    };
+    assert_eq!(result(&inspected, "q").0, "satisfied", "{inspected:?}");
+    assert_eq!(
+        result(&inspected, "c"),
+        (
+            "unmet".to_string(),
+            "investigation_budget_exhausted".to_string()
+        ),
+        "{inspected:?}"
+    );
+    assert_eq!(
+        bodies_sent(&fixture.data()).len(),
+        1,
+        "one unit of budget, one question"
+    );
+    provider.stop();
+}

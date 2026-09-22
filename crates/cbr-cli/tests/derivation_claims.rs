@@ -7,10 +7,13 @@
 //! says so exactly: sealing `readable_under(view, &[])` survived every
 //! test in the suite.
 //!
-//! A derivation names no claim today, which is why this is a correction
-//! rather than a leak. **In m4e claims enter the candidate sets** and it
-//! becomes load-bearing, so it is tested now, while it is cheap and
-//! while the answer is knowable.
+//! At m4d a derivation named no claim, which is why that was a
+//! correction rather than a leak. **At m4e claims enter the candidate
+//! sets**: discovery offers a model the eligible claims beside the
+//! spans, so a record's `offered` holds claim text a job could read and
+//! the gate is now load-bearing rather than merely correct. The last
+//! test here is that case, and it is the one the reviewer's mutant —
+//! sealing `readable_under(view, &[])` — now leaks through.
 //!
 //! Four doors, and both arms of each: `inspect`, a listing, `fetch`, and
 //! a rebuild.
@@ -21,7 +24,7 @@ use cbr_encoding::Value;
 
 mod serving;
 
-use serving::{Fixture, derivations, prepared, result};
+use serving::{Fixture, answers, bodies_sent, derivations, prepared, result};
 
 const CLAIM: &str = "drains";
 
@@ -287,5 +290,210 @@ fn listing(answered: &Value) -> Vec<String> {
         .filter_map(|subject| subject.get("id"))
         .filter_map(Value::as_str)
         .map(str::to_string)
+        .collect()
+}
+
+/// One item and both discovery steps: three questions, three units.
+const BOTH_STEPS: &str = "3";
+
+#[test]
+fn a_candidate_set_that_held_a_claim_is_sealed_under_that_claim() {
+    // **Where the gate stops being a formality.** Discovery offers a
+    // model the eligible claims beside the spans, so the choice step's
+    // record says *this claim was shown* and its `offered` holds the
+    // claim's own text by digest. A reader who cannot read the claim
+    // must not be handed that record — which until now was true of
+    // nothing, because no record named a claim at all.
+    let fixture = Fixture::answering(&["choose:c2", "terms:tombstone", "ids:k1"]);
+    let running = fixture.start();
+    fixture.propose_claim(CLAIM);
+    prepared(&fixture, "offered", BOTH_STEPS);
+
+    // **The claim reached a model as a claim**, which is the reason any
+    // of this matters: its text left the store.
+    //
+    // Asserted on the line that *offers* it rather than on the text,
+    // and the difference is not pedantry -- a claim's own content
+    // begins "claim drains revision 1: ...", so a substring assertion
+    // holds however the candidate was labelled. The mutant that offered
+    // a claim as if it were a span survived the first form of this.
+    assert!(
+        bodies_sent(&fixture.data())
+            .iter()
+            .any(|body| body.contains(&format!("[k1] claim {CLAIM}"))),
+        "the claim was never offered as a claim, so this test proves nothing"
+    );
+
+    let recorded = answers(&fixture);
+    let choice = recorded
+        .iter()
+        .find(|(_, selector, _)| selector.starts_with("discovery.choose"))
+        .unwrap_or_else(|| panic!("no choice record in {recorded:?}"));
+    assert_eq!(
+        choice.2.get("chose_ids").and_then(Value::as_array),
+        Some(&[Value::String("k1".into())][..]),
+        "the claim the model chose is not the one the record says: {recorded:?}"
+    );
+
+    // Every record of this request, not only the one that held the
+    // claim: the readable set is the *job's*, and the job could read it
+    // throughout.
+    for (id, record) in derivations(&fixture.data()) {
+        let claims: Vec<&str> = record
+            .get("readable_under")
+            .and_then(|under| under.get("readable_claims"))
+            .and_then(Value::as_array)
+            .unwrap_or_else(|| panic!("no readable set on {id}"))
+            .iter()
+            .filter_map(Value::as_str)
+            .collect();
+        assert_eq!(claims, vec![CLAIM], "{id} was sealed under no claim");
+    }
+
+    // And the gate holds at the door, with the claim in the set.
+    grant(&fixture, "g-no-claim", false);
+    let artifact = derivations(&fixture.data())
+        .into_iter()
+        .map(|(id, _)| id)
+        .next()
+        .expect("a derivation");
+    let inspected = fixture.query_as_reader(
+        "g-no-claim",
+        "evidence.inspect",
+        &format!(r#"{{"artifact":{{"kind":"evidence.artifact","id":"{artifact}"}}}}"#),
+    );
+    assert_eq!(
+        inspected
+            .get("error")
+            .and_then(|error| error.get("data"))
+            .and_then(|data| data.get("code"))
+            .and_then(Value::as_str),
+        Some("permission_denied"),
+        "a reader who cannot read the claim was served a record built from it: {inspected:?}"
+    );
+    running.stop();
+}
+
+#[test]
+fn a_binding_claim_is_carried_whether_the_model_listed_it_or_not() {
+    // **A model may not unmark a binding claim by leaving it out of a
+    // list.** The rule that it may never *mark* one binding is worth
+    // nothing without this one: `binding` is an authority's act, and
+    // INTERNALS section 5 step 3 says of this rank that losing it loses
+    // the answer.
+    //
+    // The model is offered the claim and chooses only a span. The
+    // packet carries the claim regardless, and its label is still the
+    // authority's.
+    let fixture = Fixture::answering(&["choose:c2", "terms:tombstone", "ids:d1"]);
+    let running = fixture.start();
+    fixture.propose_checkable_claim(CLAIM);
+    fixture.make_binding(CLAIM);
+    prepared(&fixture, "binding", BOTH_STEPS);
+
+    let recorded = answers(&fixture);
+    let choice = recorded
+        .iter()
+        .find(|(_, selector, _)| selector.starts_with("discovery.choose"))
+        .unwrap_or_else(|| panic!("no choice record in {recorded:?}"));
+    assert_eq!(
+        choice.2.get("chose_ids").and_then(Value::as_array),
+        Some(&[Value::String("d1".into())][..]),
+        "the model chose no claim, which is what this test needs: {recorded:?}"
+    );
+
+    let printed = fixture.cbr(&["packet", "binding", "--excerpt", "1000000"]);
+    assert!(
+        printed.status.success(),
+        "packet: {}",
+        String::from_utf8_lossy(&printed.stderr)
+    );
+    let inspected = cbr_encoding::parse(String::from_utf8_lossy(&printed.stdout).trim().as_bytes())
+        .expect("canonical JSON");
+    let sealed = cbr_encoding::parse(
+        &cbr_encoding::decode_base64(
+            inspected
+                .get("excerpt")
+                .and_then(|excerpt| excerpt.get("data_base64"))
+                .and_then(Value::as_str)
+                .expect("an excerpt"),
+        )
+        .expect("base64"),
+    )
+    .expect("the sealed packet");
+    let carried = sealed
+        .get("sections")
+        .and_then(Value::as_array)
+        .unwrap_or_default()
+        .iter()
+        .find(|section| {
+            section.get("section_id").and_then(Value::as_str) == Some(&format!("d-claim-{CLAIM}"))
+        })
+        .cloned()
+        .unwrap_or_else(|| panic!("the binding claim was dropped: {sealed:?}"));
+    assert_eq!(
+        carried.get("label").and_then(Value::as_str),
+        Some("binding"),
+        "and it is carried as something other than binding: {carried:?}"
+    );
+    running.stop();
+}
+
+#[test]
+fn a_claim_the_model_did_not_choose_is_left_out_and_one_it_chose_is_carried() {
+    // **Both arms, because either alone is satisfied by doing nothing.**
+    // A rule that only ever carries claims passes the first half; a rule
+    // that only ever drops them passes the second.
+    //
+    // The claim here is an observation rather than binding, so nothing
+    // else keeps it: what decides is the choice. The mutant that ignores
+    // the model's chosen claims survived until this existed.
+    for (request, chosen, carried) in [("left-out", "ids:d1", false), ("carried", "ids:k1", true)] {
+        let fixture = Fixture::answering(&["choose:c2", "terms:tombstone", chosen]);
+        let running = fixture.start();
+        fixture.propose_checkable_claim(CLAIM);
+        prepared(&fixture, request, BOTH_STEPS);
+
+        let omitted = packet_omissions(&fixture, request)
+            .into_iter()
+            .any(|(section, reason)| {
+                section == format!("d-claim-{CLAIM}") && reason == "applicability"
+            });
+        assert_eq!(
+            !omitted, carried,
+            "{request}: the packet did not follow the model's choice of claims"
+        );
+        running.stop();
+    }
+}
+
+/// Every omission the packet declares, as `(section_id, reason)`.
+fn packet_omissions(fixture: &Fixture, request: &str) -> Vec<(String, String)> {
+    let printed = fixture.cbr(&["packet", request]);
+    assert!(
+        printed.status.success(),
+        "packet: {}",
+        String::from_utf8_lossy(&printed.stderr)
+    );
+    cbr_encoding::parse(String::from_utf8_lossy(&printed.stdout).trim().as_bytes())
+        .expect("canonical JSON")
+        .get("omissions")
+        .and_then(Value::as_array)
+        .unwrap_or_default()
+        .iter()
+        .map(|omission| {
+            (
+                omission
+                    .get("section_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string(),
+                omission
+                    .get("reason")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string(),
+            )
+        })
         .collect()
 }

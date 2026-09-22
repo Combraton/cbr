@@ -21,7 +21,10 @@
 //! * asking for `--calibrate`, which is refused before the credential
 //!   unless it was given a ceiling as well, and which the owner runs
 //!   deliberately; or
-//! * carrying no configured model at all, which is refused outright.
+//! * carrying no configured model at all, which is refused outright —
+//!   and a piece that passes `--live` to the m4e harness is not one of
+//!   these, because that flag makes the harness write a configuration
+//!   naming a model before it launches.
 //!
 //! **What this does not do.** It reads text, so it can be fooled by a
 //! program that builds the flag out of pieces. It is a guard against
@@ -109,8 +112,18 @@ fn no_test_launches_a_serving_provider_with_a_real_model() {
             // A configuration with no `model_runtime` member cannot reach
             // a credential: the launch is refused for permitting calls to
             // nothing.
-            let configures_a_model =
-                piece.contains("model_runtime") || piece.contains("CONFIGURED");
+            //
+            // **`--live` counts as one**, and the reason is the hole this
+            // rule had at m4e. `scripts/m4e_run.py --live` *writes* a
+            // production configuration naming a `model_runtime` and then
+            // launches under it, so a test driving the harness configures
+            // a model without the word appearing anywhere in the piece.
+            // The escape above was written for a Rust launch whose whole
+            // configuration is visible; it is not a licence for a
+            // launcher that builds its own.
+            let configures_a_model = piece.contains("model_runtime")
+                || piece.contains("CONFIGURED")
+                || piece.contains("\"--live\"");
             assert!(
                 gated_off_macos || asks_for_the_calibration || !configures_a_model,
                 "{} passes --permit-model-network with a configured model, not gated off \

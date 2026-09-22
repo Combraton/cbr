@@ -37,16 +37,31 @@ use cbr_encoding::Value;
 
 use crate::wire::request::{Message, Request, Role, Want, generation_for};
 
-/// One span the request may cite, as the model sees it.
+/// One thing the request may cite, as the model sees it.
+///
+/// **Shared with [`crate::discovery`]**, which offers the same shape for
+/// a wider set: a candidate is a candidate whether it was ranked inside
+/// one named file or found across the whole view, and two shapes would
+/// be two ways of saying which ids were offered in a derivation record.
 #[derive(Debug, Clone)]
 pub struct Candidate {
     /// CBR's own name for it. The only thing an answer may contain.
     pub id: String,
+    /// [`KIND_SPAN`] or [`KIND_CLAIM`]. A record says which, because
+    /// "lines 0-0 of `drains`" is not a span and should not read as one.
+    pub kind: &'static str,
+    /// The path of the span, or the id of the claim.
     pub path: String,
     pub start_line: usize,
     pub end_line: usize,
     pub text: String,
 }
+
+/// A span of a file in the view.
+pub const KIND_SPAN: &str = "span";
+/// A claim the job may read. Only discovery offers these; selecting a
+/// span of a named file has no claim to offer.
+pub const KIND_CLAIM: &str = "claim";
 
 /// The answer is one small object. [`generation_for`] multiplies it,
 /// because on these models reasoning spends the same budget and an

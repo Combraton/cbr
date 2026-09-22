@@ -2,16 +2,179 @@
 
 This is a dated navigation snapshot. Reconcile it with Git, linked issues and current task evidence before acting. Issues own live progress; this file does not grant authority or maintain a second backlog.
 
-- **Updated:** 2026-09-21.
-- **Owner/task:** Claude Code session as implementation lead for standalone CBR. **M1 and M2 are complete**; M1's closing record is [m1/CLOSEOUT.md](m1/CLOSEOUT.md). Active task: **M3, [issue #15](https://github.com/Combraton/cbr/issues/15)**, in four pull requests against `main`, each reviewed at its head before merging: m3a the Context profile (**merged**), m3b retrieval and the dependency evaluator (**merged**) and m3c the packet compiler on a real repository (**merged**); m3d the journey-6 pilots (**merged**) and m3e what the pilots found plus the close-out (**merged**). **M3 is complete and [issue #15](https://github.com/Combraton/cbr/issues/15) is closed.** Active task: **M4, the bounded model runtime, [issue #21](https://github.com/Combraton/cbr/issues/21)**. The readiness document and **m4a, the envelope, are merged**; **m4b, the wire, is merged** as `025ddfb`, pinned to `324b1cc`, confirmed from `merged: true` and `merged_at: 2026-09-20T17:38:03Z`. **One live call has been made**, in the authorised calibration run, which stopped at its first request; see below. **m4c, the bounded runtime, is merged** as `4a690ae`, pinned to `f53da84`, confirmed from `merged: true` and `merged_at: 2026-09-21T12:36:47Z`, the draft marked ready first. Next: **m4d, derivation records and replay**, in progress below. **Two live calls have been made**, both in authorised calibration runs; nothing else has ever called a model, and m4d makes none. Parent: [issue #1](https://github.com/Combraton/cbr/issues/1). An independent reviewer session reviews this read-only.
+- **Updated:** 2026-09-22.
+- **Owner/task:** Claude Code session as implementation lead for standalone CBR. **M1 and M2 are complete**; M1's closing record is [m1/CLOSEOUT.md](m1/CLOSEOUT.md). Active task: **M3, [issue #15](https://github.com/Combraton/cbr/issues/15)**, in four pull requests against `main`, each reviewed at its head before merging: m3a the Context profile (**merged**), m3b retrieval and the dependency evaluator (**merged**) and m3c the packet compiler on a real repository (**merged**); m3d the journey-6 pilots (**merged**) and m3e what the pilots found plus the close-out (**merged**). **M3 is complete and [issue #15](https://github.com/Combraton/cbr/issues/15) is closed.** Active task: **M4, the bounded model runtime, [issue #21](https://github.com/Combraton/cbr/issues/21)**. The readiness document and **m4a, the envelope, are merged**; **m4b, the wire, is merged** as `025ddfb`, pinned to `324b1cc`, confirmed from `merged: true` and `merged_at: 2026-09-20T17:38:03Z`. **One live call has been made**, in the authorised calibration run, which stopped at its first request; see below. **m4c, the bounded runtime, is merged** as `4a690ae`, pinned to `f53da84`, confirmed from `merged: true` and `merged_at: 2026-09-21T12:36:47Z`, the draft marked ready first. **m4d, derivation records and replay, is merged** as `7fa939c`, pinned to `8bc5698`, confirmed from `merged: true` and `merged_at: 2026-09-21T16:21:16Z`, the draft marked ready first; the merge commit's second parent is `8bc5698`, so the reviewed head is on `main` unaltered. Next: **m4e, model-assisted discovery and the live-run harness**, in progress below. **Two live calls have been made**, both in authorised calibration runs; nothing else has ever called a model, and m4e makes none — the live run is its own step, after m4e is reviewed and merged, and only on the owner's word at that time. Parent: [issue #1](https://github.com/Combraton/cbr/issues/1). An independent reviewer session reviews this read-only.
 - **Merged:** PR #2 as `d68e9d6`, pinned to `877139f`; PR #4 as `a939446`, pinned to `630011c`; PR #5 (c1) as `8b75129`; PR #6 (c2) as `da1e650`, pinned to `b00ec49`; **PR #7 (c3) as `8ba2594`, pinned to `5b98a9f`, confirmed from `merged: true` and `merged_at: 2026-09-16T15:31:51Z`**. Earlier: PR #6 pinned to `b00ec49`, confirmed from `merged: true` and `merged_at: 2026-09-16T14:26:34Z`**, the draft marked ready first and the head re-read unchanged before merging. Every owner decision, including the ceiling, is in [ADR 001](../decisions/001-standalone-v0.1-scope-and-stack.md). **PR #8 (owner follow-ups) as `f00faaf`, pinned to `40cb30b`, `merged_at: 2026-09-16T16:57:29Z`; PR #9 (c4) as `9a7b8f5`, pinned to `5db9d7c`, `merged_at: 2026-09-16T16:57:53Z`**, in that order, each confirmed from `merged` and `merged_at`. **PR #10 (d) as `96a33f2`, pinned to `a1048e6`, `merged_at: 2026-09-16T18:17:38Z`; then PR #11 (e) as `6c63d91`, pinned to `c2a262d`, `merged_at: 2026-09-16T18:17:56Z`**. PR #11 was stacked on #10's branch, so it was retargeted to `main` after #10 merged and before its own merge; retargeting leaves the head unchanged, and `c2a262d` was re-read before merging. **PR #13 (M1 close-out, README) as `5c667ed`, pinned to `507fc77`, `merged_at: 2026-09-16T18:58:44Z`; then PR #14 (M2) as `39113b2`, pinned to `62cbb99`, `merged_at: 2026-09-16T18:59:00Z`**, #14 retargeted to `main` first. **PR #16 (m3a) as `cbfaebe`, pinned to `1bd9a7a`, confirmed from `merged: true` and `merged_at: 2026-09-19T14:48:17Z`**, the draft marked ready first and the head re-read unchanged; the merge commit's second parent is `1bd9a7a`, so the reviewed head is on `main` unaltered. **PR #17 (m3b) as `c3cdf51`, pinned to `fb67250`, confirmed from `merged: true` and `merged_at: 2026-09-19T15:55:37Z`**, second parent `fb67250`. **PR #18 (m3c) as `2cf6b97`, pinned to `81c5f0e`, confirmed from `merged: true` and `merged_at: 2026-09-20T04:35:37Z`**, second parent `81c5f0e`. **PR #19 (m3d) as `17cc54c`, pinned to `52305b3`, confirmed from `merged: true` and `merged_at: 2026-09-20T07:28:00Z`**, second parent `52305b3`.
 - **Merge rule, 2026-09-16, superseded the same day.** This session ran `gh pr merge` on PR #2 after the owner replied "you can merge PR 2" in-session, having first reported the contradicting claim with evidence and waited. It landed the exact reviewed head `877139f` and is kept. A stricter rule was then recorded, and the owner then **granted merge authority under four conditions**, now in [AGENTS.md](../../AGENTS.md): pin with `--match-head-commit`; the head's CI is green; the reviewer has seen that head; no squash. Confirm from `merged` and `merged_at` afterwards, **never `merge_commit_sha`** — GitHub populates that on an open pull request with the test-merge candidate. Tags and releases remain the owner's alone.
 - **Owner decision, 2026-09-20, recorded at the m3c review: m3d has two pilot repositories**, as an amendment to [ADR 001](../decisions/001-standalone-v0.1-scope-and-stack.md) question 6. Knowscroll-v2 stays the decision-memory pilot; the owner's **brian2 fork** is added as a brownfield pilot, registered read-only, whose journey tests discovery and code flow rather than decision memory, whose oracle the owner writes before the run, and whose dirty working tree makes it the first journey to exercise the dirty path. **brian2 is CeCILL-licensed and this repository is MIT, so none of its bytes, excerpts or packets are committed here** — digests, paths, spans, counts and costs only. It is recorded now and acted on only after m3c is cleared; no other brian2 work belongs in this pull request.
 - **Inspected revisions:** protocol `v0.1.0` = `cbf8e4df9df2ca8a9b50264df6acace6e4c3a0fc`; combraton `9af69ce`; pio `e65b7c0`; benchmarks `c8d5878`.
 
-## This change — M4d, derivation records and replay
+## This change — M4e, model-assisted discovery and the live run as code
 
-[PR #27](https://github.com/Combraton/cbr/pull/27) against `main`, for [issue #21](https://github.com/Combraton/cbr/issues/21). **In progress. No model was called.**
+Against `main`, for [issue #21](https://github.com/Combraton/cbr/issues/21). **In progress. No model was called**, and the live run is its own step after this is reviewed and merged.
+
+m4c's call site chooses among the spans BM25 ranked **inside one file the request already named**. That cannot change what a packet finds, so it cannot move brian2, whose question failed twice because the answer never entered the candidate set. m4e is the step that can: the model may propose **search terms**, CBR runs them through its own index inside the view, and the union is a larger closed set it chooses ids from. [READINESS §5](m4/READINESS.md#model-assisted-discovery) is now what exists rather than what is planned.
+
+### A term is the one input to a model call CBR did not compose
+
+Everything else a request carries is built by CBR out of its own candidates. A term is text the model wrote that CBR then **acts on**, so it is bounded three ways — by count (4), by length (48 bytes) and by characters — and each is the typed reason `model_answer_over_bound`.
+
+**The character bound is what separates a term from a sentence.** A planted file instructing a model produces prose, and prose has spaces in it; a space is not a permitted character, so an instruction arriving where a term was asked for fails the bound rather than being searched for. The separators of a path and a glob *are* permitted, so that a term shaped like one is normalised rather than refused: `src/queue.rs` is `src queue rs`, `**/*.py` is `py`.
+
+**And normalisation is the whole safety argument, because it is not a separate path.** `discovery::words` is `lexical::query_terms` and nothing else — the same tokeniser the request's own words go through, into the same parameterised `MATCH` expression whose every element is one of those tokens quoted. There is no expression a term can write and no path it can name; a test asserts the two functions agree rather than trusting that they do.
+
+**Nothing is trimmed to fit.** Five terms where four were asked for is the typed reason, never the first four: taking part of an answer would be CBR deciding which part of the model's answer to act on.
+
+### The reservation the first version did not have
+
+**The ordinary reading takes a reserved share of the candidate set and no more**: at most 10 of the 20 offered come from the question's own words, and at most 6 are claims.
+
+Without it the step is pointless, and this is not hypothetical. The first version had no reservation, and on the fixture the ordinary reading returned more candidates than the set could hold, filled all twenty, and left a proposed term contributing nothing — `merger.md`, which shares no term with the question, never entered the candidate set at all. That is exactly backwards for the question this step exists for, where the ordinary reading returns confident near-misses and misses the answer. **A test caught it, not a reading.**
+
+### What a failed step leaves, which is not the same for the two
+
+- **Terms fails:** the deterministic reading stands.
+- **The choice fails:** the deterministic reading stands, **not the union**. The two steps are one flow — terms proposes where to look, the choice decides that any of it belongs in a packet — so carrying term-driven spans by rank alone would carry them on a suggestion nothing acted on, and BM25 scores from two different queries are not one ranking.
+- **The choice is skipped because it could not change the answer:** the union stands, because carrying everything is what the choice would have done.
+
+In every case the packet says a step did not happen, as an omission naming it with `unavailable` — the protocol's own vocabulary, and literally what it was. *Why* is the typed reason in the step's own sealed record.
+
+### The investigation limit counts, where it used to only gate
+
+At m4c the number said *whether*: a model was asked for every item of any request whose budget was above zero. m4e adds two questions per request, and a limit that counted some kinds of call and not others would be two meanings for one number.
+
+So every distinct question spends one unit; a question already asked this compile is free, because its answer is the pool's; items are asked first, because an item is what the request required and discovery is advisory; and **a flow that cannot finish is not started** — discovery claims its two units together or spends neither. Counted on the **question** rather than on the call, because a question the pool defers is still one this compile asked, and a budget counting only settled answers would admit as many calls as there are ticks.
+
+**This changes m4c's behaviour**, deliberately and visibly: a request with two items and a budget of one now satisfies the first and gives the second `investigation_budget_exhausted` rather than a model call. It is the owner's to reverse if that reading is wrong.
+
+### The arithmetic, computed rather than estimated
+
+Every bound on the two requests is a constant, so the largest either can be is a number, and `discovery::tests` computes it against the ceiling it has to fit under — a document cannot notice when a constant moves.
+
+| | Worst case, tokens | Against |
+|---|---:|---|
+| One item's selection | 39,612 | per-request 250,000 |
+| Discovery's terms step | 31,406 | per-request 250,000 |
+| Discovery's choice step | 89,916 | per-request 250,000 |
+| The whole flow, each step with its permitted repair and its count | 363,966 | per-job 1,000,000 |
+| Five such flows | 1,819,830 | run ceiling 5,000,000 |
+
+**Two questions per request — not per item and not per discovered section.** Discovery does not scale with what it finds, which is the property the whole table rests on.
+
+### The record learns two shapes, and the format becomes `/2`
+
+`Proposed` holds the terms **as the model wrote them**, because a record of what CBR made of an answer is not a record of the answer — and it is the evidence that a planted file's instruction reached no further than a term. `ChoseMany` holds the ids.
+
+A candidate now says which **kind** it is, because claims enter candidate sets here and a claim has no line range; without it a record would say `lines 0-0` of a path that is a claim id, which reads as a span of a file that does not exist. The kind is part of the question's digest, so a record sealed by m4d never answers a question asked by this build — correct, because the two showed the model different things. **No `/1` record exists anywhere but in a test store.**
+
+### Claims in candidate sets make m4d's gate load-bearing
+
+The reviewer's mutant at m4d — sealing `readable_under(view, &[])` — survived all 496 tests because no test had a claim in the store: both sides of every comparison were empty lists. m4d added the end-to-end tests; **m4e is where the property does work**, because a choice record's `offered` now holds claim text a job could read. `derivation_claims.rs` has that case with both arms, and the mutant dies on a real candidate set rather than on a constructed one.
+
+**Anchors are not offered**, and that is a boundary rather than an omission: an anchor is where a name is defined and used, and choosing among them would be choosing which definition a name means, which tags cannot say.
+
+### The live run, written down before it is run
+
+[`scripts/m4e_run.py`](../../scripts/m4e_run.py) is the first live run as code, for the reason m4b already recorded about `--calibrate`: *if the first live call needs new plumbing, the first live call runs code nobody reviewed.* Its dry-run mode drives every stage against the fake and is exercised by `m4e_harness.rs`.
+
+Every rule the owner set that a harness can enforce is a refusal made before a provider is launched, so a run that breaks one costs nothing: a checkout whose **origin** is not one of the three public repositories, a checkout off a commit the manifest pins, an investigation budget the items would exhaust before discovery was reached, a model outside the three M4 may name, an output directory inside this repository, `--live` without `--permit-model-network`, a ceiling above 5,000,000 or a stop above 2,250,000. The stop is checked **before a run, against that run's computed worst case**, because halting mid-call would leave a charge nobody reconciled and halting after the fact is a report rather than a bound.
+
+**The replay gate compares sections, not packet digests** — and that was a defect first. A sealed packet names its own request, so two request ids can never be byte-identical and the digest comparison the gate started with always differed. Byte identity across two stores asking the same request is the suite's own gate in `derivation_replay.rs`; what this one asks of a real question is whether the rebuild reproduced the same content from the records.
+
+### The consequence of the ambiguity rule, planned for
+
+A call that timed out beside a successful rerun of the same question leaves two records that disagree, and **that question is unreplayable from then on**. In a live run that is the ordinary state, not a corner case.
+
+So the gate reports it: `--ambiguity <data directory>` names every question whose records differ, both records, and the answers that differ. A gate folding these into "nothing retained" would hide the one failure an operator can act on. **The gate decides nothing** — the provider's rebuild decides and the section comparison says whether it worked; the gate explains. A test pins the two together on one store so the agreement rule cannot move in one and not the other.
+
+**The remedy is in [READINESS §6](m4/READINESS.md#the-consequence-of-the-ambiguity-rule-and-the-operators-remedy) and is demonstrated rather than described**: `evidence.purge` on the **failed** call's record — never the successful one, which would leave a history nobody made — by a principal in `authority_principals`, in a session that negotiated `evidence.retention_control`. The ledger row stays; the call was charged. `a_purge_makes_an_ambiguous_question_replayable_again` runs the whole of it: two runs propose different terms, the rebuild declines, the owner purges one, and the question replays again.
+
+**That test also earns a constant its keep.** The terms are part of the choice question's digest, and the only case where that is load-bearing is exactly this one: after a purge leaves one terms answer standing, the two choice records must be two questions rather than one ambiguous question. Without the test the constant would have been a rule nothing read.
+
+### The mutant table
+
+**Thirty-two mutants over two rounds, thirty-one killed, one surviving.** Each was run against the **whole workspace suite**, not against the tests it was aimed at. Three survived the first pass and were killed only after a test was added, and a fourth — the reviewer's, on the cap the union is composed under — survived the whole of the first round; that is the third milestone running where the survivors have been the useful part of the exercise.
+
+| Mutant | Result | What kills it |
+|---|---|---|
+| The count bound on proposed terms removed | killed | `a_terms_answer_that_breaks_a_bound_widens_nothing` |
+| The length bound on a term removed | killed | `a_term_longer_than_the_bound_is_a_typed_unmet` |
+| The character bound on a term removed | killed | `a_terms_answer_that_breaks_a_bound_widens_nothing` |
+| A space admitted as a term character | killed | the same; prose stops failing the bound and arrives as a term |
+| **A term used verbatim instead of tokenised** | killed | four, including `a_term_that_looks_like_a_path_becomes_plain_words` |
+| An id that was not offered resolved to the first candidate | killed | `a_choice_that_was_never_offered_widens_nothing`, and negative control 5 |
+| The bound on how many ids may be chosen removed | killed | `a_choice_that_was_never_offered_widens_nothing` |
+| The chosen ids kept in the model's order rather than the offered order | killed | `the_choice_comes_back_in_the_order_it_was_offered` |
+| **The reservation removed, so the ordinary reading fills the candidate set** | killed | three, including `a_term_the_model_proposed_widens_what_discovery_offers` |
+| A failed choice keeps the union instead of the deterministic reading | killed | `a_choice_that_was_never_offered_widens_nothing`, and negative control 5 |
+| A flow started with room for one step rather than two | killed | `a_flow_that_cannot_finish_is_not_started` |
+| A discovery step's derivation is not sealed | killed | two in `derivation_claims.rs` |
+| The readable set narrowed to the view, dropping the claims half | killed | four, including the m4d ones — **now through a real candidate set** |
+| The budget check removed at the selection call site | killed, **observed at its own stage** rather than in this sweep | `the_investigation_limit_counts_questions_and_the_budget_runs_out` |
+| The cap on carried claims removed when a model chose them | killed | `among_many_eligible_claims_the_packet_carries_the_ones_the_question_is_about` |
+| **The terms dropped from the choice question's digest** | killed | `a_purge_makes_an_ambiguous_question_replayable_again`, and only that |
+| A rebuild calls a model for a discovery step instead of reading a record | killed | `a_dry_run_drives_every_stage_and_reports_what_it_found` |
+| A failed step leaves no omission, so the packet does not say it failed | killed | four |
+| **A claim offered as if it were a span** | killed **after a test was corrected** | `a_candidate_set_that_held_a_claim_is_sealed_under_that_claim` |
+| **The model's chosen claims ignored, so the deterministic cut stands** | killed **after a test was added** | `a_claim_the_model_did_not_choose_is_left_out_and_one_it_chose_is_carried` |
+| **A binding claim droppable by a model that did not list it** | killed | `a_binding_claim_is_carried_whether_the_model_listed_it_or_not` |
+| **A view with nothing readable in it still buys a call** | killed **after a test was added** | `a_request_with_nothing_readable_in_its_view_buys_no_call` |
+| Span candidate ids taken from the input position rather than the kept one | **survived** | nothing — below |
+
+### The ten of round 40
+
+The reviewer's mutant, and one for each correction it took. All ten killed, each against the whole workspace suite.
+
+| Mutant | Result | What kills it |
+|---|---|---|
+| **The cap on the union removed** (the reviewer's own) | killed | `the_union_is_bounded_however_far_a_term_reaches` |
+| The reservation removed, so the ordinary reading fills the set | killed | four now, the new one among them |
+| **Every launch given the whole ceiling rather than what is left** | killed | `each_launch_is_given_what_is_left_of_the_run_and_not_the_whole_of_it` |
+| The stop checked after a run rather than before it | killed | the same test's second half |
+| **The origin check dropped, so an id is again a repository** | killed | `a_repository_is_what_its_origin_says_and_not_what_the_manifest_called_it` |
+| A pinned commit not checked against the checkout | killed | the same |
+| **The investigation check dropped, so discovery can be skipped silently** | killed | `a_run_whose_items_would_eat_the_budget_never_reaches_discovery` |
+| The work directory put back outside `--out` | killed | `a_dry_run_drives_every_stage_and_reports_what_it_found` |
+| Discovery's records counted as every record | killed | the same |
+| **The macOS gate removed from the harness test that permits the network** | killed | `no_test_launches_a_serving_provider_with_a_real_model`, extended |
+
+### The three the first pass missed, and the one that still survives
+
+**A test of mine was satisfied by the wrong thing.** `a_candidate_set_that_held_a_claim_is_sealed_under_that_claim` asserted that a request body contained `claim drains` — and a claim's own content *begins* `claim drains revision 1: …`, so the assertion held however the candidate had been labelled. The mutant offering a claim as if it were a span survived it. The fix is to assert on the line that offers it, `[k1] claim drains`, which only the offer can produce. This is the vacuity failure of m4d in a new shape: **a property whose evidence is also produced by the thing it is meant to distinguish is not evidence.**
+
+**A rule with no test for its negative arm.** Nothing asserted that a claim the model did *not* choose is left out; the tests all watched claims being carried. Both arms are now one test, because either alone is satisfied by doing nothing — a rule that always carries passes the first half, and one that always drops passes the second.
+
+**A guard written and not exercised.** The check that a request with nothing readable in its view buys no call was added from a reading and had no test, which is exactly the recurring failure this file keeps recording. It has one now, through the door a grant actually opens: a reader whose grant names no repository at all.
+
+**The survivor, recorded rather than dismissed.** `span_candidates` gives a candidate the id of its position among the **kept** spans; the mutant gives it the position among the spans it was *handed*. The two differ only when a span is dropped for having a blob that cannot be read — and no test reaches that, because the indexer skips a blob too large to read, so a span in the ranked set always has readable bytes. The branch is reachable only when an index outlives the bytes it indexed.
+
+**It is not recorded as equivalent**, and the difference matters: STATE already records a mutant this session argued was equivalent and was not. What can be said is narrower. The two lists are appended in one statement, so they cannot drift; the mutant changes which of two correct-today schemes is used; and if the branch ever became reachable, the mutant's scheme would resolve an id to a span nobody was shown — the closed set broken from the inside, which is why the code is written the other way.
+
+### Round 40: five bounded corrections, and what each of them was
+
+The reviewer accepted discovery's code as built and returned five corrections — **one survived mutant in it and four defects in the harness**. Each is worth keeping for the shape of the mistake rather than the fix.
+
+**A bound no fixture reached.** `span_room` caps the union at twenty candidates; the reviewer set it to `usize::MAX` and all 550 tests passed. The union in every fixture was eleven, so nothing was ever near the cap, and the 89,916-token worst case the arithmetic rests on was resting on a constant no test read. `bloom.md` is sixteen sheets of chunks that only one term reaches, and the assertion is on the choose **body**: twenty ids offered, no twenty-first, none of the reserved ten taken by the term and at least one of the rest given to it. **This is the golden-digest lesson of m3d again** — a bound is only a bound where something presses against it.
+
+**A hard cap that was per launch.** `Ledger::run_spend` sums the store it was opened over, and every run of §9 opens a new data directory, so passing `--model-run-ceiling 5,000,000` to each of six launches is the cap six times. What held the total down was the per-job ceiling of 1,000,000 plus a stop checked after each run — about 3.25M worst case, under the cap by arithmetic nobody had done. Each launch is now given the cap **less what the launches before it spent**, and the stop is checked **before** a run against that run's computed worst case. READINESS said "enforced by the per-job ceiling"; it says what is true now, and the six runs it names are reconciled with the five the table counted.
+
+**"Public repositories only", enforced against a label.** The id in a manifest is a string somebody typed. `{"id": "brian2", "path": <any checkout>}` was admitted — the owner's word covers repositories, and the check covered names. The origin is now read from the checkout with `git remote get-url origin`, normalised across its spellings, and matched against a pinned table, with the commit checked too when the manifest pins one; both in **dry-run mode as well**, because a dry run reads the same bytes off the same disk. The suite's own fixture now carries `cbr`'s origin, which is the check made against the fixture rather than around it.
+
+**A measurement that could have measured nothing and said so nowhere.** Items are asked first and a flow that cannot finish is not started, so a run with four wants and an investigation of five asks discovery *nothing* — and the packet it produces is indistinguishable from one the model was asked about and did not widen. The harness refuses a run whose investigation is below `wants + 2`, and every run's report counts the `discovery.*` records that were sealed, so a reviewer can see the question was asked rather than infer it from a packet.
+
+**The evidence was in a temp directory.** A live run's store holds the ledger the spend is read from and the records the replay gate replays, and the comment called it "the evidence" while `tempfile.mkdtemp()` put it on internal disk for a reboot to empty. Every work directory is now under `--out`, which `check` already requires to be outside this repository, and nothing in the harness deletes a store.
+
+**And the permit-flag guard had a hole the shape of this harness.** `credential_discipline.rs` excuses a piece that passes `--permit-model-network` while configuring no model — written for a Rust launch whose whole configuration is visible in the piece. The harness's `--live` *writes* a production configuration naming a `model_runtime` and then launches under it, so two test cases passed the flag and were excused. Both are now their own test, gated off macOS with every other one; and the guard counts `"--live"` as configuring a model, so the next one cannot slip through the same way. The two refusals that do not need `--live` — a ceiling above the cap, a stop above the stop — are asserted in dry-run mode, on every machine.
+
+### A probe bug, in the other direction from the last one
+
+m4d recorded a probe that reported **seven survivors it never observed**. This one reported a *kill* it should not have trusted, by a different route: `apply_mutant` backed up each file as it processed each edit, so a mutant with **two edits to one file** stored the already-mutated text as its backup and "restored" half a mutant. The half that stayed was an unused loop variable, which changes no behaviour — so the two mutants that ran after it were not wrong, and both were re-run clean to say so rather than reasoned about.
+
+**What it cost was a verdict, not a result.** The re-check of that mutant came back `NOT-APPLIED` because its target text was no longer there, which is the probe refusing to guess — the same discipline that produced `NO-RESULTS` at m4d, working. The fix is one line: back up each file once, before any edit touches it. **A probe is a measuring instrument and it gets the same treatment as the code**, which is now twice this milestone.
+
+## Earlier — M4d, derivation records and replay
+
+[PR #27](https://github.com/Combraton/cbr/pull/27), **merged** as `7fa939c`, pinned to `8bc5698`, `merged_at: 2026-09-21T16:21:16Z`. For [issue #21](https://github.com/Combraton/cbr/issues/21). **No model was called.**
 
 ### The permitted hand launch, because a rule broken twice is not working
 
@@ -132,11 +295,11 @@ Seven, each run against the whole workspace suite after the probe was fixed, all
 | The reader's claims are computed as empty | killed | `a_reader_with_the_claim_passes_every_door` |
 | The rebuild compares no claims | killed | `a_rebuild_answers_a_reader_with_the_claim_and_not_one_without` |
 
-### The m4e scope decision, recorded now because m4e depends on it
+### The m4e scope decision, recorded at m4d and acted on at m4e
 
 Model-assisted selection chooses among spans ranked **inside one file the request already named**. It does not touch discovery, so it cannot change *what a packet finds*. **That is why it cannot move brian2**: that question failed twice because the answer never entered the candidate set, and a better choice inside the wrong file is still the wrong file.
 
-So m4e needs **model-assisted discovery**, designed now in [READINESS §5](m4/READINESS.md#model-assisted-discovery-designed-before-m4e-builds-it) inside the same safety property: the model may propose a bounded number of **search terms**, which are untrusted query input and never paths — CBR runs them through its own index, inside the view, exactly as it runs the task's own words; the union is a larger closed set it chooses ids from; every step is a recorded derivation. It still never names a file, a span or a label, and negative control 5 is re-run against both steps.
+So m4e needs **model-assisted discovery**, designed now in [READINESS §5](m4/READINESS.md#model-assisted-discovery) inside the same safety property: the model may propose a bounded number of **search terms**, which are untrusted query input and never paths — CBR runs them through its own index, inside the view, exactly as it runs the task's own words; the union is a larger closed set it chooses ids from; every step is a recorded derivation. It still never names a file, a span or a label, and negative control 5 is re-run against both steps.
 
 **What it cannot do:** a term the model proposes still has to occur in the repository. This makes CBR look where its own reading of the task did not suggest; it does not make CBR find what is not written down.
 
@@ -623,7 +786,7 @@ The readiness document states the scope and the PR split, restates the owner's s
 
 The review's largest catch is one this session had not seen: **`POST /v1/responses/input_tokens` is itself a send.** Counting there first serialises the request and puts it on the wire *before* admission has decided whether it may go — spending whatever the count costs and defeating the check it was meant to serve. Admission is therefore two steps: a **local conservative estimate that alone can refuse**, and the provider count only for a request that step has already admitted, itself under the view rule, itself recorded, its own cost debited. That is why m4a now has a complete admission path with **no network at all**, which is what CI exercises.
 
-The other six: the counters are **durable and conservative** — in the store, surviving restart, a reservation written before the send so a crash leaves the spend counted rather than forgotten, over CBR's own rolling five hours, with provider-reported exhaustion a **distinct** typed outcome because the quota is shared and CBR only sees its own spending; **repository text is untrusted input**, so model-assisted selection chooses only among candidate ids CBR offered and never introduces a path, span, citation or label, with negative control 5 planting a file that tells it to; **a derivation record holds repository excerpts**, so it is readable only under the job's own view and is never reachable through a packet by a reader who could not read its contents; **the Keychain is touched only when a model is configured**, which CI never is, with the read mechanism a stated m4b decision and its tradeoff written down now; **m4e has a hard cap of 5,000,000 tokens** enforced by the per-job ceiling rather than by intention, with a stop at half again over the estimate; and fragment validation becomes a mechanism.
+The other six: the counters are **durable and conservative** — in the store, surviving restart, a reservation written before the send so a crash leaves the spend counted rather than forgotten, over CBR's own rolling five hours, with provider-reported exhaustion a **distinct** typed outcome because the quota is shared and CBR only sees its own spending; **repository text is untrusted input**, so model-assisted selection chooses only among candidate ids CBR offered and never introduces a path, span, citation or label, with negative control 5 planting a file that tells it to; **a derivation record holds repository excerpts**, so it is readable only under the job's own view and is never reachable through a packet by a reader who could not read its contents; **the Keychain is touched only when a model is configured**, which CI never is, with the read mechanism a stated m4b decision and its tradeoff written down now; **m4e has a hard cap of 5,000,000 tokens** enforced by `--model-run-ceiling` given to each launch as the cap less what the launches before it spent — not, as this said until the round-40 review, by the per-job ceiling, which bounds one job and so bounds one run of six — with a stop at half again over the estimate; and fragment validation becomes a mechanism.
 
 ### The fourth instance of a rule kept by memory
 

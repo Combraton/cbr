@@ -39,6 +39,28 @@ use crate::store::{Change, Commit, NewEvent, ProviderEvent, ProviderWrite, Subje
 /// link to a link is ordinary; eight of them is a loop or a trap.
 const LINK_HOPS: usize = 8;
 
+/// The request authorised an investigation and it did not stretch this
+/// far.
+///
+/// The same name the job's own `investigate` script step ends a job
+/// with, because it is the same limit reached in two places: there by a
+/// script asking for more turns than the request allowed, here by a
+/// compile asking for more questions than it allowed. One limit, one
+/// name.
+const INVESTIGATION_EXHAUSTED: &str = "investigation_budget_exhausted";
+
+/// The section ids discovery's two steps are omitted under when they
+/// cannot run, and the `item` a derivation made for one is recorded
+/// against.
+///
+/// **Discovery belongs to no item**, which is the whole of what it is
+/// for: CONTEXT section 6 content is what nobody asked for. So the
+/// record names the step rather than an item, and a reader looking for
+/// why a packet discovered what it did has a name to look for.
+const TERMS_SECTION: &str = "d-model-terms";
+const CHOICE_SECTION: &str = "d-model-choice";
+const DISCOVERY_ITEM: &str = "";
+
 /// A symbolic link's blob holds a path. Anything longer than this is not
 /// one, and is refused without being read into memory.
 const LINK_TARGET_BYTES: u64 = 4096;
@@ -171,7 +193,7 @@ struct Assist<'a> {
     job: &'a str,
     request: &'a str,
     task: &'a str,
-    /// The request's investigation budget.
+    /// The request's investigation budget, **in questions**.
     ///
     /// **Zero is the deterministic path.** A request that authorised no
     /// investigation gets exactly the compiler M3 shipped, which is what
@@ -179,7 +201,26 @@ struct Assist<'a> {
     /// against rather than a second build nobody ran. MODEL-RUNTIME §63
     /// is where the meaning comes from: *an investigation can use several
     /// turns: select a source, inspect it, update findings*.
+    ///
+    /// **It counts at m4e, where at m4c it only gated.** m4c asked a
+    /// model for every item of any request whose budget was above zero,
+    /// so the number said *whether* and not *how much*. m4e adds two
+    /// more questions per request, and a limit that counted some kinds
+    /// of call and not others would be two meanings for one number. So
+    /// every distinct question a compile puts to a model spends one,
+    /// items first because an item is what the request required and
+    /// discovery is advisory.
     investigation: i64,
+    /// Every distinct question this compile has put to a model, in the
+    /// order it asked.
+    ///
+    /// **One compile pass, recomputed each tick.** A compile asks the
+    /// same questions in the same order every tick — the basis is fixed
+    /// by the job and the pool keeps a settled answer until its caller
+    /// takes it — so counting inside one pass gives the same numbers on
+    /// each of them. A question already in this list is free: the answer
+    /// is the pool's and no second call is made for it.
+    asked: std::cell::RefCell<Vec<String>>,
     /// The request's own deadline and the tick's instant, both as the
     /// protocol writes them. Their difference is what the pool is given.
     deadline: &'a str,
@@ -193,6 +234,40 @@ struct Assist<'a> {
     claims: &'a [String],
 }
 
+impl Assist<'_> {
+    /// Whether `key` may be put to a model: either this compile has
+    /// asked it already, or the investigation budget has room for one
+    /// more question.
+    ///
+    /// **Counted here rather than where the call is made**, because a
+    /// question deferred by the work pool is still a question this
+    /// compile asked, and a budget that only counted settled answers
+    /// would admit as many calls as there are ticks.
+    fn admits(&self, key: &str) -> bool {
+        let mut asked = self.asked.borrow_mut();
+        if asked.iter().any(|already| already == key) {
+            return true;
+        }
+        if (asked.len() as i64) >= self.investigation {
+            return false;
+        }
+        asked.push(key.to_string());
+        true
+    }
+
+    /// Whether the budget has room for `count` more distinct questions.
+    ///
+    /// **A flow that cannot finish is not started.** Discovery is two
+    /// questions and the second one is what turns the first one's terms
+    /// into sections; asking for terms with no room left to choose from
+    /// them would spend a shared quota on an answer nothing can use.
+    fn room_for(&self, count: usize) -> bool {
+        self.investigation
+            .saturating_sub(self.asked.borrow().len() as i64)
+            >= count as i64
+    }
+}
+
 /// What selecting a source decided.
 enum Choice {
     Selected(Box<Selection>),
@@ -203,6 +278,39 @@ enum Choice {
     /// quiet fall back to the span BM25 ranked first: that would report a
     /// model-assisted selection no model made.
     Unmet(&'static str),
+}
+
+/// What discovery's two model steps decided.
+struct Widened {
+    /// The spans the packet draws its discovered sections from, in the
+    /// order they were offered — which is the deterministic path's own
+    /// ranking, for the part that came from it.
+    spans: Vec<cbr_memory::retrieval::Found>,
+    /// The claims a model chose, or `None` for the deterministic cut.
+    claims: Option<Vec<String>>,
+    /// The section id of a step that could not run, so the packet can
+    /// say one did not happen.
+    omitted: Option<String>,
+}
+
+/// Which discovery step a question is.
+///
+/// It decides two things and nothing else: what the request body says,
+/// and how the reply is read. Everything around it — the budget, the
+/// pool, the record, the rebuild — is the same for both, which is why
+/// there is one `ask_step` and not two.
+enum Step {
+    Terms,
+    /// The terms the first step proposed, which the body prints and the
+    /// question's digest covers.
+    Choose(Vec<String>),
+}
+
+/// What asking a discovery step came to, this tick.
+enum Asked {
+    Answered(crate::derivation::Answer),
+    /// Nothing yet. Ask again next tick; nothing is written meanwhile.
+    NotReady,
 }
 
 /// What asking the model came to, this tick.
@@ -426,6 +534,7 @@ impl Provider {
             now: tick.now.clone(),
             view: &view,
             claims: &claims,
+            asked: std::cell::RefCell::new(Vec::new()),
         };
         for item in list(job, &["items"]) {
             self.decide_item(item, &record, &trees, &assist, &mut decided, tick)?;
@@ -435,7 +544,7 @@ impl Provider {
         // a packet that answers only what was already located is a pointer
         // list. Everything here is advisory and is dropped by capacity
         // before anything an item required.
-        self.discover(&record, job, &trees, &mut decided, tick)?;
+        self.discover(&record, job, &trees, &mut decided, &assist, tick)?;
 
         // **The compile that read the answers is the one that frees
         // them.** Everything this job asked a model has now been used, and
@@ -511,31 +620,56 @@ impl Provider {
     /// Sections no item asked for (CONTEXT section 6): spans the question
     /// finds, the definitions and callers of the names in it, and the claims
     /// that bear on the basis.
+    ///
+    /// **Model-assisted discovery lives here and nowhere else.** The
+    /// deterministic reading runs first and always: it is exactly what a
+    /// request authorising no investigation gets, and it is what stands
+    /// when a model step cannot be used. All a model may do is widen the
+    /// set the sections are drawn from, and choose within it — the
+    /// labels, the ranks and the citations are the deterministic path's
+    /// either way.
     fn discover(
         &self,
         record: &Value,
         job: &Value,
         trees: &[Frontier],
         decided: &mut Decided,
+        assist: &Assist<'_>,
         tick: &mut Tick,
     ) -> Result<(), TickError> {
         let question = Self::question(record, job);
-        self.discover_spans(&question, trees, decided, tick)?;
+        let found = self.ranked_spans(&question, trees)?;
+        let claims = self.ranked_claims(record, job, decided)?;
+        let widened = self.assist_discovery(&question, &found, &claims, trees, assist, tick)?;
+        self.publish_spans(&widened.spans, &question, trees, decided, tick)?;
         self.discover_anchors(&Self::symbols(record, job), trees, decided)?;
-        self.discover_claims(record, job, decided)?;
+        Self::publish_claims(claims, widened.claims.as_deref(), decided);
+        if let Some(section) = widened.omitted {
+            // **The packet says a step did not happen.** The omission
+            // vocabulary is the protocol's four, so `unavailable` is the
+            // one that fits and is literally what it was; *why* is the
+            // typed reason in the step's own derivation record, which is
+            // sealed whether the answer was usable or not.
+            decided.omitted.push(object(vec![
+                ("section_id", string(&section)),
+                ("reason", string("unavailable")),
+            ]));
+        }
         Ok(())
     }
 
-    /// Retrieval over the whole view, from the question rather than from a
-    /// path. Spans an item already cited are skipped: a packet should not
-    /// pay twice for the same bytes.
-    fn discover_spans(
+    /// Retrieval over the whole view, from a question rather than from a
+    /// path.
+    ///
+    /// **Split out at m4e** because the same search runs twice: once for
+    /// the request's own words, and once for the terms a model proposed
+    /// — which take exactly this path, through CBR's own index, inside
+    /// the view, with no branch of their own.
+    fn ranked_spans(
         &self,
         question: &str,
         trees: &[Frontier],
-        decided: &mut Decided,
-        tick: &mut Tick,
-    ) -> Result<(), TickError> {
+    ) -> Result<Vec<cbr_memory::retrieval::Found>, TickError> {
         use cbr_memory::retrieval::{Ask, Bounds, Readable};
         let readable: Vec<Readable<'_>> = trees
             .iter()
@@ -546,7 +680,7 @@ impl Provider {
             })
             .collect();
         if readable.is_empty() {
-            return Ok(());
+            return Ok(Vec::new());
         }
         // Ask for more rows than the packet will carry: the per-path cap
         // below discards some of them, and asking for exactly the budget
@@ -572,7 +706,26 @@ impl Provider {
             &bounds,
         )
         .map_err(|_| ProtocolError::new_internal_error())?;
+        Ok(answer.found)
+    }
 
+    /// Turn the spans discovery settled on into sections, with the
+    /// per-path cap, the widening and the overlap rule that have always
+    /// applied to them.
+    ///
+    /// `found` is the deterministic reading, or — when a model helped —
+    /// the union it was offered, filtered to what it chose. **Everything
+    /// below this line is the same either way**, which is what "the
+    /// labels, ranks and citations stay the deterministic path's" means
+    /// in code rather than in a sentence.
+    fn publish_spans(
+        &self,
+        found: &[cbr_memory::retrieval::Found],
+        question: &str,
+        trees: &[Frontier],
+        decided: &mut Decided,
+        tick: &mut Tick,
+    ) -> Result<(), TickError> {
         let mut per_path: std::collections::BTreeMap<String, usize> =
             std::collections::BTreeMap::new();
         // The spans this loop has already published. `decided.selections`
@@ -591,7 +744,7 @@ impl Provider {
             })
             .collect();
         let mut taken = 0;
-        for found in answer.found {
+        for found in found.iter().cloned() {
             if taken >= compiler::DISCOVERED_SPANS {
                 break;
             }
@@ -815,12 +968,16 @@ impl Provider {
     /// 14 makes a historical section never current for an item and reports
     /// it at the read, which is what INTERNALS section 5 step 3 means by
     /// keeping rejected alternatives distinguishable rather than absent.
-    fn discover_claims(
+    /// **Split at m4e into eligibility-and-ranking, here, and
+    /// carrying, in [`Self::publish_claims`]** — because claims enter the
+    /// candidate set a model chooses from, and a cap cannot be applied
+    /// while the set is still being offered.
+    fn ranked_claims(
         &self,
         record: &Value,
         job: &Value,
         decided: &mut Decided,
-    ) -> Result<(), TickError> {
+    ) -> Result<Vec<(usize, String, compiler::Discovered)>, TickError> {
         let basis = at(record, &["basis"]);
         let repositories: Vec<String> = list(basis, &["repositories"])
             .iter()
@@ -947,12 +1104,46 @@ impl Provider {
             ));
         }
 
-        // Rank, then cut. The tie-break is the claim id, so two claims that
-        // share the question equally are ordered by something stable rather
-        // than by the order the store happened to return them in.
+        // Rank, but do not cut. The tie-break is the claim id, so two
+        // claims that share the question equally are ordered by something
+        // stable rather than by the order the store happened to return
+        // them in.
         ranked.sort_by(|left, right| right.0.cmp(&left.0).then(left.1.cmp(&right.1)));
-        for (position, (_, claim, discovered)) in ranked.into_iter().enumerate() {
-            if position < compiler::CARRIED_CLAIMS {
+        Ok(ranked)
+    }
+
+    /// Carry the claims the packet keeps, and say why the rest were left
+    /// out.
+    ///
+    /// `chosen` is `None` for the deterministic cut — the first
+    /// [`compiler::CARRIED_CLAIMS`] of the ranking, which is the m3c rule
+    /// unchanged — and `Some` when a model chose out of the candidate
+    /// set. **The cap applies either way**: a model that chose six claims
+    /// does not thereby widen a packet that carries four, and a claim it
+    /// did not choose is omitted for `applicability` exactly as one
+    /// ranked below the cut is.
+    fn publish_claims(
+        ranked: Vec<(usize, String, compiler::Discovered)>,
+        chosen: Option<&[String]>,
+        decided: &mut Decided,
+    ) {
+        let mut carried = 0;
+        for (_, claim, discovered) in ranked {
+            // **A binding claim is carried whether a model listed it or
+            // not.** `binding` is an authority's act, and the rule that
+            // a model may never mark a claim binding is worth nothing if
+            // a model may quietly unmark one by leaving it out of a
+            // list. INTERNALS section 5 step 3 puts it plainly about
+            // this rank: losing it loses the answer. The cap still
+            // applies, and so does every other claim's eligibility.
+            let binding = discovered.rank == compiler::Rank::BindingClaim;
+            let wanted = binding
+                || match chosen {
+                    Some(chosen) => chosen.contains(&claim),
+                    None => true,
+                };
+            if wanted && carried < compiler::CARRIED_CLAIMS {
+                carried += 1;
                 decided.discovered.push(discovered);
             } else {
                 decided.omitted.push(object(vec![
@@ -961,7 +1152,415 @@ impl Provider {
                 ]));
             }
         }
-        Ok(())
+    }
+
+    /// **The two model steps of discovery**, or the deterministic reading
+    /// when there is no model, no budget for both, or nothing to choose.
+    ///
+    /// Written as one function because the two steps are one flow: the
+    /// terms the first proposes are what the second chooses among, and
+    /// neither is worth making on its own.
+    fn assist_discovery(
+        &self,
+        question: &str,
+        found: &[cbr_memory::retrieval::Found],
+        claims: &[(usize, String, compiler::Discovered)],
+        trees: &[Frontier],
+        assist: &Assist<'_>,
+        tick: &mut Tick,
+    ) -> Result<Widened, TickError> {
+        let deterministic = || Widened {
+            spans: found.to_vec(),
+            claims: None,
+            omitted: None,
+        };
+        let Some(serving) = self.model.clone() else {
+            return Ok(deterministic());
+        };
+        if assist.investigation <= 0 {
+            return Ok(deterministic());
+        }
+        // **Nothing readable is not the same as nothing found.** An
+        // empty *result* is exactly the case the terms step exists for —
+        // brian2's, where the ordinary reading finds nothing useful. An
+        // empty *view* is a request with no repository to search, where
+        // every term would be run against nothing, so the call could not
+        // change the answer and is not made.
+        if trees.is_empty() {
+            return Ok(deterministic());
+        }
+        // **A flow that cannot finish is not started.** The terms step's
+        // answer is only worth anything if there is budget left to choose
+        // among what it widens to, so the two units are claimed together
+        // or neither is spent.
+        if !assist.room_for(2) {
+            return Ok(deterministic());
+        }
+        let digest = cbr_encoding::digest_bytes(question.as_bytes());
+
+        // ---- step one: the terms ------------------------------------
+        let (seen, _) =
+            self.span_candidates(&found[..found.len().min(crate::discovery::SEEN)], trees);
+        let terms = match self.ask_step(
+            &serving,
+            assist,
+            &format!(
+                "model:{}:{}:discovery.terms:{digest}",
+                assist.job, assist.request
+            ),
+            &format!("discovery.terms {question}"),
+            seen,
+            Step::Terms,
+            tick,
+        )? {
+            Asked::NotReady => return Err(TickError::NotReady),
+            Asked::Answered(crate::derivation::Answer::Proposed(terms)) => terms,
+            // Anything else — a bound broken, a call that failed, a
+            // rebuild with nothing retained, a record of another shape —
+            // leaves the deterministic reading standing and the packet
+            // saying the step did not happen.
+            Asked::Answered(_) => {
+                return Ok(Widened {
+                    spans: found.to_vec(),
+                    claims: None,
+                    omitted: Some(TERMS_SECTION.to_string()),
+                });
+            }
+        };
+
+        // ---- the union: CBR's own search, for the terms it was given --
+        //
+        // **This is the whole of what a term does.** It is tokenised and
+        // run through the same index, over the same view, as the
+        // request's own words; what comes back are spans CBR found, at
+        // paths CBR resolved, inside repositories the grant allowed. A
+        // term cannot name any of those.
+        //
+        // **The ordinary reading takes a reserved share and no more.**
+        // On a real repository it returns more than the set can hold, so
+        // without this it fills every slot and a term contributes
+        // nothing — which is backwards for the question this step is
+        // for, whose answer the ordinary reading missed while returning
+        // plenty of confident near-misses.
+        let mut union = found[..found.len().min(crate::discovery::FROM_QUESTION)].to_vec();
+        let query = crate::discovery::query(&terms);
+        let shown_claims = claims.len().min(crate::discovery::CLAIMS_SHOWN);
+        let span_room = crate::discovery::CANDIDATES.saturating_sub(shown_claims);
+        if !query.is_empty() {
+            for extra in self.ranked_spans(&query, trees)? {
+                if union.len() >= span_room {
+                    break;
+                }
+                let already = union
+                    .iter()
+                    .any(|have| have.blob == extra.blob && have.start_byte == extra.start_byte);
+                if !already {
+                    union.push(extra);
+                }
+            }
+        }
+        union.truncate(span_room);
+
+        // ---- step two: the choice ------------------------------------
+        // **The union is what was offered, not what was searched.** A
+        // span whose bytes could not be read is offered to nobody, so it
+        // leaves both lists together and an id keeps meaning the span
+        // the packet would publish.
+        let (mut candidates, union) = self.span_candidates(&union, trees);
+        let claim_ids: Vec<String> = claims
+            .iter()
+            .take(shown_claims)
+            .map(|(_, claim, _)| claim.clone())
+            .collect();
+        for (position, (_, _, discovered)) in claims.iter().take(shown_claims).enumerate() {
+            candidates.push(crate::selection::Candidate {
+                id: format!("k{}", position + 1),
+                kind: crate::selection::KIND_CLAIM,
+                path: claim_ids[position].clone(),
+                start_line: 0,
+                end_line: 0,
+                // **Bounded in bytes, not characters.** The
+                // per-request arithmetic is computed from a byte
+                // bound, and `chars().take(n)` is up to four times
+                // that on non-Latin text -- which a claim's statement
+                // may well be.
+                text: crate::discovery::clipped(&discovered.content, compiler::EXCERPT_BYTES),
+            });
+        }
+        if !crate::discovery::worth_choosing(&candidates) {
+            // Everything offered is going in, so the call would decide
+            // nothing. What the terms widened to still stands.
+            return Ok(Widened {
+                spans: union,
+                claims: None,
+                omitted: None,
+            });
+        }
+        let chosen = match self.ask_step(
+            &serving,
+            assist,
+            // **The key is the question**, which is m4c's own rule, and
+            // this question includes the terms. Nothing today can ask
+            // this key twice under different terms -- the terms answer
+            // is the pool's and is stable across the ticks of one
+            // compile -- and a key that disagreed with its question
+            // would be a coupling waiting to be broken.
+            &format!(
+                "model:{}:{}:discovery.choose:{digest}:{}",
+                assist.job,
+                assist.request,
+                cbr_encoding::digest_bytes(terms.join(" ").as_bytes())
+            ),
+            // **The terms are part of the question**, so a rebuild that
+            // retained different terms asks a different question here and
+            // does not answer it from this record.
+            &format!("discovery.choose {question} | {}", terms.join(" ")),
+            candidates,
+            Step::Choose(terms),
+            tick,
+        )? {
+            Asked::NotReady => return Err(TickError::NotReady),
+            Asked::Answered(crate::derivation::Answer::ChoseMany(ids)) => ids,
+            // **A failed choice leaves the deterministic reading, not
+            // the union.** The two steps are one flow: the terms step
+            // proposes where to look and the choice is what decides that
+            // any of it belongs in a packet. Carrying term-driven spans
+            // by rank alone would be carrying them on the strength of a
+            // suggestion nothing acted on — and BM25 scores from two
+            // different queries are not one ranking. Skipping the choice
+            // because it *could not change the answer* is a different
+            // case, and the union stands there because that is what the
+            // choice would have done.
+            Asked::Answered(_) => {
+                return Ok(Widened {
+                    spans: found.to_vec(),
+                    claims: None,
+                    omitted: Some(CHOICE_SECTION.to_string()),
+                });
+            }
+        };
+
+        // **The ids are resolved against the offered list and nothing
+        // else**, a second time and on the way out. A span is kept in the
+        // order it was offered, which is the deterministic path's own
+        // ranking; a claim id the model never saw is not a claim.
+        let spans = union
+            .into_iter()
+            .enumerate()
+            .filter(|(position, _)| chosen.iter().any(|id| *id == format!("d{}", position + 1)))
+            .map(|(_, found)| found)
+            .collect();
+        let chosen_claims = claim_ids
+            .iter()
+            .enumerate()
+            .filter(|(position, _)| chosen.iter().any(|id| *id == format!("k{}", position + 1)))
+            .map(|(_, claim)| claim.clone())
+            .collect();
+        Ok(Widened {
+            spans,
+            claims: Some(chosen_claims),
+            omitted: None,
+        })
+    }
+
+    /// Every span that can actually be shown, as a candidate — **and the
+    /// spans themselves, in the same order**.
+    ///
+    /// The two travel together because an id is a position: `d3` means
+    /// the third candidate offered, and the third candidate offered is
+    /// what the packet publishes if the model chooses it. Returning the
+    /// candidates alone and re-deriving the spans from the input would
+    /// put the two out of step the moment one was dropped — an id
+    /// resolving to a span nobody was shown, which is the closed set
+    /// broken from the inside.
+    ///
+    /// A span whose blob cannot be read is **dropped rather than offered
+    /// empty**: an id whose text nobody could show is an id chosen blind,
+    /// and the deterministic path would not have published it either.
+    fn span_candidates(
+        &self,
+        found: &[cbr_memory::retrieval::Found],
+        trees: &[Frontier],
+    ) -> (
+        Vec<crate::selection::Candidate>,
+        Vec<cbr_memory::retrieval::Found>,
+    ) {
+        let mut candidates = Vec::new();
+        let mut kept = Vec::new();
+        for found in found.iter() {
+            let Some(frontier) = trees
+                .iter()
+                .find(|frontier| frontier.repository == found.repository)
+            else {
+                continue;
+            };
+            let Ok(Some(bytes)) = cbr_identity::read_blob_bounded(
+                &frontier.checkout,
+                &found.blob,
+                cbr_memory::index::MAX_BLOB_BYTES as u64,
+            ) else {
+                continue;
+            };
+            let text = usize::try_from(found.start_byte)
+                .ok()
+                .zip(usize::try_from(found.end_byte).ok())
+                .and_then(|(start, end)| bytes.get(start..end))
+                .map(|span| String::from_utf8_lossy(span).to_string())
+                .unwrap_or_default();
+            candidates.push(crate::selection::Candidate {
+                id: format!("d{}", candidates.len() + 1),
+                kind: crate::selection::KIND_SPAN,
+                path: found.path.clone(),
+                start_line: found.start_line as usize,
+                end_line: found.end_line as usize,
+                text,
+            });
+            kept.push(found.clone());
+        }
+        (candidates, kept)
+    }
+
+    /// Put one discovery question to a model, or answer it from a
+    /// retained record on a rebuild.
+    ///
+    /// **The same path [`Self::assist`] takes**, for a question that is
+    /// not an item's: the budget is spent on the question, a rebuild
+    /// reads a record instead of calling, the answer is sealed when it is
+    /// taken, and every failure is a typed reason. What differs is only
+    /// what the body says and how the reply is read, which is [`Step`].
+    #[allow(clippy::too_many_arguments)]
+    fn ask_step(
+        &self,
+        serving: &std::sync::Arc<crate::provider::Serving>,
+        assist: &Assist<'_>,
+        key: &str,
+        selector: &str,
+        candidates: Vec<crate::selection::Candidate>,
+        step: Step,
+        tick: &mut Tick,
+    ) -> Result<Asked, TickError> {
+        // Unreachable while `room_for(2)` guards the flow, and checked
+        // anyway: this is where a unit is spent, and a step that spends
+        // none has not been asked.
+        if !assist.admits(key) {
+            return Ok(Asked::Answered(crate::derivation::Answer::Unmet(
+                INVESTIGATION_EXHAUSTED,
+            )));
+        }
+        let offered = crate::derivation::offered(&candidates);
+        let deadline = crate::clock::unix_of(assist.deadline)
+            .zip(crate::clock::unix_of(&assist.now))
+            .map(|(deadline, now)| {
+                std::time::Instant::now()
+                    + std::time::Duration::from_secs(deadline.saturating_sub(now))
+            });
+
+        if matches!(serving.wire, crate::provider::Wire::Replay) {
+            let wanted = crate::derivation::Question {
+                model: &serving.model,
+                dialect: serving.dialect.name(),
+                task: assist.task,
+                selector,
+                offered: &offered,
+            }
+            .digest();
+            return Ok(Asked::Answered(match self.retained(&wanted, assist)? {
+                Some(answer) => answer,
+                None => crate::derivation::Answer::Unmet(crate::derivation::NOT_RETAINED),
+            }));
+        }
+
+        let asking = || {
+            let serving = std::sync::Arc::clone(serving);
+            let (job, request) = (assist.job.to_string(), assist.request.to_string());
+            let (task, selector, now) = (
+                assist.task.to_string(),
+                selector.to_string(),
+                assist.now.clone(),
+            );
+            let beside = self.store.open_beside();
+            move || {
+                let beside = beside.map_err(|_| "store_unavailable")?;
+                let body = match &step {
+                    Step::Terms => crate::discovery::propose(&serving.model, &task, &candidates),
+                    Step::Choose(terms) => {
+                        crate::discovery::choose(&serving.model, &task, terms, &candidates)
+                    }
+                };
+                let started = std::time::Instant::now();
+                let outcome = serving.ask(&beside, &now, &job, &request, &body);
+                let latency_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
+                let (answer, cost) = match outcome {
+                    crate::model::Outcome::Answered { reply, cost } => (
+                        match &step {
+                            Step::Terms => match crate::discovery::proposed(&reply) {
+                                Ok(terms) => crate::derivation::Answer::Proposed(terms),
+                                Err(reason) => crate::derivation::Answer::Unmet(reason),
+                            },
+                            Step::Choose(_) => {
+                                match crate::discovery::chosen(&reply, &candidates) {
+                                    Ok(picked) => crate::derivation::Answer::ChoseMany(
+                                        picked
+                                            .into_iter()
+                                            .map(|at| candidates[at].id.clone())
+                                            .collect(),
+                                    ),
+                                    Err(reason) => crate::derivation::Answer::Unmet(reason),
+                                }
+                            }
+                        },
+                        Some(cost),
+                    ),
+                    crate::model::Outcome::Unmet { reason, cost } => {
+                        (crate::derivation::Answer::Unmet(reason), Some(cost))
+                    }
+                    crate::model::Outcome::Refused(refusal) => {
+                        (crate::derivation::Answer::Unmet(refusal.reason()), None)
+                    }
+                };
+                Ok(crate::derivation::record(&crate::derivation::Made {
+                    question: &crate::derivation::Question {
+                        model: &serving.model,
+                        dialect: serving.dialect.name(),
+                        task: &task,
+                        selector: &selector,
+                        offered: &offered,
+                    },
+                    answer,
+                    spend: crate::derivation::Spend {
+                        admission: match cost {
+                            None => crate::derivation::NOT_ADMITTED,
+                            Some(cost) if cost.counted.is_some() => crate::model::ADMITTED_COUNT,
+                            Some(_) => crate::model::ADMITTED_LOCAL,
+                        },
+                        usage: cost.and_then(|cost| cost.usage),
+                        input_usage: cost.and_then(|cost| cost.input_usage),
+                        counted: cost.and_then(|cost| cost.counted),
+                        repairs: cost.map(|cost| cost.repairs).unwrap_or_default(),
+                        latency_ms,
+                    },
+                    job: &job,
+                    request: &request,
+                    item: DISCOVERY_ITEM,
+                    made_at: &now,
+                }))
+            }
+        };
+        Ok(match self.work.progress(key, deadline, asking) {
+            crate::work::Progress::Running | crate::work::Progress::Deferred => Asked::NotReady,
+            crate::work::Progress::Done(value) => {
+                self.seal_derivation(tick, &value, assist)?;
+                Asked::Answered(crate::derivation::answer_of(&value).unwrap_or(
+                    crate::derivation::Answer::Unmet(crate::derivation::UNREADABLE),
+                ))
+            }
+            crate::work::Progress::Failed(reason) => {
+                Asked::Answered(crate::derivation::Answer::Unmet(reason))
+            }
+            crate::work::Progress::TimedOut => {
+                Asked::Answered(crate::derivation::Answer::Unmet("model_call_timed_out"))
+            }
+        })
     }
 
     /// A claim's scope qualifiers, as name and value pairs.
@@ -1777,6 +2376,7 @@ impl Provider {
             .enumerate()
             .map(|(index, found)| crate::selection::Candidate {
                 id: format!("c{}", index + 1),
+                kind: crate::selection::KIND_SPAN,
                 path: path.to_string(),
                 start_line: found.start_line as usize,
                 end_line: found.end_line as usize,
@@ -1808,6 +2408,18 @@ impl Provider {
             assist.request,
             cbr_encoding::digest_bytes(query.as_bytes())
         );
+        // **The budget is spent here, on a question rather than on a
+        // call.** A question this compile has already asked costs
+        // nothing more; a new one costs one unit, and a request whose
+        // budget is gone gets the typed reason and not BM25's own first,
+        // which would report a model-assisted selection no model made.
+        //
+        // Nothing is sealed for it: a derivation record is one model
+        // exchange, and no exchange happened. Only a call that was made
+        // has something to say.
+        if !assist.admits(&key) {
+            return Ok(Assisted::Unmet(INVESTIGATION_EXHAUSTED));
+        }
         // **The request's deadline, converted once.** The pool measures
         // monotonic time and the protocol measures instants; converting
         // at the moment of asking is one clock, where keeping a second
@@ -1858,6 +2470,14 @@ impl Provider {
                     }
                 }
                 Some(crate::derivation::Answer::Unmet(reason)) => Assisted::Unmet(reason),
+                // **A record of another step's question, which cannot
+                // happen and is not therefore assumed away.** A
+                // discovery record answers a question whose selector
+                // names its step, so its digest is never this one's;
+                // if one ever arrived here the record would have been
+                // read and still not answer what was asked, which is
+                // what `UNREADABLE` means.
+                Some(_) => Assisted::Unmet(crate::derivation::UNREADABLE),
                 // **Never a call, and never BM25's own first.** A
                 // question nothing retained an answer to is an item
                 // this rebuild cannot honestly satisfy, and saying so
@@ -1970,7 +2590,9 @@ impl Provider {
                         }
                     }
                     Some(crate::derivation::Answer::Unmet(reason)) => Assisted::Unmet(reason),
-                    None => Assisted::Unmet(crate::derivation::UNREADABLE),
+                    // As above: a record shaped for another step is one
+                    // this call site cannot read as an answer.
+                    Some(_) | None => Assisted::Unmet(crate::derivation::UNREADABLE),
                 }
             }
             crate::work::Progress::Failed(reason) => Assisted::Unmet(reason),
@@ -2769,7 +3391,7 @@ impl Provider {
                     // The investigation budget is its own limit: exhausting it
                     // ends the job with that reason and no other.
                     if spent > int(job, &["limits", "investigation", "amount"]) {
-                        let reason = "investigation_budget_exhausted";
+                        let reason = INVESTIGATION_EXHAUSTED;
                         self.finish(job, tick, reason)?;
                         return Ok(Some(reason.into()));
                     }

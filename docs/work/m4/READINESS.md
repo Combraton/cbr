@@ -1,6 +1,8 @@
 # M4 readiness — the bounded model runtime
 
-**Nothing in M4 has been built and no model has been called.** This document exists because M4 is the first milestone that spends the owner's quota and sends repository text to a third party, and both of those are decisions rather than implementation details. It is docs-only and it is reviewed before any transport code, any credential read, or any call.
+**Written before anything in M4 was built and before any model had been called.** This document exists because M4 is the first milestone that spends the owner's quota and sends repository text to a third party, and both of those are decisions rather than implementation details. It was docs-only and it was reviewed before any transport code, any credential read, or any call.
+
+**As of m4e it is no longer only a plan.** m4a to m4e are built and merged; **two live calls have been made**, both in authorised calibration runs ([§10](#10-the-calibration-and-what-stops-m4)), and nothing else has ever called a model. Sections that describe what exists say so at their head, and the places the design moved are marked where they moved.
 
 Scope and sequence: [ADR 001](../../decisions/001-standalone-v0.1-scope-and-stack.md), [RELEASE-SCOPE §4](../readiness/RELEASE-SCOPE.md). The provider terms are the owner's and are already recorded in [RELEASE-SCOPE §5](../readiness/RELEASE-SCOPE.md) and [STACK §8.1](../readiness/STACK.md); this document restates them **as constraints with the place each one is enforced**, and adds nothing to them.
 
@@ -37,7 +39,8 @@ Split as M3 was, each with its gate stated before its code, each reviewed at its
 | **the calibration** | **The first live calls, and the only ones before m4e.** Its own step, **after m4b is reviewed and merged**, and only on the owner's explicit word at that time. [§10](#10-the-calibration-and-what-stops-m4). | One provider count above its local estimate stops M4. |
 | **m4c** | **The bounded runtime.** Model work leaves the preparation tick; deadlines, cancellation, a concurrency bound; failure reported as an item's unmet reason. The index build's stall is resolved here, and serving gets the call site that makes a credential worth reading. | The measured stall falls ([STALL](STALL.md): 65×, 49× and 23×); a cancelled call leaves no partial record; a failed call leaves an unmet item with a reason and never a hang. **No live call.** |
 | **m4d** | **Derivation records and replay.** Every call sealed as an evidence artifact, readable only under the job's own view; a packet rebuilt offline from retained records; the retention statement below. And the permitted hand launch, `scripts/debug_launch.sh`. | A test rebuilds a model-assisted packet with a transport that panics if called and compares digests. The m3c byte-identity assertion applied to derivations. Cancellation and failure leave no partial record. |
-| **m4e** | **The first live run, and the journeys.** J1 revisited with a model; both sealed pilot questions rerun, **under a hard cap of 5,000,000 tokens** enforced by the per-job ceiling. | Scored by the reviewer against the same oracles, with the deterministic runs as baselines and tokens, spend and latency recorded beside them. A run exceeding its estimate by more than half stops and is reported. |
+| **m4e** | **Model-assisted discovery, and the live run as code.** The two steps of [§5](#5-repository-text-is-untrusted-input), behind the fake transport; the investigation limit counting rather than gating; the harness and its replay gate. **No live call.** | Negative control 5 against both steps; the arithmetic of [§3](#what-model-assisted-discovery-costs-against-the-three-ceilings) as a test; a dry run that drives the harness end to end. |
+| **the live run** | **The first live run, and the journeys.** J1 revisited with a model; both sealed pilot questions rerun against both models, **under a hard cap of 5,000,000 tokens** enforced by the per-job ceiling. Its own step, on the owner's word at the time, after m4e is reviewed and merged. | Scored by the reviewer against the same oracles, with the deterministic runs as baselines and tokens, spend and latency recorded beside them. A run exceeding its estimate by more than half stops and is reported. |
 
 ## 2. The owner's standing decisions, and where each is enforced
 
@@ -117,6 +120,36 @@ So:
 
 Neither one loops. A retry loop against a shared quota is a denial of service against its owner.
 
+### What model-assisted discovery costs, against the three ceilings
+
+**Added at m4e, and computed rather than estimated.** Every bound on the two discovery requests is a constant — at most 6 candidates shown to the terms step, at most 20 to the choice, each candidate at most one span of retrieval's own `span_bytes` — so the largest request either step can make is a number, and `discovery::tests` computes it against the ceiling it has to fit under. A document cannot notice when a constant moves; that test can.
+
+| | Worst case, tokens | Against |
+|---|---:|---|
+| One item's selection | 39,612 | per-request 250,000 |
+| Discovery's terms step | 31,406 | per-request 250,000 |
+| Discovery's choice step | 89,916 | per-request 250,000 |
+| **The whole two-step flow**, each step counted with its one permitted repair and its count call | **363,966** | per-job 1,000,000 |
+| **Six such flows**, which is the six runs §9 names | **2,183,796** | m4e's run ceiling 5,000,000 |
+
+**Six, because §9 names six runs**: J1 revisited and both sealed pilot questions, each against two models. An earlier draft of this table said five, which was a number chosen to show the ceiling was not close rather than the number the plan runs.
+
+**The run ceiling is per store, so the harness subtracts.** `Ledger::run_spend` sums the ledger it was opened over, and every run of §9 opens a new data directory; a ceiling handed to each launch unreduced is therefore the cap *once per run* rather than once. [`scripts/m4e_run.py`](../../../scripts/m4e_run.py) passes `--model-run-ceiling` to every launch as the cap **less what the launches before it spent**, so the 5,000,000 bounds the run and not the launch. Without that, six runs bounded only by the per-job ceiling of 1,000,000 could reach 6,000,000, and the stop below is checked before each run rather than after it for the same reason.
+
+**The flow is two questions per request — not per item, and not per discovered section.** That is the property the arithmetic rests on: discovery does not scale with what it finds, so a packet carrying eight discovered spans costs what a packet carrying one costs. Each question may be repaired once ([`model::REPAIRS`]) and counted once, so three sends apiece is the worst any step can do.
+
+**The investigation limit counts both of them**, and every other question too. At m4c the number gated: a model was asked for every item of any request whose budget was above zero, so it said *whether* and not *how much*. m4e adds two questions per request, and a limit that counted some kinds of call and not others would be two meanings for one number. So:
+
+- **every distinct question a compile puts to a model spends one unit**, and a question already asked this compile is free, because its answer is the work pool's;
+- **items are asked first**, because an item is what the request required and discovery is advisory;
+- a request whose budget is gone gets the typed reason `investigation_budget_exhausted` for that item, never the span BM25 would have chosen — which would report a model-assisted selection no model made;
+- **a flow that cannot finish is not started.** Discovery claims its two units together or spends neither: the terms step's answer is worth nothing without the budget to choose among what it widens to;
+- and therefore **a run must authorise at least one question per want plus two**, which the harness refuses before it starts. The two rules above compose into a silence: items first, and a flow that cannot finish is not started, means a request whose items use the budget asks discovery nothing — and the packet it produces is indistinguishable from one the model was asked about and did not widen. A measurement that can fail that way without saying so is not a measurement, so the harness refuses the run and every run's report counts the `discovery.*` records that were sealed.
+
+**Nothing is sealed for a refusal here.** A derivation record is one model exchange, and no exchange happened, so `investigation_budget_exhausted` is not among the reasons a record can carry.
+
+[`model::REPAIRS`]: ../../../crates/cbr-provider/src/model.rs
+
 ### Gate and mutants
 
 Tests with a fake transport that asserts it was never called when admission refuses; both counters exercised separately; the reconciliation path exercised with a usage figure that differs from the estimate; a restart between reservation and reconciliation.
@@ -151,6 +184,8 @@ The rule under all four: **nothing downstream trusts a shape the model was only 
 
 ## 5. Repository text is untrusted input
 
+**The selection half was built at m4c and the discovery half at m4e. This section is now what exists.**
+
 A file in a repository can carry text addressed to a model. CBR reads repositories it does not own — brian2 is a third party's, and every future one will be somebody's — so this is not hypothetical, and a model that acts on such text is a model doing what the repository said rather than what the request asked.
 
 The rule is structural rather than a matter of prompting:
@@ -164,19 +199,66 @@ The rule is structural rather than a matter of prompting:
 
 This is the least surprising part of the design and the easiest to erode later, so it is written down before there is any code to erode.
 
-### Model-assisted discovery, designed before m4e builds it
+### Model-assisted discovery
 
-**Added 2026-09-21.** [§1](#1-scope-and-the-promise) records why: selection chooses inside a file the request already named, so it cannot change what a packet finds. Discovery is where that changes, and discovery is also where the closed-set rule above stops being obviously enough — a model that may influence *what is looked for* is a model with more reach than one that picks among spans. So the design is written here, with its safety property, before any of it exists.
+**Designed 2026-09-21, built at m4e. This section is now what exists**, with the two places the design moved marked as such.
 
-**Three steps, and the property is the same one as above: the model never names a file, a span or a label.**
+[§1](#1-scope-and-the-promise) records why it is needed: selection chooses inside a file the request already named, so it cannot change what a packet finds. Discovery is where that changes, and discovery is also where the closed-set rule above stops being obviously enough — a model that may influence *what is looked for* is a model with more reach than one that picks among spans.
+
+**Two steps, and the property is the same one as above: the model never names a file, a span or a label.** The design said three; the third was never a step, it was the recording, and it applies to both.
 
 1. **It may propose search terms, and nothing else.** The model is shown the task and the deterministic discovery's top candidates, and may answer with **a small bounded number of additional search terms**. A term is **untrusted query input, never a path**: CBR runs it through its own lexical index, inside the requesting session's view, exactly as it runs the words of the task itself. There is no branch where a model's answer is resolved as a path, and so nothing for a term shaped like one to reach.
 
 2. **The union is a larger closed set, and the choice is still an id.** Deterministic discovery's candidates and the term-driven ones form one candidate set; the model chooses **a bounded number of ids** from it, and those become discovered sections carrying **the labels, ranks and citations the deterministic path already gave them**. The model supplies no label, no `binding`, no citation and no span. **Negative control 5 is re-run against both steps**: a planted file that instructs the model is run past the term step and the choice step, and the packet is unchanged outside the closed set.
 
-3. **Every step is a recorded derivation**, so the packet replays offline exactly as a selection does: the terms proposed and the ids chosen are in the sealed record, and a rebuild that finds no record for a step says so rather than deciding for itself.
+**Every step is a recorded derivation**, so the packet replays offline exactly as a selection does: the terms proposed and the ids chosen are in the sealed record, and a rebuild that finds no record for a step says so rather than deciding for itself.
 
-**What it cannot do, stated before anybody hopes otherwise.** A term the model proposes **still has to occur in the repository**. This makes CBR look in places its own reading of the task did not suggest; it does not make CBR find something that is not written down, and it cannot answer a question whose answer is absent from the text. If brian2's question fails again after this, that is the answer it deserves rather than a bug in the step.
+#### Three bounds, because a term is the one thing CBR did not compose
+
+Every other input to a model call is built by CBR out of its own candidates. A term is text the model wrote that CBR then **acts on**, so it is bounded three ways before it is used, each of them the typed reason `model_answer_over_bound`:
+
+- **by count** — at most **4**, in the schema and again in the parser, because a schema is a request and not a guarantee;
+- **by length** — at most **48 bytes** each;
+- **by characters** — alphanumeric, and the separators a path or a glob is made of (`_ - . / * :`). **Not a space.**
+
+**The character bound is what distinguishes a term from a sentence**, and that is the point of it: a planted file instructing a model produces prose, and prose has spaces in it. So an instruction arriving where a term was asked for fails the bound rather than being searched for. The separators are *permitted* so that a term shaped like a path is **normalised** rather than refused — `src/queue.rs` is the words `src queue rs`, `**/*.py` is `py` — because words is all a term is ever used as.
+
+**Nothing is trimmed to fit.** Five terms where four were asked for is the typed reason, not the first four: silently taking part of an answer would be CBR deciding which part of the model's answer to act on, which is the closed-set mistake in the other direction.
+
+#### What the search does with a term, and why that is the whole safety argument
+
+`discovery::words` is `lexical::query_terms` **and nothing else** — the same tokeniser the request's own words go through, producing the same alphanumeric tokens, which go into the same parameterised `MATCH` expression where every element is one of those tokens quoted. There is no expression a term can write, no path it can name and no second query language with its own bugs. What comes back is a span CBR found, at a path CBR resolved, in a repository the grant admitted.
+
+#### The reservation, which the first version did not have and needed
+
+**The ordinary reading takes a reserved share of the candidate set and no more**: at most **10** of the **20** candidates offered come from the question's own words, and at most **6** are claims.
+
+Without a reservation the step is pointless, and this is not a hypothetical: the first version had none, and on a repository where the ordinary reading returns more candidates than the set can hold it filled every slot, so a proposed term could contribute nothing. That is exactly backwards for the question this step exists for — brian2's, where the ordinary reading returned plenty of confident near-misses and missed the answer. A test caught it.
+
+#### What a failed step leaves, which is not the same for the two
+
+- **The terms step fails:** the deterministic reading stands, unchanged.
+- **The choice fails:** the deterministic reading stands, **not the union**. The two steps are one flow — the terms step proposes where to look and the choice is what decides that any of it belongs in a packet — so carrying term-driven spans by rank alone would carry them on the strength of a suggestion nothing acted on, and BM25 scores from two different queries are not one ranking.
+- **The choice is skipped because it could not change the answer:** the union stands, because carrying everything is exactly what the choice would have done.
+
+In every case **the packet says a step did not happen**, as an omission naming the step with the reason `unavailable` — which is the protocol's own vocabulary for `context.packet.inspect` and is literally what it was. *Why* is the typed reason in the step's own derivation record, which is sealed whether the answer was usable or not.
+
+#### Claims enter the candidate set here
+
+The eligible claims are offered beside the spans, which is what makes m4d's readable-claims gate **load-bearing rather than merely correct**: a choice record's `offered` now holds claim text a job could read, so a reader who cannot read the claim must not be served the record. Both arms are in `derivation_claims.rs`. The reviewer's mutant — sealing `readable_under(view, &[])` — now leaks through a real candidate set rather than through two empty lists.
+
+**Anchors are not offered.** They are not ranked candidates: an anchor is where a name in the request is defined and used, and choosing among them would be choosing which definition a name means, which tags cannot say ([§8](#8-bounded-runtime) and the m3b evaluator). They stay deterministic.
+
+#### What the suite does not reach
+
+Two gaps, recorded rather than described as covered.
+
+- **The choice that would decide nothing is never skipped end to end.** `worth_choosing` returns false when everything offered is going in anyway, and the flow then keeps the union without spending the second unit. `discovery::tests` covers the function; no suite test produces a view small enough to reach the false branch through a whole compile, because the fixture that makes a union worth choosing is the same fixture every other discovery test needs. What is untested is therefore the *wiring*, not the rule.
+- **A span candidate id is a position among the spans that were kept**, and a mutant taking it from the input position survives. The two differ only when a blob in the offered list cannot be read, which the indexer's own size skip makes unreachable from a request. It is written here as a survivor rather than claimed equivalent.
+
+#### What it cannot do, stated before anybody hopes otherwise
+
+A term the model proposes **still has to occur in the repository**. This makes CBR look in places its own reading of the task did not suggest; it does not make CBR find something that is not written down, and it cannot answer a question whose answer is absent from the text. If brian2's question fails again after this, that is the answer it deserves rather than a bug in the step.
 
 ## 6. Recording and replay
 
@@ -202,6 +284,21 @@ This is the least surprising part of the design and the easiest to erode later, 
 - **They disagree:** the item is unmet with `model_answer_ambiguous`. The rebuild declines rather than choosing.
 - **A retained failure beside a retained choice is a disagreement**, deliberately. Preferring the usable one would be the rebuild deciding which of two histories to reproduce — improving on the past rather than replaying it — which is the same fault as taking the first match, with better manners. A reader who wants the successful call's packet can ask for it by its own request; a rebuild's job is to be a function of what was kept.
 - **A record this build cannot read counts as its own answer**, `model_record_unreadable`, and so takes part in the agreement: a record nobody can read is no evidence that the others are right.
+
+#### The consequence of the ambiguity rule, and the operator's remedy
+
+**Added at m4e, because m4e is where it stops being hypothetical.** A model call that timed out, followed by a successful rerun of the same question, leaves two retained records that disagree — and from then on **that question is unreplayable for ever**. The rule is right and it has a cost, and the cost is not a corner case: it is what a second run of a pilot leaves behind, which is exactly what m4e does.
+
+So **the m4e replay gate reports how many questions were ambiguous and why, and never silently skips them.** `scripts/m4e_run.py --ambiguity <data directory>` groups every sealed, unpurged record by the question it answers and names each question whose records differ, with both records and the answers that differ. A gate that folded these into "nothing retained" would hide the one failure an operator can actually act on. The gate **decides nothing** — the provider's own rebuild decides, and the packet comparison says whether it worked; the gate explains. A test pins the two together on one store, so the agreement rule cannot move in one and not the other.
+
+**The remedy is a purge, and it is the owner's.** An ambiguous question becomes replayable again only once one of its records is gone:
+
+- **What:** `evidence.purge` on the artifact holding **the failed call's record** — never the successful one. Purging the answer that worked would leave a history nobody made, which is the same fault as a rebuild preferring the usable record, arrived at by hand.
+- **By whom:** a principal in `authority_principals`. Destroying evidence is an authority's act and no consumer's.
+- **Under what right:** in a session that negotiated `evidence.retention_control`, which is not a feature a session gets by default — the point being that purging is never something that happens incidentally.
+- **What it does not do:** it does not remove the ledger row. The call was charged and stays charged. Nor does it delete the object immediately: another sealed artifact may share the bytes, and collection is separate. What changes is that a rebuild stops reading it.
+
+**Neither the harness nor CBR ever purges on its own.** The gate reports; the owner decides.
 
 **A purged record is not read at all.** A purge is a deliberate act of destroying evidence, and `state` stays `sealed` through one — only the `purge` member and the availability change — so a check on the state alone does not notice. Its object can still be on disk until collection runs, and longer when another sealed artifact shares the bytes, so answering from one would serve what somebody ordered destroyed.
 
@@ -287,11 +384,57 @@ Stated now, before any call, so that the number is a limit rather than a descrip
 | Repair, retry and the count calls of §3, across all three | 350,000 tokens |
 | **Expected total for m4e** | **1,500,000 tokens** |
 
-**The hard cap for the whole of m4e is 5,000,000 tokens** unless the owner raises it — a little over three times the estimate, because an estimate made before the first live call has ever run is not a measurement. It is **enforced by the per-job ceiling of §3, not by intention**: m4e runs under a job whose ceiling is that number, and a call that would cross it is refused with `budget_exhausted` like any other.
+**The hard cap for the whole of m4e is 5,000,000 tokens** unless the owner raises it — a little over three times the estimate, because an estimate made before the first live call has ever run is not a measurement.
 
-**Exceeding the estimate by more than half stops the run and is reported.** At 2,250,000 tokens the run halts, whatever state it is in, and what was spent and on what is reported before anything continues. A run that quietly costs three times its estimate has told you something about the estimate that you only learn if it stops.
+**It is enforced by `--model-run-ceiling`, given to each launch as the cap less what the launches before it spent.** An earlier draft of this section said the per-job ceiling enforced it. That was wrong, and the way it was wrong is worth keeping: `Ledger::run_spend` sums the store it was opened over, each of the six runs opens a new one, so the per-job 1,000,000 of §3 bounds *a run* and six of them bound 6,000,000. The cap is a property of the whole, so the number passed to each launch has to be a property of the whole too.
+
+**Exceeding the estimate by more than half stops the run and is reported.** At 2,250,000 tokens the run halts and what was spent and on what is reported before anything continues. The stop is checked **before a run, against what that run could cost** — `spent + 363,966`, the computed worst case of one flow — rather than after a run that had already crossed it. The worst the whole can then reach is that stop less one flow, plus the per-job ceiling of the run that was started under it: **2,886,034 tokens**, under the cap with room the ledger does not depend on.
 
 These are estimates, and the first thing m4e produces is the measurement that replaces them.
+
+### The harness is code, reviewed before it is run
+
+**Added at m4e.** The first live run is not a sequence of commands typed on the day: it is [`scripts/m4e_run.py`](../../../scripts/m4e_run.py), reviewed at a head, with a **dry-run mode that drives every stage against the fake transport** and is exercised by the suite (`m4e_harness.rs`). The reason is the one m4b already recorded about `--calibrate`: *if the first live call needs new plumbing, the first live call runs code nobody reviewed.*
+
+Per run it launches a provider **over a data directory under `--out`**, registers the repository, submits one context request, polls until it settles, writes the packet where the reviewer can score it, reads the ledger, and then relaunches the same store with `--replay-model` for the replay gate above. The store is where the ledger and the records are, which is to say it is the evidence the report is a summary of; it is not a temporary directory a reboot empties, and nothing in the harness deletes one.
+
+**Every run's report says how many of its records were discovery's.** Two is the flow; one is a flow that stopped at the terms step; none is a run that never reached discovery. Without that number a baseline packet and a packet the model did not widen read alike, and the run that measured nothing would be the one nobody noticed.
+
+**Every rule in this document that the harness can enforce is a refusal it makes before a provider is launched**, so a run that breaks one costs nothing:
+
+| Refused | Because |
+|---|---|
+| A repository id outside `cbr`, `brian2`, `knowscroll` | §7: the owner's word covers those three, and all three are public. A private repository needs the owner's explicit word before a single byte of it is sent. |
+| **A checkout whose `origin` is not that repository's** | An id is a label the manifest typed. Checked against the label alone, `{"id": "brian2", "path": <any checkout>}` was admitted — so the origin is read from the checkout, in both modes, before anything is launched. The owner's word covers repositories, not names. |
+| **A checkout off the commit the manifest pins**, when it pins one | A pilot question was sealed against a tree. Answering it over a different one measures something else. |
+| **An investigation budget the items would exhaust** | §3: items are asked first and a flow that cannot finish is not started, so such a run asks discovery nothing and says so nowhere. |
+| A model outside the three of §2 | The registry admits three; a harness that could name a fourth would be a way round it. |
+| An output directory inside this repository | A pilot's packet holds a third party's repository text. Only digests, paths, spans, counts and costs are committed. |
+| `--live` without `--permit-model-network` | Having built the harness is not permission to use it. |
+| A run ceiling above 5,000,000, or a stop above 2,250,000 | The cap and the stop above. Both can be lowered and neither raised; raising either is the owner's decision. |
+
+**J1 revisited and both sealed pilot questions, each against `MiniMax-M2.7-highspeed` and `MiniMax-M3`** — the same question twice, so the difference is the model and nothing else. That is the six runs §3's arithmetic is against. The manifest naming them is the operator's own file, outside this repository, because the pilot questions are sealed and this session has never seen either.
+
+#### What the manifest must say
+
+Written out so that the owner's file can be written without reading the script, and so that the reviewer can check it against the refusals above rather than against an intention.
+
+| Member | |
+|---|---|
+| `id` | a name for the run, unique in the file |
+| `repository.id` | one of `cbr`, `brian2`, `knowscroll` |
+| `repository.path` | a checkout whose **`origin` is that repository's**, which is what the id is checked against |
+| `repository.commit` | optional; when it is there the checkout must be at it, because a pilot question was sealed against a tree |
+| `model` | one of the three of §2 |
+| `task` and `selector` | the question, as `cbr context` takes them |
+| `wants` | the items, each `<id>=<want>` |
+| `capacity` | the packet's byte capacity |
+| `investigation` | at least `len(wants) + 2`, so discovery is reached |
+| `dry_answers` | dry runs only: what the fake answers, in the order a compile asks |
+
+**The stop is checked between runs, not inside one.** Halting mid-call would leave a charge nobody reconciled; halting between them leaves the ledger settled and lets the report say what was spent and on what.
+
+**The report holds digests, paths, spans, counts and costs, and no repository text** — the licence rule for the pilots, asserted by a test rather than remembered, because the report is the thing most likely to be pasted somewhere.
 
 ### Negative controls, stated before the runs
 
@@ -299,7 +442,7 @@ These are estimates, and the first thing m4e produces is the measurement that re
 2. **The model refuses or returns nothing usable.** The packet is still produced, from the deterministic selection, with the failure recorded as a derivation and the item's reason stating it. Degradation is honest, not silent.
 3. **A claim outside the grant, with a model in the loop.** The packet is byte-identical to one prepared where the claim was never proposed — the m3c assertion, re-run with the model runtime present.
 4. **A replayed transcript is labelled.** A run against recorded fixtures never appears in a record as a live run.
-5. **A repository file instructs the model.** A planted file tells it to select something outside the candidate set, to mark a claim `binding`, or to reveal content from beyond the view. The packet is unchanged outside the closed set (§5).
+5. **A repository file instructs the model.** A planted file tells it to select something outside the candidate set, to mark a claim `binding`, or to reveal content from beyond the view. The packet is unchanged outside the closed set (§5). **Run against both discovery steps at m4e**, with the file really in the repository and really in the candidate set — a control that scripted the model without ever sending it the file would be testing the script. The scripted model then does what the file says: answers with a path, which is a term and so is tokenised into words that resolve to nothing; and chooses an id that was never offered, which selects nothing. Each is a typed unmet, a recorded derivation, and nothing widened. **One assertion inside it is vacuous and is kept anyway**: "nothing outside the view appears" is trivially true of a term, because a term is only ever a query run through the index over the view and there is no branch by which it could reach anything else. The guard is the absence of that branch, not the outcome of the search — which is exactly what a mutant would add, so the assertion is worth making and is not worth mistaking for evidence.
 
 ### The mutants expected to be needed
 
