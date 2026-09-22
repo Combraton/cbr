@@ -620,6 +620,182 @@ fn each_launch_is_given_what_is_left_of_the_run_and_not_the_whole_of_it() {
     );
 }
 
+/// Run `not_public` over canned `(status, body)` pairs — by importing
+/// the module and calling the one function, so nothing is launched and
+/// no socket is opened.
+fn parser_says(cases: &[(u16, &str)]) -> Vec<Option<String>> {
+    let program = r#"
+import importlib.util, json, sys
+spec = importlib.util.spec_from_file_location("m4e_run", sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+rest = sys.argv[2:]
+print(json.dumps([
+    module.not_public("github.com/an/example", int(rest[at]), rest[at + 1])
+    for at in range(0, len(rest), 2)
+]))
+"#;
+    let mut command = Command::new("python3");
+    command.args(["-c", program]).arg(script());
+    for (status, body) in cases {
+        command.arg(status.to_string()).arg(body);
+    }
+    let output = command.output().expect("python3 runs");
+    assert!(
+        output.status.success(),
+        "the parser could not be called: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let parsed: Value =
+        cbr_encoding::parse(String::from_utf8_lossy(&output.stdout).trim().as_bytes())
+            .expect("the answers are JSON");
+    parsed
+        .as_array()
+        .expect("a list of answers")
+        .iter()
+        .map(|answer| answer.as_str().map(str::to_string))
+        .collect()
+}
+
+#[test]
+fn only_a_two_hundred_saying_public_admits_a_repository() {
+    // **The parser, on canned bodies.** The call itself has no test: it
+    // opens a socket to a third party, and a suite that did that would
+    // be a suite whose result depended on GitHub being reachable. What
+    // is testable is the decision made about an answer — and the
+    // property worth pinning is that **unknown lands where private
+    // lands**, because the failure this prevents is sending somebody
+    // else's private text to a provider.
+    let answers = parser_says(&[
+        (200, r#"{"private": false, "name": "cbr"}"#),
+        (200, r#"{"private": true, "name": "cbr"}"#),
+        (404, r#"{"message": "Not Found"}"#),
+        (403, r#"{"message": "API rate limit exceeded"}"#),
+        (301, r#"{"message": "Moved Permanently"}"#),
+        (200, "<html>not json at all</html>"),
+        (200, r#"{"name": "cbr"}"#),
+        (200, r#"{"private": "false"}"#),
+        (200, "null"),
+    ]);
+
+    assert_eq!(answers[0], None, "a public repository was not admitted");
+    for (position, why) in answers.iter().enumerate().skip(1) {
+        assert!(
+            why.is_some(),
+            "answer {position} admitted a repository nothing said was public"
+        );
+    }
+
+    // And each refusal says which it was, because "refused" on its own
+    // does not tell an operator whether to wait, to ask the owner, or to
+    // fix the manifest.
+    let says = |position: usize, wanted: &str| {
+        let why = answers[position].as_deref().unwrap_or_default();
+        assert!(
+            why.contains(wanted),
+            "answer {position} does not say {wanted:?}: {why}"
+        );
+    };
+    says(1, "is not public");
+    says(2, "HTTP 404");
+    says(3, "HTTP 403");
+    says(4, "HTTP 301");
+    says(5, "not JSON");
+    says(6, "no `private`");
+    // A string `"false"` is not the boolean, and is refused rather than
+    // read as one.
+    says(7, "is not public");
+    says(8, "no `private`");
+}
+
+/// The harness's **code**, with its docstrings and comments gone.
+///
+/// A rule about what a path may name has to be asserted against what
+/// runs, not against what is written about it: this file says in prose
+/// that it reads no `.netrc`, and a plain text search cannot tell that
+/// sentence from the thing it forbids. Python parses its own source and
+/// prints it back without the prose, which is the distinction made by a
+/// parser rather than by a guess.
+fn code_without_prose() -> String {
+    let program = r#"
+import ast, sys
+tree = ast.parse(open(sys.argv[1]).read())
+for node in ast.walk(tree):
+    if isinstance(node, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+        first = node.body[0] if node.body else None
+        if (isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant)
+                and isinstance(first.value.value, str)):
+            node.body.pop(0)
+print(ast.unparse(tree))
+"#;
+    let output = Command::new("python3")
+        .args(["-c", program])
+        .arg(script())
+        .output()
+        .expect("python3 runs");
+    assert!(
+        output.status.success(),
+        "the harness could not be parsed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    String::from_utf8_lossy(&output.stdout).to_string()
+}
+
+#[test]
+fn the_visibility_call_is_live_only_and_carries_no_credential() {
+    // **Two rules about the one path that opens a socket to anywhere
+    // but the provider.** Like `credential_discipline.rs` this reads the
+    // source, so it can be fooled by a program that builds the call out
+    // of pieces; it is a guard against carelessness, which is what would
+    // put this in the wrong place.
+    //
+    // *Live only*, because a dry run must send nothing off the machine
+    // and no test in this suite may open a socket to GitHub. *No
+    // credential*, because the question is "can anyone read this" — a
+    // call carrying the owner's token asks whether **they** can, which a
+    // private repository answers yes.
+    let source = std::fs::read_to_string(script()).expect("the harness");
+
+    assert!(
+        source.contains("    if live:\n        refuse_unless_public(checkouts)\n"),
+        "the visibility check is not guarded by live mode"
+    );
+    assert_eq!(
+        source.matches("refuse_unless_public(").count(),
+        2,
+        "the definition and exactly one call site, or that guard is not the only door"
+    );
+    assert_eq!(
+        source.matches("ask_github(").count(),
+        2,
+        "the definition and exactly one call site"
+    );
+
+    let code = code_without_prose();
+    for credential in [
+        "GITHUB_TOKEN",
+        "GH_TOKEN",
+        "Authorization",
+        "netrc",
+        "\"gh\"",
+        "'gh'",
+        "environ",
+        "getenv",
+    ] {
+        assert!(
+            !code.contains(credential),
+            "{credential} is on a path that must carry no credential at all"
+        );
+    }
+    // And the guard is not vacuous: the prose it ignores really does
+    // name one of these, so a run that stripped too much would pass
+    // this rule while proving nothing.
+    assert!(
+        source.contains("netrc"),
+        "the prose no longer names what the code must not, so this proves less than it reads"
+    );
+}
+
 #[test]
 fn the_replay_gate_reports_an_ambiguous_question_rather_than_skipping_it() {
     // **The consequence of the ambiguity rule, planned for.** In a live

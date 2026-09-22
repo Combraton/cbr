@@ -166,6 +166,18 @@ The reviewer accepted discovery's code as built and returned five corrections �
 
 **And the permit-flag guard had a hole the shape of this harness.** `credential_discipline.rs` excuses a piece that passes `--permit-model-network` while configuring no model — written for a Rust launch whose whole configuration is visible in the piece. The harness's `--live` *writes* a production configuration naming a `model_runtime` and then launches under it, so two test cases passed the flag and were excused. Both are now their own test, gated off macOS with every other one; and the guard counts `"--live"` as configuring a model, so the next one cannot slip through the same way. The two refusals that do not need `--live` — a ceiling above the cap, a stop above the stop — are asserted in dry-run mode, on every machine.
 
+### Round 41: a pinned origin proves identity, not visibility
+
+The reviewer found, at the round-40 review, that `Legend101Zz/Knowscroll-v2` was **private** on the GitHub API while [READINESS §7](m4/READINESS.md#7-what-may-be-sent) and the harness's pinned table both called it public. The owner has since made it public and the reviewer re-verified.
+
+**The gap was mine, and it is not the sentence.** The origin check of round 40 proves a checkout *is* the repository it claims to be. Visibility is a different question and a live one: it is a fact about an account this project does not control, and it can change in either direction under a table committed weeks earlier. The refusal I wrote read as though it enforced §7's "all three are public", and it did not.
+
+So the harness asks, **in live mode only** and **unauthenticated**: one `GET https://api.github.com/repos/<owner>/<name>` per distinct origin, no token, no `gh`, no proxy from the environment, no redirect followed, a timeout. Only HTTP 200 carrying `"private": false` admits a repository; a 404 — which is what a private repository answers a caller with no credential — a 403, a rate limit, a timeout and an unreadable body are refusals by name, before any provider launches. **Unknown lands where private lands.**
+
+**Why unauthenticated is the design and not a shortcut.** A call carrying the owner's token asks *can they see it*, which a private repository answers yes. The question worth asking is *can anyone*, and only a call with nothing attached asks it. A test reads the harness's own code — with its prose stripped by Python's parser rather than by a text search, because the file says in words that it reads no `.netrc` and a plain search cannot tell that sentence from the thing it forbids — and asserts that no name on this path can reach a credential.
+
+**The call itself has no test**, and that is stated rather than left to be inferred: it opens a socket to a third party, a dry run must send nothing off the machine, and no test in the suite may. What is tested is the parser, on nine canned answers. Four mutants on this path — a private repository admitted, the live-only guard removed, a credential added to the request, a 404 admitted — each observed failing and reverted.
+
 ### A probe bug, in the other direction from the last one
 
 m4d recorded a probe that reported **seven survivors it never observed**. This one reported a *kill* it should not have trusted, by a different route: `apply_mutant` backed up each file as it processed each edit, so a mutant with **two edits to one file** stored the already-mutated text as its backup and "restored" half a mutant. The half that stayed was an unused loop variable, which changes no behaviour — so the two mutants that ran after it were not wrong, and both were re-run clean to say so rather than reasoned about.
