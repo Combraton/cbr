@@ -178,7 +178,7 @@ fn interpret(want: &Want, content: Content) -> Result<Reply, Unusable> {
         Want::Text => content.text.map(Reply::Text).ok_or(Unusable::Malformed),
         Want::Structure { .. } => {
             let text = content.text.ok_or(Unusable::NotStructured)?;
-            let parsed = json::read(text.as_bytes()).ok_or(Unusable::NotStructured)?;
+            let parsed = json::read(unfenced(&text).as_bytes()).ok_or(Unusable::NotStructured)?;
             // It parses and is still not something CBR can seal, which is
             // the same outcome as prose rather than a second kind of
             // failure: both are repaired by asking again.
@@ -202,6 +202,40 @@ fn interpret(want: &Want, content: Content) -> Result<Reply, Unusable> {
                 input,
             })
         }
+    }
+}
+
+/// A fenced answer, unfenced. **A code fence is not a different
+/// answer.**
+///
+/// The live run of 2026-09-22 spent a repair on this: `MiniMax-M2.7-
+/// highspeed` wrapped its JSON in ```` ```json ````, which parsed as
+/// nothing, and the repair it cost then ran out of output tokens on
+/// reasoning and the whole step was lost. CBR asks for "a single JSON
+/// object and nothing else" and a fence is a model being helpful about
+/// formatting; refusing it buys nothing and costs the call.
+///
+/// **Conservative on purpose.** Only a whole answer that opens with a
+/// fence is unwrapped, and only the fence markers are removed. Anything
+/// else — prose around an object, two fenced blocks, a fence that never
+/// closes — is left exactly as it came and fails as it did before. This
+/// makes a well-formed answer readable; it does not go looking for JSON
+/// inside something that is not one.
+fn unfenced(text: &str) -> &str {
+    let trimmed = text.trim();
+    let Some(rest) = trimmed.strip_prefix("```") else {
+        return text;
+    };
+    // The opening fence may carry a language tag: ```json, ```JSON.
+    let Some((tag, body)) = rest.split_once('\n') else {
+        return text;
+    };
+    if !tag.trim().chars().all(char::is_alphanumeric) {
+        return text;
+    }
+    match body.trim_end().strip_suffix("```") {
+        Some(inner) => inner,
+        None => text,
     }
 }
 

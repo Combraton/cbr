@@ -405,6 +405,60 @@ fn at_the_bound(count: usize) -> Vec<Candidate> {
 }
 
 #[test]
+fn both_steps_ask_for_room_to_reason_and_not_just_room_to_answer() {
+    // **What the live run measured.** Both answers here are small, so
+    // `generation_for` puts both on `MIN_OUTPUT_TOKENS` — and that is
+    // the figure `MiniMax-M2.7-highspeed` truncated two of its three
+    // flows at, having spent 277 to 512 tokens reasoning before it wrote
+    // anything. Reasoning is not proportional to the answer, so it
+    // cannot be sized from it.
+    let terms = propose("MiniMax-M3", "a task", &at_the_bound(SEEN));
+    let choose = choose(
+        "MiniMax-M3",
+        "a task",
+        &longest_terms(),
+        &at_the_bound(CANDIDATES),
+    );
+    for (step, asked) in [("terms", terms.generation), ("choose", choose.generation)] {
+        assert!(
+            asked >= crate::budget::DISCOVERY_MIN_OUTPUT_TOKENS,
+            "the {step} step asks for {asked}, which is not room to think"
+        );
+        assert!(
+            asked > crate::budget::MIN_OUTPUT_TOKENS,
+            "the {step} step is still on the floor the live run truncated at"
+        );
+    }
+}
+
+/// The figures READINESS section 3 publishes, so that a document cannot
+/// drift from the arithmetic it quotes. They move when a bound moves,
+/// and when they do this fails rather than the table going quietly
+/// stale.
+#[test]
+fn the_published_arithmetic_is_what_the_bodies_actually_cost() {
+    let task = "x".repeat(4096);
+    let terms = worst_case(&propose("MiniMax-M3", &task, &at_the_bound(SEEN)));
+    let choose = worst_case(&choose(
+        "MiniMax-M3",
+        &task,
+        &longest_terms(),
+        &at_the_bound(CANDIDATES),
+    ));
+    let flow = (terms + choose) * (2 + u64::from(crate::model::REPAIRS));
+    assert_eq!(
+        (terms, choose, flow, flow * 6),
+        (
+            PUBLISHED_TERMS,
+            PUBLISHED_CHOOSE,
+            PUBLISHED_FLOW,
+            PUBLISHED_SIX_FLOWS
+        ),
+        "READINESS section 3's table is no longer what these bodies cost"
+    );
+}
+
+#[test]
 fn neither_step_can_reach_the_per_request_ceiling() {
     // **The arithmetic, as a mechanism rather than a paragraph.** Both
     // bodies are bounded by constants in this module — [`SEEN`] and
@@ -470,3 +524,11 @@ fn the_whole_flow_cannot_exhaust_a_job_or_a_run() {
 ///
 /// [READINESS §9]: ../../docs/work/m4/READINESS.md
 const M4E_RUN_CEILING: u64 = 5_000_000;
+
+/// The four figures [READINESS §3] publishes.
+///
+/// [READINESS §3]: ../../docs/work/m4/READINESS.md
+const PUBLISHED_TERMS: u64 = 32_943;
+const PUBLISHED_CHOOSE: u64 = 91_453;
+const PUBLISHED_FLOW: u64 = 373_188;
+const PUBLISHED_SIX_FLOWS: u64 = 2_239_128;

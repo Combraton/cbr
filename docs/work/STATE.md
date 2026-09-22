@@ -150,6 +150,43 @@ The reviewer's mutant, and one for each correction it took. All ten killed, each
 
 **It is not recorded as equivalent**, and the difference matters: STATE already records a mutant this session argued was equivalent and was not. What can be said is narrower. The two lists are appended in one statement, so they cannot drift; the mutant changes which of two correct-today schemes is used; and if the branch ever became reachable, the mutant's scheme would resolve an id to a span nobody was shown — the closed set broken from the inside, which is why the code is written the other way.
 
+### Round 46: what the live run found, and what a fake could never have
+
+**The run cost 65,144 tokens and found four defects.** Three of them a fake transport could not have shown, and that is the argument for having run it: a fake answers instantly, in the shape it was scripted with, at whatever length the script says.
+
+**Both of my inferences from the report were wrong**, and the reviewer had the evidence. I guessed the six `sections_identical: false` were an index that had moved between the two compiles; the only differing leaf in every store was `citations[].evidence.provider`, `cbr` live against `conformance-provider` rebuilt, because the harness launched the rebuild under a conformance configuration. Every section, span and excerpt was identical. I guessed `j1-m27hs` had reached `worth_choosing`'s false branch; its terms step was `model_answer_truncated`. **Reading a report is not the same as reading the evidence**, and I was right not to open the packets and wrong to reason as though I had.
+
+**The design defect, which is the one that matters.** The union's question half was the raw top of the ranking, while the packet publishes under `DISCOVERED_PER_PATH`. J1's twenty candidates to M3 held thirteen spans of one file and **no span of the ADR the deterministic packet cites** — so the model could not keep a fact it was never offered, and the nine ids it chose were capped to five at publish. `j1-m3` returned code only, and its score measured the candidate set rather than the model. Both halves of the union are now built under the same cap. An offer the packet cannot honour is not an offer.
+
+**A rule I had written down was doing work I had not noticed.** Capping the union makes it smaller, and on the suite's own fixture it fell below `DISCOVERED_SPANS` — at which point `worth_choosing` correctly declined to ask a question that could not change the answer, and nine tests went red because the choose step stopped happening. That is the rule working. The fixture grew to have a choice worth making, and the *narrow* case became reachable for the first time, which closed a gap this file had recorded as unreachable.
+
+**The budget was sized for an answer and not for thinking.** Both discovery steps sat on `MIN_OUTPUT_TOKENS`, 512, because `generation_for` multiplies a small answer. `MiniMax-M3` used 13 to 32 output tokens a step; `MiniMax-M2.7-highspeed` used 277 to 512 *reasoning* before writing anything and truncated two of its three flows — one of them again at the 1,024 its repair asked for. Reasoning is not proportional to the answer, so it cannot be sized from it. Discovery steps now floor at 2,048. Selection is deliberately unchanged: nothing measured truncated there, and raising a bound against no measurement is the estimating these constants exist to stop.
+
+**And a repair spent on a formatting habit.** `MiniMax-M2.7-highspeed` fenced its JSON; that parsed as nothing, cost the one repair the step is allowed, and the repair then ran out of room. A fence is a model being helpful about formatting rather than answering a different question, so it is unwrapped — conservatively, only a whole answer that opens with one, because digging an object out of prose would be guessing which part was the answer.
+
+**The gate now says what differs.** Reporting only that two things are unequal made its reader open six packets to find out. It names the leaf, and carries the values only when they cannot be somebody else's source: an identifier-shaped string is printed, anything else becomes its length and a digest.
+
+### The m4f mutant table
+
+**Thirteen mutants, all killed** — two at the union and two at the gate as the reviewer asked, and one for each correction. Three survived the first pass and were killed by tests added after it, which is where the exercise earns its keep.
+
+| Mutant | Result | What kills it |
+|---|---|---|
+| **The union's question half taken raw, not per-path capped** | killed | `every_span_the_packet_would_publish_is_offered_to_the_model` and two more |
+| **The union's term half taken raw** | killed **after a test was added** | `no_file_fills_the_candidate_set_whichever_half_reaches_it` |
+| **The two halves counted against separate tallies** | killed **after a test was added** | the same; the term is chosen to reach a file the question already reached |
+| The per-path cap raised so it binds nothing | killed | three, including the narrow-view case |
+| Discovery steps back on the answer-sized generation floor | killed | `both_steps_ask_for_room_to_reason_and_not_just_room_to_answer` |
+| A fenced answer refused again | killed | `a_fenced_answer_is_read_rather_than_repaired` |
+| **Unfencing digs an object out of prose** | killed | `unfencing_does_not_go_looking_for_json_inside_something_else` |
+| The live rebuild launched under a conformance configuration again | killed | `a_live_rebuild_is_launched_under_the_configuration_the_live_run_used` |
+| The gate reports that sections differ and not where | killed **after a test was added**, and by reading the source | `the_gate_derives_whether_it_matched_from_the_leaves_it_found` |
+| The gate prints a differing value whatever it holds | killed | `the_gate_says_which_leaf_differs_and_carries_no_repository_text` |
+
+**One gap, recorded rather than described as covered.** The gate's *call site* is not observable from any test here: both launches of a run are over one store, so a dry rebuild always reproduces the packet and the reporting branch never runs with a difference in hand. The function it calls is unit-tested on canned trees, `sections_identical` is now derived from the leaves so the two cannot disagree, and the wiring between them is held by reading the source — which is a weaker thing, and is why it is written down here.
+
+**The published arithmetic is now a test.** `the_published_arithmetic_is_what_the_bodies_actually_cost` computes all four figures READINESS §3 quotes from the real request bodies and fails when the table drifts. The generation floor moved them: 32,943 and 91,453 a step, 373,188 a flow, 2,239,128 for six.
+
 ### Round 40: five bounded corrections, and what each of them was
 
 The reviewer accepted discovery's code as built and returned five corrections — **one survived mutant in it and four defects in the harness**. Each is worth keeping for the shape of the mistake rather than the fix.

@@ -195,6 +195,35 @@ What the pilots *did* produce is four defects that are not about either question
 
 **And one that is reported rather than fixed.** An ingested artifact's id carries the instant it was ingested, and a claim's revision digest is taken over a record holding that id, so **two stores that ingest identical bytes and propose identical claims agree on neither**. A packet citing an ingested artifact is byte-reproducible within its store and not across stores. The golden packet guard found this by failing on every run; it normalises both out, narrowly and visibly, and the property is recorded here.
 
+### The m4e live run, 2026-09-22: both pilots and J1, with a model
+
+**The first live run of the model runtime**, authorised once by the owner, driven by [`scripts/m4e_run.py`](../../scripts/m4e_run.py) at `a6dc450`. Six runs: J1 revisited and both sealed pilot questions, each against `MiniMax-M2.7-highspeed` and `MiniMax-M3`, so the difference between a pair is the model and nothing else. **65,144 tokens in total** — 2.98% of the 2,239,128 six-flow worst case — every item satisfied, no question ambiguous, and the credential absent from every store.
+
+| Run | Repository at | Tokens | Records | Terms step | Choice step |
+|---|---|---:|---:|---|---|
+| `j1-m27hs` | `a6dc450` | 3,278 | 1 | `model_answer_truncated` | not reached |
+| `j1-m3` | `a6dc450` | 5,607 | 2 | answered | answered |
+| `brian2-m27hs` | `4960df7` | 14,208 | 2 | answered, one repair | answered, one repair |
+| `brian2-m3` | `4960df7` | 6,233 | 2 | answered | answered |
+| `knowscroll-m27hs` | `3e8991e` | 23,501 | 2 | answered | `model_answer_truncated` |
+| `knowscroll-m3` | `3e8991e` | 12,317 | 2 | answered | answered |
+
+Packet digests, in the same order: `79762ecf…`, `116922fa…`, `32f52cd2…`, `abd71084…`, `74358b75…`, `a1370d9c…`. The packets themselves are outside this repository, where the reviewer scored them; **no repository text is recorded here**, which is the licence rule for the pilots.
+
+**The model split is the finding.** `MiniMax-M3` used 13 to 32 output tokens per step and answered cleanly in all six of its steps. `MiniMax-M2.7-highspeed` spent 277 to 512 tokens reasoning before writing anything, and truncated two of its three flows — J1's terms step at the 512-token floor, and Knowscroll's choice again at the 1,024 its repair asked for. One of its flows also spent a repair on a fenced ```` ```json ```` answer. Both are fixed at m4f, and both were invisible to a fake transport.
+
+**Knowscroll ran with zero claims in the store.** The harness registers a repository and asks a question; it ingests no decisions, so nothing in that run exercised decision memory at all. Its result is **lexical discovery only**, and is not evidence about the decision-memory path that the m3d/m3e pilot was about.
+
+#### The scores, which are the reviewer's and are in the reviewer's words
+
+> brian2-m3 1/3 (fundamentalunits.py 301-340, first time the file is cited); brian2-m27hs 2/3 (fundamentalunits.py 1661-1700 + unitsafefunctions.py 61-120); knowscroll-m3 3/3 with zero claims (DECISIONS.md 621-660 + _spike.mjs 1-40); knowscroll-m27hs 1/3 (choice truncated); j1-m27hs both facts via the deterministic fallback; j1-m3 code only (ADR never offered — item 4). No trap triggered anywhere.
+
+This session has never seen either oracle and scored nothing.
+
+**What the run establishes, narrowly.** brian2's question had failed the deterministic compiler twice, holding one of three facts both times, and `fundamentalunits.py` had never been cited at all; both live runs cite it, and one holds two of three. That is the first evidence that a model proposing search terms reaches something lexical discovery did not — which is the claim m4e was built to test. It is two runs of one question, not a measurement.
+
+**And what it does not.** `j1-m3` returned code only, because the ADR its answer needed **was never offered to the model**: the candidate set was the raw top of the ranking rather than the per-path-capped reading the packet publishes, so thirteen spans of one file filled it. A fact never offered cannot be kept, and a score under that condition measures the candidate set rather than the model. Fixed at m4f; the pairs above were run before the fix and should be read with it in mind.
+
 ### What neither pilot establishes
 
 Both records above measure a packet. **Neither measures a session.** No agent session used either packet for any task: nothing here shows that work went better with one, or that a constraint was preserved that would otherwise have been lost, or that investigation was not repeated. That is J6 proper, and it is M7's — with pre-agreed thresholds derived from these pilots' variance, fixed before the confirmatory run, against a strong native-context baseline, a disciplined-notes baseline and a plain-search baseline.

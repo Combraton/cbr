@@ -185,6 +185,69 @@ fn a_structured_answer_that_is_json_is_read_as_one() {
 }
 
 #[test]
+fn a_fenced_answer_is_read_rather_than_repaired() {
+    // **The live run of 2026-09-22 paid for this.**
+    // `MiniMax-M2.7-highspeed` wrapped its JSON in a code fence; that
+    // parsed as nothing, cost the one repair the step is allowed, and
+    // the repair then ran out of room on reasoning. The whole step was
+    // lost to a formatting habit.
+    //
+    // CBR asks for a single JSON object and nothing else, and a fence is
+    // a model being helpful about formatting rather than answering a
+    // different question. Refusing it buys nothing.
+    let wanted = Ok(Reply::Structure(Value::Object(vec![(
+        "ids".into(),
+        Value::Array(vec![Value::String("s1".into())]),
+    )])));
+    for fenced in [
+        r#"```json\n{\"ids\":[\"s1\"]}\n```"#,
+        r#"```JSON\n{\"ids\":[\"s1\"]}\n```"#,
+        r#"```\n{\"ids\":[\"s1\"]}\n```"#,
+        r#"  ```json\n{\"ids\":[\"s1\"]}\n```  "#,
+    ] {
+        let body = format!(
+            r#"{{"choices":[{{"message":{{"content":"{fenced}"}},"finish_reason":"stop"}}],"usage":{{"total_tokens":10}}}}"#
+        );
+        let read = read_completion(
+            Dialect::OpenAi,
+            &Want::Structure { schema: schema() },
+            body.as_bytes(),
+        );
+        assert_eq!(read.reply, wanted, "a fenced answer was refused: {fenced}");
+    }
+}
+
+#[test]
+fn unfencing_does_not_go_looking_for_json_inside_something_else() {
+    // **The other half, and the one that keeps this honest.** Removing a
+    // fence from a whole answer is reading what was sent; digging an
+    // object out of prose is guessing what was meant. A model that wrote
+    // an explanation and an example has not answered, and a parser that
+    // decided which part was the answer would be making the choice the
+    // closed set exists to take away from it.
+    for prose in [
+        r#"Here is the answer:\n```json\n{\"ids\":[\"s1\"]}\n```"#,
+        r#"```json\n{\"ids\":[\"s1\"]}\n```\nand also\n```json\n{\"ids\":[\"s2\"]}\n```"#,
+        r#"```json\n{\"ids\":[\"s1\"]}"#,
+        r#"```{\"ids\":[\"s1\"]}```"#,
+    ] {
+        let body = format!(
+            r#"{{"choices":[{{"message":{{"content":"{prose}"}},"finish_reason":"stop"}}],"usage":{{"total_tokens":10}}}}"#
+        );
+        let read = read_completion(
+            Dialect::OpenAi,
+            &Want::Structure { schema: schema() },
+            body.as_bytes(),
+        );
+        assert_eq!(
+            read.reply,
+            Err(Unusable::NotStructured),
+            "an answer that is not one object was read as one: {prose}"
+        );
+    }
+}
+
+#[test]
 fn a_structured_answer_outside_the_protocols_domain_is_not_structured() {
     // It parses as JSON and is still not something CBR can seal, so it is
     // the same outcome as prose rather than a second kind of failure.

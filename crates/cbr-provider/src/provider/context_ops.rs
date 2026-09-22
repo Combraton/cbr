@@ -1242,22 +1242,36 @@ impl Provider {
         // nothing — which is backwards for the question this step is
         // for, whose answer the ordinary reading missed while returning
         // plenty of confident near-misses.
-        let mut union = found[..found.len().min(crate::discovery::FROM_QUESTION)].to_vec();
+        //
+        // **Both halves are built under the packet's own per-path cap**,
+        // and the live run of 2026-09-22 is why. Without it the question
+        // half was the raw top of the ranking, so one file that
+        // out-ranks the rest filled the set: J1 offered thirteen spans
+        // of one file and none of the file the deterministic packet
+        // cites. An offer the packet could not honour, and a fact never
+        // offered that could not be kept.
+        let mut taken: std::collections::BTreeMap<String, usize> =
+            std::collections::BTreeMap::new();
+        let mut union =
+            crate::discovery::per_path_capped(found, crate::discovery::FROM_QUESTION, &mut taken);
         let query = crate::discovery::query(&terms);
         let shown_claims = claims.len().min(crate::discovery::CLAIMS_SHOWN);
         let span_room = crate::discovery::CANDIDATES.saturating_sub(shown_claims);
         if !query.is_empty() {
-            for extra in self.ranked_spans(&query, trees)? {
-                if union.len() >= span_room {
-                    break;
-                }
-                let already = union
-                    .iter()
-                    .any(|have| have.blob == extra.blob && have.start_byte == extra.start_byte);
-                if !already {
-                    union.push(extra);
-                }
-            }
+            // The same cap, carried across the halves by the same map: a
+            // file the question already reached twice is not reached a
+            // third time because a term names it too.
+            let extra: Vec<cbr_memory::retrieval::Found> = self
+                .ranked_spans(&query, trees)?
+                .into_iter()
+                .filter(|extra| {
+                    !union
+                        .iter()
+                        .any(|have| have.blob == extra.blob && have.start_byte == extra.start_byte)
+                })
+                .collect();
+            let room = span_room.saturating_sub(union.len());
+            union.extend(crate::discovery::per_path_capped(&extra, room, &mut taken));
         }
         union.truncate(span_room);
 
