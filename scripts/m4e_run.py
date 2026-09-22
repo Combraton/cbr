@@ -18,28 +18,38 @@ time, which no flag can stand in for.
 
 What it does, per run in the manifest:
 
-  1. launches a provider over a throwaway data directory,
+  1. launches a provider over a data directory under `--out`, bounded
+     by what is left of the run ceiling rather than by the whole of it,
   2. registers the repository and submits one context request,
   3. polls until it settles, and writes the packet where the reviewer
      can score it,
   4. relaunches the same store with `--replay-model` and rebuilds the
-     same question offline, comparing packet digests -- **the replay
+     same question offline, comparing sealed sections -- **the replay
      gate**,
-  5. reports what was retained, what replayed, and every question the
-     records disagree about, with the answers that disagree.
+  5. reports what was retained, how much of it discovery's own two steps
+     sealed, what replayed, and every question the records disagree
+     about, with the answers that disagree.
 
 What it refuses, before anything starts:
 
-  * a repository that is not one of the three the owner's word in
-    READINESS section 7 covers, which are all public;
+  * a repository whose **origin** is not one the owner's word in
+    READINESS section 7 covers, read from the checkout rather than
+    taken from the id the manifest typed;
+  * a checkout that is not at the commit the manifest pins, when it
+    pins one;
+  * an investigation budget the items would exhaust before discovery
+    was reached, which would produce a baseline packet reading as "the
+    model did not help";
   * an output directory inside this repository, because a pilot's
     packet must never be committed;
   * `--live` without `--permit-model-network`;
-  * a run ceiling above the 5,000,000 hard cap of READINESS section 9.
+  * a run ceiling above the 5,000,000 hard cap of READINESS section 9,
+    or a stop above its 2,250,000.
 
-And it stops, mid-run, at 2,250,000 tokens -- the estimate plus half --
-reporting what was spent and on what rather than quietly costing three
-times what was predicted.
+And it stops **before** the run that could cross 2,250,000 -- the
+estimate plus half -- rather than after the one that did: the worst case
+of a flow is a computed number, so the arithmetic is done before the
+tokens are.
 
 The report holds digests, paths, spans, counts and costs. **It holds no
 repository text**, which is the licence rule for the pilots and is
@@ -50,12 +60,10 @@ import argparse
 import base64
 import json
 import os
-import shutil
 import socket
 import sqlite3
 import subprocess
 import sys
-import tempfile
 import time
 from pathlib import Path
 
@@ -70,10 +78,28 @@ ESTIMATE_TOKENS = 1_500_000
 STOP_TOKENS = 2_250_000
 RUN_CEILING_TOKENS = 5_000_000
 
+# READINESS section 3: the worst a request's two-step discovery flow can
+# cost, computed by `discovery::tests` against the real constants rather
+# than estimated here. The run stops *before* a run that could cross the
+# stop, not after one that did.
+WORST_CASE_FLOW_TOKENS = 363_966
+
 # READINESS section 7: the owner's word covers these three and no
-# others, and all three are public. A repository id outside this set is
-# refused by name rather than by a flag somebody could pass.
-PUBLIC_REPOSITORIES = ("cbr", "brian2", "knowscroll")
+# others, and all three are public.
+#
+# **A repository is what its origin says it is, not what the manifest
+# called it.** An id is a label somebody typed, so a check against the
+# label alone admits any checkout in the filesystem under any name --
+# `{"id": "brian2", "path": <a private tree>}` would have passed. The
+# origins are pinned here and `check` reads each checkout's own before
+# anything is launched.
+PUBLIC_REPOSITORIES = {
+    "cbr": ("github.com/combraton/cbr",),
+    # The pilot is the owner's fork; a fresh clone of the project
+    # upstream is the same public bytes and is admitted too.
+    "brian2": ("github.com/legend101zz/brian2", "github.com/brian-team/brian2"),
+    "knowscroll": ("github.com/legend101zz/knowscroll-v2",),
+}
 
 # The three models M4 may name (READINESS section 2). m4e runs the
 # highspeed extraction model beside the synthesis one, which is what
@@ -95,11 +121,53 @@ def refuse(why):
     raise Refused(why)
 
 
+# ---- what a checkout says it is -----------------------------------------
+
+
+def normalised_origin(url):
+    """The spellings of one remote, as one string.
+
+    `https://github.com/x/y.git`, `git@github.com:x/y` and
+    `ssh://git@github.com/x/y/` are the same repository, and a pin that
+    only matched one of them would refuse the owner's own clone.
+    """
+    text = url.strip()
+    for prefix in ("https://", "http://", "ssh://", "git://"):
+        if text.startswith(prefix):
+            text = text[len(prefix) :]
+    if text.startswith("git@"):
+        text = text[len("git@") :].replace(":", "/", 1)
+    host, _, rest = text.partition("/")
+    if "@" in host:
+        host = host.split("@", 1)[1]
+    text = f"{host}/{rest}" if rest else host
+    if text.endswith(".git"):
+        text = text[: -len(".git")]
+    return text.rstrip("/").lower()
+
+
+def git_says(path, arguments, why):
+    finished = subprocess.run(
+        ["git", "-C", str(path), *arguments],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if finished.returncode != 0:
+        refuse(f"{why}: git {' '.join(arguments)} said: {finished.stderr.strip()}")
+    return finished.stdout.strip()
+
+
 # ---- what may be run ----------------------------------------------------
 
 
-def check(manifest, out, live, permit, ceiling):
-    """Every refusal, before a provider is launched or a byte is sent."""
+def check(manifest, out, live, permit, ceiling, stop):
+    """Every refusal, before a provider is launched or a byte is sent.
+
+    Returns the output directory and, per run, what its checkout said it
+    was -- which is read here, before anything starts, so that a run over
+    a repository nobody authorised costs nothing at all.
+    """
     if live and not permit:
         refuse(
             "--live needs --permit-model-network as well. A live run reads "
@@ -112,6 +180,12 @@ def check(manifest, out, live, permit, ceiling):
             f"{RUN_CEILING_TOKENS}. Raising it is the owner's decision and "
             "not this script's."
         )
+    if stop > STOP_TOKENS:
+        refuse(
+            f"--stop-tokens {stop} is above the {STOP_TOKENS} of READINESS "
+            "section 9, which is the estimate plus half. Like the ceiling it "
+            "can be lowered and not raised."
+        )
     out = Path(out).resolve()
     if out == REPOSITORY or REPOSITORY in out.parents:
         refuse(
@@ -123,6 +197,7 @@ def check(manifest, out, live, permit, ceiling):
     if not isinstance(runs, list) or not runs:
         refuse("the manifest names no runs")
     seen = set()
+    checkouts = {}
     for run in runs:
         for member in ("id", "repository", "model", "task", "selector", "wants"):
             if member not in run:
@@ -147,7 +222,55 @@ def check(manifest, out, live, permit, ceiling):
         path = Path(run["repository"].get("path", "")).expanduser()
         if not (path / ".git").exists():
             refuse(f"{run['id']}: {path} is not a git checkout")
-    return out
+
+        # **The id is a label; the origin is the repository.** Checked in
+        # both modes, because a dry run reads the same bytes off the same
+        # disk as a live one -- the only thing `--dry-run` changes is
+        # where the answers come from.
+        origin = normalised_origin(
+            git_says(
+                path,
+                ["remote", "get-url", "origin"],
+                f"{run['id']}: {path} has no origin remote, so nothing but "
+                "the manifest says which repository it is",
+            )
+        )
+        permitted = PUBLIC_REPOSITORIES[identifier]
+        if origin not in permitted:
+            refuse(
+                f"{run['id']}: {path} has origin {origin!r}, which is not "
+                f"{identifier!r}. That id is {' or '.join(permitted)}. The "
+                "owner's word covers repositories, not the names a manifest "
+                "gives them."
+            )
+        head = git_says(path, ["rev-parse", "HEAD"], f"{run['id']}: {path} has no HEAD")
+        wanted = run["repository"].get("commit")
+        if wanted and head != wanted:
+            refuse(
+                f"{run['id']}: {path} is at {head}, and the manifest pins "
+                f"{wanted}. A pilot question was sealed against a tree; "
+                "answering it over a different one measures something else."
+            )
+        checkouts[run["id"]] = {"origin": origin, "head": head}
+
+        # **Discovery must have room after the items.** Items are asked
+        # first and a flow that cannot finish is not started, so a run
+        # whose budget the items exhaust never asks the two questions m4e
+        # exists to measure -- and produces a baseline packet that reads
+        # as "the model did not help".
+        wants = run["wants"]
+        if not isinstance(wants, list) or not wants:
+            refuse(f"{run['id']}: names no wants")
+        investigation = int(run.get("investigation", 5))
+        if investigation < len(wants) + 2:
+            refuse(
+                f"{run['id']}: investigation {investigation} with "
+                f"{len(wants)} wants leaves no room for discovery's two "
+                "questions. Items are asked first, so this run would spend "
+                "its budget before discovery was reached and report nothing "
+                f"about it. It needs at least {len(wants) + 2}."
+            )
+    return out, checkouts
 
 
 # ---- driving a provider -------------------------------------------------
@@ -403,6 +526,23 @@ def records(data):
     return found
 
 
+def discovery_records(data):
+    """The sealed records of discovery's own two steps.
+
+    **Reported per run so that a reviewer can see the question was
+    asked.** Discovery is advisory and items come first, so "the model
+    did not widen anything" and "the model was never asked" produce
+    packets that read alike. The count tells them apart: two is the
+    terms step and the choice, one is a flow that stopped at the terms,
+    and none is a run that never reached discovery at all.
+    """
+    return [
+        identifier
+        for identifier, record in records(data)
+        if record.get("question", {}).get("selector", "").startswith("discovery.")
+    ]
+
+
 def ambiguity(data):
     """**The replay gate's own report: what could not be replayed, and why.**
 
@@ -469,100 +609,134 @@ REMEDY = (
 # ---- one run ------------------------------------------------------------
 
 
-def one_run(run, out, provider, client, live, ceiling):
-    work = Path(tempfile.mkdtemp(prefix="cbr-m4e."))
-    result = {"id": run["id"], "model": run["model"], "repository": run["repository"]["id"]}
+def one_run(run, out, provider, client, live, ceiling, checkout):
+    # **Under `--out`, which `check` has already put outside this
+    # repository.** A live run's store *is* the evidence -- the ledger
+    # the spend is read from and the records the replay gate reads --
+    # and a temp directory is internal disk that a reboot empties.
+    work = out / "work" / run["id"]
+    work.mkdir(parents=True, exist_ok=True)
+    result = {
+        "id": run["id"],
+        "model": run["model"],
+        "repository": run["repository"]["id"],
+        "origin": checkout["origin"],
+        "head": checkout["head"],
+        # What this launch was actually given, which is the whole of
+        # item 2: the ledger counts one store, so a run that was handed
+        # the full cap would be the cap all over again.
+        "launch_ceiling": ceiling,
+        "data": str(work / "data"),
+    }
+    config = configuration(work, run, live, run.get("dry_answers", []))
+    # **The ceiling goes to every launch, in both modes.**
+    # `Ledger::run_spend` sums the store it was opened over, and
+    # every run opens a new one, so a ceiling passed once per launch
+    # without subtracting what is already spent bounds each run and
+    # not the run. A dry run is given it too, so the mechanism the
+    # live run depends on is the one the suite exercises.
+    extra = ["--model-run-ceiling", str(ceiling)]
+    if live:
+        extra = ["--permit-model-network", *extra]
+    child, endpoint = launch(provider, work, run, config, extra)
+    credential = credential_file(work, live)
     try:
-        config = configuration(work, run, live, run.get("dry_answers", []))
-        extra = []
-        if live:
-            extra = ["--permit-model-network", "--model-run-ceiling", str(ceiling)]
-        child, endpoint = launch(provider, work, run, config, extra)
-        credential = credential_file(work, live)
-        try:
-            inspected = submit_and_settle(client, endpoint, credential, run, "live")
-            digest = packet_digest(inspected)
-            result["items"] = [
+        inspected = submit_and_settle(client, endpoint, credential, run, "live")
+        digest = packet_digest(inspected)
+        result["items"] = [
+            {
+                "item": item.get("item_id"),
+                "result": item.get("result"),
+                "reason": item.get("reason", ""),
+            }
+            for item in inspected.get("items", [])
+        ]
+        result["packet"] = digest
+        result["packet_file"], live_sections = write_packet(
+            client, endpoint, credential, out, run, "live", digest
+        )
+    finally:
+        stop(child)
+
+    data = work / "data"
+    total, charges = spend(data)
+    result["tokens"] = total
+    result["charges"] = [{"kind": kind, "tokens": tokens} for kind, tokens in charges]
+    result["records"] = len(records(data))
+    found = discovery_records(data)
+    result["discovery_records"] = len(found)
+    if len(found) != 2:
+        result["discovery_note"] = (
+            f"discovery sealed {len(found)} records rather than the two "
+            "its flow is: this packet may be a baseline that no model "
+            "widened. See READINESS section 3."
+        )
+
+    # **The replay gate.** The same store, no transport, no
+    # credential, no permit: every question answered from what was
+    # retained or not at all.
+    replay_config = work / "cbr-replay.json"
+    replay_config.write_text(
+        json.dumps(
+            {
+                "format": "combraton-conformance-config/1",
+                "principal": PRINCIPAL,
+                "authority_principals": [PRINCIPAL],
+                "credentials": [{"credential": DRY_RUN_CREDENTIAL}],
+                "context": {"compile": True},
+                "model_runtime": {
+                    "provider": "minimax",
+                    "dialect": "responses",
+                    "model": run["model"],
+                },
+            }
+        )
+    )
+    child, endpoint = launch(
+        provider,
+        work,
+        run,
+        replay_config,
+        # The rebuild has no transport and spends nothing; it carries
+        # the ceiling so that the launch every run makes is the same
+        # launch, bounded the same way.
+        ["--replay-model", "--model-run-ceiling", str(ceiling)],
+    )
+    credential = credential_file(work, False)
+    try:
+        rebuilt = submit_and_settle(client, endpoint, credential, run, "replay")
+        rebuilt_sections = (
+            sealed_sections(
+                json.loads(inspect_packet(client, endpoint, credential, run, "replay"))
+            )
+            if packet_digest(rebuilt)
+            else None
+        )
+        result["replay"] = {
+            "packet": packet_digest(rebuilt),
+            "items": [
                 {
                     "item": item.get("item_id"),
                     "result": item.get("result"),
                     "reason": item.get("reason", ""),
                 }
-                for item in inspected.get("items", [])
-            ]
-            result["packet"] = digest
-            result["packet_file"], live_sections = write_packet(
-                client, endpoint, credential, out, run, "live", digest
-            )
-        finally:
-            stop(child)
-
-        data = work / "data"
-        total, charges = spend(data)
-        result["tokens"] = total
-        result["charges"] = [{"kind": kind, "tokens": tokens} for kind, tokens in charges]
-        result["records"] = len(records(data))
-
-        # **The replay gate.** The same store, no transport, no
-        # credential, no permit: every question answered from what was
-        # retained or not at all.
-        replay_config = work / "cbr-replay.json"
-        replay_config.write_text(
-            json.dumps(
-                {
-                    "format": "combraton-conformance-config/1",
-                    "principal": PRINCIPAL,
-                    "authority_principals": [PRINCIPAL],
-                    "credentials": [{"credential": DRY_RUN_CREDENTIAL}],
-                    "context": {"compile": True},
-                    "model_runtime": {
-                        "provider": "minimax",
-                        "dialect": "responses",
-                        "model": run["model"],
-                    },
-                }
-            )
-        )
-        child, endpoint = launch(provider, work, run, replay_config, ["--replay-model"])
-        credential = credential_file(work, False)
-        try:
-            rebuilt = submit_and_settle(client, endpoint, credential, run, "replay")
-            rebuilt_sections = (
-                sealed_sections(
-                    json.loads(inspect_packet(client, endpoint, credential, run, "replay"))
-                )
-                if packet_digest(rebuilt)
-                else None
-            )
-            result["replay"] = {
-                "packet": packet_digest(rebuilt),
-                "items": [
-                    {
-                        "item": item.get("item_id"),
-                        "result": item.get("result"),
-                        "reason": item.get("reason", ""),
-                    }
-                    for item in rebuilt.get("items", [])
-                ],
-            }
-        finally:
-            stop(child)
-        # **What the gate actually compares.** The sections, because the
-        # packet digest covers the request's own id and two requests can
-        # never be byte-identical; byte identity across two stores is the
-        # suite's gate, not this one's.
-        result["replay"]["sections_identical"] = (
-            live_sections is not None and live_sections == rebuilt_sections
-        )
-        result["replay"].update(ambiguity(work / "data"))
-        return result
+                for item in rebuilt.get("items", [])
+            ],
+        }
     finally:
-        if not live:
-            shutil.rmtree(work, ignore_errors=True)
-        else:
-            # A live run's store is the evidence. It is left where it is
-            # and named, rather than deleted by the thing that made it.
-            result["data"] = str(work / "data")
+        stop(child)
+    # **What the gate actually compares.** The sections, because the
+    # packet digest covers the request's own id and two requests can
+    # never be byte-identical; byte identity across two stores is the
+    # suite's gate, not this one's.
+    result["replay"]["sections_identical"] = (
+        live_sections is not None and live_sections == rebuilt_sections
+    )
+    result["replay"].update(ambiguity(work / "data"))
+    # **Nothing here deletes a store.** The ledger and the records
+    # are what the report is a summary of, so they outlive the thing
+    # that summarised them, in both modes and under `--out`.
+    return result
 
 
 def main(argv=None):
@@ -582,6 +756,16 @@ def main(argv=None):
     parser.add_argument("--live", action="store_true")
     parser.add_argument("--permit-model-network", action="store_true")
     parser.add_argument("--run-ceiling", type=int, default=RUN_CEILING_TOKENS)
+    parser.add_argument(
+        "--stop-tokens",
+        type=int,
+        default=STOP_TOKENS,
+        help=(
+            "lower the stop of READINESS section 9. Like the ceiling it can "
+            "only be lowered, and it is what the next run's worst case is "
+            "checked against before that run is started."
+        ),
+    )
     options = parser.parse_args(argv)
 
     if options.ambiguity:
@@ -603,12 +787,13 @@ def main(argv=None):
 
     try:
         manifest = json.loads(Path(options.manifest).read_text())
-        out = check(
+        out, checkouts = check(
             manifest,
             options.out,
             options.live,
             options.permit_model_network,
             options.run_ceiling,
+            options.stop_tokens,
         )
         provider, client = binaries(options.binaries)
         out.mkdir(parents=True, exist_ok=True)
@@ -620,39 +805,60 @@ def main(argv=None):
         report = {
             "mode": "live" if options.live else "dry-run",
             "estimate_tokens": ESTIMATE_TOKENS,
-            "stop_tokens": STOP_TOKENS,
+            "stop_tokens": options.stop_tokens,
             "run_ceiling_tokens": options.run_ceiling,
+            "worst_case_flow_tokens": WORST_CASE_FLOW_TOKENS,
             "remedy_for_an_ambiguous_question": REMEDY,
             "runs": [],
         }
         spent = 0
         for run in manifest["runs"]:
+            # **The stop is checked before a run, against what that run
+            # could cost.** Checked only afterwards it was a report of
+            # an overspend rather than a bound on one: the run that
+            # crossed the stop had already crossed it. The worst case is
+            # a computed number (READINESS section 3), so the arithmetic
+            # can be done before the tokens are.
+            remaining = options.run_ceiling - spent
+            if spent + WORST_CASE_FLOW_TOKENS > options.stop_tokens:
+                report["stopped"] = (
+                    f"{run['id']} was not started: {spent} spent plus the "
+                    f"{WORST_CASE_FLOW_TOKENS} worst case of one flow would "
+                    f"cross the stop of {options.stop_tokens}"
+                )
+                print(f"m4e_run: STOPPED. {report['stopped']}", file=sys.stderr)
+                break
+            if remaining < WORST_CASE_FLOW_TOKENS:
+                report["stopped"] = (
+                    f"{run['id']} was not started: {remaining} left under the "
+                    f"ceiling of {options.run_ceiling} is less than one "
+                    f"flow's {WORST_CASE_FLOW_TOKENS} worst case"
+                )
+                print(f"m4e_run: STOPPED. {report['stopped']}", file=sys.stderr)
+                break
             result = one_run(
                 run,
                 out,
                 provider,
                 client,
                 options.live,
-                options.run_ceiling,
+                # **What is left, not the cap.** The ledger counts one
+                # store and every run opens a new one, so the cap for
+                # the whole of m4e is only a cap if each launch is given
+                # the cap less what the launches before it spent.
+                remaining,
+                checkouts[run["id"]],
             )
             report["runs"].append(result)
             spent += result.get("tokens", 0)
             print(
                 f"  {result['id']}: {result.get('tokens', 0):,} tokens, "
-                f"{result.get('records', 0)} records, "
+                f"{result.get('records', 0)} records "
+                f"({result.get('discovery_records', 0)} from discovery), "
+                f"ceiling {result.get('launch_ceiling', 0):,}, "
                 f"replay {'identical' if result.get('replay', {}).get('sections_identical') else 'DIFFERS'}, "
                 f"{len(result.get('replay', {}).get('ambiguous', []))} ambiguous"
             )
-            # **The stop, checked between runs.** Halting mid-call would
-            # leave a charge nobody reconciled; halting between them
-            # leaves the ledger settled and says what was spent.
-            if spent > STOP_TOKENS:
-                report["stopped"] = (
-                    f"spent {spent} tokens, which is more than half again over "
-                    f"the {ESTIMATE_TOKENS} estimate"
-                )
-                print(f"m4e_run: STOPPED. {report['stopped']}", file=sys.stderr)
-                break
         report["tokens"] = spent
         report["ambiguous_questions"] = sum(
             len(run.get("replay", {}).get("ambiguous", [])) for run in report["runs"]

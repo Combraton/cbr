@@ -38,6 +38,17 @@ const BOTH_STEPS: &str = "3";
 /// One item and no room for a two-step flow.
 const ITEM_ONLY: &str = "2";
 
+/// The bounds the offered set is composed under, as `cbr-provider`
+/// holds them.
+///
+/// Written out because `cbr-cli` does not link the provider — it
+/// launches the binary — so these are read back out of the bytes that
+/// went out rather than imported. A figure nobody updated cannot pass
+/// here: if either bound moved, the body would offer a different number
+/// of ids and this would fail.
+const CANDIDATES: usize = 20;
+const FROM_QUESTION: usize = 10;
+
 /// The body of the terms step, and the body of the choose step.
 ///
 /// The fake answers a count as a count and never as the script, and
@@ -102,6 +113,54 @@ fn a_term_the_model_proposed_widens_what_discovery_offers() {
     assert!(
         choose.contains("tombstone"),
         "and the term is in the question the choice was asked as: {choose}"
+    );
+    provider.stop();
+}
+
+#[test]
+fn the_union_is_bounded_however_far_a_term_reaches() {
+    // **The cap on the union, which the fixture had never reached.** A
+    // term is one word from a model and it is run against a whole
+    // repository, so what it matches is not something the bound can be
+    // left to chance about: `bloom.md` is sixteen sheets of chunks that
+    // only the term "bloom" reaches, which is more than the candidate
+    // set holds.
+    //
+    // Asserted on **the body that went out**, because that is the thing
+    // the bound exists to size: the request CBR composes out of a
+    // repository it does not own.
+    let fixture = Fixture::answering(&["choose:c1", "terms:bloom", "ids:d1"]);
+    let provider = fixture.start();
+    prepared(&fixture, "bounded", BOTH_STEPS);
+    let (_, choose) = steps(&fixture);
+
+    // Far enough past the bound to catch a cap that is not there at all.
+    let offered: Vec<usize> = (1..=64)
+        .filter(|id| choose.contains(&format!("[d{id}] ")))
+        .collect();
+    assert_eq!(
+        offered.len(),
+        CANDIDATES,
+        "the offered set is not the bound the arithmetic is computed from"
+    );
+    assert!(
+        !choose.contains(&format!("[d{}] ", CANDIDATES + 1)),
+        "a term reached past the candidate set: {choose}"
+    );
+
+    // **And the reservation is still a reservation.** The first share is
+    // the request's own reading, which the term cannot take; the rest is
+    // what the term widened to, which is the whole point of asking.
+    for id in 1..=FROM_QUESTION {
+        assert!(
+            !offered_as(&choose, &format!("d{id}")).starts_with("bloom.md"),
+            "the term took a slot the ordinary reading had reserved: d{id}"
+        );
+    }
+    assert!(
+        (FROM_QUESTION + 1..=CANDIDATES)
+            .any(|id| offered_as(&choose, &format!("d{id}")).starts_with("bloom.md")),
+        "the term reached nothing at all, so the bound was never tested: {choose}"
     );
     provider.stop();
 }

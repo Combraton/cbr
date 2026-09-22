@@ -77,7 +77,7 @@ The reviewer's mutant at m4d — sealing `readable_under(view, &[])` — survive
 
 [`scripts/m4e_run.py`](../../scripts/m4e_run.py) is the first live run as code, for the reason m4b already recorded about `--calibrate`: *if the first live call needs new plumbing, the first live call runs code nobody reviewed.* Its dry-run mode drives every stage against the fake and is exercised by `m4e_harness.rs`.
 
-Every rule the owner set that a harness can enforce is a refusal made before a provider is launched, so a run that breaks one costs nothing: a repository outside the three public ones, a model outside the three M4 may name, an output directory inside this repository, `--live` without `--permit-model-network`, a ceiling above 5,000,000. The stop at 2,250,000 is checked **between** runs, because halting mid-call would leave a charge nobody reconciled.
+Every rule the owner set that a harness can enforce is a refusal made before a provider is launched, so a run that breaks one costs nothing: a checkout whose **origin** is not one of the three public repositories, a checkout off a commit the manifest pins, an investigation budget the items would exhaust before discovery was reached, a model outside the three M4 may name, an output directory inside this repository, `--live` without `--permit-model-network`, a ceiling above 5,000,000 or a stop above 2,250,000. The stop is checked **before a run, against that run's computed worst case**, because halting mid-call would leave a charge nobody reconciled and halting after the fact is a report rather than a bound.
 
 **The replay gate compares sections, not packet digests** — and that was a defect first. A sealed packet names its own request, so two request ids can never be byte-identical and the digest comparison the gate started with always differed. Byte identity across two stores asking the same request is the suite's own gate in `derivation_replay.rs`; what this one asks of a real question is whether the rebuild reproduced the same content from the records.
 
@@ -93,7 +93,7 @@ So the gate reports it: `--ambiguity <data directory>` names every question whos
 
 ### The mutant table
 
-**Twenty-two mutants, twenty-one killed, one surviving.** Each was run against the **whole workspace suite**, not against the tests it was aimed at. Three survived the first pass and were killed only after a test was added, which is the third milestone in a row where that has been the useful part of the exercise.
+**Thirty-two mutants over two rounds, thirty-one killed, one surviving.** Each was run against the **whole workspace suite**, not against the tests it was aimed at. Three survived the first pass and were killed only after a test was added, and a fourth — the reviewer's, on the cap the union is composed under — survived the whole of the first round; that is the third milestone running where the survivors have been the useful part of the exercise.
 
 | Mutant | Result | What kills it |
 |---|---|---|
@@ -121,6 +121,23 @@ So the gate reports it: `--ambiguity <data directory>` names every question whos
 | **A view with nothing readable in it still buys a call** | killed **after a test was added** | `a_request_with_nothing_readable_in_its_view_buys_no_call` |
 | Span candidate ids taken from the input position rather than the kept one | **survived** | nothing — below |
 
+### The ten of round 40
+
+The reviewer's mutant, and one for each correction it took. All ten killed, each against the whole workspace suite.
+
+| Mutant | Result | What kills it |
+|---|---|---|
+| **The cap on the union removed** (the reviewer's own) | killed | `the_union_is_bounded_however_far_a_term_reaches` |
+| The reservation removed, so the ordinary reading fills the set | killed | four now, the new one among them |
+| **Every launch given the whole ceiling rather than what is left** | killed | `each_launch_is_given_what_is_left_of_the_run_and_not_the_whole_of_it` |
+| The stop checked after a run rather than before it | killed | the same test's second half |
+| **The origin check dropped, so an id is again a repository** | killed | `a_repository_is_what_its_origin_says_and_not_what_the_manifest_called_it` |
+| A pinned commit not checked against the checkout | killed | the same |
+| **The investigation check dropped, so discovery can be skipped silently** | killed | `a_run_whose_items_would_eat_the_budget_never_reaches_discovery` |
+| The work directory put back outside `--out` | killed | `a_dry_run_drives_every_stage_and_reports_what_it_found` |
+| Discovery's records counted as every record | killed | the same |
+| **The macOS gate removed from the harness test that permits the network** | killed | `no_test_launches_a_serving_provider_with_a_real_model`, extended |
+
 ### The three the first pass missed, and the one that still survives
 
 **A test of mine was satisfied by the wrong thing.** `a_candidate_set_that_held_a_claim_is_sealed_under_that_claim` asserted that a request body contained `claim drains` — and a claim's own content *begins* `claim drains revision 1: …`, so the assertion held however the candidate had been labelled. The mutant offering a claim as if it were a span survived it. The fix is to assert on the line that offers it, `[k1] claim drains`, which only the offer can produce. This is the vacuity failure of m4d in a new shape: **a property whose evidence is also produced by the thing it is meant to distinguish is not evidence.**
@@ -132,6 +149,22 @@ So the gate reports it: `--ambiguity <data directory>` names every question whos
 **The survivor, recorded rather than dismissed.** `span_candidates` gives a candidate the id of its position among the **kept** spans; the mutant gives it the position among the spans it was *handed*. The two differ only when a span is dropped for having a blob that cannot be read — and no test reaches that, because the indexer skips a blob too large to read, so a span in the ranked set always has readable bytes. The branch is reachable only when an index outlives the bytes it indexed.
 
 **It is not recorded as equivalent**, and the difference matters: STATE already records a mutant this session argued was equivalent and was not. What can be said is narrower. The two lists are appended in one statement, so they cannot drift; the mutant changes which of two correct-today schemes is used; and if the branch ever became reachable, the mutant's scheme would resolve an id to a span nobody was shown — the closed set broken from the inside, which is why the code is written the other way.
+
+### Round 40: five bounded corrections, and what each of them was
+
+The reviewer accepted discovery's code as built and returned five corrections — **one survived mutant in it and four defects in the harness**. Each is worth keeping for the shape of the mistake rather than the fix.
+
+**A bound no fixture reached.** `span_room` caps the union at twenty candidates; the reviewer set it to `usize::MAX` and all 550 tests passed. The union in every fixture was eleven, so nothing was ever near the cap, and the 89,916-token worst case the arithmetic rests on was resting on a constant no test read. `bloom.md` is sixteen sheets of chunks that only one term reaches, and the assertion is on the choose **body**: twenty ids offered, no twenty-first, none of the reserved ten taken by the term and at least one of the rest given to it. **This is the golden-digest lesson of m3d again** — a bound is only a bound where something presses against it.
+
+**A hard cap that was per launch.** `Ledger::run_spend` sums the store it was opened over, and every run of §9 opens a new data directory, so passing `--model-run-ceiling 5,000,000` to each of six launches is the cap six times. What held the total down was the per-job ceiling of 1,000,000 plus a stop checked after each run — about 3.25M worst case, under the cap by arithmetic nobody had done. Each launch is now given the cap **less what the launches before it spent**, and the stop is checked **before** a run against that run's computed worst case. READINESS said "enforced by the per-job ceiling"; it says what is true now, and the six runs it names are reconciled with the five the table counted.
+
+**"Public repositories only", enforced against a label.** The id in a manifest is a string somebody typed. `{"id": "brian2", "path": <any checkout>}` was admitted — the owner's word covers repositories, and the check covered names. The origin is now read from the checkout with `git remote get-url origin`, normalised across its spellings, and matched against a pinned table, with the commit checked too when the manifest pins one; both in **dry-run mode as well**, because a dry run reads the same bytes off the same disk. The suite's own fixture now carries `cbr`'s origin, which is the check made against the fixture rather than around it.
+
+**A measurement that could have measured nothing and said so nowhere.** Items are asked first and a flow that cannot finish is not started, so a run with four wants and an investigation of five asks discovery *nothing* — and the packet it produces is indistinguishable from one the model was asked about and did not widen. The harness refuses a run whose investigation is below `wants + 2`, and every run's report counts the `discovery.*` records that were sealed, so a reviewer can see the question was asked rather than infer it from a packet.
+
+**The evidence was in a temp directory.** A live run's store holds the ledger the spend is read from and the records the replay gate replays, and the comment called it "the evidence" while `tempfile.mkdtemp()` put it on internal disk for a reboot to empty. Every work directory is now under `--out`, which `check` already requires to be outside this repository, and nothing in the harness deletes a store.
+
+**And the permit-flag guard had a hole the shape of this harness.** `credential_discipline.rs` excuses a piece that passes `--permit-model-network` while configuring no model — written for a Rust launch whose whole configuration is visible in the piece. The harness's `--live` *writes* a production configuration naming a `model_runtime` and then launches under it, so two test cases passed the flag and were excused. Both are now their own test, gated off macOS with every other one; and the guard counts `"--live"` as configuring a model, so the next one cannot slip through the same way. The two refusals that do not need `--live` — a ceiling above the cap, a stop above the stop — are asserted in dry-run mode, on every machine.
 
 ### A probe bug, in the other direction from the last one
 
@@ -753,7 +786,7 @@ The readiness document states the scope and the PR split, restates the owner's s
 
 The review's largest catch is one this session had not seen: **`POST /v1/responses/input_tokens` is itself a send.** Counting there first serialises the request and puts it on the wire *before* admission has decided whether it may go — spending whatever the count costs and defeating the check it was meant to serve. Admission is therefore two steps: a **local conservative estimate that alone can refuse**, and the provider count only for a request that step has already admitted, itself under the view rule, itself recorded, its own cost debited. That is why m4a now has a complete admission path with **no network at all**, which is what CI exercises.
 
-The other six: the counters are **durable and conservative** — in the store, surviving restart, a reservation written before the send so a crash leaves the spend counted rather than forgotten, over CBR's own rolling five hours, with provider-reported exhaustion a **distinct** typed outcome because the quota is shared and CBR only sees its own spending; **repository text is untrusted input**, so model-assisted selection chooses only among candidate ids CBR offered and never introduces a path, span, citation or label, with negative control 5 planting a file that tells it to; **a derivation record holds repository excerpts**, so it is readable only under the job's own view and is never reachable through a packet by a reader who could not read its contents; **the Keychain is touched only when a model is configured**, which CI never is, with the read mechanism a stated m4b decision and its tradeoff written down now; **m4e has a hard cap of 5,000,000 tokens** enforced by the per-job ceiling rather than by intention, with a stop at half again over the estimate; and fragment validation becomes a mechanism.
+The other six: the counters are **durable and conservative** — in the store, surviving restart, a reservation written before the send so a crash leaves the spend counted rather than forgotten, over CBR's own rolling five hours, with provider-reported exhaustion a **distinct** typed outcome because the quota is shared and CBR only sees its own spending; **repository text is untrusted input**, so model-assisted selection chooses only among candidate ids CBR offered and never introduces a path, span, citation or label, with negative control 5 planting a file that tells it to; **a derivation record holds repository excerpts**, so it is readable only under the job's own view and is never reachable through a packet by a reader who could not read its contents; **the Keychain is touched only when a model is configured**, which CI never is, with the read mechanism a stated m4b decision and its tradeoff written down now; **m4e has a hard cap of 5,000,000 tokens** enforced by `--model-run-ceiling` given to each launch as the cap less what the launches before it spent — not, as this said until the round-40 review, by the per-job ceiling, which bounds one job and so bounds one run of six — with a stop at half again over the estimate; and fragment validation becomes a mechanism.
 
 ### The fourth instance of a rule kept by memory
 
