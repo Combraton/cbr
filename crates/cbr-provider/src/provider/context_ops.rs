@@ -1504,34 +1504,21 @@ impl Provider {
                 let started = std::time::Instant::now();
                 let outcome = serving.ask(&beside, &now, &job, &request, &body);
                 let latency_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
-                let (answer, cost) = match outcome {
-                    crate::model::Outcome::Answered { reply, cost } => (
-                        match &step {
-                            Step::Terms => match crate::discovery::proposed(&reply) {
-                                Ok(terms) => crate::derivation::Answer::Proposed(terms),
-                                Err(reason) => crate::derivation::Answer::Unmet(reason),
-                            },
-                            Step::Choose(_) => {
-                                match crate::discovery::chosen(&reply, &candidates) {
-                                    Ok(picked) => crate::derivation::Answer::ChoseMany(
-                                        picked
-                                            .into_iter()
-                                            .map(|at| candidates[at].id.clone())
-                                            .collect(),
-                                    ),
-                                    Err(reason) => crate::derivation::Answer::Unmet(reason),
-                                }
-                            }
-                        },
-                        cost,
-                    ),
-                    crate::model::Outcome::Unmet { reason, cost } => {
-                        (crate::derivation::Answer::Unmet(reason), cost)
-                    }
-                    crate::model::Outcome::Refused { refusal, cost } => {
-                        (crate::derivation::Answer::Unmet(refusal.reason()), cost)
-                    }
-                };
+                let (answer, cost) = crate::derivation::taken(outcome, |reply| match &step {
+                    Step::Terms => match crate::discovery::proposed(reply) {
+                        Ok(terms) => crate::derivation::Answer::Proposed(terms),
+                        Err(reason) => crate::derivation::Answer::Unmet(reason),
+                    },
+                    Step::Choose(_) => match crate::discovery::chosen(reply, &candidates) {
+                        Ok(picked) => crate::derivation::Answer::ChoseMany(
+                            picked
+                                .into_iter()
+                                .map(|at| candidates[at].id.clone())
+                                .collect(),
+                        ),
+                        Err(reason) => crate::derivation::Answer::Unmet(reason),
+                    },
+                });
                 Ok(crate::derivation::record(&crate::derivation::Made {
                     question: &crate::derivation::Question {
                         model: &serving.model,
@@ -2515,26 +2502,12 @@ impl Provider {
                 // charge against a shared quota and still a fact about
                 // the request; only a call that never happened has
                 // nothing to say.
-                let (answer, cost) = match outcome {
-                    crate::model::Outcome::Answered { reply, cost } => (
-                        match crate::selection::chosen(&reply, &candidates) {
-                            Ok(index) => {
-                                crate::derivation::Answer::Chose(candidates[index].id.clone())
-                            }
-                            Err(reason) => crate::derivation::Answer::Unmet(reason),
-                        },
-                        cost,
-                    ),
-                    crate::model::Outcome::Unmet { reason, cost } => {
-                        (crate::derivation::Answer::Unmet(reason), cost)
+                let (answer, cost) = crate::derivation::taken(outcome, |reply| {
+                    match crate::selection::chosen(reply, &candidates) {
+                        Ok(index) => crate::derivation::Answer::Chose(candidates[index].id.clone()),
+                        Err(reason) => crate::derivation::Answer::Unmet(reason),
                     }
-                    // Refused by CBR's own envelope. The first ask of a
-                    // question spent nothing; a refused repair carries
-                    // what the attempts before it were charged.
-                    crate::model::Outcome::Refused { refusal, cost } => {
-                        (crate::derivation::Answer::Unmet(refusal.reason()), cost)
-                    }
-                };
+                });
                 Ok(crate::derivation::record(&crate::derivation::Made {
                     question: &crate::derivation::Question {
                         model: &serving.model,

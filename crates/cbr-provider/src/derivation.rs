@@ -254,6 +254,29 @@ fn tokens(value: Option<u64>) -> Value {
     }
 }
 
+/// **What a question's outcome becomes in its record**: the answer, and
+/// every attempt it cost, however it ended.
+///
+/// Both call sites come through here, so the rule has one door: the cost is
+/// passed through whole whether the question was answered, left unmet or
+/// refused, and only the reading of a usable reply is the caller's, because
+/// that is the only part a selection and a discovery step do differently.
+/// Round 56 found why it matters: the rule was tested at selection's door and
+/// not at discovery's, which is the door live run 3's repairs went through.
+pub fn taken(
+    outcome: crate::model::Outcome,
+    read: impl FnOnce(&crate::wire::response::Reply) -> Answer,
+) -> (Answer, crate::model::Cost) {
+    match outcome {
+        crate::model::Outcome::Answered { reply, cost } => (read(&reply), cost),
+        crate::model::Outcome::Unmet { reason, cost } => (Answer::Unmet(reason), cost),
+        // Refused by CBR's own envelope. The first ask of a question spent
+        // nothing; a refused repair carries what the attempts before it were
+        // charged.
+        crate::model::Outcome::Refused { refusal, cost } => (Answer::Unmet(refusal.reason()), cost),
+    }
+}
+
 /// The format a record is sealed under. Written and never read: see the
 /// module's own account of what a `/2` record still does.
 pub const FORMAT: &str = "cbr-model-derivation/3";
