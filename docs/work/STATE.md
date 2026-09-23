@@ -11,7 +11,7 @@ This is a dated navigation snapshot. Reconcile it with Git, linked issues and cu
 
 ## This change — m4h, a record's whole cost and a harness that reads without writing
 
-Against `main` at `1444040`, the two corrections M4's close-out named, one commit of code and tests and one of notes.
+Against `main` at `1444040`, the two corrections M4's close-out named: a commit of code and tests, one of notes, and one correcting the first after CI refuted a premise of it (below).
 
 ### A record accounts for every attempt
 
@@ -23,18 +23,28 @@ Against `main` at `1444040`, the two corrections M4's close-out named, one commi
 
 ### The harness reads a store without writing a byte of it
 
-**What it did.** It read the spend, the records and the ambiguity report over a read-write connection, which on closing folded each store's log into its database and deleted the log and the shared-memory file. That is why no store of live runs 1 to 3 has a log beside it: a killed provider never closes its connection and so cannot delete its own, and the harness's was the last to close. Every committed row survives a checkpoint; the files are not as the provider left them. **This is a deduction from the measurement below and from how `stop` ends a provider, not something observed during those runs.**
+**What it did.** It read the spend, the records and the ambiguity report over a read-write connection, and a read-write connection folds a store's log into its database and deletes the log and the shared-memory file when it closes.
+
+**What that did to live runs 1 to 3 is not known, and the first version of this change said otherwise.** It deduced that the harness had checkpointed every store, on the reasoning that a killed provider never closes its connection. **CI refuted the premise.** A provider opens a store connection **per session** (`Provider::connect`) and closes it cleanly, so between sessions it holds none: by the time the harness reads a store it usually has no log at all, which a diagnostic run here confirmed at every read, and a store with no log is left byte-unchanged even by a read-write open — `the_harness_reads_a_store_with_no_log_and_creates_no_file` is green on `main`. Whether any run's store still had a log when the harness read it is not recorded anywhere, so it is not claimed either way.
 
 **What each way of opening does, measured** on scratch stores, one written by a process killed with its rows in the log and one closed cleanly:
 
-| Opened | Killed store, rows in the log | Store with no log |
+| Opened | Killed, rows in the log | No log |
 |---|---|---|
-| read-write | reads everything; **checkpoints, deletes the log and the shared-memory file** | reads everything |
+| read-write | reads everything; **checkpoints, deletes the log and the shared-memory file** | reads everything; changes nothing |
 | `mode=ro` | reads everything; **rewrites the shared-memory file** | reads everything; **creates a log and a shared-memory file** |
 | `mode=ro&readonly_shm=1` | reads everything; **changes nothing** | **fails to open, and creates a log** |
 | `immutable=1` | **misses the log's rows**; changes nothing | reads everything; **changes nothing** |
 
-**So `mode=ro` alone would not have met the byte-unchanged requirement**, which is why the reader is two: a store with a log is opened `mode=ro&readonly_shm=1`, one with none `immutable=1`, where there is nothing to miss, and a log with no shared-memory file is refused by name (`WouldWrite`) rather than written to. `readonly_shm` is a parameter of SQLite's Unix VFS rather than of its documented URI list; the byte comparison in the test is what holds it, on whatever SQLite the harness runs.
+**So `mode=ro` alone would not have met the byte-unchanged requirement**, and a store is found in three states, each read its own way:
+
+- **a log and a shared-memory file** — a provider killed while a session held the store: `mode=ro&readonly_shm=1`, which reads the log and writes nothing;
+- **no log** — the usual case: `immutable=1`, with nothing to miss;
+- **a log and no shared-memory file** — `stop` landing inside the provider's own close, after SQLite unlinked the shared memory and before it deleted the log. **CI found this state**, in three of four dry runs on its macOS runner, where the first version refused it by name; here the close always finished first. Every open in place creates a shared-memory file or misses the log, so the store is read from a **private, transient copy** of the database and its log, and SQLite recovers from the copied log as it would from the original. The test builds this state at its worst — rows only in the log — which a natural one, whose checkpoint ran before the unlink, never is.
+
+`readonly_shm` is a parameter of SQLite's Unix VFS rather than of its documented URI list; the byte comparison in the tests is what holds it.
+
+**The lesson is the one run 1 already taught, in a new place:** a deduction from how one part behaves (`stop` kills) stood in for a check of how the other part behaves (the provider closes per session). Reading `Provider::connect` would have found it; CI did instead.
 
 ### Red, then green
 
@@ -47,12 +57,13 @@ The record, replay and harness tests read the sealed JSON, the ledger and the fi
 | `the_harness_reads_a_killed_stores_ledger_from_its_log_and_changes_no_byte` | **red**: the database rewritten, the log and shared-memory file gone | green |
 | `the_harness_reads_a_store_with_no_log_and_creates_no_file` | green — a guard for the new reader, whose red is mutant M6 | green |
 | `a_record_sealed_in_the_previous_format_still_replays` | fails at its precondition, because `main` already seals `/2` — a guard, whose red is mutant M9 | green |
+| `the_harness_reads_a_store_with_a_log_and_no_shared_memory_from_a_copy` | **red against this change's first commit**, which refused the state as CI saw it | green |
 
 The five new unit tests use the new types, so they cannot run on `main`; their red is their mutants.
 
 ### The mutant table
 
-**Eleven, all killed**, each against the whole workspace suite; the runtime three again against `cbr-provider` with `--no-fail-fast`, because the first pass stops at the first failing test binary and so names only its killers.
+**Fourteen, all killed**, each against the whole workspace suite; the runtime three again against `cbr-provider` with `--no-fail-fast`, because the first pass stops at the first failing test binary and so names only its killers. The harness mutants were run again against the corrected reader.
 
 | Mutant | Result | What kills it |
 |---|---|---|
@@ -64,9 +75,12 @@ The five new unit tests use the new types, so they cannot run on `main`; their r
 | An unpriced settlement charged at nothing | killed | `an_unpriced_completion_is_charged_at_what_the_ledger_holds_for_it` |
 | A rebuild reads only records of this build's format | killed | `a_record_sealed_in_the_previous_format_still_replays` |
 | **The harness reads the store read-write** (the reviewer's) | killed | `the_harness_reads_a_killed_stores_ledger_from_its_log_and_changes_no_byte` |
-| **`immutable=1` instead of `mode=ro`** (the reviewer's) | killed, on the rows: 0 read against 10,049 | the same |
+| **`immutable=1` instead of `mode=ro`** (the reviewer's) | killed, on the rows: 0 read against 10,049 | the same, and `the_replay_gate_reports_an_ambiguous_question_rather_than_skipping_it` |
 | `mode=ro` without the read-only shared memory | killed, on the bytes | the same |
 | A store with no log opened `mode=ro` | killed, on the files created | `the_harness_reads_a_store_with_no_log_and_creates_no_file` |
+| A log with no shared memory read in place, `immutable=1` | killed, on the rows: 0 against 10,049 | `the_harness_reads_a_store_with_a_log_and_no_shared_memory_from_a_copy` |
+| A log with no shared memory read in place, `mode=ro` | killed, on the file created | the same |
+| The copy made without the log | killed, on the rows: 0 against 10,049 | the same |
 
 ## Earlier — the M4 close-out
 
