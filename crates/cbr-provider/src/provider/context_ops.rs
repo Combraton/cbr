@@ -1523,13 +1523,13 @@ impl Provider {
                                 }
                             }
                         },
-                        Some(cost),
+                        cost,
                     ),
                     crate::model::Outcome::Unmet { reason, cost } => {
-                        (crate::derivation::Answer::Unmet(reason), Some(cost))
+                        (crate::derivation::Answer::Unmet(reason), cost)
                     }
-                    crate::model::Outcome::Refused(refusal) => {
-                        (crate::derivation::Answer::Unmet(refusal.reason()), None)
+                    crate::model::Outcome::Refused { refusal, cost } => {
+                        (crate::derivation::Answer::Unmet(refusal.reason()), cost)
                     }
                 };
                 Ok(crate::derivation::record(&crate::derivation::Made {
@@ -1541,18 +1541,7 @@ impl Provider {
                         offered: &offered,
                     },
                     answer,
-                    spend: crate::derivation::Spend {
-                        admission: match cost {
-                            None => crate::derivation::NOT_ADMITTED,
-                            Some(cost) if cost.counted.is_some() => crate::model::ADMITTED_COUNT,
-                            Some(_) => crate::model::ADMITTED_LOCAL,
-                        },
-                        usage: cost.and_then(|cost| cost.usage),
-                        input_usage: cost.and_then(|cost| cost.input_usage),
-                        counted: cost.and_then(|cost| cost.counted),
-                        repairs: cost.map(|cost| cost.repairs).unwrap_or_default(),
-                        latency_ms,
-                    },
+                    spend: crate::derivation::Spend { cost, latency_ms },
                     job: &job,
                     request: &request,
                     item: DISCOVERY_ITEM,
@@ -2534,15 +2523,16 @@ impl Provider {
                             }
                             Err(reason) => crate::derivation::Answer::Unmet(reason),
                         },
-                        Some(cost),
+                        cost,
                     ),
                     crate::model::Outcome::Unmet { reason, cost } => {
-                        (crate::derivation::Answer::Unmet(reason), Some(cost))
+                        (crate::derivation::Answer::Unmet(reason), cost)
                     }
-                    // Refused by CBR's own envelope: nothing was
-                    // admitted and nothing was sent.
-                    crate::model::Outcome::Refused(refusal) => {
-                        (crate::derivation::Answer::Unmet(refusal.reason()), None)
+                    // Refused by CBR's own envelope. The first ask of a
+                    // question spent nothing; a refused repair carries
+                    // what the attempts before it were charged.
+                    crate::model::Outcome::Refused { refusal, cost } => {
+                        (crate::derivation::Answer::Unmet(refusal.reason()), cost)
                     }
                 };
                 Ok(crate::derivation::record(&crate::derivation::Made {
@@ -2554,18 +2544,7 @@ impl Provider {
                         offered: &offered,
                     },
                     answer,
-                    spend: crate::derivation::Spend {
-                        admission: match cost {
-                            None => crate::derivation::NOT_ADMITTED,
-                            Some(cost) if cost.counted.is_some() => crate::model::ADMITTED_COUNT,
-                            Some(_) => crate::model::ADMITTED_LOCAL,
-                        },
-                        usage: cost.and_then(|cost| cost.usage),
-                        input_usage: cost.and_then(|cost| cost.input_usage),
-                        counted: cost.and_then(|cost| cost.counted),
-                        repairs: cost.map(|cost| cost.repairs).unwrap_or_default(),
-                        latency_ms,
-                    },
+                    spend: crate::derivation::Spend { cost, latency_ms },
                     job: &job,
                     request: &request,
                     item: &item,

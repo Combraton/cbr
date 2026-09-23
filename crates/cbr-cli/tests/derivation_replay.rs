@@ -406,3 +406,168 @@ fn a_retained_failure_beside_a_retained_choice_is_a_disagreement() {
     );
     rebuilding.stop();
 }
+
+/// Where a store keeps the object sealed under `digest`.
+fn object_path(data: &std::path::Path, digest: &str) -> std::path::PathBuf {
+    let hex = digest
+        .split_once(':')
+        .map(|(_, hex)| hex)
+        .expect("a digest");
+    data.join("objects")
+        .join("sha256")
+        .join(&hex[0..2])
+        .join(&hex[2..4])
+        .join(&hex[4..])
+}
+
+/// A member of an object, replaced.
+fn with(value: &Value, member: &str, replacement: Value) -> Value {
+    match value {
+        Value::Object(members) => Value::Object(
+            members
+                .iter()
+                .map(|(name, found)| {
+                    if name == member {
+                        (name.clone(), replacement.clone())
+                    } else {
+                        (name.clone(), found.clone())
+                    }
+                })
+                .collect(),
+        ),
+        other => panic!("not an object: {other:?}"),
+    }
+}
+
+/// **The record the previous build sealed**, derived from the one this
+/// build sealed: format `/2`, and a `usage` carrying the attempt that ended
+/// the question as its whole cost, with no `attempts`. That is the shape of
+/// every record in the three live runs' stores.
+fn as_sealed_by_the_previous_build(record: &Value) -> Value {
+    let usage = record.get("usage").expect("a usage member");
+    let last = usage
+        .get("attempts")
+        .and_then(Value::as_array)
+        .and_then(<[Value]>::last)
+        .expect("an attempt");
+    let previous_usage = Value::Object(vec![
+        (
+            "counted_tokens".to_string(),
+            usage.get("counted_tokens").cloned().unwrap_or(Value::Null),
+        ),
+        (
+            "input_tokens".to_string(),
+            last.get("input_tokens").cloned().unwrap_or(Value::Null),
+        ),
+        (
+            "repairs".to_string(),
+            usage.get("repairs").cloned().unwrap_or(Value::Int(0)),
+        ),
+        (
+            "tokens".to_string(),
+            last.get("tokens").cloned().unwrap_or(Value::Null),
+        ),
+    ]);
+    with(
+        &with(
+            record,
+            "format",
+            Value::String("cbr-model-derivation/2".to_string()),
+        ),
+        "usage",
+        previous_usage,
+    )
+}
+
+#[test]
+fn a_record_sealed_in_the_previous_format_still_replays() {
+    // **The three live runs' stores hold nothing but `/2` records**, and
+    // this build writes `/3`. A rebuild finds a record by its question's
+    // digest and reads its answer; it reads neither the format nor the
+    // usage. So a `/2` record must still answer, or those stores stop
+    // replaying the day this build reads them.
+    //
+    // The store is made to hold exactly what the previous build left: the
+    // record in its `/2` shape, sealed at its own digest, with the artifact
+    // row naming that object. The provider is stopped while it is written.
+    let fixture = Fixture::answering(&["choose:c2"]);
+    let live = fixture.start();
+    ask(&fixture, "warm");
+    live.stop();
+
+    let data = fixture.data();
+    let found = derivations(&data);
+    assert_eq!(found.len(), 1, "the live run retained one");
+    let (id, row) = found[0].clone();
+    let digest = row
+        .get("descriptor")
+        .and_then(|descriptor| descriptor.get("digest"))
+        .and_then(Value::as_str)
+        .expect("a digest")
+        .to_string();
+    let current =
+        cbr_encoding::parse(&std::fs::read(object_path(&data, &digest)).expect("the object"))
+            .expect("a canonical record");
+    assert_eq!(
+        current.get("format").and_then(Value::as_str),
+        Some("cbr-model-derivation/3"),
+        "this build seals /3"
+    );
+
+    let previous = cbr_encoding::to_canonical(&as_sealed_by_the_previous_build(&current));
+    let previous_digest = cbr_encoding::digest_bytes(&previous);
+    let path = object_path(&data, &previous_digest);
+    std::fs::create_dir_all(path.parent().expect("a parent")).expect("object directories");
+    std::fs::write(&path, &previous).expect("the /2 object");
+    let descriptor = with(
+        &with(
+            row.get("descriptor").expect("a descriptor"),
+            "digest",
+            Value::String(previous_digest.clone()),
+        ),
+        "size",
+        Value::Int(previous.len() as i64),
+    );
+    let renamed = String::from_utf8(cbr_encoding::to_canonical(&with(
+        &row,
+        "descriptor",
+        descriptor,
+    )))
+    .expect("utf-8");
+    let connection = rusqlite::Connection::open(data.join("cbr.sqlite")).expect("opens the store");
+    let updated = connection
+        .execute(
+            "UPDATE subjects SET value = ?1 WHERE kind = 'evidence.artifact' AND id = ?2",
+            rusqlite::params![renamed, id],
+        )
+        .expect("updates the row");
+    assert_eq!(updated, 1, "the row now names the /2 object");
+    drop(connection);
+
+    let rebuilding = fixture.start_replaying();
+    let inspected = ask(&fixture, "probe");
+    assert_eq!(
+        result(&inspected, "q"),
+        ("satisfied".to_string(), String::new()),
+        "a /2 record did not answer the rebuild: {inspected:?}"
+    );
+    rebuilding.stop();
+
+    // And the record it answered from is the /2 one: the only one there is.
+    let after = derivations(&data);
+    assert_eq!(after.len(), 1, "a rebuild seals nothing");
+    let named = after[0]
+        .1
+        .get("descriptor")
+        .and_then(|descriptor| descriptor.get("digest"))
+        .and_then(Value::as_str)
+        .expect("a digest")
+        .to_string();
+    assert_eq!(named, previous_digest, "the row still names the /2 object");
+    let read = cbr_encoding::parse(&std::fs::read(object_path(&data, &named)).expect("the object"))
+        .expect("a canonical record");
+    assert_eq!(
+        read.get("format").and_then(Value::as_str),
+        Some("cbr-model-derivation/2")
+    );
+}

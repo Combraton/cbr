@@ -23,15 +23,30 @@
 //! digest of the text shown. A file edited since the call is a different
 //! question and finds nothing, which is the answer a replay should give.
 //!
-//! # Why the format is `/2`
+//! # Why the format is `/3`, and what becomes of a `/2` record
 //!
-//! m4e offers a model **claims** as well as spans, and a claim has no
-//! line range. So a candidate says which kind it is, that member is part
-//! of the question's digest, and a record sealed by m4d never answers a
-//! question asked by this build. Nothing is lost by that: it is the
-//! honest answer, because the two questions showed the model different
-//! things. No `/1` record exists anywhere but in a test store — m4d made
-//! no live call, and neither has anything else.
+//! **`/3` accounts for every attempt.** A record's `usage` is the whole
+//! question's cost, each attempt as the ledger settled it, so its `tokens`
+//! equals the question's ledger rows; `usage.attempts` keeps the attempts
+//! one by one. A `/2` record carried the usage of the attempt that ended
+//! the question and nothing of a repair before it, which is how live run 3
+//! came to hold a record saying 4,827 tokens for a step the ledger charged
+//! 5,222 and 4,827.
+//!
+//! **A `/2` record still replays, unchanged.** A rebuild finds a record by
+//! its question's digest and reads its answer; it reads neither `format`
+//! nor `usage`, and the question is built exactly as it was. So the stores
+//! of the three live runs, which hold nothing but `/2` records, rebuild
+//! under this build as they did under the one that wrote them. What a `/2`
+//! record cannot say is what its repairs cost: for that, its ledger is the
+//! authority, as it always was.
+//!
+//! `/2` was m4e's: m4e offers a model **claims** as well as spans, and a
+//! claim has no line range, so a candidate says which kind it is and that
+//! member is part of the question's digest. A record sealed by m4d never
+//! answers a question asked since, which is the honest answer, because the
+//! two questions showed the model different things. No `/1` record exists
+//! anywhere but in a test store.
 //!
 //! # What a record cannot be used for
 //!
@@ -213,16 +228,11 @@ pub enum Answer {
     Unmet(&'static str),
 }
 
-/// What the call cost, whatever it came to.
-#[derive(Debug, Clone, Copy)]
+/// What the question cost, whatever it came to: **every attempt**, as the
+/// ledger settled each.
+#[derive(Debug, Clone)]
 pub struct Spend {
-    /// `admitted_local` or `admitted_count`: whether the local bound
-    /// alone admitted it, or the provider's count was asked for first.
-    pub admission: &'static str,
-    pub usage: Option<u64>,
-    pub input_usage: Option<u64>,
-    pub counted: Option<u64>,
-    pub repairs: u32,
+    pub cost: crate::model::Cost,
     pub latency_ms: u64,
 }
 
@@ -244,21 +254,49 @@ fn tokens(value: Option<u64>) -> Value {
     }
 }
 
+/// The format a record is sealed under. Written and never read: see the
+/// module's own account of what a `/2` record still does.
+pub const FORMAT: &str = "cbr-model-derivation/3";
+
 /// The sealed bytes of a derivation, as a value.
 pub fn record(made: &Made<'_>) -> Value {
     let mut question = made.question.to_value();
     crate::context::set(&mut question, "digest", string(&made.question.digest()));
+    let cost = &made.spend.cost;
     object(vec![
-        ("format", string("cbr-model-derivation/2")),
+        ("format", string(FORMAT)),
         ("model", string(made.question.model)),
-        ("admission", string(made.spend.admission)),
+        (
+            "admission",
+            string(cost.admission().unwrap_or(NOT_ADMITTED)),
+        ),
         (
             "usage",
             object(vec![
-                ("tokens", tokens(made.spend.usage)),
-                ("input_tokens", tokens(made.spend.input_usage)),
-                ("counted_tokens", tokens(made.spend.counted)),
-                ("repairs", Value::Int(made.spend.repairs as i64)),
+                ("tokens", tokens(cost.charged())),
+                ("input_tokens", tokens(cost.input_charged())),
+                ("counted_tokens", tokens(cost.last().counted)),
+                ("repairs", Value::Int(cost.repairs as i64)),
+                (
+                    "attempts",
+                    Value::Array(
+                        cost.attempts
+                            .iter()
+                            .map(|attempt| {
+                                object(vec![
+                                    (
+                                        "admission",
+                                        attempt.admission.map(string).unwrap_or(Value::Null),
+                                    ),
+                                    ("tokens", tokens(attempt.tokens)),
+                                    ("input_tokens", tokens(attempt.input_tokens)),
+                                    ("count_tokens", tokens(attempt.count_tokens)),
+                                    ("counted_tokens", tokens(attempt.counted)),
+                                ])
+                            })
+                            .collect(),
+                    ),
+                ),
             ]),
         ),
         ("latency_ms", Value::Int(made.spend.latency_ms as i64)),

@@ -190,6 +190,9 @@ pub fn run(
                 counting: Counting::Always,
             },
             &no_barrier,
+            // The table is built from what the count reported; the ledger
+            // holds what it was charged, and nothing here seals a record.
+            &crate::model::Charges::default(),
         );
         let counted = match counted {
             Ok(counted) => counted,
@@ -261,13 +264,16 @@ pub fn run(
         // **Answered, or ended some other way — both are completions that
         // happened.** Only two things stop this run: a count above its
         // local estimate, and a measurement that could not be obtained.
+        // **The completion's own figures**, which is what this table has
+        // always compared: the attempt that ended it, never a sum with a
+        // count call or a repair before it.
         Outcome::Answered { reply, cost } => Report {
             rows,
             completion: Some(Completion {
-                usage: cost.usage,
-                input_usage: cost.input_usage,
-                counted: cost.counted,
-                prediction_finding: finding(cost.counted, cost.input_usage),
+                usage: cost.last().tokens,
+                input_usage: cost.last().input_tokens,
+                counted: cost.last().counted,
+                prediction_finding: finding(cost.last().counted, cost.last().input_tokens),
                 outcome: "answered".into(),
                 repairs: cost.repairs,
                 answer: first_line(&reply),
@@ -277,10 +283,10 @@ pub fn run(
         Outcome::Unmet { reason, cost } => Report {
             rows,
             completion: Some(Completion {
-                usage: cost.usage,
-                input_usage: cost.input_usage,
-                counted: cost.counted,
-                prediction_finding: finding(cost.counted, cost.input_usage),
+                usage: cost.last().tokens,
+                input_usage: cost.last().input_tokens,
+                counted: cost.last().counted,
+                prediction_finding: finding(cost.last().counted, cost.last().input_tokens),
                 outcome: reason.to_string(),
                 repairs: cost.repairs,
                 answer: String::new(),
@@ -289,7 +295,7 @@ pub fn run(
         },
         // A refusal means no completion happened at all, so the run did
         // not obtain the measurement it came for.
-        Outcome::Refused(refusal) => Report {
+        Outcome::Refused { refusal, .. } => Report {
             rows,
             completion: None,
             stopped: Some(format!("the completion was refused: {}", refusal.reason())),

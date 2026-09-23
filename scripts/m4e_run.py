@@ -143,6 +143,11 @@ def refuse(why):
     raise Refused(why)
 
 
+class WouldWrite(Refused):
+    """A store that cannot be read without writing to it, which a store
+    that is the evidence must never be."""
+
+
 # ---- what a checkout says it is -----------------------------------------
 
 
@@ -768,6 +773,40 @@ def write_packet(client, endpoint, credential, out, run, request, digest):
 # ---- what the store says it spent, and what it retained -----------------
 
 
+def evidence(data):
+    """**The store, opened so that reading it changes nothing on disk.**
+
+    The store is the evidence the report summarises, so reading it must not
+    change it -- and SQLite's defaults do. Measured on a store whose
+    provider was killed with its ledger rows still in the write-ahead log,
+    which is how `stop` leaves every store:
+
+    - a read-write connection checkpoints on close: the log is folded into
+      the database, and the log and the shared-memory file are deleted;
+    - `mode=ro` reads the log but rewrites the shared-memory file, where a
+      reader keeps its marks, and on a store with no log it creates both;
+    - `immutable=1` changes nothing and does not read the log, so the rows
+      a killed provider left there are missing.
+
+    So a store with a log is opened `mode=ro` with a read-only shared
+    memory, which reads the log and writes nothing. A store with no log has
+    nothing `immutable=1` could miss. A log with no shared-memory file
+    cannot be read without creating one, and is refused by name rather than
+    written to.
+    """
+    database = (Path(data) / "cbr.sqlite").resolve()
+    if Path(f"{database}-wal").exists():
+        if not Path(f"{database}-shm").exists():
+            raise WouldWrite(
+                f"{database.parent}: a write-ahead log with no shared-memory "
+                "file cannot be read without creating one"
+            )
+        query = "mode=ro&readonly_shm=1"
+    else:
+        query = "immutable=1"
+    return sqlite3.connect(f"{database.as_uri()}?{query}", uri=True)
+
+
 def spend(data):
     """Every charge in the ledger, and their total.
 
@@ -775,7 +814,7 @@ def spend(data):
     charges, and are not counted -- counting them would double every
     call's cost.
     """
-    connection = sqlite3.connect(data / "cbr.sqlite")
+    connection = evidence(data)
     try:
         rows = connection.execute(
             "SELECT kind, tokens FROM model_ledger ORDER BY id"
@@ -793,7 +832,7 @@ def object_path(data, digest):
 
 def records(data):
     """Every sealed, unpurged derivation record, read from the store."""
-    connection = sqlite3.connect(data / "cbr.sqlite")
+    connection = evidence(data)
     try:
         rows = connection.execute(
             "SELECT id, value FROM subjects "

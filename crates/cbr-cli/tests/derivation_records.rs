@@ -291,3 +291,113 @@ fn a_cancelled_request_seals_nothing_and_still_owes_what_it_spent() {
     );
     provider.stop();
 }
+
+/// What the ledger charged for `request`, row by row in the order the
+/// rows were settled: its completions, and its count calls, which the
+/// ledger names `<request>.count`. Notes are not charges.
+fn charged_for(fixture: &Fixture, request: &str) -> Vec<i64> {
+    let count = format!("{request}.count");
+    ledger(&fixture.data())
+        .into_iter()
+        .filter(|(for_request, kind, _)| {
+            (for_request == request || *for_request == count)
+                && matches!(
+                    kind.as_str(),
+                    "reservation" | "usage" | "unknown" | "provider_exhausted" | "not_sent"
+                )
+        })
+        .map(|(_, _, tokens)| tokens)
+        .collect()
+}
+
+/// Each attempt a record kept, as the charge it made: its completion and
+/// its count call, if it had one.
+fn attempts_charged(record: &Value) -> Vec<i64> {
+    record
+        .get("usage")
+        .and_then(|usage| usage.get("attempts"))
+        .and_then(Value::as_array)
+        .unwrap_or_default()
+        .iter()
+        .map(|attempt| {
+            number(attempt, &["tokens"]).unwrap_or(0)
+                + number(attempt, &["count_tokens"]).unwrap_or(0)
+        })
+        .collect()
+}
+
+#[test]
+fn a_repaired_steps_record_accounts_for_every_attempt_as_its_ledger_does() {
+    // **Live run 3's finding, as a test.** A choice step answered in prose
+    // was charged twice — the prose, then the repair — and its sealed
+    // record said what the repair cost and nothing of the prose. The
+    // ledger is the spend; a record of the question has to agree with it,
+    // or a reader adding up records under-counts every repaired step.
+    let fixture = Fixture::answering(&["text:the second span looks right", "choose:c2"]);
+    let provider = fixture.start();
+    let inspected = prepared(&fixture, "repaired", "1");
+    assert_eq!(
+        result(&inspected, "q"),
+        ("satisfied".to_string(), String::new()),
+        "the repair answered: {inspected:?}"
+    );
+
+    let found = derivations(&fixture.data());
+    assert_eq!(found.len(), 1, "one question, one record: {found:?}");
+    let record = sealed(&fixture, &found[0].0);
+    let charged = charged_for(&fixture, "repaired");
+    assert_eq!(
+        charged.len(),
+        2,
+        "the prose and its repair were both charged: {charged:?}"
+    );
+    assert_eq!(number(&record, &["usage", "repairs"]), Some(1));
+    assert_eq!(
+        number(&record, &["usage", "tokens"]),
+        Some(charged.iter().sum()),
+        "the record's cost is the question's ledger rows: {record:?}"
+    );
+    assert_eq!(
+        attempts_charged(&record),
+        charged,
+        "attempt by attempt, in the order the ledger settled them"
+    );
+    provider.stop();
+}
+
+#[test]
+fn a_step_left_unmet_after_its_repair_still_accounts_for_both_attempts() {
+    // The same rule on the way out that is not an answer. A step that ends
+    // unmet after a repair was charged for both attempts, and a record
+    // that kept only the last would say the question cost half of what it
+    // did — on exactly the steps an operator most wants to count.
+    let fixture = Fixture::answering(&["text:still no id in this answer"]);
+    let provider = fixture.start();
+    let inspected = prepared(&fixture, "abandoned", "1");
+    assert_eq!(
+        result(&inspected, "q").0,
+        "unmet",
+        "prose twice is unmet: {inspected:?}"
+    );
+
+    let found = derivations(&fixture.data());
+    assert_eq!(found.len(), 1, "the call happened: {found:?}");
+    let record = sealed(&fixture, &found[0].0);
+    assert!(
+        record
+            .get("answer")
+            .and_then(|answer| answer.get("unmet"))
+            .is_some(),
+        "sealed as the failure it was: {record:?}"
+    );
+    let charged = charged_for(&fixture, "abandoned");
+    assert_eq!(charged.len(), 2, "both attempts were charged: {charged:?}");
+    assert_eq!(number(&record, &["usage", "repairs"]), Some(1));
+    assert_eq!(
+        number(&record, &["usage", "tokens"]),
+        Some(charged.iter().sum()),
+        "the record's cost is the question's ledger rows: {record:?}"
+    );
+    assert_eq!(attempts_charged(&record), charged);
+    provider.stop();
+}
