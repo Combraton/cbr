@@ -525,6 +525,40 @@ fn the_whole_flow_cannot_exhaust_a_job_or_a_run() {
 /// [READINESS §9]: ../../docs/work/m4/READINESS.md
 const M4E_RUN_CEILING: u64 = 5_000_000;
 
+#[test]
+fn the_harness_stops_against_the_same_worst_case_this_module_computes() {
+    // **Two doors, one number, and they drifted.** `scripts/m4e_run.py`
+    // refuses to start a run whose worst case would cross the stop, and
+    // it was checking against 363,966 — the figure before m4f gave the
+    // discovery steps room to reason. The stop was 9,222 short of the
+    // flow it was guarding against, which is the kind of gap nobody
+    // notices until a run is near the bound.
+    //
+    // So the Python constant is read here, where the figure is computed,
+    // and the two cannot drift again without this failing.
+    let mut path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    path.pop();
+    path.pop();
+    let harness = path.join("scripts").join("m4e_run.py");
+    let source = std::fs::read_to_string(&harness)
+        .unwrap_or_else(|_| panic!("{} is not where the harness lives", harness.display()));
+
+    const NAME: &str = "WORST_CASE_FLOW_TOKENS = ";
+    let at = source
+        .find(NAME)
+        .unwrap_or_else(|| panic!("the harness no longer names {NAME}"));
+    let written: String = source[at + NAME.len()..]
+        .chars()
+        .take_while(|c| c.is_ascii_digit() || *c == '_')
+        .filter(|c| *c != '_')
+        .collect();
+    assert_eq!(
+        written.parse::<u64>().ok(),
+        Some(PUBLISHED_FLOW),
+        "the harness stops against a worst case this module does not compute"
+    );
+}
+
 /// The four figures [READINESS §3] publishes.
 ///
 /// [READINESS §3]: ../../docs/work/m4/READINESS.md
