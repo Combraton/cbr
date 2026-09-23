@@ -11,7 +11,7 @@ This is a dated navigation snapshot. Reconcile it with Git, linked issues and cu
 
 ## This change — m4h, a record's whole cost and a harness that reads without writing
 
-Against `main` at `1444040`, the two corrections M4's close-out named: a commit of code and tests, one of notes, and one correcting the first after CI refuted a premise of it (below).
+Against `main` at `1444040`, the two corrections M4's close-out named: a commit of code and tests, one of notes, one correcting the first after CI refuted a premise of it, one of notes for that, and — after the reviewer's round 56 — one of tests at the door the rule had not been tested at and one giving the rule a single door (below).
 
 ### A record accounts for every attempt
 
@@ -63,7 +63,7 @@ The five new unit tests use the new types, so they cannot run on `main`; their r
 
 ### The mutant table
 
-**Fourteen, all killed**, each against the whole workspace suite; the runtime three again against `cbr-provider` with `--no-fail-fast`, because the first pass stops at the first failing test binary and so names only its killers. The harness mutants were run again against the corrected reader.
+**Twenty, all killed**, each against the whole workspace suite — the fourteen below and the six of round 56 after them; the runtime three again against `cbr-provider` with `--no-fail-fast`, because the first pass stops at the first failing test binary and so names only its killers. The harness mutants were run again against the corrected reader.
 
 | Mutant | Result | What kills it |
 |---|---|---|
@@ -81,6 +81,26 @@ The five new unit tests use the new types, so they cannot run on `main`; their r
 | A log with no shared memory read in place, `immutable=1` | killed, on the rows: 0 against 10,049 | `the_harness_reads_a_store_with_a_log_and_no_shared_memory_from_a_copy` |
 | A log with no shared memory read in place, `mode=ro` | killed, on the file created | the same |
 | The copy made without the log | killed, on the rows: 0 against 10,049 | the same |
+
+### Round 56: the door the rule was not tested at
+
+**Two of the reviewer's mutants survived all 580 tests.** At discovery's call site the record could be given the last attempt alone (D), and both `Refused` arms could seal no cost at all (R); the same edit as D at selection's call site died (S, the control). So the rule was tested in the runtime and at selection's door, and not at discovery's — **the door live run 3's repairs went through**. It is round 50's shape again: the rule held where the test pointed, and the test pointed at one of two doors.
+
+**Two tests, each end to end through a real provider:**
+
+- `a_repaired_discovery_choice_is_sealed_with_every_attempt_as_its_ledger_charged_them` is run 3's shape: an item, terms, a choice answered in prose and repaired with ids. The choice's record is the last two rows the ledger charged, and the request's records together account for every row.
+- `a_repair_the_envelope_refuses_is_sealed_with_what_its_first_attempt_cost` reaches `Refused` at a call site. A first store measures what the first attempt and its repair reserve; a second is launched with `--model-run-ceiling` equal to the first reservation, which admits the first attempt and, once it has settled, cannot admit the repair. The item is unmet with `run_over_ceiling` — asserted, so the test cannot pass by reaching some other ending — and the record carries the first attempt's charge, with the refused repair as a second, unadmitted attempt.
+
+**And one door.** The `Unmet` and `Refused` arms were identical at both sites, which is how the rule could be kept at one and not the other. `derivation::taken` now turns an outcome into its record's answer and cost for both, passing the cost through whole however the question ended; each site keeps only its reading of a usable reply.
+
+| Mutant | On | Result | What kills it |
+|---|---|---|---|
+| **D** — discovery's site records the last attempt only (the reviewer's) | the code before the door | killed: `[5000]` against `[5000, 5000]` | `a_repaired_discovery_choice_is_sealed_with_every_attempt_as_its_ledger_charged_them` |
+| **R** — both `Refused` arms record no cost (the reviewer's) | the code before the door | killed: `None` against `Some(5000)` | `a_repair_the_envelope_refuses_is_sealed_with_what_its_first_attempt_cost` |
+| **S** — D's edit at selection's site (the reviewer's control) | the code before the door | killed: 5,000 against 10,000 | `a_repaired_steps_record_accounts_for_every_attempt_as_its_ledger_does` |
+| D2 — discovery records the last attempt only, after the door | the code with the door | killed: `[5000]` against `[5000, 5000]` | the discovery test above |
+| R2 — the door's `Refused` arm records no cost | the code with the door | killed: `None` against `Some(5000)` | the refused-repair test above |
+| S2 — selection records the last attempt only, after the door | the code with the door | killed: 5,000 against 10,000 | `a_repaired_steps_record_accounts_for_every_attempt_as_its_ledger_does`, `a_step_left_unmet_after_its_repair_still_accounts_for_both_attempts` and the refused-repair test |
 
 ## Earlier — the M4 close-out
 
