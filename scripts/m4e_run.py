@@ -584,16 +584,6 @@ def admits(config):
     return credentials[0]["credential"] if credentials else None
 
 
-def credential_for(run, live, dry_answers, replay=False):
-    """The credential a given launch will present.
-
-    The composition `one_run` performs, stated once so that a test can
-    assert it without launching anything: the configuration decides, and
-    the credential is read off it.
-    """
-    return admits(config_of(run, live, dry_answers, replay))
-
-
 def credential_file(work, config):
     """Where that credential is, for a launch under `config`.
 
@@ -601,6 +591,13 @@ def credential_file(work, config):
     there is nothing left to keep in step: a caller that has the
     configuration it is launching under cannot present the wrong
     credential for it.
+
+    **This is the only function that decides a launch's credential.**
+    There was briefly a second one, written so a test could assert the
+    rule without a temporary directory, and the test asserted that one
+    instead -- so a defect here, in the function every launch actually
+    goes through, passed the suite that was meant to hold it. A rule
+    tested at a restatement is not tested at the door.
     """
     admitted = admits(config)
     if admitted is None:

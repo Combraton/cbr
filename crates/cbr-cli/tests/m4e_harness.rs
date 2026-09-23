@@ -863,59 +863,172 @@ print(json.dumps(getattr(module, sys.argv[2])(*[json.loads(a) for a in sys.argv[
         .expect("the answer is JSON")
 }
 
-#[test]
-fn every_launch_presents_a_credential_its_own_configuration_admits() {
-    // **Run 2 of 2026-09-22 stopped here**, and the shape is worth
-    // keeping. m4f made the live rebuild launch under the production
-    // configuration; the credential it presented was still chosen from
-    // whether the *run* was live, by a call site that had been written
-    // when the rebuild was always a conformance launch. A production
-    // configuration names no `credentials` member, so the rebuild
-    // offered one the provider had never heard of and the run stopped at
-    // `authentication_failed` with the live half already paid for.
-    //
-    // A configuration and the credential that authenticates against it
-    // are **one decision**, and this asserts them as one: for every
-    // launch the harness makes, what the configuration admits is what
-    // the launch presents.
-    //
-    // **Only a live run exercises the production side of this**, and
-    // that is the whole reason it reached a live run: in dry mode both
-    // launches are conformance and both carry the dry-run credential, so
-    // every test in this file passed while the live path was broken.
-    // What is asserted here is the decision, which is testable; the
-    // launch it drives is not.
-    let run = r#"{"id": "one", "model": "MiniMax-M3",
-                  "repository": {"id": "cbr", "path": "/nowhere"}}"#;
+/// Call `credential_file` for one launch, over a real `work` directory,
+/// and report what it decided **and what it left on disk**.
+fn credential_file_for(work: &Path, live: bool, replay: bool) -> Value {
+    let program = r#"
+import importlib.util, json, pathlib, sys
+spec = importlib.util.spec_from_file_location("m4e_run", sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+work = pathlib.Path(sys.argv[2])
+run = {"id": "one", "model": "MiniMax-M3", "repository": {"id": "cbr", "path": "/nowhere"}}
+config = module.config_of(run, sys.argv[3] == "true", [], sys.argv[4] == "true")
+path = module.credential_file(work, config)
+written = work / "credential"
+print(json.dumps({
+    "path": str(path),
+    "issued": str(path) == str(work / "data" / "credentials" / "owner"),
+    "wrote_a_file": written.exists(),
+    "holds": written.read_text() if written.exists() else None,
+}))
+"#;
+    let output = Command::new("python3")
+        .args(["-c", program])
+        .arg(script())
+        .arg(work)
+        .arg(live.to_string())
+        .arg(replay.to_string())
+        .output()
+        .expect("python3 runs");
+    assert!(
+        output.status.success(),
+        "credential_file could not be called: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    cbr_encoding::parse(String::from_utf8_lossy(&output.stdout).trim().as_bytes())
+        .expect("the answer is JSON")
+}
 
-    for (live, replay, wanted) in [
-        ("true", "false", None),
-        // The one that failed: a live rebuild is a production launch and
-        // takes the credential the provider issued, not a written one.
-        ("true", "true", None),
-        ("false", "false", Some("ccred1.owner.m4e-dry-run")),
-        ("false", "true", Some("ccred1.owner.m4e-dry-run")),
-    ] {
-        let configuration = harness_says("config_of", &[run, live, "[]", replay]);
-        let admitted = harness_says("credential_for", &[run, live, "[]", replay]);
+#[test]
+fn credential_file_gives_each_launch_what_its_own_configuration_admits() {
+    // **Asserted at the door, and the first version of this was not.**
+    // It asserted a second function written so the rule could be checked
+    // without a temporary directory — and the reviewer's mutant, one
+    // `or DRY_RUN_CREDENTIAL` inside `credential_file`, passed every
+    // test in this file. That is run 2's defect one level down: the rule
+    // restated somewhere nothing calls.
+    //
+    // So this calls the function every launch goes through, over a real
+    // directory, and looks at what it left on disk as well as what it
+    // returned. A production launch must take the credential the
+    // provider issued **and write nothing**: writing one would mean a
+    // file on disk that a production launch might later be handed.
+    //
+    // **Only a live run exercises the production side for real**, since
+    // both launches of a dry run are conformance. What is checked here
+    // is the decision and its trace on disk, which is the most a test
+    // that launches nothing can hold.
+    let directory = tempfile::tempdir().expect("temp dir");
+
+    for (live, replay) in [(true, false), (true, true)] {
+        let work = directory.path().join(format!("live-{replay}"));
+        std::fs::create_dir_all(&work).expect("work");
+        let decided = credential_file_for(&work, live, replay);
         assert_eq!(
-            admitted.as_str(),
-            wanted,
-            "a launch with live={live} replay={replay} presents a credential its \
-             configuration does not admit"
+            decided.get("issued"),
+            Some(&Value::Bool(true)),
+            "a production launch (replay={replay}) did not take the issued credential: {decided:?}"
         );
-        // And the two halves agree about which case this is: a
-        // configuration naming its own credential is a conformance one,
-        // and a production configuration is the one the provider issues
-        // for.
-        let names_its_own = configuration.get("credentials").is_some();
         assert_eq!(
-            names_its_own,
-            wanted.is_some(),
-            "live={live} replay={replay}: the configuration and the credential \
-             disagree about which kind of launch this is"
+            decided.get("wrote_a_file"),
+            Some(&Value::Bool(false)),
+            "a production launch (replay={replay}) wrote a credential file: {decided:?}"
         );
     }
+
+    for (live, replay) in [(false, false), (false, true)] {
+        let work = directory.path().join(format!("dry-{replay}"));
+        std::fs::create_dir_all(&work).expect("work");
+        let decided = credential_file_for(&work, live, replay);
+        assert_eq!(
+            decided.get("issued"),
+            Some(&Value::Bool(false)),
+            "a conformance launch (replay={replay}) took the issued credential: {decided:?}"
+        );
+        assert_eq!(
+            decided.get("wrote_a_file"),
+            Some(&Value::Bool(true)),
+            "a conformance launch (replay={replay}) wrote no credential: {decided:?}"
+        );
+        // And it holds what that configuration admits, rather than
+        // whatever the harness happens to call its dry-run credential.
+        let configuration = harness_says(
+            "config_of",
+            &[
+                r#"{"id": "one", "model": "MiniMax-M3",
+                    "repository": {"id": "cbr", "path": "/nowhere"}}"#,
+                "false",
+                "[]",
+                if replay { "true" } else { "false" },
+            ],
+        );
+        let admitted = configuration
+            .get("credentials")
+            .and_then(Value::as_array)
+            .and_then(<[Value]>::first)
+            .and_then(|named| named.get("credential"))
+            .and_then(Value::as_str)
+            .expect("a conformance configuration names its credential");
+        assert_eq!(
+            decided.get("holds").and_then(Value::as_str),
+            Some(admitted),
+            "the file holds something its configuration does not admit: {decided:?}"
+        );
+    }
+}
+
+#[test]
+fn nothing_but_that_one_function_decides_a_credential() {
+    // **The shape `credential_discipline.rs` uses**, for the same reason
+    // it uses it: a rule about which function decides something is a
+    // rule about the source, and reading the source is the only way to
+    // say *nothing else does*.
+    let source = std::fs::read_to_string(script()).expect("the harness");
+
+    // The definition and exactly two call sites, one per launch.
+    assert_eq!(
+        source.matches("credential_file(").count(),
+        3,
+        "the harness no longer decides a credential in exactly two places"
+    );
+    // And each passes the body that came back beside the configuration
+    // it just launched — which is what makes pairing the wrong two
+    // impossible rather than merely discouraged.
+    for (bound, presented) in [
+        (
+            "config, config_body = configuration(work, run, live, run.get(\"dry_answers\", []))",
+            "credential_file(work, config_body)",
+        ),
+        (
+            "replay_config, replay_config_body = configuration(",
+            "credential_file(work, replay_config_body)",
+        ),
+    ] {
+        assert!(
+            source.contains(bound),
+            "the harness no longer binds {bound}"
+        );
+        assert!(
+            source.contains(presented),
+            "a launch presents a credential that is not its own configuration's: {presented}"
+        );
+    }
+
+    // Nothing else reads a credential out of a configuration, and the
+    // dry-run credential is named only where it is defined and where a
+    // conformance configuration declares it.
+    assert_eq!(
+        source.matches("admits(").count(),
+        2,
+        "something other than `credential_file` decides what a configuration admits"
+    );
+    assert_eq!(
+        source.matches("DRY_RUN_CREDENTIAL").count(),
+        2,
+        "the dry-run credential is named somewhere that is not its definition or the \
+         configuration that declares it"
+    );
 }
 
 #[test]

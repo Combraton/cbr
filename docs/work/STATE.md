@@ -178,21 +178,27 @@ They are one now. `credential_file` takes the configuration being launched and r
 
 **What the fragment still established.** The one flow that ran was the one run 1 had lost, and both m4f fixes worked on it: `j1-m27hs` completed both discovery steps at 511 and 676 output tokens with no repair, where run 1 truncated at 512; and the ADR span run 1 never offered was candidate `d7` and was chosen. One flow of six, from a run that did not finish — recorded as partial, because the alternative is to say nothing about the only evidence the run produced.
 
-### The m4g mutants, and one that was not a mutant
+### The m4g mutants, and a test that was not testing anything
 
-**Five run, three killed, two surviving — and only one of the two is a gap.**
+**Eight run, seven killed, one that should not have been written.**
+
+The first pass of this PR recorded a survivor — *the rebuild handed the serving stage's credential* — and argued it was unobservable in a dry run. The reviewer found why: **the test meant to hold the rule was asserting a restatement of it.** `credential_for` was a second function, written so the rule could be checked without a temporary directory, and nothing in `one_run` called it. Their mutant — one `or DRY_RUN_CREDENTIAL` inside `credential_file`, which is run 2's defect one level down — passed all twelve harness tests.
+
+So the second function is gone, there is exactly one that decides a launch's credential, and it is tested at the door: called over a real work directory for all four launches, checked on **what it returned and what it left on disk**. A production launch must take the issued credential and write nothing.
 
 | Mutant | Result | What kills it |
 |---|---|---|
-| **The credential chosen from the run rather than the configuration** | killed | `every_launch_presents_a_credential_its_own_configuration_admits` |
-| A production configuration treated as admitting a written credential | killed | the same |
-| The rebuild handed the serving stage's credential | **survived** | nothing — below |
+| **A production configuration falls back to the dry-run credential** (the reviewer's) | killed | `credential_file_gives_each_launch_what_its_own_configuration_admits` |
+| A production launch writes a credential file as well | killed | the same |
+| **The rebuild handed the serving stage's credential** | killed — *was recorded as a survivor and was not one* | `nothing_but_that_one_function_decides_a_credential` |
+| The credential chosen from the run rather than the configuration | killed | the door test |
+| A production configuration treated as admitting a written credential | killed | the door test |
 | **The harness's worst case drifted from the computed one** | killed | `the_harness_stops_against_the_same_worst_case_this_module_computes` |
-| The drift test's assertion made a tautology | **survived** | nothing, and it should not have been written — below |
+| The drift test's assertion made a tautology | **not a mutant** | nothing, and nothing could — below |
 
-**The survivor that is a gap, and cannot stop being one here.** Handing the rebuild the serving stage's configuration changes nothing in a dry run: both launches are conformance and both carry the dry-run credential, so `admits` returns the same string either way. Only a live launch tells the two apart. What is done about it is structural rather than a test — `configuration` now returns the path **and** the body from one call, so a caller cannot pair one launch's path with another's body — and what is asserted is the decision, for every launch the harness makes, without launching anything.
+**What the survivor actually was.** Not a gap in what a dry run can reach: a gap in what the test was pointed at. The call-site mutant dies to the source assertion, and the reviewer's dies to the door test, and neither needed a live run. **"This cannot be tested here" is a claim to check before it is a claim to record** — I recorded it, and it was wrong.
 
-**The one that should not have been written.** Turning `assert_eq!(x, PUBLISHED_FLOW)` into `assert_eq!(x, x)` survives by construction: it is a mutation of an assertion into a tautology, and the thing that would have to catch it is the test it just emptied. It is recorded because it was run, not because it means anything. **A mutant on an assertion measures nothing**; mutate what the assertion is about.
+**The one that should not have been written.** Turning `assert_eq!(x, PUBLISHED_FLOW)` into `assert_eq!(x, x)` survives by construction: it is a mutation of an assertion into a tautology, and the thing that would have to catch it is the test it just emptied. **A mutant on an assertion measures nothing**; mutate what the assertion is about.
 
 ### The m4f mutant table
 
