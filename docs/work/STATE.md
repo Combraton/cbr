@@ -2,14 +2,73 @@
 
 This is a dated navigation snapshot. Reconcile it with Git, linked issues and current task evidence before acting. Issues own live progress; this file does not grant authority or maintain a second backlog.
 
-- **Updated:** 2026-09-23.
-- **Owner/task:** Claude Code session as implementation lead for standalone CBR. An independent reviewer session reviews this read-only. **M1, M2 and M3 are complete**, with closing records in [m1/CLOSEOUT.md](m1/CLOSEOUT.md) and [m3/CLOSEOUT.md](m3/CLOSEOUT.md). **M4, the bounded model runtime ([issue #21](https://github.com/Combraton/cbr/issues/21)), is closing:** m4a to m4g are merged, `main` is `9ee22d0`, and this pull request is its close-out, [m4/CLOSEOUT.md](m4/CLOSEOUT.md), which lists every M4 merge with its pin. **Five live sessions have called a model**, each on the owner's word at the time: calibration runs 1 and 2, and m4e live runs 1, 2 and 3 — the second stopped at its first replay — for 169,089 tokens in all. Nothing else has ever called one. By the owner's decision of 2026-09-23, #21 closes on the discovery family's sealed, costed live transcripts, runs 1 and 3, and **Journey 2 moves to M5** as its first journey. Next: M5's readiness document, docs only, and an M5 tracking issue; **no live call in M5 before a stated estimate and cap and the owner's word**. Parent: [issue #1](https://github.com/Combraton/cbr/issues/1).
+- **Updated:** 2026-09-24.
+- **Owner/task:** Claude Code session as implementation lead for standalone CBR. An independent reviewer session reviews this read-only. **M1 to M4 are complete**, with closing records in [m1/CLOSEOUT.md](m1/CLOSEOUT.md), [m3/CLOSEOUT.md](m3/CLOSEOUT.md) and [m4/CLOSEOUT.md](m4/CLOSEOUT.md). M4's close-out merged as `1444040` (#32, pinned to `eb58cd6`, `merged_at: 2026-09-23T18:06:48Z`), and [issue #21](https://github.com/Combraton/cbr/issues/21) is closed with the owner's two decisions of 2026-09-23 in its closing comment. **Active: m4h**, the code change the close-out named: a record's cost accounts for every attempt, and the harness reads the evidence without writing it. Next: M5's readiness document, docs only, and an M5 tracking issue; then the CI-flake pull request. **No live call in M5 before a stated estimate and cap and the owner's word.** Parent: [issue #1](https://github.com/Combraton/cbr/issues/1).
 - **Merged:** PR #2 as `d68e9d6`, pinned to `877139f`; PR #4 as `a939446`, pinned to `630011c`; PR #5 (c1) as `8b75129`; PR #6 (c2) as `da1e650`, pinned to `b00ec49`; **PR #7 (c3) as `8ba2594`, pinned to `5b98a9f`, confirmed from `merged: true` and `merged_at: 2026-09-16T15:31:51Z`**. Earlier: PR #6 pinned to `b00ec49`, confirmed from `merged: true` and `merged_at: 2026-09-16T14:26:34Z`**, the draft marked ready first and the head re-read unchanged before merging. Every owner decision, including the ceiling, is in [ADR 001](../decisions/001-standalone-v0.1-scope-and-stack.md). **PR #8 (owner follow-ups) as `f00faaf`, pinned to `40cb30b`, `merged_at: 2026-09-16T16:57:29Z`; PR #9 (c4) as `9a7b8f5`, pinned to `5db9d7c`, `merged_at: 2026-09-16T16:57:53Z`**, in that order, each confirmed from `merged` and `merged_at`. **PR #10 (d) as `96a33f2`, pinned to `a1048e6`, `merged_at: 2026-09-16T18:17:38Z`; then PR #11 (e) as `6c63d91`, pinned to `c2a262d`, `merged_at: 2026-09-16T18:17:56Z`**. PR #11 was stacked on #10's branch, so it was retargeted to `main` after #10 merged and before its own merge; retargeting leaves the head unchanged, and `c2a262d` was re-read before merging. **PR #13 (M1 close-out, README) as `5c667ed`, pinned to `507fc77`, `merged_at: 2026-09-16T18:58:44Z`; then PR #14 (M2) as `39113b2`, pinned to `62cbb99`, `merged_at: 2026-09-16T18:59:00Z`**, #14 retargeted to `main` first. **PR #16 (m3a) as `cbfaebe`, pinned to `1bd9a7a`, confirmed from `merged: true` and `merged_at: 2026-09-19T14:48:17Z`**, the draft marked ready first and the head re-read unchanged; the merge commit's second parent is `1bd9a7a`, so the reviewed head is on `main` unaltered. **PR #17 (m3b) as `c3cdf51`, pinned to `fb67250`, confirmed from `merged: true` and `merged_at: 2026-09-19T15:55:37Z`**, second parent `fb67250`. **PR #18 (m3c) as `2cf6b97`, pinned to `81c5f0e`, confirmed from `merged: true` and `merged_at: 2026-09-20T04:35:37Z`**, second parent `81c5f0e`. **PR #19 (m3d) as `17cc54c`, pinned to `52305b3`, confirmed from `merged: true` and `merged_at: 2026-09-20T07:28:00Z`**, second parent `52305b3`. **PR #20 (m3e) as `c726107`, pinned to `47fd574`**, which closed M3. M4's ten merges, from #22 to #31, are listed with their pins in [m4/CLOSEOUT.md](m4/CLOSEOUT.md#m4-complete), each confirmed the same way and each merge commit's second parent the reviewed head.
 - **Merge rule, 2026-09-16, superseded the same day.** This session ran `gh pr merge` on PR #2 after the owner replied "you can merge PR 2" in-session, having first reported the contradicting claim with evidence and waited. It landed the exact reviewed head `877139f` and is kept. A stricter rule was then recorded, and the owner then **granted merge authority under four conditions**, now in [AGENTS.md](../../AGENTS.md): pin with `--match-head-commit`; the head's CI is green; the reviewer has seen that head; no squash. Confirm from `merged` and `merged_at` afterwards, **never `merge_commit_sha`** — GitHub populates that on an open pull request with the test-merge candidate. Tags and releases remain the owner's alone.
 - **Owner decision, 2026-09-20, recorded at the m3c review: m3d has two pilot repositories**, as an amendment to [ADR 001](../decisions/001-standalone-v0.1-scope-and-stack.md) question 6. Knowscroll-v2 stays the decision-memory pilot; the owner's **brian2 fork** is added as a brownfield pilot, registered read-only, whose journey tests discovery and code flow rather than decision memory, whose oracle the owner writes before the run, and whose dirty working tree makes it the first journey to exercise the dirty path. **brian2 is CeCILL-licensed and this repository is MIT, so none of its bytes, excerpts or packets are committed here** — digests, paths, spans, counts and costs only. It is recorded now and acted on only after m3c is cleared; no other brian2 work belongs in this pull request.
 - **Inspected revisions:** protocol `v0.1.0` = `cbf8e4df9df2ca8a9b50264df6acace6e4c3a0fc`; combraton `9af69ce`; pio `e65b7c0`; benchmarks `c8d5878`.
 
-## This change — the M4 close-out
+## This change — m4h, a record's whole cost and a harness that reads without writing
+
+Against `main` at `1444040`, the two corrections M4's close-out named, one commit of code and tests and one of notes.
+
+### A record accounts for every attempt
+
+**The defect, found writing live run 3's record.** `model::Runtime::ask` built its `Cost` from the attempt that ended the question, so a repaired step's sealed record carried its last exchange alone while the ledger held both: `brian2-m27hs`'s choice record said 4,827 tokens for a step charged 5,222 and 4,827. The reviewer confirmed it, and that a step ending unmet after a repair dropped its earlier attempts the same way.
+
+**The fix puts the figure where the ledger is settled.** `finish()` returns what the ledger now holds for a reservation — the reported usage, the estimate when the provider said nothing, zero when nothing was sent — and a `Charges` value records it for the attempt at that point. `Cost` is every attempt (`Attempted`: admission, completion, input, count call, count prediction) and the repairs; its total is theirs. **Every way out of `ask()` carries every attempt**: answered, unmet after a repair, a call ending unmet after it was charged, and a refused repair — which is why `Outcome::Refused` now carries a cost, because a repair refused after a first attempt and its own count call had spent both. Both record sites build `Spend { cost, latency_ms }`, so one function decides. Calibration keeps reporting its completion's own figures through `Cost::last()`, so nothing it reports changes meaning.
+
+**The format is `cbr-model-derivation/3`**: `usage.tokens` is the question's whole charge and `usage.attempts` keeps each attempt. **A `/2` record still replays**, and that is tested rather than argued: `a_record_sealed_in_the_previous_format_still_replays` rewrites a record into the previous build's shape at its own digest, points its artifact row at it, and rebuilds a packet from it. Nothing reads `format` or `usage` to answer a question, so the stores of live runs 1 to 3 rebuild as they did.
+
+### The harness reads a store without writing a byte of it
+
+**What it did.** It read the spend, the records and the ambiguity report over a read-write connection, which on closing folded each store's log into its database and deleted the log and the shared-memory file. That is why no store of live runs 1 to 3 has a log beside it: a killed provider never closes its connection and so cannot delete its own, and the harness's was the last to close. Every committed row survives a checkpoint; the files are not as the provider left them. **This is a deduction from the measurement below and from how `stop` ends a provider, not something observed during those runs.**
+
+**What each way of opening does, measured** on scratch stores, one written by a process killed with its rows in the log and one closed cleanly:
+
+| Opened | Killed store, rows in the log | Store with no log |
+|---|---|---|
+| read-write | reads everything; **checkpoints, deletes the log and the shared-memory file** | reads everything |
+| `mode=ro` | reads everything; **rewrites the shared-memory file** | reads everything; **creates a log and a shared-memory file** |
+| `mode=ro&readonly_shm=1` | reads everything; **changes nothing** | **fails to open, and creates a log** |
+| `immutable=1` | **misses the log's rows**; changes nothing | reads everything; **changes nothing** |
+
+**So `mode=ro` alone would not have met the byte-unchanged requirement**, which is why the reader is two: a store with a log is opened `mode=ro&readonly_shm=1`, one with none `immutable=1`, where there is nothing to miss, and a log with no shared-memory file is refused by name (`WouldWrite`) rather than written to. `readonly_shm` is a parameter of SQLite's Unix VFS rather than of its documented URI list; the byte comparison in the test is what holds it, on whatever SQLite the harness runs.
+
+### Red, then green
+
+The record, replay and harness tests read the sealed JSON, the ledger and the files rather than the new types, so they were run on `main` at `1444040` in a scratch worktree before being run here:
+
+| Test | On `main` | Here |
+|---|---|---|
+| `a_repaired_steps_record_accounts_for_every_attempt_as_its_ledger_does` | **red**: the record 5,000, the ledger 10,000 | green |
+| `a_step_left_unmet_after_its_repair_still_accounts_for_both_attempts` | **red**: 5,000 against 10,000 | green |
+| `the_harness_reads_a_killed_stores_ledger_from_its_log_and_changes_no_byte` | **red**: the database rewritten, the log and shared-memory file gone | green |
+| `the_harness_reads_a_store_with_no_log_and_creates_no_file` | green — a guard for the new reader, whose red is mutant M6 | green |
+| `a_record_sealed_in_the_previous_format_still_replays` | fails at its precondition, because `main` already seals `/2` — a guard, whose red is mutant M9 | green |
+
+The five new unit tests use the new types, so they cannot run on `main`; their red is their mutants.
+
+### The mutant table
+
+**Eleven, all killed**, each against the whole workspace suite; the runtime three again against `cbr-provider` with `--no-fail-fast`, because the first pass stops at the first failing test binary and so names only its killers.
+
+| Mutant | Result | What kills it |
+|---|---|---|
+| **The runtime keeps the last attempt only** (the reviewer's) | killed | both record tests; `a_repaired_question_costs_every_attempt_and_its_cost_is_its_ledger_rows`, `a_question_left_unmet_after_its_repair_is_charged_for_both_attempts` |
+| The record's total is the last attempt only | killed | both record tests; `a_record_carries_the_model_the_admission_the_cost_and_the_choice` |
+| **Unmet after a repair drops the earlier attempts** (the reviewer's) | killed | `a_step_left_unmet_after_its_repair_still_accounts_for_both_attempts`; `a_question_left_unmet_after_its_repair_is_charged_for_both_attempts` |
+| A call ending unmet after a charge drops the earlier attempts | killed | `a_repair_that_fails_after_the_send_still_carries_the_attempt_before_it` |
+| A refused repair drops what the question had spent | killed | `a_repair_the_envelope_refuses_still_carries_what_the_question_had_spent` |
+| An unpriced settlement charged at nothing | killed | `an_unpriced_completion_is_charged_at_what_the_ledger_holds_for_it` |
+| A rebuild reads only records of this build's format | killed | `a_record_sealed_in_the_previous_format_still_replays` |
+| **The harness reads the store read-write** (the reviewer's) | killed | `the_harness_reads_a_killed_stores_ledger_from_its_log_and_changes_no_byte` |
+| **`immutable=1` instead of `mode=ro`** (the reviewer's) | killed, on the rows: 0 read against 10,049 | the same |
+| `mode=ro` without the read-only shared memory | killed, on the bytes | the same |
+| A store with no log opened `mode=ro` | killed, on the files created | `the_harness_reads_a_store_with_no_log_and_creates_no_file` |
+
+## Earlier — the M4 close-out
 
 Against `main` at `9ee22d0`, for [issue #21](https://github.com/Combraton/cbr/issues/21). **Documents only; no code.** It records live run 3, the owner's decision on Journey 2, and the close-out itself, and it corrects the statements about calls made that the runs overtook in JOURNEYS, RELEASE-SCOPE, READINESS, VERIFICATION and the docs index. It also brings the repository README to the post-M4 position.
 
