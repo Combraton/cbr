@@ -1,16 +1,17 @@
 # CBR documentation
 
-Read [repository scope](../README.md), then [memory spec](spec/SPEC.md), [memory engine](spec/MEMORY-ENGINE.md), [preparation/delivery](spec/PREPARATION-AND-DELIVERY.md), and [model runtime](spec/MODEL-RUNTIME.md). These current specs are authoritative for this repository. Most of what they describe is not implemented yet: what exists today is the protocol provider for `core/1` and `evidence/1` and the `cbr` ingest and fetch commands (see [the repository README](../README.md#what-exists-now)).
+Read [repository scope](../README.md), then [memory spec](spec/SPEC.md), [memory engine](spec/MEMORY-ENGINE.md), [preparation/delivery](spec/PREPARATION-AND-DELIVERY.md), and [model runtime](spec/MODEL-RUNTIME.md). These current specs are authoritative for this repository. Much of what they describe is not implemented yet. What exists today is the protocol provider for `core/1`, `evidence/1`, `knowledge/1` and `context/1`; retrieval and the deterministic packet compiler; the bounded model runtime with model-assisted selection and discovery; and the `cbr` command (see [the repository README](../README.md#what-exists-now)).
 
 - [Development workflow](https://github.com/Combraton/combraton/blob/main/docs/DEVELOPMENT.md) — ownership, parallel work, reviews and fresh-session recovery.
 - [Verification](VERIFICATION.md) — commands that actually exist, what they establish, and their limits, including the permanent conformance coverage limits and the storage crash matrix.
 - [M1 close-out](work/m1/CLOSEOUT.md) — milestone M1's outcome table across all five result sets, coverage limits and every mutant.
+- [M3 close-out](work/m3/CLOSEOUT.md) and [M4 close-out](work/m4/CLOSEOUT.md) — what each milestone promised and delivered, its journeys and live runs with their costs, and the limits it carried forward.
 - [Current state](work/STATE.md) — the dated session snapshot: the active stage, its measured results and mutants.
 - [Decision records](decisions/README.md) — accepted internal choices and supersessions.
 - [Task work](work/README.md) — durable plans and handoffs.
 - [ADR 001](decisions/001-standalone-v0.1-scope-and-stack.md) — the accepted scope, stack and evaluation posture for standalone v0.1. Every owner decision is recorded there.
 - [Implementation readiness](work/readiness/TALK.md) — the discussion ADR 001 settled, with its [protocol pin](work/readiness/PROTOCOL-PIN.md), [release scope and milestones](work/readiness/RELEASE-SCOPE.md) and [stack evidence](work/readiness/STACK.md).
-- [Journey verification](verification/JOURNEYS.md) — the journey acceptance matrix and evidence records. J9 has been run, with no model; no other journey has.
+- [Journey verification](verification/JOURNEYS.md) — the journey acceptance matrix and evidence records: J9, J1 and J8 run with no model, J1 again with a model at M4, and J6's two labelled pilots.
 - [Shared baseline](https://github.com/Combraton/combraton/blob/main/docs/architecture/BASELINE.md) — product ownership and invariants.
 - [Publication provenance](https://github.com/Combraton/combraton/blob/main/docs/architecture/PUBLICATION.md) — source import and historical material boundary.
 
