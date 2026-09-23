@@ -11,7 +11,7 @@ This is a dated navigation snapshot. Reconcile it with Git, linked issues and cu
 
 ## This change — the M4 close-out
 
-Against `main` at `9ee22d0`, for [issue #21](https://github.com/Combraton/cbr/issues/21). **Documents only; no code.** It records live run 3, the owner's decision on Journey 2, and the close-out itself, and it corrects the statements about calls made that the runs overtook in JOURNEYS, RELEASE-SCOPE, READINESS, VERIFICATION and the docs index. The repository README's status, dated 2026-09-17, is older than all of M4 and is not touched here.
+Against `main` at `9ee22d0`, for [issue #21](https://github.com/Combraton/cbr/issues/21). **Documents only; no code.** It records live run 3, the owner's decision on Journey 2, and the close-out itself, and it corrects the statements about calls made that the runs overtook in JOURNEYS, RELEASE-SCOPE, READINESS, VERIFICATION and the docs index. It also brings the repository README to the post-M4 position.
 
 ### Live run 3, and why M4 can close
 
@@ -21,7 +21,9 @@ Against `main` at `9ee22d0`, for [issue #21](https://github.com/Combraton/cbr/is
 
 **What this change corrects, all of it drift the runs caused.** It updates JOURNEYS's status line and matrix, RELEASE-SCOPE §4's M4 and M5 rows, and the status line wherever it read *"live-model evidence pending M4"*. In READINESS it fixes the stop arithmetic, which still said 363,966 and 2,886,034 after m4f had made the flow 373,188, and the statements about calls made. In VERIFICATION it fixes the three rows that said nothing had been run.
 
-**Found while writing run 3's record, reported and not fixed:** a repaired step's derivation record carries the usage of its last exchange only, because `model::Runtime::ask` builds its `Cost` from the attempt that ended the question. The ledger holds both charges and is right. That is for the next code change, together with the reviewer's read-only store connection for the harness.
+**The owner's second decision, 2026-09-23:** the bounded tool surface, the loop and its checkpoints, with MODEL-RUNTIME §6's runtime-selection tests, move to M5, as do model-assisted artifact creation and the ancestry-root obligation. That obligation is carried with the first family whose output CBR's own producer cites as claim support. RELEASE-SCOPE §2 and §4 and the close-out say so, and the close-out lists the eight §6 tests item by item: six already exercised by M4's direct-call runtime, one of them with a known failure, and two that need a runtime with tools.
+
+**Found while writing run 3's record, reported and not fixed:** a repaired step's derivation record carries the usage of its last exchange only, because `model::Runtime::ask` builds its `Cost` from the attempt that ended the question. The ledger holds both charges and is right. The reviewer confirmed it, and that a step ending unmet after a repair drops its earlier attempts the same way. The two prose attempts' output tokens, 968 and 843, are the reviewer's, read from `model_calls`, which this session did not read. The fix goes in the next code change, with a test that a repaired step's record carries every attempt's usage and equals that question's ledger rows, together with a read-only store connection for the harness.
 
 ## Earlier — M4e to M4g, model-assisted discovery, the live runs and what they corrected
 

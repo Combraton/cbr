@@ -51,7 +51,7 @@ A journey is the *journey* layer of the shared evidence ladder. Lower layers —
 
 J7 cannot run today and will not be simulated. **J6 was unblocked on 2026-09-16** and is now a scheduling question rather than a permission one.
 
-- **J6** needed a granted model provider and a permitted spend. Both now exist — MiniMax on the owner's subscription quota, with a bounded envelope debited before every call ([RELEASE-SCOPE §5](../work/readiness/RELEASE-SCOPE.md)). What J6 still needs is **pre-agreed thresholds derived from pilot variance**, and those must be fixed *before* the confirmatory run. A threshold chosen after seeing the result is not a threshold. **The two m3d pilots have now run**, one scored and failed against its oracle and one awaiting its score; the thresholds are still to be fixed, and until they are, J6 proper stays unrun.
+- **J6** needed a granted model provider and a permitted spend. Both now exist — MiniMax on the owner's subscription quota, with a bounded envelope debited before every call ([RELEASE-SCOPE §5](../work/readiness/RELEASE-SCOPE.md)). What J6 still needs is **pre-agreed thresholds derived from pilot variance**, and those must be fixed *before* the confirmatory run. A threshold chosen after seeing the result is not a threshold. **Both pilots have now run and both are scored**, twice with no model at M3 and again with a model at M4; the thresholds are still to be fixed, and until they are, J6 proper stays unrun.
 - **J7** needs a PIO standalone service. PIO is being built in parallel and has no release. CBR must not depend on its unreleased work.
 
 J8, J9 and J10 need no model at all and are reachable inside the milestones that introduce them. J2, J3, J4 and J5 each need a model for their full form; with the grant in place that is now reachable at M5, **J2 first** — it was M4's until the owner's decision of 2026-09-23 moved it, which matches [READINESS §1](../work/m4/READINESS.md#1-scope-and-the-promise), where projections were already M5's. Their fault-injection halves still run against a **labelled fake model**, which remains the right tool for fault injection and the wrong one for acceptance — the row stays `simulated` until a live run replaces it, and the existence of a budget does not change that.
@@ -253,14 +253,14 @@ This session has never seen either oracle and scored nothing.
 |---|---|---:|---:|---|---|
 | `j1-m27hs` | `9ee22d0` | 8,350 | 2 | answered, 448 output tokens; fenced, and unwrapped without a repair | answered, 637 output |
 | `j1-m3` | `9ee22d0` | 6,810 | 2 | answered, 25 output | answered, 21 output |
-| `brian2-m27hs` | `4960df7` | 12,084 | 2 | answered, 410 output | **answered in prose** (5,222 tokens), then **one repair** (4,827 tokens, 538 output) |
+| `brian2-m27hs` | `4960df7` | 12,084 | 2 | answered, 410 output | **answered in prose** (5,222 tokens, 968 output), then **one repair** (4,827 tokens, 538 output) |
 | `brian2-m3` | `4960df7` | 6,018 | 2 | answered, 21 output | answered, 21 output |
-| `knowscroll-m27hs` | `3e8991e` | 21,711 | 2 | answered, 518 output | **answered in prose** (9,218 tokens), then **one repair** (8,922 tokens, 512 output) |
+| `knowscroll-m27hs` | `3e8991e` | 21,711 | 2 | answered, 518 output | **answered in prose** (9,218 tokens, 843 output), then **one repair** (8,922 tokens, 512 output) |
 | `knowscroll-m3` | `3e8991e` | 12,422 | 2 | answered, 24 output | answered, 25 output |
 
 Packet digests, in the same order: `e1cb9aac…`, `6cf6a2ff…`, `36e2617a…`, `57204953…`, `9da7dae3…`, `0129ba0a…`. The packets and the stores are outside this repository, where the reviewer scored them; **no repository text is recorded here**.
 
-**Where the figures come from.** Tokens, records and charges are the harness's report. Output tokens and repairs are each step's sealed derivation record, `usage.tokens` less `usage.input_tokens`. The first attempt of a repaired step is the ledger's, because a repaired step's record carries the usage of its last exchange only (below). Every call was admitted by the local bound alone, and no count call was made.
+**Where the figures come from.** Tokens, records and charges are the harness's report. Output tokens and repairs are each step's sealed derivation record, `usage.tokens` less `usage.input_tokens`. A repaired step's record carries the usage of its last exchange only (below), so the prose attempt of each repaired step is taken from elsewhere: its total tokens from the ledger, and its output tokens, **968 and 843, from the reviewer's reading of the recorded exchanges in `model_calls`**, which this session did not read. Every call was admitted by the local bound alone, and no count call was made.
 
 **Checked independently by the reviewer, from the stores:** no key-shaped string in any of the 82 files; no credential file written for any launch, so every rebuild authenticated with the credential its provider issued — m4g working live, where run 2 had failed; every ledger equal to the report and every charge within its local estimate; and all fourteen calls completed, none truncated.
 
@@ -270,9 +270,9 @@ Packet digests, in the same order: `e1cb9aac…`, `6cf6a2ff…`, `36e2617a…`, 
 
 This session has never seen either oracle and scored nothing.
 
-**What changed since run 1, stated from the record rather than inferred.** The ADR run 1 never offered was offered and kept, which is what m4f's per-path cap was added for. No step truncated: `MiniMax-M2.7-highspeed` used 410 to 637 output tokens a step against the 2,048 floor, where run 1 truncated two of its flows at 512. The fenced answer cost no repair. The rebuilds authenticated. `knowscroll-m27hs`, whose choice step truncated in run 1, completed it.
+**What changed since run 1, stated from the record rather than inferred.** The ADR run 1 never offered was offered and kept, which is what m4f's per-path cap was added for. No step truncated: `MiniMax-M2.7-highspeed` used 410 to 968 output tokens a call against the 2,048 floor, where run 1 truncated two of its flows at 512. The fenced answer cost no repair. The rebuilds authenticated. `knowscroll-m27hs`, whose choice step truncated in run 1, completed it.
 
-**The model split, again.** `MiniMax-M3` used 21 to 25 output tokens a step and its records state 0.6 to 2.1 seconds; `MiniMax-M2.7-highspeed` used 410 to 637 and 9.5 to 27.0 seconds, and spent a repair on each pilot.
+**The model split, again.** `MiniMax-M3` used 21 to 25 output tokens a call and its records state 0.6 to 2.1 seconds a step; `MiniMax-M2.7-highspeed` used 410 to 968 a call and 9.5 to 27.0 seconds a step, and spent a repair on each pilot.
 
 **A prose answer where a structure was asked for is the ordinary outcome [READINESS §4](../work/m4/READINESS.md#4-provider-facts-that-are-design-inputs-not-discoveries) designed for, and it happened.** On both pilot questions `MiniMax-M2.7-highspeed` answered the choice step in prose; CBR read the answer as unusable, repaired once with its own sentence rather than the model's text, and the repair answered in shape. The two repairs cost 4,827 and 8,922 tokens.
 
@@ -282,7 +282,7 @@ This session has never seen either oracle and scored nothing.
 
 **J1's excerpt limit, found by the reviewer and recorded rather than fixed.** The ADR section's excerpt covers the start of the question 11 row, but the sentences recording the move to `gix` sit about 600 bytes past the 2,048-byte excerpt cap; the citation resolves to them. It is the limit [J1's M3c record](#j1-a-question-finds-its-own-answer-with-a-cited-packet) already states, measured on a real packet.
 
-**A repaired step's record understates what its question cost.** Found while writing this record: `model::Runtime::ask` builds its `Cost` from the attempt that ended the question, so `brian2-m27hs`'s choice record says 4,827 tokens and one repair while the ledger holds both charges, 5,222 and 4,827. The ledger is the spend and it is right; the record, read on its own, leaves out the attempt it repaired. Reported here and not changed, because this is a documents-only change.
+**A repaired step's record understates what its question cost.** Found while writing this record: `model::Runtime::ask` builds its `Cost` from the attempt that ended the question, so `brian2-m27hs`'s choice record says 4,827 tokens and one repair while the ledger holds both charges, 5,222 and 4,827. The ledger is the spend and it is right; the record, read on its own, leaves out the attempt it repaired. The reviewer confirmed it, and that a step ending unmet after a repair drops its earlier attempts the same way. It is fixed in the next code change, with a test that a repaired step's sealed record carries every attempt's usage and equals that question's ledger rows; this change is documents only.
 
 **Runs 1 and 3 are the discovery family's sealed, costed live transcripts**, and by the owner's decision of 2026-09-23 they are what [issue #21](https://github.com/Combraton/cbr/issues/21) closes on.
 
@@ -290,7 +290,7 @@ This session has never seen either oracle and scored nothing.
 
 Both records above measure a packet. **Neither measures a session.** No agent session used either packet for any task: nothing here shows that work went better with one, or that a constraint was preserved that would otherwise have been lost, or that investigation was not repeated. That is J6 proper, and it is M7's — with pre-agreed thresholds derived from these pilots' variance, fixed before the confirmatory run, against a strong native-context baseline, a disciplined-notes baseline and a plain-search baseline.
 
-What the pilots are for is narrower and worth having on its own: they are the first runs of the write path and the read path over repositories this session did not write, at sizes and in shapes the fixtures do not reach — 5.3 MB and 553 files in one, 22 owner decisions over one append-only file in the other — and they produced the variance M7's thresholds will be derived from, one packet scored against an oracle and one awaiting its score.
+What the pilots are for is narrower and worth having on its own: they are the first runs of the write path and the read path over repositories this session did not write, at sizes and in shapes the fixtures do not reach — 5.3 MB and 553 files in one, 22 owner decisions over one append-only file in the other — and they produced the variance M7's thresholds will be derived from, every packet scored against its oracle by the reviewer.
 
 ### J1: a question finds its own answer with a cited packet
 

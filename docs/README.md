@@ -1,6 +1,6 @@
 # CBR documentation
 
-Read [repository scope](../README.md), then [memory spec](spec/SPEC.md), [memory engine](spec/MEMORY-ENGINE.md), [preparation/delivery](spec/PREPARATION-AND-DELIVERY.md), and [model runtime](spec/MODEL-RUNTIME.md). These current specs are authoritative for this repository. Most of what they describe is not implemented yet: what exists today is the protocol provider for `core/1` and `evidence/1` and the `cbr` ingest and fetch commands (see [the repository README](../README.md#what-exists-now)).
+Read [repository scope](../README.md), then [memory spec](spec/SPEC.md), [memory engine](spec/MEMORY-ENGINE.md), [preparation/delivery](spec/PREPARATION-AND-DELIVERY.md), and [model runtime](spec/MODEL-RUNTIME.md). These current specs are authoritative for this repository. Much of what they describe is not implemented yet. What exists today is the protocol provider for `core/1`, `evidence/1`, `knowledge/1` and `context/1`; retrieval and the deterministic packet compiler; the bounded model runtime with model-assisted selection and discovery; and the `cbr` command (see [the repository README](../README.md#what-exists-now)).
 
 - [Development workflow](https://github.com/Combraton/combraton/blob/main/docs/DEVELOPMENT.md) — ownership, parallel work, reviews and fresh-session recovery.
 - [Verification](VERIFICATION.md) — commands that actually exist, what they establish, and their limits, including the permanent conformance coverage limits and the storage crash matrix.
