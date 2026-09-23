@@ -372,6 +372,12 @@ impl Fixture {
         self.launch(&self.directory.path().join("cbr.json"), &[])
     }
 
+    /// Start with **launch flags** as well, such as the run ceiling an
+    /// operator passes, over the same configuration `start` uses.
+    pub fn start_with(&self, extra: &[&str]) -> Running {
+        self.launch(&self.directory.path().join("cbr.json"), extra)
+    }
+
     fn launch(&self, config: &Path, extra: &[&str]) -> Running {
         // A stopped provider leaves its socket file behind, so a second
         // launch over the same directory would find a path that exists

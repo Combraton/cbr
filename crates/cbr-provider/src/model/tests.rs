@@ -41,6 +41,7 @@ fn the_count_call_is_a_send_and_is_admitted_recorded_and_charged_like_one() {
             counting: Counting::Always,
         },
         &no_barrier,
+        &Charges::default(),
     );
     assert!(
         matches!(ended, Ended::Completed { usage: 150, .. }),
@@ -101,6 +102,7 @@ fn a_request_the_local_estimate_refuses_never_reaches_the_count_endpoint() {
             counting: Counting::Always,
         },
         &no_barrier,
+        &Charges::default(),
     );
     assert_eq!(ended, Ended::Refused(Refusal::PerRequest));
     assert!(
@@ -163,6 +165,7 @@ fn an_exhausted_envelope_refuses_before_the_count_call() {
             counting: Counting::Always,
         },
         &no_barrier,
+        &Charges::default(),
     );
     assert_eq!(ended, Ended::Refused(Refusal::WindowExhausted));
     assert_eq!(ended.reason(), Some("budget_exhausted"));
@@ -190,6 +193,7 @@ fn provider_exhaustion_reaches_the_caller_as_its_own_reason_and_is_not_retried()
             counting: Counting::Always,
         },
         &no_barrier,
+        &Charges::default(),
     );
     assert_eq!(ended.reason(), Some("provider_quota_exhausted"));
     assert_ne!(
@@ -229,6 +233,7 @@ fn a_failed_call_reaches_the_caller_as_an_unmet_reason_and_never_hangs() {
             counting: Counting::Always,
         },
         &no_barrier,
+        &Charges::default(),
     );
     assert_eq!(ended.reason(), Some("model_not_sent"));
     assert_eq!(transport.sent().len(), 1);
@@ -261,6 +266,7 @@ fn a_usage_that_differs_from_the_count_is_what_the_ledger_keeps() {
             counting: Counting::Always,
         },
         &no_barrier,
+        &Charges::default(),
     );
     assert_eq!(
         Ledger::new(&connection)
@@ -340,6 +346,7 @@ fn every_crash_boundary_is_reached_in_order() {
             }
             seen.push(name);
         },
+        &Charges::default(),
     );
     let seen = seen.lock().expect("not poisoned").clone();
     assert_eq!(
@@ -402,6 +409,7 @@ fn the_completion_reserves_its_generation_and_margin_not_the_input_count_alone()
             counting: Counting::Always,
         },
         &no_barrier,
+        &Charges::default(),
     );
 
     // The reservation has to cover the generation the request asked for, so
@@ -465,6 +473,7 @@ fn the_completions_reservation_covers_the_margin_as_well_as_the_generation() {
             counting: Counting::Always,
         },
         &no_barrier,
+        &Charges::default(),
     );
     assert_eq!(
         ended,
@@ -509,6 +518,7 @@ fn a_count_implausibly_below_the_local_bound_is_an_anomaly_and_the_local_figure_
             counting: Counting::Always,
         },
         &no_barrier,
+        &Charges::default(),
     );
     let rows = Ledger::new(&connection).rows().expect("rows");
     assert!(
@@ -545,6 +555,7 @@ fn usage_above_the_reservation_is_recorded_as_a_divergence() {
             counting: Counting::Always,
         },
         &no_barrier,
+        &Charges::default(),
     );
     let rows = Ledger::new(&connection).rows().expect("rows");
     assert!(
@@ -580,6 +591,7 @@ fn a_limit_the_body_only_mentions_is_not_a_limit_the_body_declares() {
             counting: Counting::Always,
         },
         &no_barrier,
+        &Charges::default(),
     );
     assert_eq!(ended.reason(), Some("generation_limit_not_declared"));
     assert!(transport.sent().is_empty(), "and nothing was sent");
@@ -609,6 +621,7 @@ fn a_request_that_does_not_declare_its_generation_limit_is_never_sent() {
             counting: Counting::Always,
         },
         &no_barrier,
+        &Charges::default(),
     );
     assert_eq!(ended.reason(), Some("generation_limit_not_declared"));
     assert!(transport.sent().is_empty(), "and nothing was sent");
@@ -645,6 +658,7 @@ fn a_failure_after_the_send_keeps_the_estimate_because_the_provider_may_have_cha
             counting: Counting::Always,
         },
         &no_barrier,
+        &Charges::default(),
     );
     assert_eq!(ended.reason(), Some("model_call_failed"));
     let spend = Ledger::new(&connection).spend(T0, "job").expect("spend");
@@ -676,6 +690,7 @@ fn a_failure_before_anything_left_the_process_spends_nothing() {
             counting: Counting::Always,
         },
         &no_barrier,
+        &Charges::default(),
     );
     assert_eq!(ended.reason(), Some("model_not_sent"));
     assert_eq!(
@@ -716,6 +731,7 @@ fn a_failure_that_reports_usage_settles_to_what_it_reported() {
             counting: Counting::Always,
         },
         &no_barrier,
+        &Charges::default(),
     );
     assert_eq!(
         Ledger::new(&connection)
@@ -756,6 +772,7 @@ fn an_answer_of_the_wrong_kind_is_a_recorded_failure_and_not_a_silent_fall_throu
             counting: Counting::Always,
         },
         &no_barrier,
+        &Charges::default(),
     );
     assert_eq!(ended.reason(), Some("model_answer_mismatched"));
     let rows = Ledger::new(&connection).rows().expect("rows");
@@ -794,6 +811,7 @@ fn the_boundaries_are_named_per_call_so_a_row_cannot_pass_at_the_wrong_one() {
             counting: Counting::Always,
         },
         &|name| seen.lock().expect("not poisoned").push(name),
+        &Charges::default(),
     );
     assert_eq!(
         seen.lock().expect("not poisoned").clone(),
@@ -1181,7 +1199,13 @@ fn a_repair_the_envelope_has_no_room_for_does_not_happen() {
         &no_barrier,
     );
     assert!(
-        matches!(outcome, Outcome::Refused(Refusal::RunCeiling)),
+        matches!(
+            outcome,
+            Outcome::Refused {
+                refusal: Refusal::RunCeiling,
+                ..
+            }
+        ),
         "the repair was refused by the ceiling: {outcome:?}"
     );
     // **One completion, not two.** The repair asked for its count and was
@@ -1271,6 +1295,7 @@ fn a_completion_the_provider_did_not_price_settles_to_the_estimate_never_to_zero
             counting: Counting::Always,
         },
         &no_barrier,
+        &Charges::default(),
     );
     let rows = Ledger::new(&connection).rows().expect("rows");
     // The last row is the note saying which evidence admitted the call;
@@ -1328,6 +1353,7 @@ fn the_count_call_sends_the_count_body_and_the_completion_sends_its_own() {
             counting: Counting::Always,
         },
         &no_barrier,
+        &Charges::default(),
     );
     let sent = transport.sent();
     assert_eq!(sent.len(), 2);
@@ -1365,6 +1391,7 @@ fn a_dialect_the_counting_endpoint_does_not_describe_sends_no_count_call() {
             counting: Counting::Always,
         },
         &no_barrier,
+        &Charges::default(),
     );
     let sent = transport.sent();
     assert_eq!(
@@ -1412,6 +1439,7 @@ fn an_uncounted_dialect_reserves_the_completion_against_the_local_bound() {
             counting: Counting::Always,
         },
         &no_barrier,
+        &Charges::default(),
     );
     let rows = Ledger::new(&connection).rows().expect("rows");
     let settled = rows
@@ -1457,6 +1485,7 @@ fn no_count_is_made_when_the_local_bound_already_admits() {
             counting: Counting::WhenItCouldAdmit,
         },
         &no_barrier,
+        &Charges::default(),
     );
     let sent = transport.sent();
     assert_eq!(
@@ -1492,6 +1521,7 @@ fn the_local_path_is_recorded_as_the_one_that_admitted() {
             counting: Counting::WhenItCouldAdmit,
         },
         &no_barrier,
+        &Charges::default(),
     );
     let rows = Ledger::new(&connection).rows().expect("rows");
     assert!(
@@ -1543,6 +1573,7 @@ fn a_count_is_made_when_a_ceiling_refuses_the_local_bound_and_a_tighter_figure_w
             counting: Counting::WhenItCouldAdmit,
         },
         &no_barrier,
+        &Charges::default(),
     );
     assert!(matches!(ended, Ended::Completed { .. }), "{ended:?}");
     let sent = transport.sent();
@@ -1596,6 +1627,7 @@ fn a_request_no_figure_could_admit_is_refused_without_a_count() {
             counting: Counting::WhenItCouldAdmit,
         },
         &no_barrier,
+        &Charges::default(),
     );
     assert_eq!(ended, Ended::Refused(Refusal::PerRequest));
     assert!(transport.sent().is_empty(), "nothing left the process");
@@ -1626,6 +1658,7 @@ fn a_count_that_does_not_help_still_ends_in_a_refusal() {
             counting: Counting::WhenItCouldAdmit,
         },
         &no_barrier,
+        &Charges::default(),
     );
     assert!(matches!(ended, Ended::Refused(_)), "{ended:?}");
     let sent = transport.sent();
@@ -1661,6 +1694,7 @@ fn an_uncounted_dialect_is_refused_rather_than_counted() {
             counting: Counting::WhenItCouldAdmit,
         },
         &no_barrier,
+        &Charges::default(),
     );
     assert!(matches!(ended, Ended::Refused(_)), "{ended:?}");
     assert!(transport.sent().is_empty());
@@ -1737,7 +1771,7 @@ fn an_input_charged_above_its_local_bound_trips_the_wire_and_stops_the_process()
         ledger: Ledger::new(&connection),
         transport: &transport,
     };
-    let ended = runtime.call(T0, &asked_with(&body, 64), &no_barrier);
+    let ended = runtime.call(T0, &asked_with(&body, 64), &no_barrier, &Charges::default());
     assert_eq!(
         ended.reason(),
         Some("local_bound_unsound"),
@@ -1771,8 +1805,8 @@ fn a_tripped_wire_refuses_every_later_call_in_the_process() {
         ledger: Ledger::new(&connection),
         transport: &transport,
     };
-    runtime.call(T0, &asked_with(&body, 64), &no_barrier);
-    let after = runtime.call(T0, &asked_with(&body, 64), &no_barrier);
+    runtime.call(T0, &asked_with(&body, 64), &no_barrier, &Charges::default());
+    let after = runtime.call(T0, &asked_with(&body, 64), &no_barrier, &Charges::default());
     assert_eq!(after.reason(), Some("local_bound_unsound"), "{after:?}");
     assert_eq!(
         transport.sent().len(),
@@ -1797,7 +1831,7 @@ fn an_input_charged_at_or_below_its_local_bound_does_not_trip_it() {
             ledger: Ledger::new(&connection),
             transport: &transport,
         };
-        let ended = runtime.call(T0, &asked_with(&body, 64), &no_barrier);
+        let ended = runtime.call(T0, &asked_with(&body, 64), &no_barrier, &Charges::default());
         assert!(
             matches!(ended, Ended::Completed { .. }),
             "charged {charged} against a bound of {input}: {ended:?}"
@@ -1827,7 +1861,7 @@ fn a_completion_that_reports_no_input_usage_cannot_trip_it() {
         ledger: Ledger::new(&connection),
         transport: &transport,
     };
-    let ended = runtime.call(T0, &asked_with(&body, 64), &no_barrier);
+    let ended = runtime.call(T0, &asked_with(&body, 64), &no_barrier, &Charges::default());
     assert!(matches!(ended, Ended::Completed { .. }), "{ended:?}");
 }
 
@@ -1886,4 +1920,226 @@ fn a_truncated_answer_is_repaired_with_a_wider_limit() {
         second > first,
         "the repair asked for {second} after {first}"
     );
+}
+
+// --- what a question cost, attempt by attempt ---------------------------
+
+/// Every row the ledger holds that is a charge, in the order it was
+/// written. Notes — which evidence admitted a call, an anomaly — are not.
+fn charges(connection: &Connection) -> Vec<u64> {
+    Ledger::new(connection)
+        .rows()
+        .expect("rows")
+        .into_iter()
+        .filter(|(kind, _, _)| {
+            matches!(
+                kind.as_str(),
+                "reservation" | "usage" | "unknown" | "provider_exhausted" | "not_sent"
+            )
+        })
+        .map(|(_, _, tokens)| tokens)
+        .collect()
+}
+
+/// Each attempt as the charge it made: its count call and its completion.
+fn per_attempt(cost: &Cost) -> Vec<u64> {
+    cost.attempts
+        .iter()
+        .map(|attempt| attempt.count_tokens.unwrap_or(0) + attempt.tokens.unwrap_or(0))
+        .collect()
+}
+
+fn cost_of(outcome: &Outcome) -> &Cost {
+    match outcome {
+        Outcome::Answered { cost, .. }
+        | Outcome::Unmet { cost, .. }
+        | Outcome::Refused { cost, .. } => cost,
+    }
+}
+
+fn asked_for_structure(runtime: &Runtime<'_>, counting: Counting) -> Outcome {
+    runtime.ask(
+        T0,
+        &Ask {
+            job: "job",
+            request: "r",
+            dialect: Dialect::Responses,
+            body: &asking(structure()),
+            counting,
+        },
+        &no_barrier,
+    )
+}
+
+#[test]
+fn a_repaired_question_costs_every_attempt_and_its_cost_is_its_ledger_rows() {
+    // **Live run 3's finding.** A choice answered in prose and then
+    // repaired was charged for both, and its sealed record said what the
+    // repair cost. The cost is the question's, so it is the sum of every
+    // attempt — each a count and a completion here — and it is exactly
+    // what the ledger holds, row for row.
+    let connection = database();
+    let transport = Recorder::new(vec![
+        counted(),
+        answered("The second span is the one."),
+        counted(),
+        answered("{\"ids\":[\"s1\"]}"),
+    ]);
+    let runtime = Runtime {
+        ledger: Ledger::new(&connection),
+        transport: &transport,
+    };
+    let outcome = asked_for_structure(&runtime, Counting::Always);
+    assert!(matches!(outcome, Outcome::Answered { .. }), "{outcome:?}");
+    let cost = cost_of(&outcome);
+    let rows = charges(&connection);
+    assert_eq!(rows.len(), 4, "two counts and two completions: {rows:?}");
+    assert_eq!(cost.attempts.len(), 2, "both attempts are kept: {cost:?}");
+    assert_eq!(cost.repairs, 1);
+    assert_eq!(
+        cost.charged(),
+        Some(rows.iter().sum()),
+        "the question's cost is its ledger rows"
+    );
+    assert_eq!(
+        per_attempt(cost),
+        vec![rows[0] + rows[1], rows[2] + rows[3]]
+    );
+}
+
+#[test]
+fn a_question_left_unmet_after_its_repair_is_charged_for_both_attempts() {
+    // The way out that is not an answer keeps the same account.
+    let connection = database();
+    let transport = Recorder::new(vec![
+        counted(),
+        answered("The second span is the one."),
+        counted(),
+        answered("Still the second span, really."),
+    ]);
+    let runtime = Runtime {
+        ledger: Ledger::new(&connection),
+        transport: &transport,
+    };
+    let outcome = asked_for_structure(&runtime, Counting::Always);
+    assert!(matches!(outcome, Outcome::Unmet { .. }), "{outcome:?}");
+    let cost = cost_of(&outcome);
+    let rows = charges(&connection);
+    assert_eq!(rows.len(), 4, "{rows:?}");
+    assert_eq!(cost.attempts.len(), 2, "{cost:?}");
+    assert_eq!(cost.charged(), Some(rows.iter().sum()));
+    assert_eq!(
+        per_attempt(cost),
+        vec![rows[0] + rows[1], rows[2] + rows[3]]
+    );
+}
+
+#[test]
+fn a_repair_that_fails_after_the_send_still_carries_the_attempt_before_it() {
+    // A call can end unmet after it has been charged — here a repair the
+    // provider failed while reporting what it spent. The attempt before it
+    // was charged too, and the ending that returns no reply is the one
+    // most easily written as though nothing had happened.
+    let connection = database();
+    let transport = Recorder::new(vec![
+        counted(),
+        answered("The second span is the one."),
+        counted(),
+        Answer::Failed {
+            reason: "scripted".into(),
+            usage: Some(33),
+        },
+    ]);
+    let runtime = Runtime {
+        ledger: Ledger::new(&connection),
+        transport: &transport,
+    };
+    let outcome = asked_for_structure(&runtime, Counting::Always);
+    assert!(matches!(outcome, Outcome::Unmet { .. }), "{outcome:?}");
+    let cost = cost_of(&outcome);
+    let rows = charges(&connection);
+    assert_eq!(rows.len(), 4, "{rows:?}");
+    assert_eq!(rows[3], 33, "the failure settled at what it reported");
+    assert_eq!(cost.attempts.len(), 2, "{cost:?}");
+    assert_eq!(cost.charged(), Some(rows.iter().sum()));
+    assert_eq!(
+        per_attempt(cost),
+        vec![rows[0] + rows[1], rows[2] + rows[3]]
+    );
+}
+
+#[test]
+fn a_repair_the_envelope_refuses_still_carries_what_the_question_had_spent() {
+    // Refused is not "nothing happened" when it is the repair that was
+    // refused: the first attempt was charged, and the repair's own count
+    // was admitted and charged before its completion was refused. The same
+    // ceiling as `a_repair_the_envelope_has_no_room_for_does_not_happen`.
+    let connection = database();
+    let asked = asking(structure());
+    let first = asked.serialize(Dialect::Responses);
+    let messages = asked.framed_messages(Dialect::Responses);
+    let one_call = crate::budget::input_bound(&first, messages)
+        + COUNTED
+        + asked.generation
+        + crate::budget::SAFETY_MARGIN_TOKENS;
+    let transport = Recorder::new(vec![counted(), answered("prose")]);
+    let runtime = Runtime {
+        ledger: Ledger::new(&connection).with_run_ceiling(Some(one_call + 16)),
+        transport: &transport,
+    };
+    let outcome = asked_for_structure(&runtime, Counting::Always);
+    assert!(
+        matches!(
+            outcome,
+            Outcome::Refused {
+                refusal: Refusal::RunCeiling,
+                ..
+            }
+        ),
+        "{outcome:?}"
+    );
+    let cost = cost_of(&outcome);
+    let rows = charges(&connection);
+    assert_eq!(
+        cost.attempts.len(),
+        2,
+        "the refused repair is an attempt: {cost:?}"
+    );
+    assert_eq!(cost.attempts[1].admission, None, "and it was not admitted");
+    assert_eq!(
+        cost.charged(),
+        Some(rows.iter().sum()),
+        "the question's cost is its ledger rows: {rows:?}"
+    );
+}
+
+#[test]
+fn an_unpriced_completion_is_charged_at_what_the_ledger_holds_for_it() {
+    // A completion whose transport reports no usage settles to the
+    // reservation's estimate, because silence is not free. The attempt's
+    // charge is that figure — the ledger's — and not whatever the body
+    // happens to say, so the two cannot disagree.
+    let connection = database();
+    let Answer::Completed { body, .. } = answered("{\"ids\":[\"s1\"]}") else {
+        unreachable!()
+    };
+    let transport = Recorder::new(vec![counted(), Answer::Completed { body, usage: None }]);
+    let runtime = Runtime {
+        ledger: Ledger::new(&connection),
+        transport: &transport,
+    };
+    let outcome = asked_for_structure(&runtime, Counting::Always);
+    assert!(matches!(outcome, Outcome::Answered { .. }), "{outcome:?}");
+    let cost = cost_of(&outcome);
+    let rows = Ledger::new(&connection).rows().expect("rows");
+    let unknown = rows
+        .iter()
+        .find(|(kind, _, _)| kind == "unknown")
+        .expect("the completion settled unpriced");
+    assert_eq!(
+        cost.attempts[0].tokens,
+        Some(unknown.2),
+        "charged at the estimate the ledger kept: {rows:?}"
+    );
+    assert_eq!(cost.charged(), Some(charges(&connection).iter().sum()));
 }

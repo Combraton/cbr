@@ -1215,3 +1215,194 @@ fn the_replay_gate_reports_an_ambiguous_question_rather_than_skipping_it() {
         "and did not say what the operator does about it: {found:?}"
     );
 }
+
+/// Build a store the way a run leaves one, read it through the harness's
+/// own `spend`, `records` and `ambiguity`, and report what they read and
+/// **every file's bytes before and after**.
+///
+/// `killed`: the writer is killed with its rows still in the write-ahead
+/// log, as a provider killed while a session held the store leaves it.
+/// `closed`: the writer closes cleanly, so there is no log and no
+/// shared-memory file at all — the usual state, because a provider holds a
+/// connection per session and none between them. `torn`: killed, and then
+/// the shared-memory file is gone while the log remains, which is what
+/// `stop` leaves when it lands inside SQLite's own close.
+fn read_through_the_harness(state: &str) -> Value {
+    let directory = tempfile::tempdir().expect("temp dir");
+    let data = directory.path().join("data");
+    let program = r#"
+import hashlib, importlib.util, json, pathlib, subprocess, sys
+spec = importlib.util.spec_from_file_location("m4e_run", sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+data, state = pathlib.Path(sys.argv[2]), sys.argv[3]
+data.mkdir(parents=True)
+
+record = {"question": {"digest": "sha256:q1", "selector": "discovery.terms x"},
+          "answer": {"proposed": ["queue"]}, "made_at": "2026-09-23T00:00:00Z"}
+body = json.dumps(record).encode()
+digest = "sha256:" + hashlib.sha256(body).hexdigest()
+hexed = digest.split(":", 1)[1]
+obj = data / "objects" / "sha256" / hexed[0:2] / hexed[2:4] / hexed[4:]
+obj.parent.mkdir(parents=True)
+obj.write_bytes(body)
+row = json.dumps({"state": "sealed", "descriptor": {"digest": digest}})
+
+writer = '''
+import os, signal, sqlite3, sys
+path, state, row = sys.argv[1], sys.argv[2], sys.argv[3]
+c = sqlite3.connect(path, isolation_level=None)
+c.execute("PRAGMA journal_mode=WAL")
+c.execute("PRAGMA wal_autocheckpoint=0")
+c.execute("CREATE TABLE model_ledger (id INTEGER PRIMARY KEY, kind TEXT, tokens INTEGER)")
+c.execute("CREATE TABLE subjects (kind TEXT, id TEXT, value TEXT)")
+c.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+c.execute("INSERT INTO model_ledger (kind, tokens) VALUES "
+          "('usage', 5222), ('admitted_local', 0), ('usage', 4827), ('admitted_local', 0)")
+c.execute("INSERT INTO subjects VALUES ('evidence.artifact', 'der.x', ?)", (row,))
+if state in ("killed", "torn"):
+    os.kill(os.getpid(), signal.SIGKILL)
+c.close()
+'''
+subprocess.run([sys.executable, "-c", writer, str(data / "cbr.sqlite"), state, row])
+# SQLite's close unlinks the shared memory only after its checkpoint, so a
+# natural torn store's database is already whole. This one is not: its rows
+# are only in the log, which is the case a reader could get most wrong.
+if state == "torn":
+    (data / "cbr.sqlite-shm").unlink()
+
+# The precondition, read with `immutable=1`, which changes nothing: in the
+# killed store the rows are in the log and not yet in the database file.
+database = (data / "cbr.sqlite").resolve()
+probe = __import__("sqlite3").connect(f"{database.as_uri()}?immutable=1", uri=True)
+in_the_file = probe.execute("SELECT COUNT(*) FROM model_ledger").fetchone()[0]
+probe.close()
+
+def files():
+    return {p.relative_to(data).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
+            for p in sorted(data.rglob("*")) if p.is_file()}
+
+before = files()
+total, charges = module.spend(data)
+found = module.records(data)
+questions = module.ambiguity(data)["questions"]
+after = files()
+print(json.dumps({"in_the_file": in_the_file, "total": total, "charges": len(charges),
+                  "records": len(found), "questions": questions,
+                  "before": before, "after": after}))
+"#;
+    let output = Command::new("python3")
+        .args(["-c", program])
+        .arg(script())
+        .arg(&data)
+        .arg(state)
+        .output()
+        .expect("python3 runs");
+    assert!(
+        output.status.success(),
+        "the harness could not read the store: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    cbr_encoding::parse(String::from_utf8_lossy(&output.stdout).trim().as_bytes())
+        .expect("the answer is JSON")
+}
+
+fn file_names(files: Option<&Value>) -> Vec<String> {
+    match files {
+        Some(Value::Object(members)) => members.iter().map(|(name, _)| name.clone()).collect(),
+        other => panic!("not a file listing: {other:?}"),
+    }
+}
+
+#[test]
+fn the_harness_reads_a_killed_stores_ledger_from_its_log_and_changes_no_byte() {
+    // **`stop` kills the provider**, so the ledger rows a run's report is
+    // made of can be only in the write-ahead log when the harness reads
+    // them. A reader that ignores the log reports a run as free; a reader
+    // that writes folds the log into the database and deletes it, which is
+    // the harness editing the evidence it summarises.
+    let read = read_through_the_harness("killed");
+    assert_eq!(
+        read.get("in_the_file"),
+        Some(&Value::Int(0)),
+        "the rows are only in the log, so this reads what the harness must: {read:?}"
+    );
+    let names = file_names(read.get("before"));
+    assert!(
+        names.contains(&"cbr.sqlite-wal".to_string())
+            && names.contains(&"cbr.sqlite-shm".to_string()),
+        "a killed store keeps its log and shared memory: {names:?}"
+    );
+    assert_eq!(
+        read.get("total"),
+        Some(&Value::Int(10_049)),
+        "every charge was read"
+    );
+    assert_eq!(
+        read.get("charges"),
+        Some(&Value::Int(2)),
+        "and notes are not charges"
+    );
+    assert_eq!(read.get("records"), Some(&Value::Int(1)));
+    assert_eq!(read.get("questions"), Some(&Value::Int(1)));
+    assert_eq!(
+        read.get("before"),
+        read.get("after"),
+        "reading the store changed it: {read:?}"
+    );
+}
+
+#[test]
+fn the_harness_reads_a_store_with_no_log_and_creates_no_file() {
+    // The other state a store can be in: closed cleanly, or checkpointed by
+    // anything that read it before this build. There is no log to read,
+    // and `mode=ro` would create one and a shared-memory file beside it.
+    let read = read_through_the_harness("closed");
+    let names = file_names(read.get("before"));
+    assert!(
+        !names
+            .iter()
+            .any(|name| name.ends_with("-wal") || name.ends_with("-shm")),
+        "a cleanly closed store has no log: {names:?}"
+    );
+    assert_eq!(read.get("total"), Some(&Value::Int(10_049)));
+    assert_eq!(read.get("records"), Some(&Value::Int(1)));
+    assert_eq!(
+        read.get("before"),
+        read.get("after"),
+        "reading the store changed it: {read:?}"
+    );
+}
+
+#[test]
+fn the_harness_reads_a_store_with_a_log_and_no_shared_memory_from_a_copy() {
+    // **Found by CI, not by a reading.** A provider opens a store
+    // connection per session and closes it cleanly, and `stop` can land
+    // inside that close: after SQLite unlinked the shared-memory file,
+    // before it deleted the log. Opened in place that store gets a new
+    // shared-memory file whichever way it is opened, or its log is missed.
+    // So it is read from a private copy, and the store is never opened.
+    let read = read_through_the_harness("torn");
+    assert_eq!(
+        read.get("in_the_file"),
+        Some(&Value::Int(0)),
+        "the rows are only in the log: {read:?}"
+    );
+    let names = file_names(read.get("before"));
+    assert!(
+        names.contains(&"cbr.sqlite-wal".to_string())
+            && !names.contains(&"cbr.sqlite-shm".to_string()),
+        "a log and no shared memory: {names:?}"
+    );
+    assert_eq!(
+        read.get("total"),
+        Some(&Value::Int(10_049)),
+        "every charge was read"
+    );
+    assert_eq!(read.get("records"), Some(&Value::Int(1)));
+    assert_eq!(
+        read.get("before"),
+        read.get("after"),
+        "reading the store changed it: {read:?}"
+    );
+}

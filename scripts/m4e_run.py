@@ -66,14 +66,17 @@ checked by a test rather than remembered.
 
 import argparse
 import base64
+import contextlib
 import hashlib
 import json
 import os
 import re
+import shutil
 import socket
 import sqlite3
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.error
 import urllib.request
@@ -768,6 +771,58 @@ def write_packet(client, endpoint, credential, out, run, request, digest):
 # ---- what the store says it spent, and what it retained -----------------
 
 
+@contextlib.contextmanager
+def evidence(data):
+    """**The store, opened so that reading it changes nothing on disk.**
+
+    The store is the evidence the report summarises, so reading it must not
+    change it -- and SQLite's defaults do. Measured, on scratch stores:
+
+    - a read-write connection checkpoints on close: the log is folded into
+      the database, and the log and the shared-memory file are deleted;
+    - `mode=ro` reads the log but rewrites the shared-memory file, where a
+      reader keeps its marks, and on a store with no log it creates both;
+    - `immutable=1` changes nothing and does not read the log.
+
+    A store is found in three states, and each is read its own way:
+
+    - **a log and a shared-memory file** -- a provider killed while a
+      session held the store: `mode=ro` with a read-only shared memory,
+      which reads the log and writes nothing;
+    - **no log** -- the last session's connection closed cleanly, which is
+      the usual case, because a provider opens a connection per session and
+      holds none between them: `immutable=1`, with nothing for it to miss;
+    - **a log and no shared-memory file** -- `stop` landed inside that
+      close, after SQLite unlinked the shared memory and before it deleted
+      the log. Any open in place would create a shared-memory file or miss
+      the log, so a **private copy** of the database and its log is read
+      instead, and SQLite recovers from the copied log exactly as it would
+      from the original. The copy is transient and deleted on return; the
+      store itself is never opened.
+    """
+    database = (Path(data) / "cbr.sqlite").resolve()
+    log = Path(f"{database}-wal")
+    shared = Path(f"{database}-shm")
+    if log.exists() and shared.exists():
+        connection = sqlite3.connect(f"{database.as_uri()}?mode=ro&readonly_shm=1", uri=True)
+    elif not log.exists():
+        connection = sqlite3.connect(f"{database.as_uri()}?immutable=1", uri=True)
+    else:
+        with tempfile.TemporaryDirectory(prefix="cbr-read-") as copy:
+            shutil.copyfile(database, Path(copy) / "cbr.sqlite")
+            shutil.copyfile(log, Path(copy) / "cbr.sqlite-wal")
+            connection = sqlite3.connect(Path(copy) / "cbr.sqlite")
+            try:
+                yield connection
+            finally:
+                connection.close()
+        return
+    try:
+        yield connection
+    finally:
+        connection.close()
+
+
 def spend(data):
     """Every charge in the ledger, and their total.
 
@@ -775,13 +830,10 @@ def spend(data):
     charges, and are not counted -- counting them would double every
     call's cost.
     """
-    connection = sqlite3.connect(data / "cbr.sqlite")
-    try:
+    with evidence(data) as connection:
         rows = connection.execute(
             "SELECT kind, tokens FROM model_ledger ORDER BY id"
         ).fetchall()
-    finally:
-        connection.close()
     charges = [(kind, tokens) for kind, tokens in rows if not kind.startswith("admitted_")]
     return sum(tokens for _, tokens in charges), charges
 
@@ -793,14 +845,11 @@ def object_path(data, digest):
 
 def records(data):
     """Every sealed, unpurged derivation record, read from the store."""
-    connection = sqlite3.connect(data / "cbr.sqlite")
-    try:
+    with evidence(data) as connection:
         rows = connection.execute(
             "SELECT id, value FROM subjects "
             "WHERE kind = 'evidence.artifact' AND id LIKE 'der.%' ORDER BY id"
         ).fetchall()
-    finally:
-        connection.close()
     found = []
     for identifier, value in rows:
         artifact = json.loads(value)

@@ -1,5 +1,6 @@
 use super::*;
 use crate::context::{int, list, text};
+use crate::model::{Attempted, Cost};
 use crate::selection::Candidate;
 
 fn candidates() -> Vec<Candidate> {
@@ -37,12 +38,29 @@ fn made<'a>(question: &'a Question<'a>, answer: Answer) -> Made<'a> {
     Made {
         question,
         answer,
+        // Two attempts: the first admitted on the local bound and
+        // answered unusably, the repair admitted on the provider's count.
+        // 734 + 450 + the count's 50 is 1,234, and 600 + 400 is 1,000.
         spend: Spend {
-            admission: crate::model::ADMITTED_COUNT,
-            usage: Some(1234),
-            input_usage: Some(1000),
-            counted: Some(1100),
-            repairs: 1,
+            cost: Cost {
+                attempts: vec![
+                    Attempted {
+                        admission: Some(crate::model::ADMITTED_LOCAL),
+                        tokens: Some(734),
+                        input_tokens: Some(600),
+                        count_tokens: None,
+                        counted: None,
+                    },
+                    Attempted {
+                        admission: Some(crate::model::ADMITTED_COUNT),
+                        tokens: Some(450),
+                        input_tokens: Some(400),
+                        count_tokens: Some(50),
+                        counted: Some(1100),
+                    },
+                ],
+                repairs: 1,
+            },
             latency_ms: 4200,
         },
         job: "j1",
@@ -131,6 +149,18 @@ fn a_record_carries_the_model_the_admission_the_cost_and_the_choice() {
     assert_eq!(int(&value, &["usage", "input_tokens"]), 1000);
     assert_eq!(int(&value, &["usage", "counted_tokens"]), 1100);
     assert_eq!(int(&value, &["usage", "repairs"]), 1);
+    // **Every attempt, one by one**, and the total is theirs.
+    let attempts = list(&value, &["usage", "attempts"]);
+    assert_eq!(attempts.len(), 2, "both attempts are kept");
+    assert_eq!(int(&attempts[0], &["tokens"]), 734);
+    assert_eq!(
+        text(&attempts[0], &["admission"]),
+        crate::model::ADMITTED_LOCAL
+    );
+    assert_eq!(int(&attempts[1], &["tokens"]), 450);
+    assert_eq!(int(&attempts[1], &["count_tokens"]), 50);
+    assert_eq!(int(&attempts[1], &["counted_tokens"]), 1100);
+    assert_eq!(text(&value, &["format"]), "cbr-model-derivation/3");
     assert_eq!(int(&value, &["latency_ms"]), 4200);
     assert_eq!(list(&value, &["question", "offered"]).len(), 2);
     assert_eq!(text(&value, &["answer", "chose"]), "c2");

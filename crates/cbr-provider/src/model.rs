@@ -20,6 +20,7 @@
 //! sends it saw. The local estimate runs **before** it and can refuse alone,
 //! which is the whole reason the admission path is complete without a network.
 
+use std::cell::Cell;
 use std::sync::Mutex;
 
 use crate::budget::{self, Ledger, Refusal, Reservation, Settlement};
@@ -232,7 +233,13 @@ impl<'a> Runtime<'a> {
     /// 3. The completion is admitted against the provider's own figure.
     ///
     /// `barrier` is called at each boundary the crash matrix kills at.
-    pub fn call(&self, now: &str, attempt: &Attempt<'_>, barrier: &dyn Fn(&'static str)) -> Ended {
+    pub fn call(
+        &self,
+        now: &str,
+        attempt: &Attempt<'_>,
+        barrier: &dyn Fn(&'static str),
+        charges: &Charges,
+    ) -> Ended {
         let Attempt {
             job,
             request,
@@ -253,7 +260,7 @@ impl<'a> Runtime<'a> {
         // admitted, because the figure is the point rather than a way of
         // being allowed to send.
         if counting == Counting::Always && count_body.is_some() {
-            let counted = match self.count(now, attempt, barrier) {
+            let counted = match self.count(now, attempt, barrier, charges) {
                 Ok(counted) => counted,
                 Err(ended) => return ended,
             };
@@ -269,6 +276,7 @@ impl<'a> Runtime<'a> {
             let _ = self
                 .ledger
                 .note(now, job, request, ADMITTED_COUNT, 0, wanted);
+            charges.admission.set(Some(ADMITTED_COUNT));
             barrier(COMPLETION_AFTER_RESERVATION);
             let answer = self.transport.send(Call::Completion, body).answer;
             barrier(COMPLETION_AFTER_SEND);
@@ -280,6 +288,7 @@ impl<'a> Runtime<'a> {
                 barrier,
                 wanted,
                 counted.reported,
+                charges,
             );
         }
         // Once the bound is known to be wrong, nothing is admitted on it.
@@ -311,7 +320,7 @@ impl<'a> Runtime<'a> {
                 if count_body.is_none() || !refusal.a_tighter_figure_could_admit() {
                     return Ended::Refused(refusal);
                 }
-                let counted = match self.count(now, attempt, barrier) {
+                let counted = match self.count(now, attempt, barrier, charges) {
                     Ok(counted) => counted,
                     Err(ended) => return ended,
                 };
@@ -336,6 +345,7 @@ impl<'a> Runtime<'a> {
         let _ = self
             .ledger
             .note(now, job, request, admission, 0, reservation.estimate);
+        charges.admission.set(Some(admission));
         barrier(COMPLETION_AFTER_RESERVATION);
         let answer = self.transport.send(Call::Completion, body).answer;
         barrier(COMPLETION_AFTER_SEND);
@@ -347,6 +357,7 @@ impl<'a> Runtime<'a> {
             barrier,
             reservation.estimate,
             counted,
+            charges,
         )
     }
 
@@ -358,6 +369,7 @@ impl<'a> Runtime<'a> {
         now: &str,
         attempt: &Attempt<'_>,
         barrier: &dyn Fn(&'static str),
+        charges: &Charges,
     ) -> Result<Counted, Ended> {
         let Attempt {
             job,
@@ -421,13 +433,13 @@ impl<'a> Runtime<'a> {
                 } else {
                     tokens
                 };
-                self.finish(
+                charges.count.set(Some(self.finish(
                     now,
                     &counting,
                     Settlement::Usage(tokens.min(local)),
                     barrier,
                     COUNT_DURING_RECONCILIATION,
-                );
+                )));
                 Counted {
                     local,
                     reported: Some(tokens),
@@ -435,37 +447,37 @@ impl<'a> Runtime<'a> {
                 }
             }
             Answer::ProviderExhausted => {
-                self.finish(
+                charges.count.set(Some(self.finish(
                     now,
                     &counting,
                     Settlement::ProviderExhausted,
                     barrier,
                     COUNT_DURING_RECONCILIATION,
-                );
+                )));
                 return Err(Ended::Unmet(
                     Settlement::ProviderExhausted.reason().unwrap_or("unknown"),
                 ));
             }
             Answer::NotSent(_) => {
-                self.finish(
+                charges.count.set(Some(self.finish(
                     now,
                     &counting,
                     Settlement::NothingSpent,
                     barrier,
                     COUNT_DURING_RECONCILIATION,
-                );
+                )));
                 return Err(Ended::Unmet(
                     Settlement::NothingSpent.reason().unwrap_or("unknown"),
                 ));
             }
             Answer::Failed { usage, .. } => {
-                self.finish(
+                charges.count.set(Some(self.finish(
                     now,
                     &counting,
                     settlement_for(usage),
                     barrier,
                     COUNT_DURING_RECONCILIATION,
-                );
+                )));
                 return Err(Ended::Unmet(
                     Settlement::UsageUnknown.reason().unwrap_or("unknown"),
                 ));
@@ -476,13 +488,13 @@ impl<'a> Runtime<'a> {
             // it had reached a boundary it never did.
             Answer::Completed { .. } => {
                 let _ = self.ledger.note(now, job, request, "mismatch", 0, local);
-                self.finish(
+                charges.count.set(Some(self.finish(
                     now,
                     &counting,
                     Settlement::UsageUnknown,
                     barrier,
                     COUNT_DURING_RECONCILIATION,
-                );
+                )));
                 return Err(Ended::Unmet("model_answer_mismatched"));
             }
         };
@@ -529,17 +541,18 @@ impl<'a> Runtime<'a> {
         barrier: &dyn Fn(&'static str),
         wanted: u64,
         counted: Option<u64>,
+        charges: &Charges,
     ) -> Ended {
         let (job, request) = (attempt.job, attempt.request);
         match answer {
             Answer::Completed { body, usage } => {
-                self.finish(
+                charges.completion.set(Some(self.finish(
                     now,
                     reservation,
                     settlement_for(usage),
                     barrier,
                     COMPLETION_DURING_RECONCILIATION,
-                );
+                )));
                 // **The tripwire**, read from the response itself rather
                 // than from a second figure that could disagree with it.
                 let charged = wire::response::accounting(attempt.dialect, &body)
@@ -559,49 +572,55 @@ impl<'a> Runtime<'a> {
                 }
             }
             Answer::ProviderExhausted => {
-                self.finish(
+                charges.completion.set(Some(self.finish(
                     now,
                     reservation,
                     Settlement::ProviderExhausted,
                     barrier,
                     COMPLETION_DURING_RECONCILIATION,
-                );
+                )));
                 Ended::Unmet(Settlement::ProviderExhausted.reason().unwrap_or("unknown"))
             }
             Answer::NotSent(_) => {
-                self.finish(
+                charges.completion.set(Some(self.finish(
                     now,
                     reservation,
                     Settlement::NothingSpent,
                     barrier,
                     COMPLETION_DURING_RECONCILIATION,
-                );
+                )));
                 Ended::Unmet(Settlement::NothingSpent.reason().unwrap_or("unknown"))
             }
             Answer::Failed { usage, .. } => {
-                self.finish(
+                charges.completion.set(Some(self.finish(
                     now,
                     reservation,
                     settlement_for(usage),
                     barrier,
                     COMPLETION_DURING_RECONCILIATION,
-                );
+                )));
                 Ended::Unmet(Settlement::UsageUnknown.reason().unwrap_or("unknown"))
             }
             Answer::Counted(_) => {
                 let _ = self.ledger.note(now, job, request, "mismatch", 0, wanted);
-                self.finish(
+                charges.completion.set(Some(self.finish(
                     now,
                     reservation,
                     Settlement::UsageUnknown,
                     barrier,
                     COMPLETION_DURING_RECONCILIATION,
-                );
+                )));
                 Ended::Unmet("model_answer_mismatched")
             }
         }
     }
 
+    /// Settle a reservation, and say **what the ledger now holds for it**.
+    ///
+    /// That figure is what a record of the call carries, so the record and
+    /// the ledger cannot disagree: live run 3 found a repaired step whose
+    /// sealed record carried its last exchange alone while the ledger held
+    /// both.
     fn finish(
         &self,
         now: &str,
@@ -609,9 +628,21 @@ impl<'a> Runtime<'a> {
         settlement: Settlement,
         barrier: &dyn Fn(&'static str),
         boundary: &'static str,
-    ) {
+    ) -> u64 {
         barrier(boundary);
-        let _ = self.ledger.settle(now, reservation, settlement);
+        let holds = match settlement {
+            Settlement::Usage(tokens) => tokens,
+            // Unpriced, so the estimate stands: the conservative reading
+            // of silence, and the figure already on the row.
+            Settlement::UsageUnknown => reservation.estimate,
+            Settlement::NothingSpent | Settlement::ProviderExhausted => 0,
+        };
+        match self.ledger.settle(now, reservation, settlement) {
+            Ok(()) => holds,
+            // A settlement that did not land leaves the reservation, which
+            // counts at its estimate.
+            Err(_) => reservation.estimate,
+        }
     }
 }
 
@@ -656,17 +687,106 @@ pub struct Ask<'a> {
 /// completion whose whole output budget went on reasoning has a cost and
 /// no text. Collapsing those into "it failed" loses the number, which is
 /// what calibration run 2 found this code doing.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+///
+/// **Attempt by attempt, and every attempt.** A repair is a whole call with
+/// its own charge, so a question's cost is the sum of its attempts, and the
+/// attempt that ended it is only the last of them. Live run 3 measured the
+/// difference: a choice step answered in prose and then repaired was
+/// charged 5,222 and 4,827 tokens, and its record said 4,827.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Cost {
-    /// What the provider said the whole call cost.
-    pub usage: Option<u64>,
-    /// What it said the **input** cost, separately.
-    pub input_usage: Option<u64>,
-    /// What the counting endpoint predicted, when a count was made.
-    pub counted: Option<u64>,
+    /// Every attempt, in the order it was made: the first ask and each
+    /// repair, including one the envelope then refused.
+    pub attempts: Vec<Attempted>,
     /// How many repairs it took. Recorded, because a selection that
     /// needed repairing is a fact about the request.
     pub repairs: u32,
+}
+
+impl Cost {
+    /// **Everything the question was charged**: every attempt's completion
+    /// and count call, each as the ledger settled it, which is the sum of
+    /// the question's ledger rows. `None` when nothing was ever reserved.
+    pub fn charged(&self) -> Option<u64> {
+        self.attempts
+            .iter()
+            .flat_map(|attempt| [attempt.tokens, attempt.count_tokens])
+            .flatten()
+            .reduce(|total, tokens| total + tokens)
+    }
+
+    /// What the provider said the **input** cost, over every attempt whose
+    /// completion was reserved. `None` unless each of them said, because a
+    /// sum missing a term would read as a whole.
+    pub fn input_charged(&self) -> Option<u64> {
+        let mut reserved = self
+            .attempts
+            .iter()
+            .filter(|attempt| attempt.tokens.is_some())
+            .peekable();
+        reserved.peek()?;
+        reserved.map(|attempt| attempt.input_tokens).sum()
+    }
+
+    /// The attempt that ended the question.
+    pub fn last(&self) -> Attempted {
+        self.attempts.last().copied().unwrap_or_default()
+    }
+
+    /// Which evidence admitted it: the provider's count when any attempt
+    /// was admitted on one, the local bound when any was admitted at all.
+    pub fn admission(&self) -> Option<&'static str> {
+        let admitted = || self.attempts.iter().filter_map(|attempt| attempt.admission);
+        admitted()
+            .find(|admission| *admission == ADMITTED_COUNT)
+            .or_else(|| admitted().next())
+    }
+}
+
+/// One attempt at a question, **as the ledger settled it**, with what the
+/// provider said about it.
+///
+/// The charges are the settlement's rather than the response's, so a record
+/// built from them agrees with the ledger by construction.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Attempted {
+    /// Which evidence admitted the completion, when one was admitted.
+    pub admission: Option<&'static str>,
+    /// What the ledger settled the completion at, when one was reserved.
+    pub tokens: Option<u64>,
+    /// What the provider said the completion's **input** cost.
+    pub input_tokens: Option<u64>,
+    /// What the ledger settled a count call at, when one was made.
+    pub count_tokens: Option<u64>,
+    /// What the counting endpoint predicted, when it said anything.
+    pub counted: Option<u64>,
+}
+
+/// What one call has been charged so far, **written where the ledger is
+/// settled**.
+///
+/// Passed in rather than returned, because a call can end many ways after
+/// something was charged — a count settled and then a refusal, a completion
+/// settled and then the tripwire — and every one of them still has to say
+/// what it spent.
+#[derive(Debug, Default)]
+pub struct Charges {
+    admission: Cell<Option<&'static str>>,
+    count: Cell<Option<u64>>,
+    completion: Cell<Option<u64>>,
+}
+
+impl Charges {
+    /// The attempt these charges belong to, before anything is read from
+    /// its answer.
+    fn attempted(&self) -> Attempted {
+        Attempted {
+            admission: self.admission.get(),
+            tokens: self.completion.get(),
+            count_tokens: self.count.get(),
+            ..Attempted::default()
+        }
+    }
 }
 
 /// How a question ended.
@@ -679,8 +799,10 @@ pub enum Outcome {
     /// A typed reason, never retried past the bound above — **with what it
     /// cost**, which is not nothing.
     Unmet { reason: &'static str, cost: Cost },
-    /// Refused by CBR's own envelope, before anything was sent.
-    Refused(Refusal),
+    /// Refused by CBR's own envelope before this attempt's completion was
+    /// sent — **with what the question had already cost**, which is not
+    /// nothing when the refusal came at a repair or after a count.
+    Refused { refusal: Refusal, cost: Cost },
 }
 
 impl Runtime<'_> {
@@ -693,10 +815,15 @@ impl Runtime<'_> {
     /// happen.
     pub fn ask(&self, now: &str, ask: &Ask<'_>, barrier: &dyn Fn(&'static str)) -> Outcome {
         let mut body = ask.body.clone();
-        let mut repairs = 0;
+        // **Every attempt is kept, and every way out carries all of them.**
+        // A question's cost is what each of its attempts was charged, so a
+        // record of the question has to account for the repair it made as
+        // well as the answer the repair got.
+        let mut cost = Cost::default();
         loop {
             let serialized = body.serialize(ask.dialect);
             let counting = body.serialize_count(ask.dialect);
+            let charges = Charges::default();
             let ended = self.call(
                 now,
                 &Attempt {
@@ -710,38 +837,32 @@ impl Runtime<'_> {
                     counting: ask.counting,
                 },
                 barrier,
+                &charges,
             );
-            let (answered, usage, counted) = match ended {
-                Ended::Completed {
-                    body,
-                    usage,
-                    counted,
-                } => (body, usage, counted),
-                Ended::Refused(refusal) => return Outcome::Refused(refusal),
-                // Nothing came back, so nothing is known about the cost
-                // beyond the reservation the ledger already settled.
+            let mut attempted = charges.attempted();
+            let (answered, counted) = match ended {
+                Ended::Completed { body, counted, .. } => (body, counted),
+                Ended::Refused(refusal) => {
+                    cost.attempts.push(attempted);
+                    return Outcome::Refused { refusal, cost };
+                }
+                // Something may already have been charged: a count, or a
+                // completion the tripwire stopped. Whatever the ledger
+                // settled is in `attempted`.
                 Ended::Unmet(reason) => {
-                    return Outcome::Unmet {
-                        reason,
-                        cost: Cost {
-                            repairs,
-                            ..Cost::default()
-                        },
-                    };
+                    cost.attempts.push(attempted);
+                    return Outcome::Unmet { reason, cost };
                 }
             };
             let read = wire::response::read_completion(ask.dialect, &body.want, &answered);
-            let cost = Cost {
-                usage: Some(read.usage.unwrap_or(usage)),
-                input_usage: read.input_usage,
-                counted,
-                repairs,
-            };
+            attempted.input_tokens = read.input_usage;
+            attempted.counted = counted;
+            cost.attempts.push(attempted);
             let unusable = match read.reply {
                 Ok(reply) => return Outcome::Answered { reply, cost },
                 Err(unusable) => unusable,
             };
-            if !unusable.repairable() || repairs >= REPAIRS {
+            if !unusable.repairable() || cost.repairs >= REPAIRS {
                 return Outcome::Unmet {
                     reason: unusable.reason(),
                     cost,
@@ -766,7 +887,7 @@ impl Runtime<'_> {
                     text: wire::request::repair_instruction(&body.want).to_string(),
                 });
             }
-            repairs += 1;
+            cost.repairs += 1;
         }
     }
 }
