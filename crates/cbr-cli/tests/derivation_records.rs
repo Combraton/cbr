@@ -401,3 +401,166 @@ fn a_step_left_unmet_after_its_repair_still_accounts_for_both_attempts() {
     assert_eq!(attempts_charged(&record), charged);
     provider.stop();
 }
+
+#[test]
+fn a_repaired_discovery_choice_is_sealed_with_every_attempt_as_its_ledger_charged_them() {
+    // **The door live run 3's repairs went through.** Both repaired steps
+    // of that run were discovery's choice, answered in prose and then in
+    // shape, and the rule was tested at selection's door and not at this
+    // one — which is how the reviewer's mutant survived here while the
+    // same edit at selection died. So: run 3's shape, end to end.
+    let fixture = Fixture::answering(&[
+        "choose:c1",
+        "terms:tombstone,merger",
+        "text:I would keep d1 and d3",
+        "ids:d1,d3",
+    ]);
+    let provider = fixture.start();
+    prepared(&fixture, "shaped-like-run-3", "3");
+
+    let found = derivations(&fixture.data());
+    assert_eq!(
+        found.len(),
+        3,
+        "the item, the terms and the choice: {found:?}"
+    );
+    let records: Vec<Value> = found.iter().map(|(id, _)| sealed(&fixture, id)).collect();
+    let choice = records
+        .iter()
+        .find(|record| text(record, &["question", "selector"]).starts_with("discovery.choose"))
+        .unwrap_or_else(|| panic!("no choice record in {records:?}"));
+    assert!(
+        choice
+            .get("answer")
+            .and_then(|answer| answer.get("chose_ids"))
+            .is_some(),
+        "the repair answered in shape: {choice:?}"
+    );
+
+    let charged = charged_for(&fixture, "shaped-like-run-3");
+    assert_eq!(
+        charged.len(),
+        4,
+        "the item, the terms, the prose and its repair: {charged:?}"
+    );
+    assert_eq!(number(choice, &["usage", "repairs"]), Some(1));
+    assert_eq!(
+        attempts_charged(choice),
+        charged[2..].to_vec(),
+        "the choice's attempts are the last two rows the ledger charged: {choice:?}"
+    );
+    assert_eq!(
+        number(choice, &["usage", "tokens"]),
+        Some(charged[2..].iter().sum()),
+        "the choice's record is its question's ledger rows"
+    );
+    let recorded: i64 = records
+        .iter()
+        .map(|record| number(record, &["usage", "tokens"]).unwrap_or(0))
+        .sum();
+    assert_eq!(
+        recorded,
+        charged.iter().sum::<i64>(),
+        "the request's records account for every row its ledger charged"
+    );
+    provider.stop();
+}
+
+/// Each completion the ledger reserved for a request, as (what it was
+/// reserved at, what it settled to), in order.
+fn reservations(fixture: &Fixture, request: &str) -> Vec<(i64, i64)> {
+    let connection =
+        rusqlite::Connection::open(fixture.data().join("cbr.sqlite")).expect("opens the store");
+    let mut statement = connection
+        .prepare(
+            "SELECT estimate, tokens FROM model_ledger
+             WHERE request = ?1 AND kind IN ('usage', 'unknown', 'not_sent', 'provider_exhausted')
+             ORDER BY id",
+        )
+        .expect("the ledger table exists");
+    statement
+        .query_map([request], |row| Ok((row.get(0)?, row.get(1)?)))
+        .expect("queries")
+        .map(|row| row.expect("row"))
+        .collect()
+}
+
+#[test]
+fn a_repair_the_envelope_refuses_is_sealed_with_what_its_first_attempt_cost() {
+    // **Refused is not "nothing happened" when the repair is what was
+    // refused.** The first attempt was admitted and charged; the repair
+    // asked for more than the run had left. The record of that question
+    // has to carry the first attempt's charge, or a refused repair reads
+    // as a question that cost nothing.
+    //
+    // The ceiling is measured, not guessed: a first store answers the
+    // same question with no ceiling, which says what the first attempt
+    // and the repair each reserve. A ceiling of exactly the first
+    // reservation admits the first attempt in a fresh store, and cannot
+    // admit the repair once the first has settled.
+    let script = ["text:the second span looks right", "choose:c2"];
+    let measuring = Fixture::answering(&script);
+    let provider = measuring.start();
+    prepared(&measuring, "measured", "1");
+    provider.stop();
+    let reserved = reservations(&measuring, "measured");
+    assert_eq!(
+        reserved.len(),
+        2,
+        "a first attempt and a repair: {reserved:?}"
+    );
+    let (first_reserved, first_charged) = reserved[0];
+    let (repair_reserved, _) = reserved[1];
+    let ceiling = first_reserved;
+    assert!(
+        first_charged + repair_reserved > ceiling,
+        "that ceiling would admit the repair: {reserved:?}"
+    );
+
+    let fixture = Fixture::answering(&script);
+    let provider = fixture.start_with(&["--model-run-ceiling", &ceiling.to_string()]);
+    let inspected = prepared(&fixture, "refused", "1");
+    assert_eq!(
+        result(&inspected, "q"),
+        ("unmet".to_string(), "run_over_ceiling".to_string()),
+        "the repair was refused by the ceiling: {inspected:?}"
+    );
+
+    let found = derivations(&fixture.data());
+    assert_eq!(found.len(), 1, "the question is recorded: {found:?}");
+    let record = sealed(&fixture, &found[0].0);
+    assert_eq!(text(&record, &["answer", "unmet"]), "run_over_ceiling");
+    let charged = charged_for(&fixture, "refused");
+    assert_eq!(
+        charged,
+        vec![first_charged],
+        "the first attempt was charged and the repair never reserved"
+    );
+    assert_eq!(
+        number(&record, &["usage", "tokens"]),
+        Some(first_charged),
+        "the record carries the first attempt's charge: {record:?}"
+    );
+    assert_eq!(
+        text(&record, &["admission"]),
+        "admitted_local",
+        "and says the first attempt was admitted"
+    );
+    let attempts = record
+        .get("usage")
+        .and_then(|usage| usage.get("attempts"))
+        .and_then(Value::as_array)
+        .unwrap_or_default()
+        .to_vec();
+    assert_eq!(
+        attempts.len(),
+        2,
+        "the refused repair is an attempt: {attempts:?}"
+    );
+    assert_eq!(
+        attempts[1].get("admission"),
+        Some(&Value::Null),
+        "and it was not admitted"
+    );
+    provider.stop();
+}
