@@ -1221,8 +1221,12 @@ fn the_replay_gate_reports_an_ambiguous_question_rather_than_skipping_it() {
 /// **every file's bytes before and after**.
 ///
 /// `killed`: the writer is killed with its rows still in the write-ahead
-/// log, which is how `stop` leaves every store. `closed`: the writer
-/// closes cleanly, so there is no log and no shared-memory file at all.
+/// log, as a provider killed while a session held the store leaves it.
+/// `closed`: the writer closes cleanly, so there is no log and no
+/// shared-memory file at all — the usual state, because a provider holds a
+/// connection per session and none between them. `torn`: killed, and then
+/// the shared-memory file is gone while the log remains, which is what
+/// `stop` leaves when it lands inside SQLite's own close.
 fn read_through_the_harness(state: &str) -> Value {
     let directory = tempfile::tempdir().expect("temp dir");
     let data = directory.path().join("data");
@@ -1256,11 +1260,16 @@ c.execute("PRAGMA wal_checkpoint(TRUNCATE)")
 c.execute("INSERT INTO model_ledger (kind, tokens) VALUES "
           "('usage', 5222), ('admitted_local', 0), ('usage', 4827), ('admitted_local', 0)")
 c.execute("INSERT INTO subjects VALUES ('evidence.artifact', 'der.x', ?)", (row,))
-if state == "killed":
+if state in ("killed", "torn"):
     os.kill(os.getpid(), signal.SIGKILL)
 c.close()
 '''
 subprocess.run([sys.executable, "-c", writer, str(data / "cbr.sqlite"), state, row])
+# SQLite's close unlinks the shared memory only after its checkpoint, so a
+# natural torn store's database is already whole. This one is not: its rows
+# are only in the log, which is the case a reader could get most wrong.
+if state == "torn":
+    (data / "cbr.sqlite-shm").unlink()
 
 # The precondition, read with `immutable=1`, which changes nothing: in the
 # killed store the rows are in the log and not yet in the database file.
@@ -1357,6 +1366,39 @@ fn the_harness_reads_a_store_with_no_log_and_creates_no_file() {
         "a cleanly closed store has no log: {names:?}"
     );
     assert_eq!(read.get("total"), Some(&Value::Int(10_049)));
+    assert_eq!(read.get("records"), Some(&Value::Int(1)));
+    assert_eq!(
+        read.get("before"),
+        read.get("after"),
+        "reading the store changed it: {read:?}"
+    );
+}
+
+#[test]
+fn the_harness_reads_a_store_with_a_log_and_no_shared_memory_from_a_copy() {
+    // **Found by CI, not by a reading.** A provider opens a store
+    // connection per session and closes it cleanly, and `stop` can land
+    // inside that close: after SQLite unlinked the shared-memory file,
+    // before it deleted the log. Opened in place that store gets a new
+    // shared-memory file whichever way it is opened, or its log is missed.
+    // So it is read from a private copy, and the store is never opened.
+    let read = read_through_the_harness("torn");
+    assert_eq!(
+        read.get("in_the_file"),
+        Some(&Value::Int(0)),
+        "the rows are only in the log: {read:?}"
+    );
+    let names = file_names(read.get("before"));
+    assert!(
+        names.contains(&"cbr.sqlite-wal".to_string())
+            && !names.contains(&"cbr.sqlite-shm".to_string()),
+        "a log and no shared memory: {names:?}"
+    );
+    assert_eq!(
+        read.get("total"),
+        Some(&Value::Int(10_049)),
+        "every charge was read"
+    );
     assert_eq!(read.get("records"), Some(&Value::Int(1)));
     assert_eq!(
         read.get("before"),
