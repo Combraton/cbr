@@ -3,7 +3,7 @@
 This is a dated navigation snapshot. Reconcile it with Git, linked issues and current task evidence before acting. Issues own live progress; this file does not grant authority or maintain a second backlog.
 
 - **Updated:** 2026-09-24.
-- **Owner/task:** Claude Code session as implementation lead for standalone CBR. An independent reviewer session reviews this read-only. **M1 to M4 are complete**, with closing records in [m1/CLOSEOUT.md](m1/CLOSEOUT.md), [m3/CLOSEOUT.md](m3/CLOSEOUT.md) and [m4/CLOSEOUT.md](m4/CLOSEOUT.md); issue #21 is closed. **m4h merged** as `b69f698` (#33, pinned to `71e655e`, `merged_at: 2026-09-23T21:11:39Z`): a record's cost accounts for every attempt, with one door for the rule, and the harness reads the evidence without writing it. **Active: M5's readiness document**, [m5/READINESS.md](m5/READINESS.md), docs only, with its tracking issue [#34](https://github.com/Combraton/cbr/issues/34); **no M5 code before the reviewer has seen it**. Then the CI-flake pull request. **No live call in M5 before a stated estimate and cap and the owner's word.** Parent: [issue #1](https://github.com/Combraton/cbr/issues/1).
+- **Owner/task:** Claude Code session as implementation lead for standalone CBR. An independent reviewer session reviews this read-only. **M1 to M4 are complete**, with closing records in [m1/CLOSEOUT.md](m1/CLOSEOUT.md), [m3/CLOSEOUT.md](m3/CLOSEOUT.md) and [m4/CLOSEOUT.md](m4/CLOSEOUT.md); issue #21 is closed. **m4h merged** as `b69f698` (#33, pinned to `71e655e`, `merged_at: 2026-09-23T21:11:39Z`): a record's cost accounts for every attempt, with one door for the rule, and the harness reads the evidence without writing it. **Active: M5's readiness document**, [m5/READINESS.md](m5/READINESS.md), docs only, with its tracking issue [#34](https://github.com/Combraton/cbr/issues/34), corrected after the reviewer's round 58 and carrying the owner's four decisions of 2026-09-24; **no M5 code before the reviewer has seen it**. Then the CI-flake pull request. **No live call in M5 before a stated estimate and cap and the owner's word.** Parent: [issue #1](https://github.com/Combraton/cbr/issues/1).
 - **Merged:** PR #2 as `d68e9d6`, pinned to `877139f`; PR #4 as `a939446`, pinned to `630011c`; PR #5 (c1) as `8b75129`; PR #6 (c2) as `da1e650`, pinned to `b00ec49`; **PR #7 (c3) as `8ba2594`, pinned to `5b98a9f`, confirmed from `merged: true` and `merged_at: 2026-09-16T15:31:51Z`**. Earlier: PR #6 pinned to `b00ec49`, confirmed from `merged: true` and `merged_at: 2026-09-16T14:26:34Z`**, the draft marked ready first and the head re-read unchanged before merging. Every owner decision, including the ceiling, is in [ADR 001](../decisions/001-standalone-v0.1-scope-and-stack.md). **PR #8 (owner follow-ups) as `f00faaf`, pinned to `40cb30b`, `merged_at: 2026-09-16T16:57:29Z`; PR #9 (c4) as `9a7b8f5`, pinned to `5db9d7c`, `merged_at: 2026-09-16T16:57:53Z`**, in that order, each confirmed from `merged` and `merged_at`. **PR #10 (d) as `96a33f2`, pinned to `a1048e6`, `merged_at: 2026-09-16T18:17:38Z`; then PR #11 (e) as `6c63d91`, pinned to `c2a262d`, `merged_at: 2026-09-16T18:17:56Z`**. PR #11 was stacked on #10's branch, so it was retargeted to `main` after #10 merged and before its own merge; retargeting leaves the head unchanged, and `c2a262d` was re-read before merging. **PR #13 (M1 close-out, README) as `5c667ed`, pinned to `507fc77`, `merged_at: 2026-09-16T18:58:44Z`; then PR #14 (M2) as `39113b2`, pinned to `62cbb99`, `merged_at: 2026-09-16T18:59:00Z`**, #14 retargeted to `main` first. **PR #16 (m3a) as `cbfaebe`, pinned to `1bd9a7a`, confirmed from `merged: true` and `merged_at: 2026-09-19T14:48:17Z`**, the draft marked ready first and the head re-read unchanged; the merge commit's second parent is `1bd9a7a`, so the reviewed head is on `main` unaltered. **PR #17 (m3b) as `c3cdf51`, pinned to `fb67250`, confirmed from `merged: true` and `merged_at: 2026-09-19T15:55:37Z`**, second parent `fb67250`. **PR #18 (m3c) as `2cf6b97`, pinned to `81c5f0e`, confirmed from `merged: true` and `merged_at: 2026-09-20T04:35:37Z`**, second parent `81c5f0e`. **PR #19 (m3d) as `17cc54c`, pinned to `52305b3`, confirmed from `merged: true` and `merged_at: 2026-09-20T07:28:00Z`**, second parent `52305b3`. **PR #20 (m3e) as `c726107`, pinned to `47fd574`**, which closed M3. M4's ten merges, from #22 to #31, are listed with their pins in [m4/CLOSEOUT.md](m4/CLOSEOUT.md#m4-complete), each confirmed the same way and each merge commit's second parent the reviewed head.
 - **Merge rule, 2026-09-16, superseded the same day.** This session ran `gh pr merge` on PR #2 after the owner replied "you can merge PR 2" in-session, having first reported the contradicting claim with evidence and waited. It landed the exact reviewed head `877139f` and is kept. A stricter rule was then recorded, and the owner then **granted merge authority under four conditions**, now in [AGENTS.md](../../AGENTS.md): pin with `--match-head-commit`; the head's CI is green; the reviewer has seen that head; no squash. Confirm from `merged` and `merged_at` afterwards, **never `merge_commit_sha`** — GitHub populates that on an open pull request with the test-merge candidate. Tags and releases remain the owner's alone.
 - **Owner decision, 2026-09-20, recorded at the m3c review: m3d has two pilot repositories**, as an amendment to [ADR 001](../decisions/001-standalone-v0.1-scope-and-stack.md) question 6. Knowscroll-v2 stays the decision-memory pilot; the owner's **brian2 fork** is added as a brownfield pilot, registered read-only, whose journey tests discovery and code flow rather than decision memory, whose oracle the owner writes before the run, and whose dirty working tree makes it the first journey to exercise the dirty path. **brian2 is CeCILL-licensed and this repository is MIT, so none of its bytes, excerpts or packets are committed here** — digests, paths, spans, counts and costs only. It is recorded now and acted on only after m3c is cleared; no other brian2 work belongs in this pull request.
@@ -22,7 +22,36 @@ Against `main` at `b69f698`. [m5/READINESS.md](m5/READINESS.md) is M5's first pu
 - Run 3's two limits, stated generally.
 - A pull-request split with a gate for each, and every live call estimated and capped before it, on the owner's word.
 
-**Nothing in it is sized or chosen that belongs to a pull request or to the owner**: no bound has a number, no family after J2's is picked, and the live inputs are proposals.
+**Nothing in it is sized that belongs to a pull request**: no bound has a number. What was the owner's to choose, the owner chose on 2026-09-24 (below); each live run's cap stays the owner's, set when its estimate exists.
+
+### Round 58: the owner's four decisions, and six corrections
+
+**The owner's decisions of 2026-09-24**, each recorded in the section where it acts and removed from "does not settle":
+
+1. **`read` may name any path in the view.** This knowingly relaxes M4 READINESS §5's *"the model never introduces a path"* for that one tool, and M4's §5 now says so. M5's §4 states the controls that replace the closed set, and negative control 5 is extended to match.
+2. **The first claim-producing family is `distill_investigation`**, carrying the ancestry-root obligation, its test and its mutant.
+3. **J2's live acceptance runs on CBR's own test output**, produced locally at a pinned commit and sealed whole.
+4. **The loop's live run ingests Knowscroll's 22 decisions first**, with the owner's rulings of 2026-09-20, recorded as the owner as at m3d. That is harness code, reviewed before the run.
+
+**The six corrections:**
+
+1. **Order.** J2 is m5a, then the loop, the tools, `distill_investigation`, `answer_gap` with J3 and J5, and maintenance. m5g may go at any point, and every row names its dependencies.
+2. **Checkpoints and turn records** get m4d's readable-set gate at all four doors, and hold ids, ranges and digests rather than repository text. The model-prose fields are named and gated.
+3. **Replay, turn by turn.** Its gate is in m5b: a loop rebuilt offline reproduces its finding.
+4. **Every tool argument is bounded**, and one that breaks a bound is a typed outcome, never trimmed.
+5. **Investigation accounting, per case.**
+   - Gap loops come after items and discovery.
+   - A gap loop is not started below a floor, and above it ends with partial coverage and a named gap.
+   - J2's parts are claimed together, as discovery's two steps are.
+6. **Background spend** is any call not caused by a request a principal submitted. It sits behind a configuration member that defaults off. The gate is a test that no maintenance call reaches admission while it is off.
+
+**Two facts and one gap found while writing it**, all in the document:
+
+- libtest's JSON output is refused on the pinned 1.97.1 toolchain.
+- CBR's locally produced output carries absolute machine paths, so J2's live input has to be produced where the path names nothing.
+- `answer_gap` starts from an unmet item, while the pilots' failures were in discovery, so m5e must say what starts a gap loop on such a question.
+
+The PR table gained **m5h**, the loop's live harness.
 
 ## Earlier — m4h, a record's whole cost and a harness that reads without writing
 
