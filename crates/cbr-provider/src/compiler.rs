@@ -47,7 +47,13 @@ use crate::context::{object, set, string};
 /// [`CARRIED_CLAIMS`] instead of carried whole. A packet made by `/1` over
 /// the same basis is a different answer, and saying otherwise would make
 /// two packets look comparable when they are not.
-pub const COMPILER: &str = "cbr-context-compiler/2";
+///
+/// `cbr-context-compiler/3` since m5a, which changed what an
+/// `evidence_included` item gets: a section that named the artifact now
+/// carries its **projection** ([`crate::projection`]), with every omitted
+/// byte declared, and an artifact the job may not read is
+/// `evidence_unavailable`, as one never sealed is.
+pub const COMPILER: &str = "cbr-context-compiler/3";
 
 /// The media type a cited source file is sealed under. It is the file's own
 /// bytes, so it is a captured observation of the repository, not a

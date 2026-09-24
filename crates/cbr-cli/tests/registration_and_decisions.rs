@@ -1038,7 +1038,7 @@ fn a_repository_outside_the_grant_contributes_nothing_to_discovery() {
 /// changes; change what the compiler emits and it changes too. Either way the
 /// two are updated in the same commit or this test fails.
 const GOLDEN_PACKET_DIGEST: &str =
-    "sha256:6cf4be87916051d932b8f765807c497df831bd05cfc9b3d2e47565a60e5312da";
+    "sha256:c54aa006ba26ec683a7dbd4590a2a34a35297ddce45d0f848dc34c2da0bf8346";
 
 #[test]
 fn the_packet_a_fixed_fixture_produces_has_not_changed_without_the_compiler_string() {

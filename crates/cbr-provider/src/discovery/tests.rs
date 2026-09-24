@@ -564,5 +564,5 @@ fn the_harness_stops_against_the_same_worst_case_this_module_computes() {
 /// [READINESS §3]: ../../docs/work/m4/READINESS.md
 const PUBLISHED_TERMS: u64 = 32_943;
 const PUBLISHED_CHOOSE: u64 = 91_453;
-const PUBLISHED_FLOW: u64 = 373_188;
+pub(crate) const PUBLISHED_FLOW: u64 = 373_188;
 const PUBLISHED_SIX_FLOWS: u64 = 2_239_128;

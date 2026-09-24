@@ -770,7 +770,14 @@ impl Provider {
                 claims.push(claim);
             }
         }
-        Ok(crate::derivation::covers(under, &view, &claims))
+        // **Only the evidence the record names is asked about**: the
+        // reader may read each of those, or may not, and nothing else in
+        // the store bears on it.
+        let evidence: Vec<String> = crate::derivation::evidence_under(under)
+            .into_iter()
+            .filter(|artifact| self.may_read(in_force, &evidence::artifact_key(artifact)))
+            .collect();
+        Ok(crate::derivation::covers(under, &view, &claims, &evidence))
     }
 
     pub(super) fn evidence_inspect(

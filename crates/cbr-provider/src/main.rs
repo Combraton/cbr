@@ -29,6 +29,7 @@ mod launch;
 mod model;
 mod outbox;
 mod peer;
+mod projection;
 mod provider;
 mod repositories;
 mod selection;
