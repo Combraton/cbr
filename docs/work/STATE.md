@@ -16,7 +16,148 @@ On `m5a/project-large-result`, off `main` at `dfa4f65`. [m5/READINESS.md](m5/REA
 **Two records carried into m5a's first commit**, as the reviewer asked:
 
 - **A known survivor from the CI-flake pull request.** The reviewer's mutant that sends `journey_one`'s provider standard error to `Stdio::null()` passes all eight of its tests. The assertion that the registered checkout path is never logged reads the captured file, and with nothing captured it holds by vacuity. It is recorded here as a survivor, not claimed equivalent; the fix is an assertion that the file holds something the provider is known to write, which belongs to a change that touches `journey_one`.
-- **The socket-race issue** (`socket.subscription-recheck-race-regression`, diagnosed below under the CI flakes and paused by the owner) **has not been posted at this commit.** Its number goes here once the owner has posted it. Nothing in m5a works on it, and the kept regression test is not run in builder scratch.
+- **The socket-race issue** (`socket.subscription-recheck-race-regression`, diagnosed below under the CI flakes and paused by the owner) is **[#37](https://github.com/Combraton/cbr/issues/37)**. The owner posted it after this change's first commit, which recorded it as not yet posted. Nothing in m5a works on it, and the kept regression test is not run in builder scratch.
+
+### What m5a is
+
+**An `evidence_included` item's section is now a projection of the artifact it names** — J2's `project_large_result`, on M4's direct calls. The artifact was sealed whole by `cbr ingest` before anybody asked, and the section cites it, so a reader can always fetch the whole or any range of it through `context.expand`. The section holds, in a format `projection.rs` declares and a reader can check without it:
+
+- **what was read, and how**: the artifact and its digest, the capture anchors it was sealed with, the format a parser recognised, its size, lines, units and parts, and who chose the excerpts;
+- **the failures the document names**, each as its own bytes at a stated range, up to 16 and counted past that;
+- **a ledger that tiles the artifact.** Every byte is inside an excerpt, which *is* the artifact's bytes at the range its frame states, or inside an omission with its reason: `not_selected`, `over_projection` or `not_text`. Each omission is also in the packet's own omission list, under the protocol's reason for it: `applicability`, `output_capacity` or `unavailable`.
+
+**Deterministic reading where the format allows.** `projection::read` cuts cargo's test output by its runs, statuses, failure blocks and diagnostics; a JSON document or JSON lines by their structure, with paths built from the raw key bytes; any other text by lines. A failure is what the format says is one: `test … FAILED`, a `---- name stdout ----` block, a cargo `error`, or a JSON object whose `outcome`, `level` or `success` says so. Nothing is decoded or restated, so a value and its unit arrive as they were written.
+
+**The model only chooses.** It is shown one part at a time, as a closed set of excerpt ids, and answers with some of them. Run identity is never offered, because it is carried whatever is chosen. A choice outside the part is `model_choice_not_offered`. With no model, or an investigation of zero, **the deterministic rule** chooses every failure the parser found. What fits whole is carried whole, and no call is made that cannot change the answer.
+
+**Carried in this order, while the section fits:** chosen failures, then run identity, then the rest of what was chosen.
+
+**A summariser is never given more than its capacity.** Candidates are partitioned into parts, and a group is cut across parts only when it is larger than a part. A cut group is declared on an `unresolved:` line, because each part saw only its own pieces. Beyond the capacity the item is `insufficient_capacity`, with no section, no omission and no call — never a partial summary.
+
+**The parts are one flow**, as discovery's two steps are:
+
+- they are claimed together against the investigation limit, so a limit one short starts none of them (`investigation_budget_exhausted`);
+- each part is its own sealed record, keyed and replayed by m4d's rules;
+- a part that fails ends the item with that part's reason, and never falls back to the rule.
+
+### The bounds, each reached by a fixture
+
+| Bound | Value | What reaches it |
+|---|---:|---|
+| `UNIT_BYTES`, one excerpt unit | 2,048 | a 120-line failure block, and one 6,144-byte line of three-byte characters |
+| `BLOCK_LINES`, lines of plain text in a unit | 20 | 45 lines cut 20, 20, 5 |
+| `PART_BYTES`, candidate text in one part, **escaped as the body carries it** | 32,768 | a log filling its first part; the same log written in control characters, which escape six bytes apiece, needing more than four times the parts |
+| `PART_UNITS`, candidates in one part | 64 | 65 one-line records split 64 and 1 |
+| `MAX_PARTS`, parts in one projection | 4 | a log filling exactly 4 parts is projected; one block more is `insufficient_capacity`, with a model and without |
+| `INPUT_BYTES`, the largest artifact read at all | 131,072 | `too_large` at the bound and one past it; end to end, a 1 MiB blob, which has no parts to count, is refused before it is read |
+| `PROJECTION_BYTES`, the section's content | 16,384 | forty failures of 25 lines: what is left is less than one more block |
+| `MAX_EXCERPTS`, carried excerpts | 24 | sixty failures between passing tests: exactly 24 carried, and the omissions at most 25 |
+| `NAMED_FAILURES`, `NAME_BYTES` | 16, 160 | twenty failures listed as sixteen and "4 more"; a 486-byte name shown to 160 bytes at the range of what is shown |
+| `CAPTURE_ANCHORS`, `ANCHOR_BYTES`, `LABEL_BYTES` | 8, 128, 96 | ten anchors of 138 bytes, and a JSON key of 96 bytes |
+| `JSON_DEPTH` | 64 | 64 levels read as JSON, 65 as lines |
+
+**The arithmetic, computed from real bodies** in `projection::tests`, as `discovery::tests` computes M4's:
+
+- a part at every bound costs **40,680**, under the 250,000 request ceiling;
+- a whole projection, every part counted and repaired once, costs **488,160**;
+- beside discovery's flow of 373,188 that is 861,348, under the 1,000,000 job ceiling, so a request whose limit covers both is never refused by its own job's ceiling.
+
+The harness stops against the same figure: `WORST_CASE_PROJECTION_TOKENS` and `MAX_PARTS` in `scripts/j2_run.py` are read back by a Rust test. The largest header — every anchor, name and cut at its bound — takes under half the section.
+
+### The mutant table
+
+**Thirty-five mutants, each observed killed against the whole workspace**, run with `--no-fail-fast` in a scratch worktree at the implementation commit, so that every killer is named. Thirty-two died in the first pass. Three survived it, and a fourth died only to the golden digest; each of those four had nothing that stated its rule, and each died, to the test added for it, when run again at `f5aa513`.
+
+**Two things about the instrument.** A mutant's run is judged on genuine test names only:
+
+- the probe's pattern for a failed test also matches the fixture logs' own `test … FAILED` lines when an assertion message prints a projection, so those are discounted;
+- two keychain tests failed in two of the runs (below), and are discounted too.
+
+No verdict here rests on either kind.
+
+| Mutant | Result | Killed by |
+|---|---|---|
+| **C1a — control 1**: the ledger declares no omission | killed | 14 tests: every projection read in `journey_two`, the harness dry run, and the unit tests that read a ledger |
+| **C1b — control 1 at the packet**: the call site records no omission | killed | 10 tests, among them `a_large_test_log_is_projected_and_every_byte_is_carried_or_declared_omitted` and the harness dry run |
+| **C2 — control 2**: no insufficient-capacity outcome at all | killed | `an_input_over_the_projections_capacity_is_insufficient_capacity_and_never_a_partial_summary`, the harness's oversize run, `more_parts_than_the_bound_is_insufficient_capacity_with_or_without_a_model` |
+| C2a: the parts bound removed | killed | `more_parts_than_the_bound_is_insufficient_capacity_with_or_without_a_model` |
+| C2b: the size check before reading removed | killed | the end-to-end oversize test, by its 1 MiB blob |
+| C2c: `too_large` refuses the bound itself | killed | the same unit test |
+| V1: an excerpt restated (upper-cased) | killed | 17 tests, each on the bytes |
+| V2: an excerpt's stated range off by one | killed | 17 tests |
+| B1: the parts not claimed together | killed | `a_projection_the_investigation_limit_cannot_cover_is_not_started` |
+| B2: a failed part skipped | killed | `a_part_that_answers_outside_its_offer_leaves_the_item_unmet_with_that_reason` |
+| **B3**: an id outside its part ignored on the way out | **survived the first pass**; killed at `f5aa513` | `a_rebuild_refuses_a_record_that_chose_outside_its_own_part` |
+| P1: identity offered to the model | killed | `identity_is_never_offered_to_a_model`, `with_nothing_a_model_could_be_offered_the_rule_is_used_and_says_so` |
+| P2: a part's bytes counted raw, not escaped | killed | `a_part_holds_at_most_its_bytes_as_the_body_carries_them` |
+| P3: a part's count of candidates unbounded | killed | `a_part_holds_at_most_its_count_of_candidates` |
+| P4: every part's selector the same | killed | 7 tests: one record per part, and the rebuild |
+| R1: the section's bytes unbounded | killed | 13 tests |
+| R2: the excerpts unbounded | killed | `a_projection_carries_at_most_its_count_of_excerpts` |
+| R3: an omission holding a chosen unit called `not_selected` | killed | `an_omission_that_held_something_chosen_is_over_projection_and_one_that_held_nothing_is_not`, the golden digest |
+| **R4**: run identity carried before the failures | killed in the first pass **by the golden digest alone**; at `f5aa513` also by a test of its rule | `a_failure_is_carried_even_where_run_identity_alone_would_fill_the_projection` |
+| R5: what fits whole carried unit by unit | killed | `a_whole_artifact_is_carried_as_one_excerpt_however_many_units_it_has` |
+| R6: nothing offerable still asks the model | killed | `with_nothing_a_model_could_be_offered_the_rule_is_used_and_says_so` |
+| **F1**: a top-level `level: error` not a failure | **survived the first pass**; killed at `f5aa513` | `json_lines_are_cut_a_record_a_line_and_cargos_verdicts_are_read`, with rustc's own diagnostics |
+| F2: a libtest failure block not a failure | killed | 7 tests |
+| G1: every named artifact readable at compile | killed | `evidence_the_submitter_cannot_read_is_unavailable_exactly_as_evidence_that_does_not_exist` |
+| G2: the command's readable evidence ignores the grant | killed | the same |
+| G3: a record sealed under no evidence | killed | `a_parts_record_is_readable_only_by_a_reader_who_can_read_the_evidence_it_was_made_from`, `a_parts_record_is_sealed_under_the_artifact_it_showed_and_no_other` |
+| G4: a record sealed under the job's whole evidence | killed | `a_parts_record_is_sealed_under_the_artifact_it_showed_and_no_other` |
+| G5: `covers` ignores the evidence half | killed | the reader test above, and `derivation::tests::a_reader_missing_a_repository_a_claim_or_an_artifact_does_not` |
+| G6: the doors treat every listed artifact as readable | killed | `a_parts_record_is_readable_only_by_a_reader_who_can_read_the_evidence_it_was_made_from` |
+| **G7**: the rebuild ignores the evidence half | **survived the first pass**; killed at `f5aa513` | `a_rebuild_honours_every_artifact_a_record_is_sealed_under` |
+| G8: a job joined under different readable evidence | killed | `context::tests::a_job_is_joined_only_by_a_request_with_the_same_view` |
+| H1: the harness admits an input carrying a machine path | killed | `the_harness_refuses_an_input_that_carries_a_machine_path_before_anything_starts` |
+| H2: the harness forgets the temporary roots | killed | the same |
+| H3: the harness does not check excerpts against the source | killed | `the_harness_names_every_way_a_projection_can_fail_its_checks` |
+| H4: the harness does not check the packet's omissions | killed | the same |
+
+**The lesson again, four times.** Each of the four had a rule stated only in code: a second closed-set check, a clause of the failure vocabulary, a door's third half, and an ordering. m4d and round 50 taught that a rule tested at one door is untested at the next, and here the fix was the same: a test at the rule itself. B3 and G7 each looked like "unreachable" at first. Both were reachable with m4h's technique of rewriting a sealed record in a stopped store, so "this cannot be tested here" was, again, a claim to check.
+
+### Found, not asked for
+
+- **A third timing flake, in the keychain tests.** `keychain::tests::the_trailing_newline_is_stripped_and_nothing_else_is` and `the_secret_never_prints_itself` failed in the C2 and C2b runs with `the fake tool answered: TimedOut`: a fake `security` script, which prints one line, did not finish inside the 5-second timeout while the probe's whole-workspace runs loaded the machine. It did not happen in the baseline or in any gate run. This is not diagnosed, and it is recorded for the CI-flake record rather than chased here.
+- **An `evidence_included` item needed no read right before m5a**, which is item 1 above: the item's result told whether an artifact with that digest existed.
+
+### Found while building, and fixed here
+
+**1. An evidence item was a way to read an artifact without the right to.** Before m5a an `evidence_included` item needed no `evidence.read`: its section only named the artifact, and whether the item was satisfied said whether an artifact with that digest existed. A projection copies the bytes into the packet, and preparation runs on the provider's own authority, so this would have been a read around the grant. Three changes close it:
+
+- the evidence a request may read is resolved **at the command, where the grant is**, as the view and the claims are;
+- an artifact outside it is `evidence_unavailable`, exactly as one never sealed is, and `evidence_the_submitter_cannot_read_is_unavailable_exactly_as_evidence_that_does_not_exist` compares the two packets;
+- a job joins another only under the same readable evidence.
+
+**2. A record is sealed under the evidence its question showed.** A part's record identifies what it showed by range and by digest, and a digest of a short excerpt is something a reader can confirm a guess against. So `readable_under` gained `readable_evidence`, checked at fetch, inspect, the listing and the rebuild. The rebuild checks it against the evidence the rebuilding request may read, which is resolved at its command from the artifacts it names, so it is narrower than fetch's reader-wide check: conservative, and the reviewer's to widen. It holds the artifact the part was cut from. The first version sealed the job's whole set, and a test found that it refused a reader of the log a record that shows nothing else. A selection and a discovery step show no evidence and name none, and a record sealed before m5a has no list, so every existing record covers exactly as it did.
+
+**3. Run identity crowded out the failures.** Cargo prints three identity lines per test binary, each its own excerpt, and eight binaries of them filled every excerpt before a failure's block was reached. Now failures come first, identity lines take the blank lines after them, `MAX_EXCERPTS` is 24, and the header carries the capture anchors, which identify the run however little of the log is carried.
+
+**4. Two defects of my own, found reading the diff** and each tested red first:
+
+- an input with nothing a model could be offered — all run identity, too large to carry whole — would have been labelled "chosen by the model" with no part asked;
+- a projection that fits whole was carried unit by unit, and could pass through more excerpts than the bound on the way and omit units from something that fits.
+
+### Decisions for the reviewer
+
+- **The projection is not sealed as a separate artifact.** It is the content of a section of the sealed packet, and every part's exchange is a sealed record. READINESS §5 says a family's product is sealed as evidence under a reserved source kind, and a standalone `cbr.artifact.projection` with its own readable-set gate is the natural reading of that. Nothing in m5a takes a projection by handle; m5c's tool turn is the first thing that will, so I would build it there. It is the reviewer's to overrule.
+- **`cbr-context-compiler/3`.** An evidence item's section changed meaning, so the compiler string moved. The golden packet differs from `main`'s by that string and nothing else: substituting `/2` back reproduces the old digest exactly.
+- **What a cross-part reference is here.** In a flow that only selects, the one thing partitioning cuts is a block larger than a part, and that is what the `unresolved:` line declares. A failure named in one part whose block is in another is linked by the parser, not by a model, so nothing is lost there.
+- **The harness registers no repository.** The basis names CBR at the pinned commit, and the input is ingested with those anchors. With no registration, discovery has nothing to search, and every call a request makes is a part of its projection. The baseline request, with no investigation, says how many parts to ask for.
+- **The J2 formats' failure vocabulary is the suite's own**: libtest's statuses, cargo's `level: error` and `success: false`, and the conformance runner's `outcome`. Anything else is read by structure or by lines.
+
+### Red, then green
+
+- **Red on `main`.** `journey_two.rs` (12 tests) and `j2_harness.rs` (6) were run against `main` at `dfa4f65`, in a scratch worktree with only the two test files added. All 18 fail, for their own reasons: the section is `evidence <artifact>`, the oversize input is `satisfied`, the unreadable artifact is `satisfied`, and the harness does not exist. They are committed on their own, at `f73415d`, before the implementation.
+- **Guards whose red is their mutants.** The 33 unit tests in `projection/tests.rs` exercise a module that does not exist on `main`, so their red is their mutants. So are the tests added after the first red run: the oversize blob, the per-record evidence and the harness's checks against dishonest packets, each added because a planned mutant had nothing to kill it; and the four of `f5aa513`, each added because a mutant survived or died only to the golden digest, and each observed killing it.
+- **The two defects of item 4** were each observed red before their fix.
+
+### Gates at the head
+
+- `cargo test --workspace --locked`: **636 passed, 0 failed, 1 ignored, over 40 `test result` lines**, at `f5aa513`. The count was 38 lines; `journey_two` and `j2_harness` are the two new binaries.
+- `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets -- -D warnings` and `cargo build --workspace --locked`: clean.
+- `scripts/verify_pin.py`, `scripts/check_docs.py` and `git diff --check`: clean.
+- `Cargo.lock`: unchanged.
+- No machine path in `crates`, `scripts` or `docs` (`git grep`).
 
 ## Earlier — the CI flakes
 
