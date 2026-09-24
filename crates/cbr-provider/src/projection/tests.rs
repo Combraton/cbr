@@ -400,6 +400,18 @@ fn json_lines_are_cut_a_record_a_line_and_cargos_verdicts_are_read() {
         [Kind::Other, Kind::Failure, Kind::Other, Kind::Failure],
         "an error message and a failed build are failures; a failed build stays one"
     );
+    // **rustc's own diagnostics say `level` at the top**, where cargo's
+    // wrap it in `message`: each is a failure the way its format says.
+    let diagnostics = concat!(
+        "{\"$message_type\":\"diagnostic\",\"message\":\"unused variable\",\"level\":\"warning\"}\n",
+        "{\"$message_type\":\"diagnostic\",\"message\":\"mismatched types\",\"level\":\"error\"}\n",
+    );
+    let rustc = parse(diagnostics.as_bytes());
+    assert_eq!(rustc.format, Format::JsonLines);
+    assert_eq!(
+        rustc.units.iter().map(|unit| unit.kind).collect::<Vec<_>>(),
+        [Kind::Other, Kind::Failure]
+    );
     let finished = "{\"reason\":\"build-finished\",\"success\":true}\n";
     let read_ok = parse(format!("{{\"reason\":\"x\"}}\n{finished}").as_bytes());
     assert_eq!(
@@ -706,6 +718,38 @@ fn with_no_model_the_rule_carries_the_failures_and_then_the_runs_identity() {
     assert!(
         rendered.content.contains("test result: "),
         "no identity at all was carried"
+    );
+}
+
+#[test]
+fn a_failure_is_carried_even_where_run_identity_alone_would_fill_the_projection() {
+    // **Why failures come first.** Forty test binaries print two runs of
+    // identity lines apiece, eighty excerpts where the bound is
+    // twenty-four; carried first they would fill every excerpt before the
+    // last binary's failure was reached. The failure is what the
+    // projection is for.
+    let log = cargo_log(40, 3, &[(39, 1)], 3);
+    let read = parse(log.as_bytes());
+    let identity_runs = read
+        .units
+        .windows(2)
+        .filter(|pair| pair[0].kind == Kind::Identity && pair[1].kind != Kind::Identity)
+        .count();
+    assert!(identity_runs > MAX_EXCERPTS, "{identity_runs}");
+    let plan = partition(&read, log.as_bytes());
+    let rendered = render(
+        &read,
+        log.as_bytes(),
+        &choose_by_rule(&read),
+        &plan,
+        SUBJECT,
+    );
+    assert_renders_honestly(&rendered, log.as_bytes());
+    assert!(
+        rendered
+            .content
+            .contains("---- crate_39::tests::case_1 stdout ----"),
+        "the last binary's failure was crowded out by run identity"
     );
 }
 

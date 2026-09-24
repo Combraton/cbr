@@ -1226,12 +1226,28 @@ fn asked_for_both(
     second: (&str, &str),
     investigation: usize,
 ) -> Value {
+    asked_for_both_as(fixture, None, request, first, second, investigation)
+}
+
+/// The same, as the reader under `grant` when one is given.
+fn asked_for_both_as(
+    fixture: &Fixture,
+    grant: Option<&str>,
+    request: &str,
+    first: (&str, &str),
+    second: (&str, &str),
+    investigation: usize,
+) -> Value {
+    let run = |arguments: &[&str]| match grant {
+        Some(grant) => fixture.cbr_as_reader(grant, arguments),
+        None => fixture.cbr(arguments),
+    };
     let investigation = investigation.to_string();
     let wants = [
         format!("{ITEM}=evidence:{}@{}", first.0, first.1),
         format!("other=evidence:{}@{}", second.0, second.1),
     ];
-    let submitted = fixture.cbr(&[
+    let submitted = run(&[
         "context",
         request,
         "--repo",
@@ -1258,7 +1274,7 @@ fn asked_for_both(
     );
     let started = Instant::now();
     loop {
-        let polled = fixture.cbr(&["request", request]);
+        let polled = run(&["request", request]);
         let inspected =
             cbr_encoding::parse(String::from_utf8_lossy(&polled.stdout).trim().as_bytes())
                 .expect("canonical JSON");
@@ -1379,5 +1395,196 @@ fn a_projection_rebuilt_offline_reproduces_its_section() {
         again.get("content"),
         "the rebuilt projection differs from the live one"
     );
+    rebuilding.stop();
+}
+
+// ---- a record that answers outside its own question ------------------------
+
+/// Where a store keeps the object sealed under `digest`.
+fn object_path(data: &std::path::Path, digest: &str) -> std::path::PathBuf {
+    let hex = digest
+        .split_once(':')
+        .map(|(_, hex)| hex)
+        .expect("a digest");
+    data.join("objects")
+        .join("sha256")
+        .join(&hex[0..2])
+        .join(&hex[2..4])
+        .join(&hex[4..])
+}
+
+/// A member of an object, replaced.
+fn with(value: &Value, member: &str, replacement: Value) -> Value {
+    match value {
+        Value::Object(members) => Value::Object(
+            members
+                .iter()
+                .map(|(name, found)| {
+                    if name == member {
+                        (name.clone(), replacement.clone())
+                    } else {
+                        (name.clone(), found.clone())
+                    }
+                })
+                .collect(),
+        ),
+        other => panic!("not an object: {other:?}"),
+    }
+}
+
+#[test]
+fn a_rebuild_refuses_a_record_that_chose_outside_its_own_part() {
+    // **The closed set is checked again on the way out**, and this is the
+    // only way to reach the second check: a retained record whose answer
+    // names an id its own question never offered. A store that holds one
+    // is corrupted or forged, and a rebuild from it must not quietly drop
+    // the stranger and project from the rest. The record is rewritten at
+    // its own digest, with the provider stopped, as m4h's test of a
+    // previous format does.
+    let fixture = Fixture::narrow(&["ids:u1"]);
+    let provider = fixture.start();
+    let log = large_log();
+    let (artifact, digest) = ingest(&fixture, "large.log", log.as_bytes());
+    asked(&fixture, "baseline", &artifact, &digest, 0);
+    let parts = projection_of(&fixture, "baseline", log.as_bytes()).parts();
+    let live = asked(&fixture, "live", &artifact, &digest, parts);
+    assert_eq!(result(&live, ITEM).0, "satisfied");
+    provider.stop();
+
+    let data = fixture.data();
+    let (id, row) = derivations(&data)
+        .into_iter()
+        .next()
+        .expect("a part record");
+    let sealed = row
+        .get("descriptor")
+        .and_then(|descriptor| descriptor.get("digest"))
+        .and_then(Value::as_str)
+        .expect("a digest")
+        .to_string();
+    let record = cbr_encoding::parse(&std::fs::read(object_path(&data, &sealed)).expect("object"))
+        .expect("a record");
+    let forged = cbr_encoding::to_canonical(&with(
+        &record,
+        "answer",
+        Value::Object(vec![(
+            "chose_ids".to_string(),
+            Value::Array(vec![
+                Value::String("u1".to_string()),
+                Value::String("u999".to_string()),
+            ]),
+        )]),
+    ));
+    let forged_digest = cbr_encoding::digest_bytes(&forged);
+    let path = object_path(&data, &forged_digest);
+    std::fs::create_dir_all(path.parent().expect("a parent")).expect("directories");
+    std::fs::write(&path, &forged).expect("the forged object");
+    let descriptor = with(
+        &with(
+            row.get("descriptor").expect("a descriptor"),
+            "digest",
+            Value::String(forged_digest),
+        ),
+        "size",
+        Value::Int(forged.len() as i64),
+    );
+    let renamed = String::from_utf8(cbr_encoding::to_canonical(&with(
+        &row,
+        "descriptor",
+        descriptor,
+    )))
+    .expect("utf-8");
+    let connection = rusqlite::Connection::open(data.join("cbr.sqlite")).expect("opens the store");
+    let updated = connection
+        .execute(
+            "UPDATE subjects SET value = ?1 WHERE kind = 'evidence.artifact' AND id = ?2",
+            rusqlite::params![renamed, id],
+        )
+        .expect("updates the row");
+    assert_eq!(updated, 1);
+    drop(connection);
+
+    let rebuilding = fixture.start_replaying();
+    let rebuilt = asked(&fixture, "rebuilt", &artifact, &digest, parts);
+    assert_eq!(
+        result(&rebuilt, ITEM),
+        ("unmet".to_string(), "model_choice_not_offered".to_string()),
+        "a rebuild projected from a record that chose outside its part: {rebuilt:?}"
+    );
+    rebuilding.stop();
+}
+
+#[test]
+fn a_rebuild_honours_every_artifact_a_record_is_sealed_under() {
+    // **The rebuild is a door like fetch**, and it asks about every
+    // artifact the record's row says it was sealed under — against the
+    // evidence the rebuilding request may read, which is resolved at its
+    // command from the artifacts it names. A part is sealed under exactly
+    // the artifact it showed, so no ordinary store puts a second one there;
+    // the row is widened here, with the provider stopped, to show the door
+    // reads the row rather than assuming it.
+    let fixture = Fixture::narrow(&["ids:u1"]);
+    let provider = fixture.start();
+    let log = large_log();
+    let (artifact, digest) = ingest(&fixture, "large.log", log.as_bytes());
+    let (other, _) = ingest(&fixture, "small.log", small_log().as_bytes());
+    asked(&fixture, "baseline", &artifact, &digest, 0);
+    let parts = projection_of(&fixture, "baseline", log.as_bytes()).parts();
+    asked(&fixture, "live", &artifact, &digest, parts);
+    grant_over(&fixture, "g-log", &[&artifact]);
+    grant_over(&fixture, "g-both", &[&artifact, &other]);
+    provider.stop();
+
+    let data = fixture.data();
+    let (id, row) = derivations(&data)
+        .into_iter()
+        .next()
+        .expect("a part record");
+    let under = row.get("readable_under").expect("a readable set").clone();
+    let widened = with(
+        &row,
+        "readable_under",
+        with(
+            &under,
+            "readable_evidence",
+            Value::Array(vec![
+                Value::String(artifact.clone()),
+                Value::String(other.clone()),
+            ]),
+        ),
+    );
+    let connection = rusqlite::Connection::open(data.join("cbr.sqlite")).expect("opens the store");
+    let updated = connection
+        .execute(
+            "UPDATE subjects SET value = ?1 WHERE kind = 'evidence.artifact' AND id = ?2",
+            rusqlite::params![
+                String::from_utf8(cbr_encoding::to_canonical(&widened)).expect("utf-8"),
+                id
+            ],
+        )
+        .expect("updates the row");
+    assert_eq!(updated, 1);
+    drop(connection);
+
+    let rebuilding = fixture.start_replaying();
+    let narrow = asked_as(&fixture, Some("g-log"), "narrow", &artifact, &digest, parts);
+    assert_eq!(
+        result(&narrow, ITEM),
+        ("unmet".to_string(), "model_answer_not_retained".to_string()),
+        "a rebuild answered a reader from a record sealed under an artifact they cannot read"
+    );
+    // A request that names both, by a reader who may read both, is
+    // answered: the rule is about what the reader may read, not a refusal
+    // of everybody.
+    let small_digest = cbr_encoding::digest_bytes(small_log().as_bytes());
+    let wide = asked_for_both_as(
+        &fixture,
+        Some("g-both"),
+        "wide",
+        (&artifact, &digest),
+        (&other, &small_digest),
+        parts,
+    );
+    assert_eq!(result(&wide, ITEM).0, "satisfied", "{wide:?}");
     rebuilding.stop();
 }
