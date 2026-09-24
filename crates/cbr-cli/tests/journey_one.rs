@@ -43,7 +43,6 @@
 //! J1**, not a partial one. That is what scoring against a predeclared list
 //! means.
 
-use std::io::Read as _;
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
@@ -126,6 +125,18 @@ impl Fixture {
         self.directory.path().join("data")
     }
 
+    /// Where the provider's standard error goes. A file rather than a pipe:
+    /// a pipe nobody reads until the end holds what went wrong out of sight
+    /// while it matters, and a file can be read at the moment a wait fails.
+    fn stderr_file(&self) -> PathBuf {
+        self.directory.path().join("provider.stderr")
+    }
+
+    /// Everything the provider has written to standard error so far.
+    fn logged(&self) -> String {
+        std::fs::read_to_string(self.stderr_file()).unwrap_or_default()
+    }
+
     fn start(&self, registrations: &[String]) -> Child {
         let mut command = Command::new(provider_binary());
         command
@@ -141,7 +152,9 @@ impl Fixture {
         let child = command
             .stdin(Stdio::piped())
             .stdout(Stdio::null())
-            .stderr(Stdio::piped())
+            .stderr(Stdio::from(
+                std::fs::File::create(self.stderr_file()).expect("stderr file"),
+            ))
             .spawn()
             .expect("provider starts");
         let started = Instant::now();
@@ -223,6 +236,19 @@ fn array(value: &Value, path: &[&str]) -> Vec<Value> {
         .unwrap_or_default()
 }
 
+/// How long a request may take to publish before the test calls it stuck.
+///
+/// It is a bound on a stall, not a performance assertion. Each test's first
+/// wait is one index build of this whole repository, with the binary's other
+/// tests building beside it: 27.5-27.9 s for all eight at once on an idle
+/// development machine. In CI the binary's median is 60-70 s for two waves
+/// of four, so about 30 s a wait. Every CI failure at the old 120 s was on a
+/// runner that ran `evaluator_properties` -- a property test with its own
+/// store and no provider, index or socket -- at 5 to 12 times its median,
+/// and on such runners this binary still passed at up to 428 s. Twelve times
+/// 30 s is 360 s; 600 s covers the slowest runner measured with room left.
+const PACKET_WAIT: Duration = Duration::from_secs(600);
+
 /// Drive the provider's clock-driven preparation by asking it something, and
 /// return the packet once one is published.
 fn wait_for_packet(fixture: &Fixture, request: &str) -> (Value, Duration) {
@@ -234,8 +260,10 @@ fn wait_for_packet(fixture: &Fixture, request: &str) -> (Value, Duration) {
             return (ok(&fixture.cbr(&["packet", request])), elapsed);
         }
         assert!(
-            started.elapsed() < Duration::from_secs(120),
-            "no packet after two minutes: {inspected:?}"
+            started.elapsed() < PACKET_WAIT,
+            "no packet after {} s: {inspected:?}\nprovider stderr:\n{}",
+            PACKET_WAIT.as_secs(),
+            fixture.logged()
         );
         std::thread::sleep(Duration::from_millis(50));
     }
@@ -810,14 +838,9 @@ fn a_sealed_packet_rebuilds_to_the_same_digest() {
         "the same request over the same tree selects the same content"
     );
 
-    let mut stderr = String::new();
     provider.kill().expect("kills");
-    if let Some(pipe) = provider.stderr.take() {
-        std::io::BufReader::new(pipe)
-            .read_to_string(&mut stderr)
-            .ok();
-    }
     provider.wait().expect("reaps");
+    let stderr = fixture.logged();
     assert!(
         !stderr.contains(repository.to_str().expect("utf-8")),
         "the checkout path is never logged: {stderr}"

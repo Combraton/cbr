@@ -3,13 +3,48 @@
 This is a dated navigation snapshot. Reconcile it with Git, linked issues and current task evidence before acting. Issues own live progress; this file does not grant authority or maintain a second backlog.
 
 - **Updated:** 2026-09-24.
-- **Owner/task:** Claude Code session as implementation lead for standalone CBR. An independent reviewer session reviews this read-only. **M1 to M4 are complete**, with closing records in [m1/CLOSEOUT.md](m1/CLOSEOUT.md), [m3/CLOSEOUT.md](m3/CLOSEOUT.md) and [m4/CLOSEOUT.md](m4/CLOSEOUT.md); issue #21 is closed. **m4h merged** as `b69f698` (#33, pinned to `71e655e`, `merged_at: 2026-09-23T21:11:39Z`): a record's cost accounts for every attempt, with one door for the rule, and the harness reads the evidence without writing it. **Active: M5's readiness document**, [m5/READINESS.md](m5/READINESS.md), docs only, with its tracking issue [#34](https://github.com/Combraton/cbr/issues/34), corrected after the reviewer's round 58 and carrying the owner's four decisions of 2026-09-24; **no M5 code before the reviewer has seen it**. Then the CI-flake pull request. **No live call in M5 before a stated estimate and cap and the owner's word.** Parent: [issue #1](https://github.com/Combraton/cbr/issues/1).
+- **Owner/task:** Claude Code session as implementation lead for standalone CBR. An independent reviewer session reviews this read-only. **M1 to M4 are complete**, with closing records in [m1/CLOSEOUT.md](m1/CLOSEOUT.md), [m3/CLOSEOUT.md](m3/CLOSEOUT.md) and [m4/CLOSEOUT.md](m4/CLOSEOUT.md); issue #21 is closed. **m4h merged** as `b69f698` (#33, pinned to `71e655e`, `merged_at: 2026-09-23T21:11:39Z`): a record's cost accounts for every attempt, with one door for the rule, and the harness reads the evidence without writing it. **M5's readiness document merged** as `c2917f7` (#35, pinned to `d4dd04e`, `merged_at: 2026-09-24T10:27:30Z`), with its tracking issue [#34](https://github.com/Combraton/cbr/issues/34). **Active: the CI-flake pull request**, on `ci/idle-lock-and-journey-wait`; m5a follows it. **No live call in M5 before a stated estimate and cap and the owner's word.** Parent: [issue #1](https://github.com/Combraton/cbr/issues/1).
 - **Merged:** PR #2 as `d68e9d6`, pinned to `877139f`; PR #4 as `a939446`, pinned to `630011c`; PR #5 (c1) as `8b75129`; PR #6 (c2) as `da1e650`, pinned to `b00ec49`; **PR #7 (c3) as `8ba2594`, pinned to `5b98a9f`, confirmed from `merged: true` and `merged_at: 2026-09-16T15:31:51Z`**. Earlier: PR #6 pinned to `b00ec49`, confirmed from `merged: true` and `merged_at: 2026-09-16T14:26:34Z`**, the draft marked ready first and the head re-read unchanged before merging. Every owner decision, including the ceiling, is in [ADR 001](../decisions/001-standalone-v0.1-scope-and-stack.md). **PR #8 (owner follow-ups) as `f00faaf`, pinned to `40cb30b`, `merged_at: 2026-09-16T16:57:29Z`; PR #9 (c4) as `9a7b8f5`, pinned to `5db9d7c`, `merged_at: 2026-09-16T16:57:53Z`**, in that order, each confirmed from `merged` and `merged_at`. **PR #10 (d) as `96a33f2`, pinned to `a1048e6`, `merged_at: 2026-09-16T18:17:38Z`; then PR #11 (e) as `6c63d91`, pinned to `c2a262d`, `merged_at: 2026-09-16T18:17:56Z`**. PR #11 was stacked on #10's branch, so it was retargeted to `main` after #10 merged and before its own merge; retargeting leaves the head unchanged, and `c2a262d` was re-read before merging. **PR #13 (M1 close-out, README) as `5c667ed`, pinned to `507fc77`, `merged_at: 2026-09-16T18:58:44Z`; then PR #14 (M2) as `39113b2`, pinned to `62cbb99`, `merged_at: 2026-09-16T18:59:00Z`**, #14 retargeted to `main` first. **PR #16 (m3a) as `cbfaebe`, pinned to `1bd9a7a`, confirmed from `merged: true` and `merged_at: 2026-09-19T14:48:17Z`**, the draft marked ready first and the head re-read unchanged; the merge commit's second parent is `1bd9a7a`, so the reviewed head is on `main` unaltered. **PR #17 (m3b) as `c3cdf51`, pinned to `fb67250`, confirmed from `merged: true` and `merged_at: 2026-09-19T15:55:37Z`**, second parent `fb67250`. **PR #18 (m3c) as `2cf6b97`, pinned to `81c5f0e`, confirmed from `merged: true` and `merged_at: 2026-09-20T04:35:37Z`**, second parent `81c5f0e`. **PR #19 (m3d) as `17cc54c`, pinned to `52305b3`, confirmed from `merged: true` and `merged_at: 2026-09-20T07:28:00Z`**, second parent `52305b3`. **PR #20 (m3e) as `c726107`, pinned to `47fd574`**, which closed M3. M4's ten merges, from #22 to #31, are listed with their pins in [m4/CLOSEOUT.md](m4/CLOSEOUT.md#m4-complete), each confirmed the same way and each merge commit's second parent the reviewed head.
 - **Merge rule, 2026-09-16, superseded the same day.** This session ran `gh pr merge` on PR #2 after the owner replied "you can merge PR 2" in-session, having first reported the contradicting claim with evidence and waited. It landed the exact reviewed head `877139f` and is kept. A stricter rule was then recorded, and the owner then **granted merge authority under four conditions**, now in [AGENTS.md](../../AGENTS.md): pin with `--match-head-commit`; the head's CI is green; the reviewer has seen that head; no squash. Confirm from `merged` and `merged_at` afterwards, **never `merge_commit_sha`** — GitHub populates that on an open pull request with the test-merge candidate. Tags and releases remain the owner's alone.
 - **Owner decision, 2026-09-20, recorded at the m3c review: m3d has two pilot repositories**, as an amendment to [ADR 001](../decisions/001-standalone-v0.1-scope-and-stack.md) question 6. Knowscroll-v2 stays the decision-memory pilot; the owner's **brian2 fork** is added as a brownfield pilot, registered read-only, whose journey tests discovery and code flow rather than decision memory, whose oracle the owner writes before the run, and whose dirty working tree makes it the first journey to exercise the dirty path. **brian2 is CeCILL-licensed and this repository is MIT, so none of its bytes, excerpts or packets are committed here** — digests, paths, spans, counts and costs only. It is recorded now and acted on only after m3c is cleared; no other brian2 work belongs in this pull request.
 - **Inspected revisions:** protocol `v0.1.0` = `cbf8e4df9df2ca8a9b50264df6acace6e4c3a0fc`; combraton `9af69ce`; pio `e65b7c0`; benchmarks `c8d5878`.
 
-## This change — M5 readiness, docs only
+## This change — the CI flakes
+
+On `ci/idle-lock-and-journey-wait`, off `main` at `c2917f7`. Both flakes the standing CI rule named were read against the workflow's whole history — 169 runs, and the earlier attempts of the two that were re-run.
+
+**journey_one's 120 s wait: slow runners, not a stall in preparation.**
+
+- Three jobs timed out, all on Azure `centralus` runners.
+- Every journey_one run over 100 s was on `centralus` (7) or `westus3` (1); in every other region the maximum was 87 s.
+- The same runners ran `evaluator_properties` — a property test with its own store and no provider, index or socket — at 5 to 12 times its median, and journey_one still passed on them at up to 428 s.
+- Locally, under heavy CPU oversubscription, every wait ran past 120 s (122–134 s) and every one finished. Polling every 500 ms instead of 50 ms made no difference.
+
+**The change:**
+
+- The provider's standard error now goes to a file in the fixture's directory, where it used to go to a pipe nobody read until the end.
+- A timeout's message carries that file, so a stall would explain itself.
+- The wait is `PACKET_WAIT`, 600 s, derived in its doc comment from those measurements: about 30 s a wait, times the slowest slowdown measured, with room left.
+
+Two observations stand behind it:
+
+- with the wait forced to 0 s, the failure prints the provider's stderr;
+- a provider that logs its registered checkout is still caught by the test that reads it, now from the file.
+
+**The socket fixture's 10 s is a race in CBR, not load**, and the reviewer withdrew the "re-run it" rule for that fixture at round 59:
+
+- An idle session takes the processing lock on every 40 ms poll, in `tick()` and in `drain_subscriptions()`.
+- If that poll contends while the fixture's re-check is paused under the lock, before the runner clears the signals, its signal is deleted. The session is then held inside its own poll and never reads the revoke.
+- Shortening the idle poll to 1 ms made it fail in 76 of 100 runs, against 0 of 100 at the stock 40 ms.
+- A regression test was written and observed red against current code. It is kept outside the repository and is not committed.
+- Its strengthening and the fix were stopped by a safety check on the builder's output, and are the owner's to decide.
+
+### Constraints for later heads, from the reviewer's round 59
+
+- **m5e, what starts a gap loop.** Expressing a required fact as an item is **ruled out for the sealed pilot questions**: only the oracle holders could write that item, which is m3e's caveat again. The pilot requests stay exactly as sealed — task, selector, wants — and the trigger must be general, such as discovery's own shortfall, defined without reference to any question.
+- **m5c, the existence-oracle test.** It uses **the same path text in two stores**: one where the path exists outside the grant, one where it does not exist. The tool result and the whole turn record — argument included — are then compared byte for byte.
+
+## Earlier — M5 readiness, docs only
 
 Against `main` at `b69f698`. [m5/READINESS.md](m5/READINESS.md) is M5's first pull request, written before any M5 code and reviewed before any, as M4's was. It covers what the reviewer's round 57 asked it to:
 
