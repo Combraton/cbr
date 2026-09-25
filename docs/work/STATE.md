@@ -33,9 +33,9 @@ Two observations stand behind it:
 
 **The socket fixture's idle-poll race is fixed** ([#37](https://github.com/Combraton/cbr/issues/37)):
 
-- Idle `tick` and subscription delivery now try the processing lock without waiting or emitting the command-contention signal; a busy poll is skipped so the session remains able to read its next command.
-- Request processing keeps the signalling, blocking lock. A subscription re-check still holds one processing-lock guard across re-authorization and its event read, preserving CORE section 16.5's ordering invariant.
-- The regression test first proves several idle poll intervals stay quiet while the lock is held, then requires a command on that session to signal contention. A second case keeps contending command writers active until an idle subscription receives their event, guarding against starvation.
+- The processing lock is FIFO. An idle poll reserves a ticket but never waits or emits the command-contention signal, so its socket thread can read the next command; later commands cannot overtake the reservation. The next input wake-up or 40 ms poll consumes it, inside the two-second CORE section 16.5 delivery bound.
+- Request processing consumes any ticket the session already reserved, signals when it must wait, and then blocks. Idle maintenance and subscription delivery share one guard, and every subscription re-check still holds that guard across re-authorization and its event read, so no command commits between them.
+- The regression test first proves several idle poll intervals stay quiet while the lock is held, then requires a command on that session to signal contention. Bounded progress passed 200 serial repetitions and 200 four-way parallel rounds under sustained command contention, with the two-second bound unchanged; a separate case kills a guard split between re-authorization and event reading.
 - With the fix, `socket.subscription-recheck-race-regression` passed 100 of 100 runs with the poll temporarily shortened to 1 ms and 100 of 100 at the stock 40 ms; before the fix, 76 of 100 and 0 of 100 failed respectively.
 
 ### Constraints for later heads, from the reviewer's round 59

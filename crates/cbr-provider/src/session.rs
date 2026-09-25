@@ -139,7 +139,6 @@ fn serve_frames<R: Read>(
             // delivered, without waiting for this consumer to say anything
             // (CORE section 16.5).
             Frame::Idle => {
-                provider.tick_idle();
                 if let Err(ended) = deliver_idle(&outbox, provider) {
                     return Ok(ended);
                 }
@@ -234,8 +233,8 @@ fn deliver(outbox: &Arc<Outbox>, provider: &mut Provider) -> Result<(), Ended> {
     deliver_with(outbox, provider, false)
 }
 
-/// An idle poll skips notification work if the processing lock is occupied,
-/// leaving the session free to read a command on the next loop iteration.
+/// An idle poll reserves FIFO processing progress if the lock is occupied,
+/// then returns so the session can read a command on the next loop iteration.
 fn deliver_idle(outbox: &Arc<Outbox>, provider: &mut Provider) -> Result<(), Ended> {
     deliver_with(outbox, provider, true)
 }
@@ -245,7 +244,7 @@ fn deliver_with(outbox: &Arc<Outbox>, provider: &mut Provider, idle: bool) -> Re
         let bound = provider.pending_output_bound();
         let pending = outbox.pending();
         let drained = if idle {
-            provider.drain_subscriptions_idle(bound.saturating_sub(pending), pending == 0)
+            provider.poll_idle(bound.saturating_sub(pending), pending == 0)
         } else {
             Some(provider.drain_subscriptions(bound.saturating_sub(pending), pending == 0))
         };

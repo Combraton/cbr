@@ -31,7 +31,12 @@ use std::time::{Duration, Instant};
 
 const RECHECK: &str = "subscription.recheck.after_authorization";
 const CONTENDED: &str = "processing.lock.contended";
-const CORE_AND_TEST: &str = r#"{"name":"core","majors":[1],"required":true,"required_features":["core.events"],"optional_features":[]},{"name":"core-test","majors":[1],"required":true,"required_features":[],"optional_features":[]}"#;
+const IDLE_QUEUED: &str = "processing.idle.queued";
+const PUT_AFTER_PROCESSING: &str = "core-test.put.after-processing-lock";
+/// CORE section 16.5's conformance bound for a lapse or delivery caused by
+/// another socket session.
+const DELIVERY_BOUND: Duration = Duration::from_secs(2);
+const CORE_GRANTS_AND_TEST: &str = r#"{"name":"core","majors":[1],"required":true,"required_features":["core.events","core.grants"],"optional_features":[]},{"name":"core-test","majors":[1],"required":true,"required_features":[],"optional_features":[]}"#;
 
 fn binary() -> PathBuf {
     let mut path = std::env::current_exe().expect("test binary path");
@@ -97,12 +102,13 @@ impl Session {
         let authenticated = session.call(&format!(
             r#"{{"jsonrpc":"2.0","id":"auth","method":"core.authenticate","params":{{"operation":"core.authenticate","message_id":"m-auth","payload":{{"credential":"{credential}"}}}}}}"#
         ));
+        let principal = credential.split('.').nth(1).expect("credential principal");
         assert!(
-            authenticated.contains(r#""principal":"owner""#),
+            authenticated.contains(&format!(r#""principal":"{principal}""#)),
             "{authenticated}"
         );
         let negotiated = session.call(&format!(
-            r#"{{"jsonrpc":"2.0","id":"neg","method":"core.negotiate","params":{{"operation":"core.negotiate","message_id":"m-neg","payload":{{"caller":{{"name":"t","version":"1"}},"receive_limits":{{"max_frame_bytes":1048576}},"profiles":[{CORE_AND_TEST}]}}}}}}"#
+            r#"{{"jsonrpc":"2.0","id":"neg","method":"core.negotiate","params":{{"operation":"core.negotiate","message_id":"m-neg","payload":{{"caller":{{"name":"t","version":"1"}},"receive_limits":{{"max_frame_bytes":1048576}},"profiles":[{CORE_GRANTS_AND_TEST}]}}}}}}"#
         ));
         assert!(negotiated.contains(r#""result""#), "{negotiated}");
         session
@@ -129,10 +135,16 @@ impl Session {
         self.response()
     }
 
-    fn notification(&mut self) -> String {
+    fn notification(&mut self, within: Duration) -> String {
+        self.reader
+            .get_mut()
+            .set_read_timeout(Some(within))
+            .expect("notification timeout");
         loop {
             let mut line = String::new();
-            let read = self.reader.read_line(&mut line).expect("reads");
+            let read = self.reader.read_line(&mut line).unwrap_or_else(|error| {
+                panic!("no notification within {} ms: {error}", within.as_millis())
+            });
             assert!(read > 0, "the connection ended before a notification");
             if line.contains(r#""method":"core.events.notify""#) {
                 return line;
@@ -148,6 +160,17 @@ fn wait_for(path: &Path, within: Duration) -> bool {
             return false;
         }
         std::thread::sleep(Duration::from_millis(2));
+    }
+    true
+}
+
+fn wait_until(within: Duration, mut condition: impl FnMut() -> bool) -> bool {
+    let started = Instant::now();
+    while !condition() {
+        if started.elapsed() > within {
+            return false;
+        }
+        thread::sleep(Duration::from_millis(2));
     }
     true
 }
@@ -252,6 +275,94 @@ fn a_command_sent_to_an_idle_session_reaches_the_lock_while_another_session_hold
 }
 
 #[test]
+fn a_subscription_recheck_keeps_authorization_and_event_read_under_one_guard() {
+    let directory = tempfile::tempdir().expect("temp dir");
+    let sockets = directory.path().join("sockets");
+    std::fs::create_dir(&sockets).expect("socket dir");
+    std::fs::set_permissions(&sockets, std::fs::Permissions::from_mode(0o700)).expect("0700");
+    let socket = sockets.join("provider.sock");
+    let data = directory.path().join("data");
+    std::fs::create_dir(&data).expect("data dir");
+    let barriers = directory.path().join("barriers");
+    std::fs::create_dir(&barriers).expect("barrier dir");
+    let owner = format!("ccred1.owner.{}", "C".repeat(43));
+    let agent = format!("ccred1.agent-1.{}", "D".repeat(43));
+    let config = directory.path().join("socket.json");
+    std::fs::write(
+        &config,
+        format!(
+            r#"{{"format":"combraton-conformance-config/1","principal":"owner","authority_principals":["owner"],"credentials":[{{"credential":"{owner}"}},{{"credential":"{agent}"}}],"test_barriers":{{"directory":"{}","enabled":["{RECHECK}"]}}}}"#,
+            barriers.display()
+        ),
+    )
+    .expect("config");
+    let _provider = Running(
+        Command::new(binary())
+            .arg("--data-dir")
+            .arg(&data)
+            .arg("--config")
+            .arg(&config)
+            .arg("--socket")
+            .arg(&socket)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("provider starts"),
+    );
+
+    let mut revoker = Session::connect(&socket, &owner);
+    let issued = revoker.call(&command(
+        "issue",
+        r#"{"operation":"core.grant.issue","message_id":"m-issue","command_id":"cmd-issue","dedupe_generation":1,"subject":{"kind":"core.grant","id":"g-1"},"preconditions":[{"subject":{"kind":"core.grant","id":"g-1"},"revision":0}],"requires":[],"payload":{"holder":"agent-1","audience":"conformance-provider","rights":["core.events.read","core-test.read"],"resources":[{"kind":"core-test.subject","id_prefix":"s-"}],"delegation":{"allowed":false,"max_depth":0}}}"#,
+    ));
+    assert!(issued.contains(r#""replay":false"#), "{issued}");
+
+    let mut writer = Session::connect(&socket, &owner);
+    let mut subscriber = Session::connect(&socket, &agent);
+    let subscribed = subscriber.call(r#"{"jsonrpc":"2.0","id":"sub","method":"core.events.subscribe","params":{"operation":"core.events.subscribe","message_id":"m-sub","grant":"g-1","payload":{"from":"now","kinds":["core-test.subject"]}}}"#);
+    assert!(subscribed.contains(r#""subscription""#), "{subscribed}");
+    assert!(
+        wait_for(
+            &barriers.join(format!("{RECHECK}.reached")),
+            Duration::from_secs(10)
+        ),
+        "the subscription re-check never paused after authorization"
+    );
+
+    revoker.send(&command(
+        "revoke",
+        r#"{"operation":"core.grant.revoke","message_id":"m-revoke","command_id":"cmd-revoke","dedupe_generation":1,"subject":{"kind":"core.grant","id":"g-1"},"preconditions":[{"subject":{"kind":"core.grant","id":"g-1"},"revision":1}],"requires":[],"payload":{}}"#,
+    ));
+    writer.send(&command(
+        "put",
+        r#"{"operation":"core-test.subject.put","message_id":"m-put","command_id":"cmd-put","dedupe_generation":1,"subject":{"kind":"core-test.subject","id":"s-1"},"preconditions":[{"subject":{"kind":"core-test.subject","id":"s-1"},"revision":0}],"authority_epoch":0,"requires":[],"payload":{"value":"after-revoke"}}"#,
+    ));
+    assert!(
+        wait_for(
+            &barriers.join(format!("{CONTENDED}.signal")),
+            Duration::from_secs(5)
+        ),
+        "neither command reached the held processing guard"
+    );
+    std::fs::write(barriers.join(format!("{RECHECK}.release")), b"").expect("releases");
+    let revoked = revoker.response();
+    assert!(revoked.contains(r#""revoked":["g-1"]"#), "{revoked}");
+    let put = writer.response();
+    assert!(put.contains(r#""replay":false"#), "{put}");
+
+    let notification = subscriber.notification(DELIVERY_BOUND);
+    assert!(
+        notification.contains(r#""ended":{"reason":"authorization_lost"}"#),
+        "the re-check delivered an event under authorization that was already revoked: {notification}"
+    );
+    assert!(
+        notification.contains(r#""items":[]"#),
+        "the ended subscription carried an event committed after revocation: {notification}"
+    );
+}
+
+#[test]
 fn an_idle_subscription_is_not_starved_by_sustained_command_contention() {
     let directory = tempfile::tempdir().expect("temp dir");
     let sockets = directory.path().join("sockets");
@@ -267,7 +378,7 @@ fn an_idle_subscription_is_not_starved_by_sustained_command_contention() {
     std::fs::write(
         &config,
         format!(
-            r#"{{"format":"combraton-conformance-config/1","principal":"owner","authority_principals":["owner"],"credentials":[{{"credential":"{credential}"}}],"test_barriers":{{"directory":"{}","enabled":[]}}}}"#,
+            r#"{{"format":"combraton-conformance-config/1","principal":"owner","authority_principals":["owner"],"credentials":[{{"credential":"{credential}"}}],"test_barriers":{{"directory":"{}","enabled":["{PUT_AFTER_PROCESSING}"]}}}}"#,
             barriers.display()
         ),
     )
@@ -290,22 +401,29 @@ fn an_idle_subscription_is_not_starved_by_sustained_command_contention() {
     let mut subscriber = Session::connect(&socket, &credential);
     let subscribed = subscriber.call(r#"{"jsonrpc":"2.0","id":"sub","method":"core.events.subscribe","params":{"operation":"core.events.subscribe","message_id":"m-sub","payload":{"from":"now","kinds":["core-test.subject"]}}}"#);
     assert!(subscribed.contains(r#""subscription""#), "{subscribed}");
-    subscriber
-        .reader
-        .get_mut()
-        .set_read_timeout(Some(Duration::from_secs(2)))
-        .expect("notification timeout");
 
+    // Connect the contending sessions before the lock is held. Blank frames
+    // arrive more often than POLL, so their server-side sessions keep reading
+    // rather than reserving idle tickets ahead of the subscriber.
     let running = Arc::new(AtomicBool::new(true));
+    let start_writing = Arc::new(AtomicBool::new(false));
+    let ready = Arc::new(AtomicU64::new(0));
     let committed = Arc::new(AtomicU64::new(0));
     let writers: Vec<_> = (0..4)
         .map(|worker| {
             let socket = socket.clone();
             let credential = credential.clone();
             let running = Arc::clone(&running);
+            let start_writing = Arc::clone(&start_writing);
+            let ready = Arc::clone(&ready);
             let committed = Arc::clone(&committed);
             thread::spawn(move || {
                 let mut session = Session::connect(&socket, &credential);
+                ready.fetch_add(1, Ordering::Release);
+                while !start_writing.load(Ordering::Acquire) {
+                    session.send("");
+                    thread::sleep(Duration::from_millis(10));
+                }
                 let mut sequence = 0u64;
                 while running.load(Ordering::Relaxed) {
                     let id = format!("w-{worker}-{sequence}");
@@ -322,6 +440,35 @@ fn an_idle_subscription_is_not_starved_by_sustained_command_contention() {
             })
         })
         .collect();
+    assert!(
+        wait_until(Duration::from_secs(5), || ready.load(Ordering::Acquire)
+            == 4),
+        "the contending sessions did not connect"
+    );
+
+    // Hold the processing lock until the subscriber has reserved its FIFO
+    // place. That reservation does not block its socket reader and uses a
+    // signal distinct from command contention.
+    let mut blocker = Session::connect(&socket, &credential);
+    blocker.send(&command(
+        "blocker",
+        r#"{"operation":"core-test.subject.put","message_id":"m-blocker","command_id":"cmd-blocker","dedupe_generation":1,"subject":{"kind":"core-test.subject","id":"s-blocker"},"preconditions":[{"subject":{"kind":"core-test.subject","id":"s-blocker"},"revision":0}],"authority_epoch":0,"requires":[],"payload":{"value":"starts-the-delivery"}}"#,
+    ));
+    assert!(
+        wait_for(
+            &barriers.join(format!("{PUT_AFTER_PROCESSING}.reached")),
+            Duration::from_secs(5)
+        ),
+        "the blocker never paused while holding the processing lock"
+    );
+    assert!(
+        wait_for(
+            &barriers.join(format!("{IDLE_QUEUED}.signal")),
+            Duration::from_secs(1)
+        ),
+        "the idle subscriber did not reserve bounded progress"
+    );
+    start_writing.store(true, Ordering::Release);
 
     assert!(
         wait_for(
@@ -330,18 +477,29 @@ fn an_idle_subscription_is_not_starved_by_sustained_command_contention() {
         ),
         "the writers never contended for the processing lock"
     );
-    let notification = subscriber.notification();
+    std::fs::write(
+        barriers.join(format!("{PUT_AFTER_PROCESSING}.release")),
+        b"",
+    )
+    .expect("releases the blocker");
+    let waiting = Instant::now();
+    let notification = subscriber.notification(DELIVERY_BOUND);
+    assert!(
+        waiting.elapsed() <= DELIVERY_BOUND,
+        "the idle subscription exceeded CORE section 16.5's 2 s delivery bound"
+    );
     assert!(
         notification.contains(r#""kind":"core-test.subject""#),
         "the idle subscription received the wrong notification: {notification}"
     );
-    assert!(
-        committed.load(Ordering::Relaxed) > 0,
-        "no contending command committed"
-    );
-
+    let blocked = blocker.response();
+    assert!(blocked.contains(r#""replay":false"#), "{blocked}");
     running.store(false, Ordering::Relaxed);
     for writer in writers {
         writer.join().expect("writer finishes");
     }
+    assert!(
+        committed.load(Ordering::Relaxed) > 0,
+        "no contending command committed"
+    );
 }

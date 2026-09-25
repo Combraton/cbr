@@ -285,36 +285,113 @@ fn is_grant_operation(operation: &str) -> bool {
     operation.starts_with("core.grant.")
 }
 
-/// One process-wide lock serializing request processing and subscription
+/// One process-wide FIFO lock serializing request processing and subscription
 /// re-checks across every session (STACK section 2). A re-check re-authorizes
 /// a subscription and reads the events to deliver under it, so no command can
 /// commit between the two: an item committed after a revocation is never
 /// delivered under the revoked grant (CORE section 16.5).
-static PROCESSING: std::sync::Mutex<()> = std::sync::Mutex::new(());
+///
+/// An idle session reserves a ticket but never waits for it: the socket thread
+/// remains free to read its next command. Once that ticket reaches the front,
+/// later commands cannot overtake it; the next poll acquires it immediately.
+/// A command arriving on the same session consumes its reserved ticket instead.
+struct ProcessingLock {
+    next: std::sync::atomic::AtomicU64,
+    serving: std::sync::atomic::AtomicU64,
+    cancelled: std::sync::Mutex<std::collections::BTreeSet<u64>>,
+    ready: std::sync::Condvar,
+}
 
-fn processing() -> std::sync::MutexGuard<'static, ()> {
-    match PROCESSING.try_lock() {
-        Ok(guard) => guard,
-        Err(std::sync::TryLockError::WouldBlock) => {
-            crate::barriers::signal(crate::barriers::LOCK_CONTENDED);
-            PROCESSING
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
+impl ProcessingLock {
+    const fn new() -> Self {
+        Self {
+            next: std::sync::atomic::AtomicU64::new(0),
+            serving: std::sync::atomic::AtomicU64::new(0),
+            cancelled: std::sync::Mutex::new(std::collections::BTreeSet::new()),
+            ready: std::sync::Condvar::new(),
         }
-        Err(std::sync::TryLockError::Poisoned(poisoned)) => poisoned.into_inner(),
+    }
+
+    fn reserve(&self) -> u64 {
+        self.next.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    }
+
+    fn is_ready(&self, ticket: u64) -> bool {
+        self.serving.load(std::sync::atomic::Ordering::Acquire) == ticket
+    }
+
+    fn wait(&'static self, ticket: u64) -> ProcessingGuard {
+        let mut cancelled = self
+            .cancelled
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        while !self.is_ready(ticket) {
+            cancelled = self
+                .ready
+                .wait(cancelled)
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+        }
+        ProcessingGuard { lock: self }
+    }
+
+    fn try_take(&'static self, ticket: u64) -> Option<ProcessingGuard> {
+        self.is_ready(ticket)
+            .then(|| ProcessingGuard { lock: self })
+    }
+
+    fn cancel(&self, ticket: u64) {
+        let mut cancelled = self
+            .cancelled
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let serving = self.serving.load(std::sync::atomic::Ordering::Acquire);
+        if ticket < serving {
+            return;
+        }
+        if ticket == serving {
+            let mut next = ticket.wrapping_add(1);
+            while cancelled.remove(&next) {
+                next = next.wrapping_add(1);
+            }
+            self.serving
+                .store(next, std::sync::atomic::Ordering::Release);
+        } else {
+            cancelled.insert(ticket);
+        }
+        drop(cancelled);
+        self.ready.notify_all();
+    }
+
+    fn release(&self) {
+        let mut cancelled = self
+            .cancelled
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut next = self
+            .serving
+            .load(std::sync::atomic::Ordering::Relaxed)
+            .wrapping_add(1);
+        while cancelled.remove(&next) {
+            next = next.wrapping_add(1);
+        }
+        self.serving
+            .store(next, std::sync::atomic::Ordering::Release);
+        drop(cancelled);
+        self.ready.notify_all();
     }
 }
 
-/// Take the processing lock for idle maintenance only when it is immediately
-/// available. An idle socket poll must remain able to read a command, and it
-/// must not emit the command-contention signal when another session is busy.
-fn idle_processing() -> Option<std::sync::MutexGuard<'static, ()>> {
-    match PROCESSING.try_lock() {
-        Ok(guard) => Some(guard),
-        Err(std::sync::TryLockError::WouldBlock) => None,
-        Err(std::sync::TryLockError::Poisoned(poisoned)) => Some(poisoned.into_inner()),
+struct ProcessingGuard {
+    lock: &'static ProcessingLock,
+}
+
+impl Drop for ProcessingGuard {
+    fn drop(&mut self) {
+        self.lock.release();
     }
 }
+
+static PROCESSING: ProcessingLock = ProcessingLock::new();
 
 pub struct Provider {
     pub config: Config,
@@ -346,6 +423,18 @@ pub struct Provider {
     caller_receive_limit: usize,
     subscriptions: Vec<Subscription>,
     next_subscription: u64,
+    /// A FIFO place reserved by an idle poll that found processing busy. The
+    /// next idle poll or request on this session consumes it; dropping the
+    /// session cancels it so no abandoned ticket can stop the queue.
+    idle_processing_ticket: Option<u64>,
+}
+
+impl Drop for Provider {
+    fn drop(&mut self) {
+        if let Some(ticket) = self.idle_processing_ticket.take() {
+            PROCESSING.cancel(ticket);
+        }
+    }
 }
 
 /// What a model call opens, when serving makes one.
@@ -548,6 +637,7 @@ impl Provider {
             caller_receive_limit: crate::frames::PRE_NEGOTIATION_LIMIT,
             subscriptions: Vec::new(),
             next_subscription: 0,
+            idle_processing_ticket: None,
         };
         // Last, and before any session exists: objects a crash left without a
         // root are collected (see `collect_unreferenced_objects`).
@@ -581,6 +671,7 @@ impl Provider {
             caller_receive_limit: crate::frames::PRE_NEGOTIATION_LIMIT,
             subscriptions: Vec::new(),
             next_subscription: 0,
+            idle_processing_ticket: None,
         })
     }
 
@@ -1143,10 +1234,43 @@ impl Provider {
 
     // ---- dispatch ---------------------------------------------------------
 
+    /// Take this session's reserved place, or join the end of the FIFO queue.
+    /// Only a request reports contention; an earlier idle reservation is still
+    /// reported here when the request must wait for its turn.
+    fn processing(&mut self) -> ProcessingGuard {
+        let ticket = self
+            .idle_processing_ticket
+            .take()
+            .unwrap_or_else(|| PROCESSING.reserve());
+        if !PROCESSING.is_ready(ticket) {
+            crate::barriers::signal(crate::barriers::LOCK_CONTENDED);
+        }
+        PROCESSING.wait(ticket)
+    }
+
+    /// Reserve FIFO progress for idle work without waiting or signalling. The
+    /// reservation stays with the session when its turn has not arrived yet.
+    fn idle_processing(&mut self) -> Option<ProcessingGuard> {
+        let ticket = match self.idle_processing_ticket {
+            Some(ticket) => ticket,
+            None => {
+                let ticket = PROCESSING.reserve();
+                self.idle_processing_ticket = Some(ticket);
+                ticket
+            }
+        };
+        let Some(guard) = PROCESSING.try_take(ticket) else {
+            crate::barriers::signal(crate::barriers::IDLE_PROCESSING_QUEUED);
+            return None;
+        };
+        self.idle_processing_ticket = None;
+        Some(guard)
+    }
+
     /// Handle one request. `method` is the transport method, which the envelope
     /// must agree with.
     pub fn handle(&mut self, method: &str, params: &Value) -> Result<Value, ProtocolError> {
-        let _processing = processing();
+        let _processing = self.processing();
         // Step 1: operation known, session negotiated, profile selected. These
         // are decided from the transport method, before the envelope is read.
         // Time-driven effect state first, so an obligation whose deadline has
@@ -2012,13 +2136,9 @@ impl Provider {
     /// does not name the overdue event's subject or payload; CBR uses the
     /// effect subject and the same `{ effect, obligation, target }` payload as
     /// the aborted event, so a consumer reads both the same way.
-    /// Idle maintenance for a session with no request in hand: mark passed
-    /// obligations overdue under the processing lock. Subscription re-checks
-    /// happen in `drain_subscriptions_idle`, which the session calls next.
-    pub fn tick_idle(&mut self) {
-        let Some(_processing) = idle_processing() else {
-            return;
-        };
+    /// Idle maintenance for a session with no request in hand. `poll_idle`
+    /// runs this and the subscription re-check under one processing guard.
+    fn tick_locked(&mut self) {
         if let Err(error) = self.tick_effects() {
             eprintln!(
                 "cbr-provider: marking overdue obligations failed: {}",
@@ -2366,19 +2486,19 @@ impl Provider {
     /// not produced and its subscription's cursor does not move, so its items
     /// are produced again later: **withheld, never skipped** (CORE 16.5).
     pub fn drain_subscriptions(&mut self, room: usize, whole: bool) -> (Vec<Value>, bool) {
-        let _processing = processing();
+        let _processing = self.processing();
         self.drain_subscriptions_locked(room, whole)
     }
 
-    /// Produce notifications during an idle socket poll, or skip this poll if
-    /// a command or another subscription re-check owns the processing lock.
-    /// When acquired, the guard still spans authorization and the event read.
-    pub fn drain_subscriptions_idle(
-        &mut self,
-        room: usize,
-        whole: bool,
-    ) -> Option<(Vec<Value>, bool)> {
-        let _processing = idle_processing()?;
+    /// Produce notifications during an idle socket poll, or return immediately
+    /// after reserving FIFO progress when processing is busy. Later commands
+    /// cannot overtake that reservation. Once it reaches the front, either
+    /// input wakes this session or its next 40 ms poll consumes it, well inside
+    /// CORE section 16.5's two-second delivery bound. The guard spans both
+    /// re-authorization and the event read.
+    pub fn poll_idle(&mut self, room: usize, whole: bool) -> Option<(Vec<Value>, bool)> {
+        let _processing = self.idle_processing()?;
+        self.tick_locked();
         Some(self.drain_subscriptions_locked(room, whole))
     }
 
@@ -2908,6 +3028,7 @@ impl Provider {
     }
 
     fn subject_put(&mut self, params: &Value, command: Command) -> Result<Value, ProtocolError> {
+        crate::barriers::pause(crate::barriers::PUT_AFTER_PROCESSING_LOCK);
         if let Some(stored) = self.admit_command(
             params,
             &command,
