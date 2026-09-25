@@ -73,6 +73,8 @@ python3 scripts/build_runner.py --reference-executor
 python3 scripts/run_fixtures.py --filter composition. --participant conformance/participants/cbr-with-reference-executor-unix.json --out "$OUT/composition-reference-executor"
 ```
 
+**This descriptor runs `--filter composition.` and nothing else.** It claims `execution/1` on the reference provider's behalf, so any other fixture it made applicable would be reported under a CBR-named participant. `run_fixtures.py` refuses it, before anything runs, unless the filter starts with `composition.` and selects no fixture outside that suite, and `scripts/reference_executor_launch.py` starts the reference provider only for a named composition participant configured with `executor` and refuses such a configuration anywhere else ([STATE](work/STATE.md)).
+
 Source identity shells out to `git`, so the tests need `git` on the path; both CI runners have it.
 
 `build_runner.py` downloads the archive once and reuses it afterwards; `--archive PATH` uses a copy you already have and `--offline` refuses to download. It verifies the archive against the pinned SHA-256, verifies every extracted file against the archive's own `BUNDLE-SHA256SUMS`, checks the archive's recorded commit against the pin, and records the runner identity that `run_fixtures.py` stamps into every results manifest.
@@ -201,7 +203,7 @@ Of 57 mutants, 48 fail a context or composition fixture at a named step and 9 fa
 
 **What m3a does not establish.**
 - **That CBR prepares useful context.** Scripted content is test environment (CONTEXT §12). Nothing is retrieved or compiled.
-- **Investigation executions.** CBR has no executor role. A script step it does not perform, `execute`, holds its job rather than pretending it ran.
+- **Investigation executions.** CBR serves no executor role, and its context provider lacks the `execution/1` client role CONTEXT §4 gives it: submitting an investigation to a configured executor as its own caller (CTX-18, CTX-19). A script step it does not perform, `execute`, holds its job rather than pretending it ran. m5g found this is exactly what fails two of the ten executor fixtures run with the reference executor ([READINESS §7](work/m5/READINESS.md#7-j3-j4-and-j5-and-the-fixtures-that-need-an-execution-peer)).
 - **Responsiveness under a stalled peer.** A context provider calls peers while holding its processing lock, bounded by a three-second timeout per frame, so a stalled peer delays every request to that provider for up to that long. Preparation runs on every request and idle poll of an authenticated session, and its cost grows with the number of running jobs.
 - **Untested paths.** Event visibility of `context.job` subjects under a grant follows the requests' `context.read` without a dedicated test. Skipping preparation for an unauthenticated connection has no test. A `packet.<request>.<n>` id that collides with an existing artifact stops that publication with a diagnostic and has no test.
 - **Read cost.** A request record holds every published revision's facts, and each tick parses every job.
