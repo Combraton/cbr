@@ -1,6 +1,6 @@
 # Journey verification for standalone CBR
 
-> **Status, 2026-09-25: J9 has been run at M2, and J1 and J8 at M3c, all three with no model. J1 was revisited at M4 with a model, in live runs 1 and 3, and passed on both models in run 3. J6 has two labelled pilots, run twice with no model at M3 and rerun with a model at M4; J6 proper is unrun. J2's two negative controls hold at m5a against a labelled fake model, which is `simulated` and not J2's live acceptance.** Every other result column below is empty on purpose. This file is the place journey evidence lands; it is linked from [VERIFICATION](../VERIFICATION.md) and aligned with the shared [verification model](https://github.com/Combraton/combraton/blob/main/docs/architecture/VERIFICATION.md). Scope and milestones: [RELEASE-SCOPE](../work/readiness/RELEASE-SCOPE.md).
+> **Status, 2026-09-25: J9 has been run at M2, and J1 and J8 at M3c, all three with no model. J1 was revisited at M4 with a model, in live runs 1 and 3, and passed on both models in run 3. J6 has two labelled pilots, run twice with no model at M3 and rerun with a model at M4; J6 proper is unrun. J2's two negative controls hold at m5a against a labelled fake model, which is `simulated`; **J2's live run, on 2026-09-25, failed**: the mechanism held on every arm, and the model made the projection of a failing test log worse than the deterministic rule it replaced.** Every other result column below is empty on purpose. This file is the place journey evidence lands; it is linked from [VERIFICATION](../VERIFICATION.md) and aligned with the shared [verification model](https://github.com/Combraton/combraton/blob/main/docs/architecture/VERIFICATION.md). Scope and milestones: [RELEASE-SCOPE](../work/readiness/RELEASE-SCOPE.md).
 
 A journey is the *journey* layer of the shared evidence ladder. Lower layers — build, component, integration — remain necessary and are recorded with the code that introduces them. They cannot substitute for a journey, and a journey cannot substitute for them.
 
@@ -36,7 +36,7 @@ A journey is the *journey* layer of the shared evidence ladder. Lower layers —
 | # | Journey | Milestone | Needs a live model | Needs PIO | Primary negative control | Result |
 |---|---|---|---|---|---|---|
 | J1 | A user ingests a real repository and its decisions through the public client, requests code-flow context, and receives a useful cited packet | M3 (deterministic), revisited at M4 (model-assisted) | no for M3, yes for M4 | no | **Stale-source reuse:** move the repository to a new tree without re-ingesting; a packet claiming applicability to the new tree must not be produced. The control fails if the packet is still `applicable`. | **pass**, M3c, model `none` ([record](#j1-a-question-finds-its-own-answer-with-a-cited-packet)); revisited at M4 with a model, **pass on both models** in live run 3 ([record](#live-run-3-2026-09-23-both-pilots-and-j1-again-after-m4f-and-m4g)) |
-| J2 | Large search results, test logs and JSON are processed under bounded model context; omitted material stays explicit | **M5**, its first journey — moved from M4 by the owner's decision of 2026-09-23, controls unchanged | yes | no | **Silent truncation:** remove the omission marker path; the journey must fail because omitted content is no longer declared. Also: feed an input larger than the summarizer's own capacity and require a typed insufficient-capacity result, never a silent partial summary. | **simulated**, m5a, model `fake`: both controls hold end to end through the public client ([record](#j2-a-large-result-projected-with-what-was-left-out-declared--simulated)). The live acceptance, on CBR's own test output, is unrun. |
+| J2 | Large search results, test logs and JSON are processed under bounded model context; omitted material stays explicit | **M5**, its first journey — moved from M4 by the owner's decision of 2026-09-23, controls unchanged | yes | no | **Silent truncation:** remove the omission marker path; the journey must fail because omitted content is no longer declared. Also: feed an input larger than the summarizer's own capacity and require a typed insufficient-capacity result, never a silent partial summary. | **live: failed**, 2026-09-25 at `041ad5f`, MiniMax-M2.7-highspeed and MiniMax-M3, 120,067 tokens: every gate of the mechanism held on all twelve arms, and on the failing test log both models' projections were **worse** than the deterministic rule's, by a rubric frozen before the run ([record](#j2-live-2026-09-25-the-mechanism-held-and-the-model-made-the-projection-worse--failed)). **simulated**, m5a, model `fake`: both controls hold end to end through the public client ([record](#j2-a-large-result-projected-with-what-was-left-out-declared--simulated)). |
 | J3 | A source or requirement changes during preparation; the next delivery exposes the correction and the earlier packet and its history survive | M5 | yes | no | **Correction swallowed:** an older derivation must not become the current result for a corrected item. Removing the `corrected_during_preparation` path must make the journey fail. The earlier packet revision must still fetch its original bytes and report `current: false`. | — |
 | J4 | CBR is restarted during model-assisted work; it resumes from durable state without duplicate commits or fabricated completion | M5 | yes | no | **Duplicate commit:** kill the process between the model response and the commit, restart, and require exactly one committed revision. Disable command deduplication and the control must produce two. Separately: a job whose checkpoint is intact must not report a finding it never derived. | — |
 | J5 | Conflicting branches or stale evidence do not leak into another task as current truth | M5 | yes | no | **Branch leakage:** a requirement accepted only on branch B must never appear as binding in a packet scoped to branch A. Remove the scope filter and the control must catch it. | — |
@@ -291,6 +291,74 @@ This session has never seen either oracle and scored nothing.
 Both records above measure a packet. **Neither measures a session.** No agent session used either packet for any task: nothing here shows that work went better with one, or that a constraint was preserved that would otherwise have been lost, or that investigation was not repeated. That is J6 proper, and it is M7's — with pre-agreed thresholds derived from these pilots' variance, fixed before the confirmatory run, against a strong native-context baseline, a disciplined-notes baseline and a plain-search baseline.
 
 What the pilots are for is narrower and worth having on its own: they are the first runs of the write path and the read path over repositories this session did not write, at sizes and in shapes the fixtures do not reach — 5.3 MB and 553 files in one, 22 owner decisions over one append-only file in the other — and they produced the variance M7's thresholds will be derived from, every packet scored against its oracle by the reviewer.
+
+### J2 live, 2026-09-25: the mechanism held, and the model made the projection worse — failed
+
+**Failed, by criteria fixed before the run.** Six runs on CBR's own test output, each input on MiniMax-M2.7-highspeed and MiniMax-M3, as the owner decided them ([READINESS §10](../work/m5/READINESS.md#j2-live-the-inputs-the-estimate-the-stop-and-the-cap-decided-2026-09-25)). Every mechanical gate held on all twelve arms, the six model-assisted and the six deterministic baselines. What failed is what the model was for: **on the failing test log, both models' projections were worse than the deterministic rule's**, because a model's choice replaces the rule's, and both models left out failure blocks the parser had already found. On the green log and the conformance manifest, both models chose nothing at all, so the two arms were identical.
+
+**The rubric was written and pushed before the first call.** [RUBRIC](j2-live/RUBRIC.md), its answer key and its scripts were drafted by three independent agents with different lenses, merged by a fourth, committed as `84061eb` and pushed at 15:39:31Z; invocation 1 started at 15:40:00Z. The answer key is computed from the inputs' bytes, never by CBR's parser. **Its cost thresholds are this session's, not the owner's**, and the baselines were visible to its author, because they are deterministic ([RUBRIC §10](j2-live/RUBRIC.md#10-known-limits-of-this-rubric)). It pre-registered that the red log was a non-inferiority test: the rule already carries every failure, so the best a model could do there was tie.
+
+| Field | Record |
+|---|---|
+| Intent and acceptance | [RUBRIC §7](j2-live/RUBRIC.md#7-what-j2-live-passes-means-pre-declared), fixed before the run: every gate on every arm; no run worse than its baseline; all four red arms useful and every other arm at least partial; judging complete. |
+| Entry point | `scripts/j2_run.py --live --permit-model-network`, which drives `cbr ingest`, `cbr context … --want log=evidence:<artifact>@<digest>`, `cbr request` and `cbr packet` over the provider's socket, then relaunches the store with `--replay-model` and rebuilds. No internal shortcut. |
+| Prerequisites and inputs | The three inputs of READINESS §10 that ask a model, byte-identical to their pinned digests: `cargo-test-f73415d.log` (65,257 B, 18 tests failing), `cargo-test.log` (66,535 B, green) and `conformance-core.manifest.json` (61,621 B, 130 pass and 5 unsupported). A fresh store per run, no repository registered, cold. |
+| Implementation basis | `main` at `041ad5f`, #40's merge, whose code is `5ab1a4f`'s. Debug build from a clean tree: `cbr` `sha256:e2ce3c8a…b6fc`, `cbr-provider` `sha256:810b5725…3d35`, the same digests before and after both invocations. Protocol `v0.1.0`; Rust 1.97.1; macOS. |
+| Model and provider | MiniMax, Responses dialect, production configuration; `MiniMax-M2.7-highspeed` and `MiniMax-M3`. Every `model_calls` row's response names the configured model, with status `completed`. |
+| Path taken | sealed input → baseline request (investigation 0, the rule, no call) → assisted request (investigation = parts; one bounded call per part, each its own sealed record) → both packets checked against the input's bytes → the store relaunched with `--replay-model` and the assisted section rebuilt from its records. |
+| Packet identity | Twelve packets, in [the run's record](j2-live/run-2026-09-25/): two per run, each with its sealed digest in `report.json`. Every section cites the ingested artifact as `c-log`. |
+| Durable result | Checked by [`prove_path.py`](j2-live/prove_path.py) on a copy of each store: the packet reads back unchanged after a restart, `cbr fetch` of the cited artifact returns the input's exact bytes, and **all 195 carried excerpts** equal those bytes at their stated ranges. |
+| Reproduction | `python3 scripts/j2_run.py --manifest <manifest> --out <short dir> --live --permit-model-network --run-ceiling <N>`, twice, as READINESS §10 sets them; then `score_j2.py`, `blind.py` and `prove_path.py` from `docs/verification/j2-live/`. The manifests are kept outside this repository. |
+| Cost | **120,067 tokens**, 5.3% of the 2,250,000 held and 4.1% of the 2,928,960 worst case. 16 calls, 0 repairs, every call admitted by the local bound alone. Invocation 1 took 26 s and invocation 2 took 49 s of wall clock. |
+| Simulated or untested | Nothing is simulated. Untested: an input whose failures overflow the projection, which is the only kind on which a model's choice could beat the rule ([RUBRIC §7](j2-live/RUBRIC.md#7-what-j2-live-passes-means-pre-declared)). The judges are one model family, calibrated on one pair. |
+| Properties and limits | Below. |
+
+**The runs.** Tokens are the ledger's, which equal the report's and the sealed records' own usage. Output tokens and latency are each part's sealed record.
+
+| Run | Tokens | Parts: chosen of offered | Output tokens a part | Latency a part |
+|---|---:|---|---|---|
+| `red-m27hs` | 18,714 | 30 of 64, **0 of 23**, 1 of 10 | 649, 524, 386 | 9.5–10.3 s |
+| `red-m3` | 17,696 | 23 of 64, **0 of 23**, 1 of 10 | 97, 6, 9 | 1.6–2.0 s |
+| `log-m27hs` | 19,280 | 0 of 43, 0 of 22 | 759, 1,057 | 14.0–23.0 s |
+| `log-m3` | 17,762 | 0 of 43, 0 of 22 | 6, 6 | 2.2 s |
+| `core-m27hs` | 23,931 | 0 of 60, 0 of 58, 0 of 18 | 728, 683, 283 | 5.0–12.7 s |
+| `core-m3` | 22,684 | 0 of 60, 0 of 58, 0 of 18 | 6, 6, 6 | 0.9–1.2 s |
+
+**The gates, all held on all twelve arms** ([RUBRIC §3](j2-live/RUBRIC.md#3-gates-unweighted-every-one-must-hold)): every ledger tiles its input; every excerpt and every named failure is the input's bytes at its stated range, re-checked by the scorer's own reader; every packet's omissions are the ledger's; every bound holds; each header's digest, commit and failure count match the answer key; each arm says who chose; every replay rebuilt identical sections with no ambiguous question; one sealed record per part, naming the run's model. **No key-shaped string** appears in any of the 70 files the six stores hold.
+
+**The scores.** S is out of 100: script criteria computed from byte ranges against the answer key, and judged criteria from three blinded judges per pair (below).
+
+| Run | Baseline S | Assisted S | ΔS_script | ΔJ1 | Verdict |
+|---|---:|---:|---:|---:|---|
+| `red-m27hs` | 97.5, useful | 70.0, partial | −15.0 | −2 | **worse**: 6 tests shown at a lower level than the baseline |
+| `red-m3` | 97.5, useful | 56.25, partial | −28.75 | −2 | **worse**: 15 tests lower |
+| `log-m27hs` | 66.25, partial | 66.25, partial | 0 | 0 | equal: the model chose nothing |
+| `log-m3` | 66.25, partial | 66.25, partial | 0 | 0 | equal: the model chose nothing |
+| `core-m27hs` | 71.25, partial | 71.25, partial | 0 | 0 | equal: the model chose nothing |
+| `core-m3` | 73.75, partial | 73.75, partial | 0 | 0 | equal: the model chose nothing |
+
+**What the models did with the red log.** The rule carries all eighteen failures, each with its panic line, message and location, in 11,872 bytes. Neither model chose any of `j2_harness`'s six failure blocks, and neither chose anything in the second part. **Whatever a model does not choose is declared `not_selected`**, including a block the parser had already named as a failure: so the six `j2_harness` tests reach a reader by name only, and under `MiniMax-M3` nine of `journey_two`'s twelve assertions do too. The space went to passing tests and the `failures:` lists instead. The judges said so in their own words: the unchosen assertions were *"declared `not_selected`, which labels the very content the task asks for as not chosen for it."*
+
+**The judges.** Three per pair, blinded to the arm and the model, each seeing at most one pair of each input kind; six sessions, eighteen sheets ([`judging/`](j2-live/run-2026-09-25/judging/)). A calibration session first judged the dry run's pair, the fake model's section against the rule's, and passed: it preferred the rule and scored its answerability two points higher. **Every sheet agreed**: no spread above one point, no attention flag on the four pairs that were identical after redaction, and all six preferences on the red pairs were for the rule.
+
+**What the run establishes.** The live mechanism holds under a real model: sealed whole, bounded, every omission declared, every excerpt the input's bytes, the model's cost in the ledger and in each sealed record, the answer replayable without the network, and no credential in any store. And it measured what a projection costs: 17,696 to 23,931 tokens for an input of 61 to 67 KB, about 1.1 to 1.6 times the tokens of reading the whole of it, before a reader reads anything.
+
+**What it does not establish.** That a model selects better than the rule: on these inputs it could not have ([RUBRIC §8](j2-live/RUBRIC.md#8-pre-registered-results-dry-run-fake-model-answering-u1-the-baseline-is-deterministic)), and on the one where it could have lost, it lost. Anything about another model, another prompt, or an input whose failures overflow the projection. One sample per model per input.
+
+**Found by the run, in both arms** ([RUBRIC §9](j2-live/RUBRIC.md#9-findings-common-to-both-arms-reported-not-scored)):
+
+- `failures named: 21` counts cargo's three `error:` lines with the eighteen tests.
+- `and 5 more` hides both of the tests whose assertions carry left and right values.
+- Cargo prints the next `Running` line directly after `error: test failed, to rerun…`, and the diagnostic unit swallows it, so in a model arm a line of run identity is declared `not_selected`.
+- The green projection carries 25 of its 40 result lines and not the log's end, because run identity fills the 24 excerpts; its judges scored answerability 3 of 4 for that reason.
+- The conformance projection names none of the five unsupported fixtures.
+
+**Two things about the instruments, recorded rather than hidden.**
+
+- `prove_path.py` relaunches a provider, and [VERIFICATION's rule 4](../VERIFICATION.md#four-rules-that-keep-the-owners-key-out-of-every-run) permits launches only through the suite, an authorised run, or `scripts/debug_launch.sh`. Its launch is exactly the harness's own replay launch — the production configuration with `--replay-model` and no network permit, which serves from records and reads no credential — on a copy of each store, as part of this authorised run. It should become a reviewed mode of the harness.
+- The two reports are committed with each run's `data` member removed, because it names where the store was written. Nothing else in the run's record was edited.
+
+**What happens next.** A model must not be able to undo what a parser found. m5a-3 is planned, test first, to make the parser's failures a floor that a model's choice adds to and cannot remove, with the labels saying exactly who chose what. J2 live then runs again under this same frozen rubric, with its estimate written into READINESS first. That rerun is reported beside this one and never replaces it.
 
 ### J2: a large result, projected, with what was left out declared — simulated
 

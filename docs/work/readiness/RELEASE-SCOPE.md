@@ -31,7 +31,7 @@ Bullets 1–5 are within this session's control. **Bullet 6 is not**, without a 
 
 It additionally carries a **`cbr search` diagnostic**, which is **not a protocol operation** and is labelled as such wherever it appears. Protocol 0.1 has no public search over knowledge or evidence content, and this does not add one: it reads CBR's local indexes for a human debugging retrieval. The evaluation client never uses it as a scored path, because a scored operation must be one a user can reach through the public interface.
 
-**Derivation families.** A deliberately small, named set rather than an open-ended "the model can do anything" surface. Proposed for v0.1, matching the table in [MEMORY-ENGINE §4](../../spec/MEMORY-ENGINE.md):
+**Derivation families.** A deliberately small, named set rather than an open-ended "the model can do anything" surface. Proposed for v0.1, matching the table in [MEMORY-ENGINE §4](../../spec/MEMORY-ENGINE.md), and **all five confirmed for v0.1 by the owner's decision of 2026-09-25** ([m5 READINESS §9](../m5/READINESS.md#9-the-pull-requests-each-with-its-gate)):
 
 | Family | Input | Output | Why this one |
 |---|---|---|---|

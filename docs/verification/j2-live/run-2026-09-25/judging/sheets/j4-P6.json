@@ -1,0 +1,26 @@
+{
+  "pair": "P6",
+  "judge": "j4",
+  "A": {
+    "J1": {
+      "score": 3,
+      "why": "25 carried result lines (5741-23953) all read '0 failed'. The other 15 targets, including the 400-test suite, are only inside o25 (23953-66535, over_projection), so 'nothing failed' there rests on the header's 'failures named: 0'. The stall test's ignore reason is only inside o18 (19949-20083)."
+    },
+    "J2": {
+      "score": 3,
+      "why": "Minor ambiguity: e24 (23740-23953) ends on 'running 6 tests' with its result omitted, and 20083-20278 shows '1 ignored' without its reason. Carried bytes resolve both: the header says 'failures named: 0' and that line reads '0 failed'. Nothing points to a failure."
+    }
+  },
+  "B": {
+    "J1": {
+      "score": 3,
+      "why": "Byte-identical to A: result lines 5741-23953 carried; the tail 23953-66535 is omitted (over_projection) and supported only by the header count; the ignore reason is only in o18 (19949-20083)."
+    },
+    "J2": {
+      "score": 3,
+      "why": "Identical to A. The truncated 'running 6 tests' at 23740-23953 and the reasonless '1 ignored' at 20083-20278 are resolved by 'failures named: 0' and that line's '0 failed'."
+    }
+  },
+  "prefer": "none",
+  "prefer_why": "A and B are byte-identical (same 24 excerpts, same omission 23953-66535), so there is no meaningful difference."
+}

@@ -1,0 +1,294 @@
+{
+  "commit": "9cd388a3437df712028c3b01014f315c28616edc",
+  "mode": "live",
+  "remedy_for_an_ambiguous_question": "An ambiguous question is replayable again only once one of its records is gone. Purging one is an authority's act: `evidence.purge` on the record's artifact, by a principal in `authority_principals`, in a session that negotiated `evidence.retention_control`. It destroys evidence, so it is the owner's decision and never this harness's -- and the record to purge is the failed call, never the successful one, because purging the answer that worked would leave a history nobody made. See READINESS section 6.",
+  "run_ceiling_tokens": 1952640,
+  "runs": [
+    {
+      "artifact": "ingest.b89ad11e5a5ce597.1790350845671649000",
+      "assisted": {
+        "bytes_carried": 5098,
+        "bytes_omitted": 61437,
+        "content_bytes": 8451,
+        "excerpts": 24,
+        "how": "read as libtest: 66535 bytes, 1065 lines, 185 units in 2 parts; excerpts chosen by the model, one question per part",
+        "investigation": 2,
+        "item": {
+          "reason": "",
+          "result": "satisfied"
+        },
+        "named_failures": 0,
+        "omissions": 25,
+        "parts": 2,
+        "problems": [],
+        "section": true,
+        "unresolved": 0
+      },
+      "baseline": {
+        "bytes_carried": 5098,
+        "bytes_omitted": 61437,
+        "content_bytes": 8470,
+        "excerpts": 24,
+        "how": "read as libtest: 66535 bytes, 1065 lines, 185 units in 2 parts; excerpts chosen by the deterministic rule: failures, then run identity",
+        "item": {
+          "reason": "",
+          "result": "satisfied"
+        },
+        "named_failures": 0,
+        "omissions": 25,
+        "parts": 2,
+        "problems": [],
+        "section": true,
+        "unresolved": 0
+      },
+      "charges": [
+        {
+          "kind": "usage",
+          "tokens": 10152
+        },
+        {
+          "kind": "usage",
+          "tokens": 9128
+        }
+      ],
+      "commit": "9cd388a3437df712028c3b01014f315c28616edc",
+      "id": "log-m27hs",
+      "input": {
+        "digest": "sha256:b89ad11e5a5ce5975f89b70ca91d14d400fa8c490f971fa5f603f80470898807",
+        "name": "cargo-test.log",
+        "size": 66535
+      },
+      "launch_ceiling": 1952640,
+      "model": "MiniMax-M2.7-highspeed",
+      "part_records": 2,
+      "replay": {
+        "ambiguous": [],
+        "differences": [],
+        "item": {
+          "reason": "",
+          "result": "satisfied"
+        },
+        "questions": 2,
+        "sections_identical": true
+      },
+      "tokens": 19280
+    },
+    {
+      "artifact": "ingest.b89ad11e5a5ce597.1790350869594981000",
+      "assisted": {
+        "bytes_carried": 5098,
+        "bytes_omitted": 61437,
+        "content_bytes": 8451,
+        "excerpts": 24,
+        "how": "read as libtest: 66535 bytes, 1065 lines, 185 units in 2 parts; excerpts chosen by the model, one question per part",
+        "investigation": 2,
+        "item": {
+          "reason": "",
+          "result": "satisfied"
+        },
+        "named_failures": 0,
+        "omissions": 25,
+        "parts": 2,
+        "problems": [],
+        "section": true,
+        "unresolved": 0
+      },
+      "baseline": {
+        "bytes_carried": 5098,
+        "bytes_omitted": 61437,
+        "content_bytes": 8470,
+        "excerpts": 24,
+        "how": "read as libtest: 66535 bytes, 1065 lines, 185 units in 2 parts; excerpts chosen by the deterministic rule: failures, then run identity",
+        "item": {
+          "reason": "",
+          "result": "satisfied"
+        },
+        "named_failures": 0,
+        "omissions": 25,
+        "parts": 2,
+        "problems": [],
+        "section": true,
+        "unresolved": 0
+      },
+      "charges": [
+        {
+          "kind": "usage",
+          "tokens": 9542
+        },
+        {
+          "kind": "usage",
+          "tokens": 8220
+        }
+      ],
+      "commit": "9cd388a3437df712028c3b01014f315c28616edc",
+      "id": "log-m3",
+      "input": {
+        "digest": "sha256:b89ad11e5a5ce5975f89b70ca91d14d400fa8c490f971fa5f603f80470898807",
+        "name": "cargo-test.log",
+        "size": 66535
+      },
+      "launch_ceiling": 1933360,
+      "model": "MiniMax-M3",
+      "part_records": 2,
+      "replay": {
+        "ambiguous": [],
+        "differences": [],
+        "item": {
+          "reason": "",
+          "result": "satisfied"
+        },
+        "questions": 2,
+        "sections_identical": true
+      },
+      "tokens": 17762
+    },
+    {
+      "artifact": "ingest.06a0f54234b49df6.1790350872501458000",
+      "assisted": {
+        "bytes_carried": 1252,
+        "bytes_omitted": 60369,
+        "content_bytes": 1886,
+        "excerpts": 2,
+        "how": "read as json: 61621 bytes, 1877 lines, 143 units in 3 parts; excerpts chosen by the model, one question per part",
+        "investigation": 3,
+        "item": {
+          "reason": "",
+          "result": "satisfied"
+        },
+        "named_failures": 0,
+        "omissions": 2,
+        "parts": 3,
+        "problems": [],
+        "section": true,
+        "unresolved": 0
+      },
+      "baseline": {
+        "bytes_carried": 1252,
+        "bytes_omitted": 60369,
+        "content_bytes": 1905,
+        "excerpts": 2,
+        "how": "read as json: 61621 bytes, 1877 lines, 143 units in 3 parts; excerpts chosen by the deterministic rule: failures, then run identity",
+        "item": {
+          "reason": "",
+          "result": "satisfied"
+        },
+        "named_failures": 0,
+        "omissions": 2,
+        "parts": 3,
+        "problems": [],
+        "section": true,
+        "unresolved": 0
+      },
+      "charges": [
+        {
+          "kind": "usage",
+          "tokens": 10284
+        },
+        {
+          "kind": "usage",
+          "tokens": 10348
+        },
+        {
+          "kind": "usage",
+          "tokens": 3299
+        }
+      ],
+      "commit": "9cd388a3437df712028c3b01014f315c28616edc",
+      "id": "core-m27hs",
+      "input": {
+        "digest": "sha256:06a0f54234b49df6c459cfec6217e8f1b50c6dd5e03cc4ede619ffbd2ed69a35",
+        "name": "conformance-core.manifest.json",
+        "size": 61621
+      },
+      "launch_ceiling": 1915598,
+      "model": "MiniMax-M2.7-highspeed",
+      "part_records": 3,
+      "replay": {
+        "ambiguous": [],
+        "differences": [],
+        "item": {
+          "reason": "",
+          "result": "satisfied"
+        },
+        "questions": 3,
+        "sections_identical": true
+      },
+      "tokens": 23931
+    },
+    {
+      "artifact": "ingest.06a0f54234b49df6.1790350890634425000",
+      "assisted": {
+        "bytes_carried": 1252,
+        "bytes_omitted": 60369,
+        "content_bytes": 1886,
+        "excerpts": 2,
+        "how": "read as json: 61621 bytes, 1877 lines, 143 units in 3 parts; excerpts chosen by the model, one question per part",
+        "investigation": 3,
+        "item": {
+          "reason": "",
+          "result": "satisfied"
+        },
+        "named_failures": 0,
+        "omissions": 2,
+        "parts": 3,
+        "problems": [],
+        "section": true,
+        "unresolved": 0
+      },
+      "baseline": {
+        "bytes_carried": 1252,
+        "bytes_omitted": 60369,
+        "content_bytes": 1905,
+        "excerpts": 2,
+        "how": "read as json: 61621 bytes, 1877 lines, 143 units in 3 parts; excerpts chosen by the deterministic rule: failures, then run identity",
+        "item": {
+          "reason": "",
+          "result": "satisfied"
+        },
+        "named_failures": 0,
+        "omissions": 2,
+        "parts": 3,
+        "problems": [],
+        "section": true,
+        "unresolved": 0
+      },
+      "charges": [
+        {
+          "kind": "usage",
+          "tokens": 9814
+        },
+        {
+          "kind": "usage",
+          "tokens": 9705
+        },
+        {
+          "kind": "usage",
+          "tokens": 3165
+        }
+      ],
+      "commit": "9cd388a3437df712028c3b01014f315c28616edc",
+      "id": "core-m3",
+      "input": {
+        "digest": "sha256:06a0f54234b49df6c459cfec6217e8f1b50c6dd5e03cc4ede619ffbd2ed69a35",
+        "name": "conformance-core.manifest.json",
+        "size": 61621
+      },
+      "launch_ceiling": 1891667,
+      "model": "MiniMax-M3",
+      "part_records": 3,
+      "replay": {
+        "ambiguous": [],
+        "differences": [],
+        "item": {
+          "reason": "",
+          "result": "satisfied"
+        },
+        "questions": 3,
+        "sections_identical": true
+      },
+      "tokens": 22684
+    }
+  ],
+  "tokens": 83657,
+  "worst_case_projection_tokens": 488160
+}

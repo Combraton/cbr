@@ -1,0 +1,371 @@
+{
+  "binaries": {
+    "cbr": "sha256:e2ce3c8ab4d87667e146f52285a4ad3de3a60ce2244eedd2cc415b16c2e0b6fc",
+    "cbr-provider": "sha256:810b57254a7eff8abea1d5cf79253140ae577d3ad8396da79a7aee679b473d35"
+  },
+  "report_digest": "sha256:0eaafdaa5b871b0badc058cc792c7a2091aaea0189c58fdc2724c02d9864a3f5",
+  "runs": [
+    {
+      "id": "red-m27hs",
+      "input_digest_matches": true,
+      "key_scan": {
+        "counts": {
+          "bearer": 0,
+          "jwt": 0,
+          "keychain_service": 0,
+          "sk": 0
+        },
+        "files": 12
+      },
+      "ledger_equals_report": true,
+      "model": "MiniMax-M2.7-highspeed",
+      "store": {
+        "commands": 6,
+        "event_types": {
+          "context.packet.published": 3,
+          "context.request.changed": 6,
+          "evidence.artifact.appended": 1,
+          "evidence.artifact.sealed": 7,
+          "evidence.artifact.staged": 4
+        },
+        "ledger": [
+          {
+            "estimate": 27355,
+            "kind": "usage",
+            "tokens": 7235
+          },
+          {
+            "estimate": 27355,
+            "kind": "admitted_local",
+            "tokens": 0
+          },
+          {
+            "estimate": 35640,
+            "kind": "usage",
+            "tokens": 8962
+          },
+          {
+            "estimate": 35640,
+            "kind": "admitted_local",
+            "tokens": 0
+          },
+          {
+            "estimate": 11322,
+            "kind": "usage",
+            "tokens": 2517
+          },
+          {
+            "estimate": 11322,
+            "kind": "admitted_local",
+            "tokens": 0
+          }
+        ],
+        "model_calls": [
+          {
+            "answered_by": "MiniMax-M2.7-highspeed",
+            "call": "completion",
+            "configured_model": "MiniMax-M2.7-highspeed",
+            "dialect": "responses",
+            "input_tokens": 8438,
+            "output_tokens": 524,
+            "received_bytes": 3535,
+            "sent_bytes": 32451,
+            "status": "completed"
+          },
+          {
+            "answered_by": "MiniMax-M2.7-highspeed",
+            "call": "completion",
+            "configured_model": "MiniMax-M2.7-highspeed",
+            "dialect": "responses",
+            "input_tokens": 6586,
+            "output_tokens": 649,
+            "received_bytes": 4092,
+            "sent_bytes": 24267,
+            "status": "completed"
+          },
+          {
+            "answered_by": "MiniMax-M2.7-highspeed",
+            "call": "completion",
+            "configured_model": "MiniMax-M2.7-highspeed",
+            "dialect": "responses",
+            "input_tokens": 2131,
+            "output_tokens": 386,
+            "received_bytes": 3273,
+            "sent_bytes": 8234,
+            "status": "completed"
+          }
+        ],
+        "model_calls_all_configured_model": true,
+        "part_records": [
+          {
+            "id": "der.730b823e60f89db89b946bbbfd052cced8a4be0915ce71f19f1584bf6de88139",
+            "model": "MiniMax-M2.7-highspeed",
+            "outcome": null,
+            "selector": "project_large_result cbr-project-large-result/1 ingest.05a1090e4ec78780.1790350801245162000 sha256:05a1090e4ec78780d625c7e28958bed65ab0a4f83566debd9c64e5c583d2a326 part 1 of 3",
+            "usage": {
+              "attempts": [
+                {
+                  "admission": "admitted_local",
+                  "count_tokens": null,
+                  "counted_tokens": null,
+                  "input_tokens": 6586,
+                  "tokens": 7235
+                }
+              ],
+              "counted_tokens": null,
+              "input_tokens": 6586,
+              "repairs": 0,
+              "tokens": 7235
+            }
+          },
+          {
+            "id": "der.8f4cba7b9c980d29465a109e0749108e83b780932376ce7847b6244f221c43ad",
+            "model": "MiniMax-M2.7-highspeed",
+            "outcome": null,
+            "selector": "project_large_result cbr-project-large-result/1 ingest.05a1090e4ec78780.1790350801245162000 sha256:05a1090e4ec78780d625c7e28958bed65ab0a4f83566debd9c64e5c583d2a326 part 2 of 3",
+            "usage": {
+              "attempts": [
+                {
+                  "admission": "admitted_local",
+                  "count_tokens": null,
+                  "counted_tokens": null,
+                  "input_tokens": 8438,
+                  "tokens": 8962
+                }
+              ],
+              "counted_tokens": null,
+              "input_tokens": 8438,
+              "repairs": 0,
+              "tokens": 8962
+            }
+          },
+          {
+            "id": "der.e2509bae93c613069e485361eb041fd33cd1b36fd25e43e6a365dba1f706b6b8",
+            "model": "MiniMax-M2.7-highspeed",
+            "outcome": null,
+            "selector": "project_large_result cbr-project-large-result/1 ingest.05a1090e4ec78780.1790350801245162000 sha256:05a1090e4ec78780d625c7e28958bed65ab0a4f83566debd9c64e5c583d2a326 part 3 of 3",
+            "usage": {
+              "attempts": [
+                {
+                  "admission": "admitted_local",
+                  "count_tokens": null,
+                  "counted_tokens": null,
+                  "input_tokens": 2131,
+                  "tokens": 2517
+                }
+              ],
+              "counted_tokens": null,
+              "input_tokens": 2131,
+              "repairs": 0,
+              "tokens": 2517
+            }
+          }
+        ],
+        "spent": 18714
+      },
+      "through_client": {
+        "assisted": {
+          "cited_artifact": "ingest.05a1090e4ec78780.1790350801245162000",
+          "cited_digest": "sha256:05a1090e4ec78780d625c7e28958bed65ab0a4f83566debd9c64e5c583d2a326",
+          "excerpts_checked": 24,
+          "excerpts_not_equal_to_fetched_bytes": [],
+          "fetch_exit": 0,
+          "fetched_digest": "sha256:05a1090e4ec78780d625c7e28958bed65ab0a4f83566debd9c64e5c583d2a326",
+          "fetched_equals_input": true,
+          "packet_same_after_restart": true
+        },
+        "baseline": {
+          "cited_artifact": "ingest.05a1090e4ec78780.1790350801245162000",
+          "cited_digest": "sha256:05a1090e4ec78780d625c7e28958bed65ab0a4f83566debd9c64e5c583d2a326",
+          "excerpts_checked": 22,
+          "excerpts_not_equal_to_fetched_bytes": [],
+          "fetch_exit": 0,
+          "fetched_digest": "sha256:05a1090e4ec78780d625c7e28958bed65ab0a4f83566debd9c64e5c583d2a326",
+          "fetched_equals_input": true,
+          "packet_same_after_restart": true
+        }
+      }
+    },
+    {
+      "id": "red-m3",
+      "input_digest_matches": true,
+      "key_scan": {
+        "counts": {
+          "bearer": 0,
+          "jwt": 0,
+          "keychain_service": 0,
+          "sk": 0
+        },
+        "files": 12
+      },
+      "ledger_equals_report": true,
+      "model": "MiniMax-M3",
+      "store": {
+        "commands": 6,
+        "event_types": {
+          "context.packet.published": 3,
+          "context.request.changed": 6,
+          "evidence.artifact.appended": 1,
+          "evidence.artifact.sealed": 7,
+          "evidence.artifact.staged": 4
+        },
+        "ledger": [
+          {
+            "estimate": 27343,
+            "kind": "usage",
+            "tokens": 6826
+          },
+          {
+            "estimate": 27343,
+            "kind": "admitted_local",
+            "tokens": 0
+          },
+          {
+            "estimate": 35628,
+            "kind": "usage",
+            "tokens": 8587
+          },
+          {
+            "estimate": 35628,
+            "kind": "admitted_local",
+            "tokens": 0
+          },
+          {
+            "estimate": 11310,
+            "kind": "usage",
+            "tokens": 2283
+          },
+          {
+            "estimate": 11310,
+            "kind": "admitted_local",
+            "tokens": 0
+          }
+        ],
+        "model_calls": [
+          {
+            "answered_by": "MiniMax-M3",
+            "call": "completion",
+            "configured_model": "MiniMax-M3",
+            "dialect": "responses",
+            "input_tokens": 8581,
+            "output_tokens": 6,
+            "received_bytes": 1366,
+            "sent_bytes": 32439,
+            "status": "completed"
+          },
+          {
+            "answered_by": "MiniMax-M3",
+            "call": "completion",
+            "configured_model": "MiniMax-M3",
+            "dialect": "responses",
+            "input_tokens": 6729,
+            "output_tokens": 97,
+            "received_bytes": 1775,
+            "sent_bytes": 24255,
+            "status": "completed"
+          },
+          {
+            "answered_by": "MiniMax-M3",
+            "call": "completion",
+            "configured_model": "MiniMax-M3",
+            "dialect": "responses",
+            "input_tokens": 2274,
+            "output_tokens": 9,
+            "received_bytes": 1382,
+            "sent_bytes": 8222,
+            "status": "completed"
+          }
+        ],
+        "model_calls_all_configured_model": true,
+        "part_records": [
+          {
+            "id": "der.8ec76d143fa150285a597a714193b8be618f453ba413d0f1872e96f84a616f83",
+            "model": "MiniMax-M3",
+            "outcome": null,
+            "selector": "project_large_result cbr-project-large-result/1 ingest.05a1090e4ec78780.1790350822109154000 sha256:05a1090e4ec78780d625c7e28958bed65ab0a4f83566debd9c64e5c583d2a326 part 1 of 3",
+            "usage": {
+              "attempts": [
+                {
+                  "admission": "admitted_local",
+                  "count_tokens": null,
+                  "counted_tokens": null,
+                  "input_tokens": 6729,
+                  "tokens": 6826
+                }
+              ],
+              "counted_tokens": null,
+              "input_tokens": 6729,
+              "repairs": 0,
+              "tokens": 6826
+            }
+          },
+          {
+            "id": "der.dcdd745e5c1b351e94537c6c3f9e7fb3d55b459089812e9ee8f732a7dae24c9a",
+            "model": "MiniMax-M3",
+            "outcome": null,
+            "selector": "project_large_result cbr-project-large-result/1 ingest.05a1090e4ec78780.1790350822109154000 sha256:05a1090e4ec78780d625c7e28958bed65ab0a4f83566debd9c64e5c583d2a326 part 2 of 3",
+            "usage": {
+              "attempts": [
+                {
+                  "admission": "admitted_local",
+                  "count_tokens": null,
+                  "counted_tokens": null,
+                  "input_tokens": 8581,
+                  "tokens": 8587
+                }
+              ],
+              "counted_tokens": null,
+              "input_tokens": 8581,
+              "repairs": 0,
+              "tokens": 8587
+            }
+          },
+          {
+            "id": "der.f122c512323cb34789efb1051a1c8524b0d3df89ecec9d1761a4e6fe61629448",
+            "model": "MiniMax-M3",
+            "outcome": null,
+            "selector": "project_large_result cbr-project-large-result/1 ingest.05a1090e4ec78780.1790350822109154000 sha256:05a1090e4ec78780d625c7e28958bed65ab0a4f83566debd9c64e5c583d2a326 part 3 of 3",
+            "usage": {
+              "attempts": [
+                {
+                  "admission": "admitted_local",
+                  "count_tokens": null,
+                  "counted_tokens": null,
+                  "input_tokens": 2274,
+                  "tokens": 2283
+                }
+              ],
+              "counted_tokens": null,
+              "input_tokens": 2274,
+              "repairs": 0,
+              "tokens": 2283
+            }
+          }
+        ],
+        "spent": 17696
+      },
+      "through_client": {
+        "assisted": {
+          "cited_artifact": "ingest.05a1090e4ec78780.1790350822109154000",
+          "cited_digest": "sha256:05a1090e4ec78780d625c7e28958bed65ab0a4f83566debd9c64e5c583d2a326",
+          "excerpts_checked": 23,
+          "excerpts_not_equal_to_fetched_bytes": [],
+          "fetch_exit": 0,
+          "fetched_digest": "sha256:05a1090e4ec78780d625c7e28958bed65ab0a4f83566debd9c64e5c583d2a326",
+          "fetched_equals_input": true,
+          "packet_same_after_restart": true
+        },
+        "baseline": {
+          "cited_artifact": "ingest.05a1090e4ec78780.1790350822109154000",
+          "cited_digest": "sha256:05a1090e4ec78780d625c7e28958bed65ab0a4f83566debd9c64e5c583d2a326",
+          "excerpts_checked": 22,
+          "excerpts_not_equal_to_fetched_bytes": [],
+          "fetch_exit": 0,
+          "fetched_digest": "sha256:05a1090e4ec78780d625c7e28958bed65ab0a4f83566debd9c64e5c583d2a326",
+          "fetched_equals_input": true,
+          "packet_same_after_restart": true
+        }
+      }
+    }
+  ]
+}

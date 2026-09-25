@@ -1,0 +1,1567 @@
+{
+ "report_gates": {
+  "A_mode_live": true,
+  "A_not_stopped": true,
+  "A_six_runs": true,
+  "A_total_within_ceiling": true
+ },
+ "runs": [
+  {
+   "id": "red-m27hs",
+   "kind": "red",
+   "model": "MiniMax-M2.7-highspeed",
+   "gates": {
+    "A_right_input": true,
+    "A_right_model": true,
+    "I_spend": true
+   },
+   "notes": [],
+   "arms": {
+    "baseline": {
+     "gates": {
+      "B_satisfied_and_checked": true,
+      "C_reverified": true,
+      "D_bounds": true,
+      "E_header_honest": true,
+      "F_how_line": true,
+      "G_reasons_honest": true
+     },
+     "criteria": {
+      "R1": 4.0,
+      "R2": 4,
+      "R3": 4,
+      "R4": 4,
+      "R5": 4,
+      "R6": 4,
+      "J1": 4,
+      "J2": 3
+     },
+     "detail": {
+      "per_test": [
+       {
+        "name": "the_harness_stops_before_a_run_its_ceiling_could_not_cover",
+        "binary": "j2_harness",
+        "level": 4,
+        "status": "complete"
+       },
+       {
+        "name": "the_harness_refuses_an_input_that_carries_a_machine_path_before_anything_starts",
+        "binary": "j2_harness",
+        "level": 4,
+        "status": "complete"
+       },
+       {
+        "name": "the_harness_refuses_every_run_it_should_before_anything_is_spent",
+        "binary": "j2_harness",
+        "level": 4,
+        "status": "complete"
+       },
+       {
+        "name": "a_dry_run_projects_a_test_log_checks_it_against_its_bytes_and_rebuilds_it",
+        "binary": "j2_harness",
+        "level": 4,
+        "status": "complete"
+       },
+       {
+        "name": "an_input_over_the_projections_capacity_is_reported_as_such_and_nothing_is_asked",
+        "binary": "j2_harness",
+        "level": 4,
+        "status": "complete"
+       },
+       {
+        "name": "the_harness_names_every_way_a_projection_can_fail_its_checks",
+        "binary": "j2_harness",
+        "level": 4,
+        "status": "complete"
+       },
+       {
+        "name": "a_small_result_is_carried_whole_and_asks_nothing",
+        "binary": "journey_two",
+        "level": 4,
+        "status": "complete"
+       },
+       {
+        "name": "bytes_that_are_not_text_are_declared_omitted_whole",
+        "binary": "journey_two",
+        "level": 4,
+        "status": "complete"
+       },
+       {
+        "name": "a_projection_the_investigation_limit_cannot_cover_is_not_started",
+        "binary": "journey_two",
+        "level": 4,
+        "status": "complete"
+       },
+       {
+        "name": "a_part_that_answers_outside_its_offer_leaves_the_item_unmet_with_that_reason",
+        "binary": "journey_two",
+        "level": 4,
+        "status": "complete"
+       },
+       {
+        "name": "a_parts_record_is_readable_only_by_a_reader_who_can_read_the_evidence_it_was_made_from",
+        "binary": "journey_two",
+        "level": 4,
+        "status": "complete"
+       },
+       {
+        "name": "a_projection_rebuilt_offline_reproduces_its_section",
+        "binary": "journey_two",
+        "level": 4,
+        "status": "complete"
+       },
+       {
+        "name": "a_large_test_log_is_projected_and_every_byte_is_carried_or_declared_omitted",
+        "binary": "journey_two",
+        "level": 4,
+        "status": "complete"
+       },
+       {
+        "name": "a_json_document_is_projected_by_its_structure_and_its_failures_are_named",
+        "binary": "journey_two",
+        "level": 4,
+        "status": "complete"
+       },
+       {
+        "name": "a_parts_record_is_sealed_under_the_artifact_it_showed_and_no_other",
+        "binary": "journey_two",
+        "level": 4,
+        "status": "complete"
+       },
+       {
+        "name": "evidence_the_submitter_cannot_read_is_unavailable_exactly_as_evidence_that_does_not_exist",
+        "binary": "journey_two",
+        "level": 4,
+        "status": "complete"
+       },
+       {
+        "name": "with_no_investigation_the_projection_carries_run_identity_and_the_failures",
+        "binary": "journey_two",
+        "level": 4,
+        "status": "complete"
+       },
+       {
+        "name": "an_input_over_the_projections_capacity_is_insufficient_capacity_and_never_a_partial_summary",
+        "binary": "journey_two",
+        "level": 4,
+        "status": "complete"
+       }
+      ],
+      "assertion_levels": [
+       4,
+       4,
+       4,
+       4,
+       4,
+       4,
+       4,
+       4,
+       4,
+       4,
+       4,
+       4,
+       4,
+       4,
+       4,
+       4,
+       4,
+       4
+      ],
+      "names_identified": 18,
+      "run_level_items": {
+       "result_line_1": true,
+       "result_line_2": true,
+       "rerun_lines": true,
+       "targets_block": true
+      },
+      "status_counts": {
+       "complete": 18,
+       "located": 0,
+       "unlocated": 0,
+       "invisible": 0
+      },
+      "noise_bytes": 0,
+      "assertion_bytes_recall": 1.0,
+      "block_bytes_recall": 1.0,
+      "result_lines_carried": 17,
+      "signatures_shown": 5,
+      "content_bytes": 16336,
+      "excerpts": 22,
+      "omissions": 22,
+      "carried_bytes": 11872,
+      "unresolved": 0,
+      "identity_lines_in_not_selected": 0,
+      "masked_sha256": "8fee63a1456969997aa5ac1378fd7dab05f657ea9f617cbd66610e2ffe3b561b",
+      "C0_matches_dry_run": true,
+      "J1_spread_flag": false,
+      "J2_spread_flag": false
+     },
+     "S_script": 70.0,
+     "S_script_max": 70,
+     "complete": true,
+     "S": 97.5,
+     "gates_pass": true,
+     "verdict": "USEFUL"
+    },
+    "assisted": {
+     "gates": {
+      "B_satisfied_and_checked": true,
+      "C_reverified": true,
+      "D_bounds": true,
+      "E_header_honest": true,
+      "F_how_line": true,
+      "H_replay": true,
+      "I_records": true,
+      "G_reasons_honest": true
+     },
+     "criteria": {
+      "R1": 3.0,
+      "R2": 4,
+      "R3": 4,
+      "R4": 3,
+      "R5": 2,
+      "R6": 4,
+      "J1": 2,
+      "J2": 2
+     },
+     "detail": {
+      "per_test": [
+       {
+        "name": "the_harness_stops_before_a_run_its_ceiling_could_not_cover",
+        "binary": "j2_harness",
+        "level": 1,
+        "status": "unlocated"
+       },
+       {
+        "name": "the_harness_refuses_an_input_that_carries_a_machine_path_before_anything_starts",
+        "binary": "j2_harness",
+        "level": 1,
+        "status": "unlocated"
+       },
+       {
+        "name": "the_harness_refuses_every_run_it_should_before_anything_is_spent",
+        "binary": "j2_harness",
+        "level": 1,
+        "status": "unlocated"
+       },
+       {
+        "name": "a_dry_run_projects_a_test_log_checks_it_against_its_bytes_and_rebuilds_it",
+        "binary": "j2_harness",
+        "level": 1,
+        "status": "unlocated"
+       },
+       {
+        "name": "an_input_over_the_projections_capacity_is_reported_as_such_and_nothing_is_asked",
+        "binary": "j2_harness",
+        "level": 1,
+        "status": "unlocated"
+       },
+       {
+        "name": "the_harness_names_every_way_a_projection_can_fail_its_checks",
+        "binary": "j2_harness",
+        "level": 1,
+        "status": "unlocated"
+       },
+       {
+        "name": "a_small_result_is_carried_whole_and_asks_nothing",
+        "binary": "journey_two",
+        "level": 4,
+        "status": "complete"
+       },
+       {
+        "name": "bytes_that_are_not_text_are_declared_omitted_whole",
+        "binary": "journey_two",
+        "level": 4,
+        "status": "complete"
+       },
+       {
+        "name": "a_projection_the_investigation_limit_cannot_cover_is_not_started",
+        "binary": "journey_two",
+        "level": 4,
+        "status": "complete"
+       },
+       {
+        "name": "a_part_that_answers_outside_its_offer_leaves_the_item_unmet_with_that_reason",
+        "binary": "journey_two",
+        "level": 4,
+        "status": "complete"
+       },
+       {
+        "name": "a_parts_record_is_readable_only_by_a_reader_who_can_read_the_evidence_it_was_made_from",
+        "binary": "journey_two",
+        "level": 4,
+        "status": "complete"
+       },
+       {
+        "name": "a_projection_rebuilt_offline_reproduces_its_section",
+        "binary": "journey_two",
+        "level": 4,
+        "status": "complete"
+       },
+       {
+        "name": "a_large_test_log_is_projected_and_every_byte_is_carried_or_declared_omitted",
+        "binary": "journey_two",
+        "level": 4,
+        "status": "complete"
+       },
+       {
+        "name": "a_json_document_is_projected_by_its_structure_and_its_failures_are_named",
+        "binary": "journey_two",
+        "level": 4,
+        "status": "complete"
+       },
+       {
+        "name": "a_parts_record_is_sealed_under_the_artifact_it_showed_and_no_other",
+        "binary": "journey_two",
+        "level": 4,
+        "status": "complete"
+       },
+       {
+        "name": "evidence_the_submitter_cannot_read_is_unavailable_exactly_as_evidence_that_does_not_exist",
+        "binary": "journey_two",
+        "level": 4,
+        "status": "complete"
+       },
+       {
+        "name": "with_no_investigation_the_projection_carries_run_identity_and_the_failures",
+        "binary": "journey_two",
+        "level": 4,
+        "status": "complete"
+       },
+       {
+        "name": "an_input_over_the_projections_capacity_is_insufficient_capacity_and_never_a_partial_summary",
+        "binary": "journey_two",
+        "level": 4,
+        "status": "complete"
+       }
+      ],
+      "assertion_levels": [
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       4,
+       4,
+       4,
+       4,
+       4,
+       4,
+       4,
+       4,
+       4,
+       4,
+       4,
+       4
+      ],
+      "names_identified": 18,
+      "run_level_items": {
+       "result_line_1": true,
+       "result_line_2": true,
+       "rerun_lines": false,
+       "targets_block": true
+      },
+      "status_counts": {
+       "complete": 12,
+       "located": 0,
+       "unlocated": 6,
+       "invisible": 0
+      },
+      "noise_bytes": 0,
+      "assertion_bytes_recall": 0.73,
+      "block_bytes_recall": 0.7097,
+      "result_lines_carried": 21,
+      "signatures_shown": 3,
+      "content_bytes": 15037,
+      "excerpts": 24,
+      "omissions": 24,
+      "carried_bytes": 10339,
+      "unresolved": 0,
+      "identity_lines_in_not_selected": 2,
+      "masked_sha256": "288d997a0a77acd00ccef8b950d69be91a053bca83ad5f1bf09dbfb534516557",
+      "selection": {
+       "parts": [
+        {
+         "selector_part": "1 of 3",
+         "offered": 64,
+         "relevant_offered": 42,
+         "chosen": 30,
+         "chosen_relevant": 30,
+         "unknown_ids": []
+        },
+        {
+         "selector_part": "2 of 3",
+         "offered": 23,
+         "relevant_offered": 0,
+         "chosen": 0,
+         "chosen_relevant": 0,
+         "unknown_ids": []
+        },
+        {
+         "selector_part": "3 of 3",
+         "offered": 10,
+         "relevant_offered": 1,
+         "chosen": 1,
+         "chosen_relevant": 1,
+         "unknown_ids": []
+        }
+       ],
+       "flags": [],
+       "chosen_ranges_misdeclared": []
+      },
+      "J1_spread_flag": false,
+      "J2_spread_flag": false
+     },
+     "S_script": 55.0,
+     "S_script_max": 70,
+     "complete": true,
+     "S": 70.0,
+     "gates_pass": true,
+     "verdict": "PARTIAL"
+    }
+   },
+   "cost": {
+    "tokens": 18714,
+    "calls": 3,
+    "input_tokens": 17155,
+    "output_tokens": 1559,
+    "repairs": 0,
+    "latency_ms": [
+     10347,
+     10136,
+     9487
+    ],
+    "estimate": 74317,
+    "part_records": 3,
+    "parts": 3,
+    "whole_artifact_tokens_ref": 16314,
+    "tokens_over_whole_artifact": 1.15,
+    "launch_ceiling": 976320,
+    "script_points_per_10k_tokens": -8.015,
+    "verdict": "NO RETURN"
+   },
+   "comparison": {
+    "verdict": "WORSE",
+    "dS_script": -15.0,
+    "dS": -27.5,
+    "dJ1": -2,
+    "pairwise": [
+     "baseline",
+     "baseline",
+     "baseline"
+    ],
+    "pairwise_majority": "baseline",
+    "why": [
+     "red non-inferiority: 6 tests at a lower level than the baseline",
+     "dS_script -15.0",
+     "dJ1 -2"
+    ],
+    "annotations": []
+   }
+  },
+  {
+   "id": "red-m3",
+   "kind": "red",
+   "model": "MiniMax-M3",
+   "gates": {
+    "A_right_input": true,
+    "A_right_model": true,
+    "I_spend": true
+   },
+   "notes": [],
+   "arms": {
+    "baseline": {
+     "gates": {
+      "B_satisfied_and_checked": true,
+      "C_reverified": true,
+      "D_bounds": true,
+      "E_header_honest": true,
+      "F_how_line": true,
+      "G_reasons_honest": true
+     },
+     "criteria": {
+      "R1": 4.0,
+      "R2": 4,
+      "R3": 4,
+      "R4": 4,
+      "R5": 4,
+      "R6": 4,
+      "J1": 4,
+      "J2": 3
+     },
+     "detail": {
+      "per_test": [
+       {
+        "name": "the_harness_stops_before_a_run_its_ceiling_could_not_cover",
+        "binary": "j2_harness",
+        "level": 4,
+        "status": "complete"
+       },
+       {
+        "name": "the_harness_refuses_an_input_that_carries_a_machine_path_before_anything_starts",
+        "binary": "j2_harness",
+        "level": 4,
+        "status": "complete"
+       },
+       {
+        "name": "the_harness_refuses_every_run_it_should_before_anything_is_spent",
+        "binary": "j2_harness",
+        "level": 4,
+        "status": "complete"
+       },
+       {
+        "name": "a_dry_run_projects_a_test_log_checks_it_against_its_bytes_and_rebuilds_it",
+        "binary": "j2_harness",
+        "level": 4,
+        "status": "complete"
+       },
+       {
+        "name": "an_input_over_the_projections_capacity_is_reported_as_such_and_nothing_is_asked",
+        "binary": "j2_harness",
+        "level": 4,
+        "status": "complete"
+       },
+       {
+        "name": "the_harness_names_every_way_a_projection_can_fail_its_checks",
+        "binary": "j2_harness",
+        "level": 4,
+        "status": "complete"
+       },
+       {
+        "name": "a_small_result_is_carried_whole_and_asks_nothing",
+        "binary": "journey_two",
+        "level": 4,
+        "status": "complete"
+       },
+       {
+        "name": "bytes_that_are_not_text_are_declared_omitted_whole",
+        "binary": "journey_two",
+        "level": 4,
+        "status": "complete"
+       },
+       {
+        "name": "a_projection_the_investigation_limit_cannot_cover_is_not_started",
+        "binary": "journey_two",
+        "level": 4,
+        "status": "complete"
+       },
+       {
+        "name": "a_part_that_answers_outside_its_offer_leaves_the_item_unmet_with_that_reason",
+        "binary": "journey_two",
+        "level": 4,
+        "status": "complete"
+       },
+       {
+        "name": "a_parts_record_is_readable_only_by_a_reader_who_can_read_the_evidence_it_was_made_from",
+        "binary": "journey_two",
+        "level": 4,
+        "status": "complete"
+       },
+       {
+        "name": "a_projection_rebuilt_offline_reproduces_its_section",
+        "binary": "journey_two",
+        "level": 4,
+        "status": "complete"
+       },
+       {
+        "name": "a_large_test_log_is_projected_and_every_byte_is_carried_or_declared_omitted",
+        "binary": "journey_two",
+        "level": 4,
+        "status": "complete"
+       },
+       {
+        "name": "a_json_document_is_projected_by_its_structure_and_its_failures_are_named",
+        "binary": "journey_two",
+        "level": 4,
+        "status": "complete"
+       },
+       {
+        "name": "a_parts_record_is_sealed_under_the_artifact_it_showed_and_no_other",
+        "binary": "journey_two",
+        "level": 4,
+        "status": "complete"
+       },
+       {
+        "name": "evidence_the_submitter_cannot_read_is_unavailable_exactly_as_evidence_that_does_not_exist",
+        "binary": "journey_two",
+        "level": 4,
+        "status": "complete"
+       },
+       {
+        "name": "with_no_investigation_the_projection_carries_run_identity_and_the_failures",
+        "binary": "journey_two",
+        "level": 4,
+        "status": "complete"
+       },
+       {
+        "name": "an_input_over_the_projections_capacity_is_insufficient_capacity_and_never_a_partial_summary",
+        "binary": "journey_two",
+        "level": 4,
+        "status": "complete"
+       }
+      ],
+      "assertion_levels": [
+       4,
+       4,
+       4,
+       4,
+       4,
+       4,
+       4,
+       4,
+       4,
+       4,
+       4,
+       4,
+       4,
+       4,
+       4,
+       4,
+       4,
+       4
+      ],
+      "names_identified": 18,
+      "run_level_items": {
+       "result_line_1": true,
+       "result_line_2": true,
+       "rerun_lines": true,
+       "targets_block": true
+      },
+      "status_counts": {
+       "complete": 18,
+       "located": 0,
+       "unlocated": 0,
+       "invisible": 0
+      },
+      "noise_bytes": 0,
+      "assertion_bytes_recall": 1.0,
+      "block_bytes_recall": 1.0,
+      "result_lines_carried": 17,
+      "signatures_shown": 5,
+      "content_bytes": 16336,
+      "excerpts": 22,
+      "omissions": 22,
+      "carried_bytes": 11872,
+      "unresolved": 0,
+      "identity_lines_in_not_selected": 0,
+      "masked_sha256": "8fee63a1456969997aa5ac1378fd7dab05f657ea9f617cbd66610e2ffe3b561b",
+      "C0_matches_dry_run": true,
+      "J1_spread_flag": false,
+      "J2_spread_flag": false
+     },
+     "S_script": 70.0,
+     "S_script_max": 70,
+     "complete": true,
+     "S": 97.5,
+     "gates_pass": true,
+     "verdict": "USEFUL"
+    },
+    "assisted": {
+     "gates": {
+      "B_satisfied_and_checked": true,
+      "C_reverified": true,
+      "D_bounds": true,
+      "E_header_honest": true,
+      "F_how_line": true,
+      "H_replay": true,
+      "I_records": true,
+      "G_reasons_honest": true
+     },
+     "criteria": {
+      "R1": 1.5,
+      "R2": 4,
+      "R3": 4,
+      "R4": 3,
+      "R5": 1,
+      "R6": 4,
+      "J1": 2,
+      "J2": 2
+     },
+     "detail": {
+      "per_test": [
+       {
+        "name": "the_harness_stops_before_a_run_its_ceiling_could_not_cover",
+        "binary": "j2_harness",
+        "level": 1,
+        "status": "unlocated"
+       },
+       {
+        "name": "the_harness_refuses_an_input_that_carries_a_machine_path_before_anything_starts",
+        "binary": "j2_harness",
+        "level": 1,
+        "status": "unlocated"
+       },
+       {
+        "name": "the_harness_refuses_every_run_it_should_before_anything_is_spent",
+        "binary": "j2_harness",
+        "level": 1,
+        "status": "unlocated"
+       },
+       {
+        "name": "a_dry_run_projects_a_test_log_checks_it_against_its_bytes_and_rebuilds_it",
+        "binary": "j2_harness",
+        "level": 1,
+        "status": "unlocated"
+       },
+       {
+        "name": "an_input_over_the_projections_capacity_is_reported_as_such_and_nothing_is_asked",
+        "binary": "j2_harness",
+        "level": 1,
+        "status": "unlocated"
+       },
+       {
+        "name": "the_harness_names_every_way_a_projection_can_fail_its_checks",
+        "binary": "j2_harness",
+        "level": 1,
+        "status": "unlocated"
+       },
+       {
+        "name": "a_small_result_is_carried_whole_and_asks_nothing",
+        "binary": "journey_two",
+        "level": 4,
+        "status": "complete"
+       },
+       {
+        "name": "bytes_that_are_not_text_are_declared_omitted_whole",
+        "binary": "journey_two",
+        "level": 1,
+        "status": "unlocated"
+       },
+       {
+        "name": "a_projection_the_investigation_limit_cannot_cover_is_not_started",
+        "binary": "journey_two",
+        "level": 1,
+        "status": "unlocated"
+       },
+       {
+        "name": "a_part_that_answers_outside_its_offer_leaves_the_item_unmet_with_that_reason",
+        "binary": "journey_two",
+        "level": 1,
+        "status": "unlocated"
+       },
+       {
+        "name": "a_parts_record_is_readable_only_by_a_reader_who_can_read_the_evidence_it_was_made_from",
+        "binary": "journey_two",
+        "level": 1,
+        "status": "unlocated"
+       },
+       {
+        "name": "a_projection_rebuilt_offline_reproduces_its_section",
+        "binary": "journey_two",
+        "level": 1,
+        "status": "unlocated"
+       },
+       {
+        "name": "a_large_test_log_is_projected_and_every_byte_is_carried_or_declared_omitted",
+        "binary": "journey_two",
+        "level": 1,
+        "status": "unlocated"
+       },
+       {
+        "name": "a_json_document_is_projected_by_its_structure_and_its_failures_are_named",
+        "binary": "journey_two",
+        "level": 1,
+        "status": "unlocated"
+       },
+       {
+        "name": "a_parts_record_is_sealed_under_the_artifact_it_showed_and_no_other",
+        "binary": "journey_two",
+        "level": 1,
+        "status": "unlocated"
+       },
+       {
+        "name": "evidence_the_submitter_cannot_read_is_unavailable_exactly_as_evidence_that_does_not_exist",
+        "binary": "journey_two",
+        "level": 4,
+        "status": "complete"
+       },
+       {
+        "name": "with_no_investigation_the_projection_carries_run_identity_and_the_failures",
+        "binary": "journey_two",
+        "level": 1,
+        "status": "unlocated"
+       },
+       {
+        "name": "an_input_over_the_projections_capacity_is_insufficient_capacity_and_never_a_partial_summary",
+        "binary": "journey_two",
+        "level": 4,
+        "status": "complete"
+       }
+      ],
+      "assertion_levels": [
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       4,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       1,
+       4,
+       1,
+       4
+      ],
+      "names_identified": 18,
+      "run_level_items": {
+       "result_line_1": true,
+       "result_line_2": true,
+       "rerun_lines": false,
+       "targets_block": true
+      },
+      "status_counts": {
+       "complete": 3,
+       "located": 0,
+       "unlocated": 15,
+       "invisible": 0
+      },
+      "noise_bytes": 0,
+      "assertion_bytes_recall": 0.3957,
+      "block_bytes_recall": 0.3448,
+      "result_lines_carried": 19,
+      "signatures_shown": 3,
+      "content_bytes": 13506,
+      "excerpts": 23,
+      "omissions": 23,
+      "carried_bytes": 8935,
+      "unresolved": 0,
+      "identity_lines_in_not_selected": 2,
+      "masked_sha256": "421015ec43446f903fc22befcf774e9ab015c0c871a953442d3b8f6cd51a45bc",
+      "selection": {
+       "parts": [
+        {
+         "selector_part": "1 of 3",
+         "offered": 64,
+         "relevant_offered": 42,
+         "chosen": 23,
+         "chosen_relevant": 23,
+         "unknown_ids": []
+        },
+        {
+         "selector_part": "2 of 3",
+         "offered": 23,
+         "relevant_offered": 0,
+         "chosen": 0,
+         "chosen_relevant": 0,
+         "unknown_ids": []
+        },
+        {
+         "selector_part": "3 of 3",
+         "offered": 10,
+         "relevant_offered": 1,
+         "chosen": 1,
+         "chosen_relevant": 1,
+         "unknown_ids": []
+        }
+       ],
+       "flags": [],
+       "chosen_ranges_misdeclared": []
+      },
+      "J1_spread_flag": false,
+      "J2_spread_flag": false
+     },
+     "S_script": 41.25,
+     "S_script_max": 70,
+     "complete": true,
+     "S": 56.25,
+     "gates_pass": true,
+     "verdict": "PARTIAL"
+    }
+   },
+   "cost": {
+    "tokens": 17696,
+    "calls": 3,
+    "input_tokens": 17584,
+    "output_tokens": 112,
+    "repairs": 0,
+    "latency_ms": [
+     1673,
+     1580,
+     1968
+    ],
+    "estimate": 74281,
+    "part_records": 3,
+    "parts": 3,
+    "whole_artifact_tokens_ref": 16314,
+    "tokens_over_whole_artifact": 1.08,
+    "launch_ceiling": 957606,
+    "script_points_per_10k_tokens": -16.247,
+    "verdict": "NO RETURN"
+   },
+   "comparison": {
+    "verdict": "WORSE",
+    "dS_script": -28.75,
+    "dS": -41.25,
+    "dJ1": -2,
+    "pairwise": [
+     "baseline",
+     "baseline",
+     "baseline"
+    ],
+    "pairwise_majority": "baseline",
+    "why": [
+     "red non-inferiority: 15 tests at a lower level than the baseline",
+     "dS_script -28.75",
+     "dJ1 -2"
+    ],
+    "annotations": []
+   }
+  },
+  {
+   "id": "log-m27hs",
+   "kind": "green",
+   "model": "MiniMax-M2.7-highspeed",
+   "gates": {
+    "A_right_input": true,
+    "A_right_model": true,
+    "I_spend": true
+   },
+   "notes": [],
+   "arms": {
+    "baseline": {
+     "gates": {
+      "B_satisfied_and_checked": true,
+      "C_reverified": true,
+      "D_bounds": true,
+      "E_header_honest": true,
+      "F_how_line": true,
+      "G_reasons_honest": true
+     },
+     "criteria": {
+      "G1": 4,
+      "G2": 1,
+      "G3": 0,
+      "G4": 2,
+      "G5": 4,
+      "J1": 3.0,
+      "J2": 3.0
+     },
+     "detail": {
+      "tests_corroborated": 173,
+      "tests_total": 645,
+      "share": 0.2682,
+      "result_lines_carried": 25,
+      "ignored_line": false,
+      "ignored_result_line": true,
+      "noise_bytes": 0,
+      "content_bytes": 8470,
+      "excerpts": 24,
+      "omissions": 25,
+      "carried_bytes": 5098,
+      "unresolved": 0,
+      "identity_lines_in_not_selected": 0,
+      "masked_sha256": "52afd8657e1e41e1e9d3369aa94b9d1b405904ef6c1869f410c0907abeeeb679",
+      "C0_matches_dry_run": true,
+      "J1_spread_flag": false,
+      "J2_spread_flag": false
+     },
+     "S_script": 40.0,
+     "S_script_max": 65,
+     "complete": true,
+     "S": 66.25,
+     "gates_pass": true,
+     "verdict": "PARTIAL"
+    },
+    "assisted": {
+     "gates": {
+      "B_satisfied_and_checked": true,
+      "C_reverified": true,
+      "D_bounds": true,
+      "E_header_honest": true,
+      "F_how_line": true,
+      "H_replay": true,
+      "I_records": true,
+      "G_reasons_honest": true
+     },
+     "criteria": {
+      "G1": 4,
+      "G2": 1,
+      "G3": 0,
+      "G4": 2,
+      "G5": 4,
+      "J1": 3.0,
+      "J2": 3.0
+     },
+     "detail": {
+      "tests_corroborated": 173,
+      "tests_total": 645,
+      "share": 0.2682,
+      "result_lines_carried": 25,
+      "ignored_line": false,
+      "ignored_result_line": true,
+      "noise_bytes": 0,
+      "content_bytes": 8451,
+      "excerpts": 24,
+      "omissions": 25,
+      "carried_bytes": 5098,
+      "unresolved": 0,
+      "identity_lines_in_not_selected": 0,
+      "masked_sha256": "0784e68b84eeb7fc6dd4462404233a49a654d31066bad04185cc251d757876a7",
+      "selection": {
+       "parts": [
+        {
+         "selector_part": "1 of 2",
+         "offered": 43,
+         "relevant_offered": 1,
+         "chosen": 0,
+         "chosen_relevant": 0,
+         "unknown_ids": []
+        },
+        {
+         "selector_part": "2 of 2",
+         "offered": 22,
+         "relevant_offered": 0,
+         "chosen": 0,
+         "chosen_relevant": 0,
+         "unknown_ids": []
+        }
+       ],
+       "flags": [
+        "chose-none"
+       ],
+       "chosen_ranges_misdeclared": []
+      },
+      "J1_spread_flag": false,
+      "J2_spread_flag": false
+     },
+     "S_script": 40.0,
+     "S_script_max": 65,
+     "complete": true,
+     "S": 66.25,
+     "gates_pass": true,
+     "verdict": "PARTIAL"
+    }
+   },
+   "cost": {
+    "tokens": 19280,
+    "calls": 2,
+    "input_tokens": 17464,
+    "output_tokens": 1816,
+    "repairs": 0,
+    "latency_ms": [
+     22964,
+     14039
+    ],
+    "estimate": 70101,
+    "part_records": 2,
+    "parts": 2,
+    "whole_artifact_tokens_ref": 16634,
+    "tokens_over_whole_artifact": 1.16,
+    "launch_ceiling": 1952640,
+    "script_points_per_10k_tokens": 0.0,
+    "verdict": "NO RETURN"
+   },
+   "comparison": {
+    "verdict": "EQUAL",
+    "dS_script": 0.0,
+    "dS": 0.0,
+    "dJ1": 0.0,
+    "pairwise": [
+     "none",
+     "none",
+     "none"
+    ],
+    "pairwise_majority": "none",
+    "why": [],
+    "annotations": []
+   }
+  },
+  {
+   "id": "log-m3",
+   "kind": "green",
+   "model": "MiniMax-M3",
+   "gates": {
+    "A_right_input": true,
+    "A_right_model": true,
+    "I_spend": true
+   },
+   "notes": [],
+   "arms": {
+    "baseline": {
+     "gates": {
+      "B_satisfied_and_checked": true,
+      "C_reverified": true,
+      "D_bounds": true,
+      "E_header_honest": true,
+      "F_how_line": true,
+      "G_reasons_honest": true
+     },
+     "criteria": {
+      "G1": 4,
+      "G2": 1,
+      "G3": 0,
+      "G4": 2,
+      "G5": 4,
+      "J1": 3.0,
+      "J2": 3.0
+     },
+     "detail": {
+      "tests_corroborated": 173,
+      "tests_total": 645,
+      "share": 0.2682,
+      "result_lines_carried": 25,
+      "ignored_line": false,
+      "ignored_result_line": true,
+      "noise_bytes": 0,
+      "content_bytes": 8470,
+      "excerpts": 24,
+      "omissions": 25,
+      "carried_bytes": 5098,
+      "unresolved": 0,
+      "identity_lines_in_not_selected": 0,
+      "masked_sha256": "52afd8657e1e41e1e9d3369aa94b9d1b405904ef6c1869f410c0907abeeeb679",
+      "C0_matches_dry_run": true,
+      "J1_spread_flag": false,
+      "J2_spread_flag": false
+     },
+     "S_script": 40.0,
+     "S_script_max": 65,
+     "complete": true,
+     "S": 66.25,
+     "gates_pass": true,
+     "verdict": "PARTIAL"
+    },
+    "assisted": {
+     "gates": {
+      "B_satisfied_and_checked": true,
+      "C_reverified": true,
+      "D_bounds": true,
+      "E_header_honest": true,
+      "F_how_line": true,
+      "H_replay": true,
+      "I_records": true,
+      "G_reasons_honest": true
+     },
+     "criteria": {
+      "G1": 4,
+      "G2": 1,
+      "G3": 0,
+      "G4": 2,
+      "G5": 4,
+      "J1": 3.0,
+      "J2": 3.0
+     },
+     "detail": {
+      "tests_corroborated": 173,
+      "tests_total": 645,
+      "share": 0.2682,
+      "result_lines_carried": 25,
+      "ignored_line": false,
+      "ignored_result_line": true,
+      "noise_bytes": 0,
+      "content_bytes": 8451,
+      "excerpts": 24,
+      "omissions": 25,
+      "carried_bytes": 5098,
+      "unresolved": 0,
+      "identity_lines_in_not_selected": 0,
+      "masked_sha256": "0784e68b84eeb7fc6dd4462404233a49a654d31066bad04185cc251d757876a7",
+      "selection": {
+       "parts": [
+        {
+         "selector_part": "1 of 2",
+         "offered": 43,
+         "relevant_offered": 1,
+         "chosen": 0,
+         "chosen_relevant": 0,
+         "unknown_ids": []
+        },
+        {
+         "selector_part": "2 of 2",
+         "offered": 22,
+         "relevant_offered": 0,
+         "chosen": 0,
+         "chosen_relevant": 0,
+         "unknown_ids": []
+        }
+       ],
+       "flags": [
+        "chose-none"
+       ],
+       "chosen_ranges_misdeclared": []
+      },
+      "J1_spread_flag": false,
+      "J2_spread_flag": false
+     },
+     "S_script": 40.0,
+     "S_script_max": 65,
+     "complete": true,
+     "S": 66.25,
+     "gates_pass": true,
+     "verdict": "PARTIAL"
+    }
+   },
+   "cost": {
+    "tokens": 17762,
+    "calls": 2,
+    "input_tokens": 17750,
+    "output_tokens": 12,
+    "repairs": 0,
+    "latency_ms": [
+     2166,
+     2152
+    ],
+    "estimate": 70077,
+    "part_records": 2,
+    "parts": 2,
+    "whole_artifact_tokens_ref": 16634,
+    "tokens_over_whole_artifact": 1.07,
+    "launch_ceiling": 1933360,
+    "script_points_per_10k_tokens": 0.0,
+    "verdict": "NO RETURN"
+   },
+   "comparison": {
+    "verdict": "EQUAL",
+    "dS_script": 0.0,
+    "dS": 0.0,
+    "dJ1": 0.0,
+    "pairwise": [
+     "none",
+     "none",
+     "none"
+    ],
+    "pairwise_majority": "none",
+    "why": [],
+    "annotations": []
+   }
+  },
+  {
+   "id": "core-m27hs",
+   "kind": "core",
+   "model": "MiniMax-M2.7-highspeed",
+   "gates": {
+    "A_right_input": true,
+    "A_right_model": true,
+    "I_spend": true
+   },
+   "notes": [],
+   "arms": {
+    "baseline": {
+     "gates": {
+      "B_satisfied_and_checked": true,
+      "C_reverified": true,
+      "D_bounds": true,
+      "E_header_honest": true,
+      "F_how_line": true,
+      "G_reasons_honest": true
+     },
+     "criteria": {
+      "C1": 4,
+      "C2": 4,
+      "C3": 0.0,
+      "C4": 4,
+      "C5": 4,
+      "J1": 3.0,
+      "J2": 3.0
+     },
+     "detail": {
+      "unsupported_named": [],
+      "pass_record_bytes": 0,
+      "pass_records_touched": 0,
+      "identity_members_carried": 4,
+      "content_bytes": 1905,
+      "excerpts": 2,
+      "omissions": 2,
+      "carried_bytes": 1252,
+      "unresolved": 0,
+      "identity_lines_in_not_selected": 0,
+      "masked_sha256": "5961b748208d92fc0fb761d424813a4ac44e6d7a16e54114b0a8341547a6e2b8",
+      "C0_matches_dry_run": true,
+      "J1_spread_flag": false,
+      "J2_spread_flag": false
+     },
+     "S_script": 45.0,
+     "S_script_max": 65,
+     "complete": true,
+     "S": 71.25,
+     "gates_pass": true,
+     "verdict": "PARTIAL"
+    },
+    "assisted": {
+     "gates": {
+      "B_satisfied_and_checked": true,
+      "C_reverified": true,
+      "D_bounds": true,
+      "E_header_honest": true,
+      "F_how_line": true,
+      "H_replay": true,
+      "I_records": true,
+      "G_reasons_honest": true
+     },
+     "criteria": {
+      "C1": 4,
+      "C2": 4,
+      "C3": 0.0,
+      "C4": 4,
+      "C5": 4,
+      "J1": 3.0,
+      "J2": 3.0
+     },
+     "detail": {
+      "unsupported_named": [],
+      "pass_record_bytes": 0,
+      "pass_records_touched": 0,
+      "identity_members_carried": 4,
+      "content_bytes": 1886,
+      "excerpts": 2,
+      "omissions": 2,
+      "carried_bytes": 1252,
+      "unresolved": 0,
+      "identity_lines_in_not_selected": 0,
+      "masked_sha256": "d1c9f50d2eac5764b4a3289f947e2d84cc6792a1a40c93dbcfff53bddf737380",
+      "selection": {
+       "parts": [
+        {
+         "selector_part": "1 of 3",
+         "offered": 60,
+         "relevant_offered": 1,
+         "chosen": 0,
+         "chosen_relevant": 0,
+         "unknown_ids": []
+        },
+        {
+         "selector_part": "2 of 3",
+         "offered": 58,
+         "relevant_offered": 4,
+         "chosen": 0,
+         "chosen_relevant": 0,
+         "unknown_ids": []
+        },
+        {
+         "selector_part": "3 of 3",
+         "offered": 18,
+         "relevant_offered": 0,
+         "chosen": 0,
+         "chosen_relevant": 0,
+         "unknown_ids": []
+        }
+       ],
+       "flags": [
+        "chose-none"
+       ],
+       "chosen_ranges_misdeclared": []
+      },
+      "J1_spread_flag": false,
+      "J2_spread_flag": false
+     },
+     "S_script": 45.0,
+     "S_script_max": 65,
+     "complete": true,
+     "S": 71.25,
+     "gates_pass": true,
+     "verdict": "PARTIAL"
+    }
+   },
+   "cost": {
+    "tokens": 23931,
+    "calls": 3,
+    "input_tokens": 22237,
+    "output_tokens": 1694,
+    "repairs": 0,
+    "latency_ms": [
+     12745,
+     11919,
+     5018
+    ],
+    "estimate": 86517,
+    "part_records": 3,
+    "parts": 3,
+    "whole_artifact_tokens_ref": 15405,
+    "tokens_over_whole_artifact": 1.55,
+    "launch_ceiling": 1915598,
+    "script_points_per_10k_tokens": 0.0,
+    "verdict": "NO RETURN"
+   },
+   "comparison": {
+    "verdict": "EQUAL",
+    "dS_script": 0.0,
+    "dS": 0.0,
+    "dJ1": 0.0,
+    "pairwise": [
+     "none",
+     "none",
+     "none"
+    ],
+    "pairwise_majority": "none",
+    "why": [],
+    "annotations": []
+   }
+  },
+  {
+   "id": "core-m3",
+   "kind": "core",
+   "model": "MiniMax-M3",
+   "gates": {
+    "A_right_input": true,
+    "A_right_model": true,
+    "I_spend": true
+   },
+   "notes": [],
+   "arms": {
+    "baseline": {
+     "gates": {
+      "B_satisfied_and_checked": true,
+      "C_reverified": true,
+      "D_bounds": true,
+      "E_header_honest": true,
+      "F_how_line": true,
+      "G_reasons_honest": true
+     },
+     "criteria": {
+      "C1": 4,
+      "C2": 4,
+      "C3": 0.0,
+      "C4": 4,
+      "C5": 4,
+      "J1": 3.0,
+      "J2": 4.0
+     },
+     "detail": {
+      "unsupported_named": [],
+      "pass_record_bytes": 0,
+      "pass_records_touched": 0,
+      "identity_members_carried": 4,
+      "content_bytes": 1905,
+      "excerpts": 2,
+      "omissions": 2,
+      "carried_bytes": 1252,
+      "unresolved": 0,
+      "identity_lines_in_not_selected": 0,
+      "masked_sha256": "5961b748208d92fc0fb761d424813a4ac44e6d7a16e54114b0a8341547a6e2b8",
+      "C0_matches_dry_run": true,
+      "J1_spread_flag": false,
+      "J2_spread_flag": false
+     },
+     "S_script": 45.0,
+     "S_script_max": 65,
+     "complete": true,
+     "S": 73.75,
+     "gates_pass": true,
+     "verdict": "PARTIAL"
+    },
+    "assisted": {
+     "gates": {
+      "B_satisfied_and_checked": true,
+      "C_reverified": true,
+      "D_bounds": true,
+      "E_header_honest": true,
+      "F_how_line": true,
+      "H_replay": true,
+      "I_records": true,
+      "G_reasons_honest": true
+     },
+     "criteria": {
+      "C1": 4,
+      "C2": 4,
+      "C3": 0.0,
+      "C4": 4,
+      "C5": 4,
+      "J1": 3.0,
+      "J2": 4.0
+     },
+     "detail": {
+      "unsupported_named": [],
+      "pass_record_bytes": 0,
+      "pass_records_touched": 0,
+      "identity_members_carried": 4,
+      "content_bytes": 1886,
+      "excerpts": 2,
+      "omissions": 2,
+      "carried_bytes": 1252,
+      "unresolved": 0,
+      "identity_lines_in_not_selected": 0,
+      "masked_sha256": "d1c9f50d2eac5764b4a3289f947e2d84cc6792a1a40c93dbcfff53bddf737380",
+      "selection": {
+       "parts": [
+        {
+         "selector_part": "1 of 3",
+         "offered": 60,
+         "relevant_offered": 1,
+         "chosen": 0,
+         "chosen_relevant": 0,
+         "unknown_ids": []
+        },
+        {
+         "selector_part": "2 of 3",
+         "offered": 58,
+         "relevant_offered": 4,
+         "chosen": 0,
+         "chosen_relevant": 0,
+         "unknown_ids": []
+        },
+        {
+         "selector_part": "3 of 3",
+         "offered": 18,
+         "relevant_offered": 0,
+         "chosen": 0,
+         "chosen_relevant": 0,
+         "unknown_ids": []
+        }
+       ],
+       "flags": [
+        "chose-none"
+       ],
+       "chosen_ranges_misdeclared": []
+      },
+      "J1_spread_flag": false,
+      "J2_spread_flag": false
+     },
+     "S_script": 45.0,
+     "S_script_max": 65,
+     "complete": true,
+     "S": 73.75,
+     "gates_pass": true,
+     "verdict": "PARTIAL"
+    }
+   },
+   "cost": {
+    "tokens": 22684,
+    "calls": 3,
+    "input_tokens": 22666,
+    "output_tokens": 18,
+    "repairs": 0,
+    "latency_ms": [
+     1152,
+     964,
+     867
+    ],
+    "estimate": 86481,
+    "part_records": 3,
+    "parts": 3,
+    "whole_artifact_tokens_ref": 15405,
+    "tokens_over_whole_artifact": 1.47,
+    "launch_ceiling": 1891667,
+    "script_points_per_10k_tokens": 0.0,
+    "verdict": "NO RETURN"
+   },
+   "comparison": {
+    "verdict": "EQUAL",
+    "dS_script": 0.0,
+    "dS": 0.0,
+    "dJ1": 0.0,
+    "pairwise": [
+     "none",
+     "none",
+     "none"
+    ],
+    "pairwise_majority": "none",
+    "why": [],
+    "annotations": []
+   }
+  }
+ ],
+ "j2_live": "FAIL",
+ "failing": [
+  "red-m27hs WORSE",
+  "red-m27hs assisted PARTIAL",
+  "red-m3 WORSE",
+  "red-m3 assisted PARTIAL"
+ ]
+}

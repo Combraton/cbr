@@ -11,6 +11,10 @@ Tracking: [issue #34](https://github.com/Combraton/cbr/issues/34). Scope: [RELEA
 3. **J2's live acceptance runs on CBR's own test output** — §3 and §10.
 4. **Before the loop's live run on the Knowscroll question, the harness ingests Knowscroll's 22 decisions** as the owner ruled them — §2, §9 (m5h) and §10.
 
+**The owner's decision of 2026-09-25:**
+
+5. **`orient_repository` and `record_rejected_approach` land in v0.1**, so all five of [RELEASE-SCOPE §2](../readiness/RELEASE-SCOPE.md)'s families are M5's — §5 and §9 (m5i and m5j).
+
 ## 1. Scope, and the promise
 
 | M5 delivers | M5 does not |
@@ -151,7 +155,7 @@ The owner's decision of 2026-09-23 moved these to M5 with the tool runtime. [M4'
 
 ## 5. Model-assisted artifact creation, and the ancestry obligation
 
-**The families** are [RELEASE-SCOPE §2](../readiness/RELEASE-SCOPE.md)'s: `distill_investigation`, `project_large_result`, `orient_repository`, `record_rejected_approach` and `answer_gap`. Each is a named job with a fixed input, a fixed output shape and its own finish condition — not "the model can do anything".
+**The families** are [RELEASE-SCOPE §2](../readiness/RELEASE-SCOPE.md)'s: `distill_investigation`, `project_large_result`, `orient_repository`, `record_rejected_approach` and `answer_gap`. Each is a named job with a fixed input, a fixed output shape and its own finish condition — not "the model can do anything". **All five land in v0.1**, by the owner's decision of 2026-09-25: `record_rejected_approach` is m5i and `orient_repository` is m5j.
 
 - **What a family produces is sealed as evidence** under a CBR-specific source kind reserved for derivation output ([PROTOCOL-PIN](../readiness/PROTOCOL-PIN.md)), with CBR's own principal as producer and a coverage describing what the derivation inspected.
 - **A claim it proposes is proposed**, by CBR's principal, and is never `binding`. The m2 rule that a model cannot accept its own claim holds unchanged.
@@ -252,7 +256,7 @@ These bounds are already known to be needed, before any is sized:
 
 ## 9. The pull requests, each with its gate
 
-In the order the owner set: J2, then the loop, then the tools, then the families that need both.
+In the order the owner set: J2, then the loop, then the tools, then the families that need both. **The two families added on 2026-09-25 go after m5e and before m5f**, so that maintenance, whose triggers include completed investigations, can start them: m5a, m5b, m5c, m5d, m5e, m5i, m5j, m5f and m5h, with m5g at any point. That order is this session's proposal and the owner's to change.
 
 | | Scope | Depends on | Gate |
 |---|---|---|---|
@@ -263,6 +267,8 @@ In the order the owner set: J2, then the loop, then the tools, then the families
 | **m5d** | **`distill_investigation`**, with **the ancestry-root obligation** and its mutant. Started only by a principal's submission. | m5b and m5c: it reads what it distils through the tools | `single_lineage` over one captured artifact twice; the mutant reads `multiple_lineages`. A proposed claim is never binding; its claims are `interpretive` and cited; its unresolved-question list names what it did not reach. |
 | **m5e** | **Request-time gap investigation** (`answer_gap`), and **J3** and **J5**, with the investigation accounting of §6 and what starts a gap loop on a question with no unmet item. | m5b and m5c; m5d, because a gap's claims are claim support and the ancestry obligation must already hold | J3's and J5's negative controls. A request that authorises no investigation still produces the golden packet. A fixture below the gap loop's floor that starts no loop, and one at the limit that ends with partial coverage and a named gap. M4's flow is unchanged in a request whose limit covers it. |
 | **m5f** | **Maintenance**: triggers, coalescing, priority, per-trigger budget, finish conditions, deduplication, and subscriber semantics. Background spend defined as in §6, behind a configuration member that defaults off. | m5d and m5e, because completed investigations and gaps found while preparing are among its triggers | **With background spend off, no maintenance call reaches admission.** A trigger storm is one job; a foreground request pre-empts maintenance. |
+| **m5i** | **`record_rejected_approach`**, by the owner's decision of 2026-09-25: a failed attempt and its evidence in, a scoped rejection artifact and an `interpretive` claim out ([RELEASE-SCOPE §2](../readiness/RELEASE-SCOPE.md)). Started only by a principal's submission until m5f. | m5d, because its claim is claim support and the ancestry obligation must already hold; m5c, for the tools it reads its evidence through | Its claim is never binding and cites the captured evidence of the attempt as its ancestry roots, `single_lineage` over one attempt recorded twice. The rejection is scoped: a packet at another scope does not carry it as current. Its arithmetic as a test, and its journey through the public client. |
+| **m5j** | **`orient_repository`**, by the owner's decision of 2026-09-25: a registered repository at a tree in, a bounded inventory map with declared gaps out. Progressive, never a startup barrier (AGENTS.md). | m5c, for `search`, `read` and `list`; m5e, so that a gap loop can use a map when one exists | The map is bounded by named constants, each reached by a fixture; every part of the tree it did not reach is a declared gap by count and kind, as M3's coverage is; a request never waits for it; a map at an old tree is not offered as current at a new one. Its journey through the public client. |
 | **m5g** | **The composition feasibility check** of §7. Docs, plus a descriptor only if the runner allows one. | Nothing; it may go at any point | Either the ten execution fixtures run against the reference executor, labelled as such, or the record says why they cannot. |
 | **m5h** | **The loop's live harness**: the loop arm and M4's discovery arm over the same sealed questions; per-turn ambiguity reporting; and, before the Knowscroll question, **Knowscroll's 22 decisions ingested with the owner's rulings of 2026-09-20, recorded as the owner as at m3d**. | m5e | A dry run against the fake. The 22 decisions are applied through the public client as the owner, with m3d's rationale, and verified afterwards as `binding=21 evidence=1`, nothing else. Every ambiguous turn is named in the report. m4e's refusals all still hold. |
 
@@ -285,7 +291,7 @@ M4's practice stands. No live call happens inside a pull request's work, and non
 
 ### J2 live: the inputs, the estimate, the stop and the cap, decided 2026-09-25
 
-**Decided by the owner on 2026-09-25, and not yet run.** It starts on the reviewer's go, relayed once this pull request is cleared and merged: the merge, then invocation 1, then invocation 2.
+**Decided by the owner on 2026-09-25, and run the same day**, after #40 merged as `041ad5f`: [what it spent](#j2-live-what-it-spent-2026-09-25) is below, and [the record](../../verification/JOURNEYS.md#j2-live-2026-09-25-the-mechanism-held-and-the-model-made-the-projection-worse--failed) is in JOURNEYS.
 
 **How the inputs were produced.** CBR was cloned from GitHub at `9cd388a`, m5a's merge, into a disk image mounted at `/var/tmp/cbr-j2`, so that no path the output could name holds a user, a machine or a volume. `CARGO_HOME` and `TMPDIR` were there too, and that mattered. With the checkout alone moved, cargo's JSON still named the home directory: every dependency's `manifest_path` and `src_path` point into the registry under `CARGO_HOME`, which §3 anticipated as a kind of path but not as that one. `cargo test --workspace --locked` passed, with 644 tests over 40 result lines, and VERIFICATION's seven conformance suites each matched their expectations. Every input passes `j2_run.py`'s machine-path refusal, and nothing in any of them names the owner or the machine. The manifest pinning each digest is kept outside this repository. The `f73415d` log was produced the same way, from the same clone checked out at that commit, with `--no-fail-fast` so that every test binary ran.
 
@@ -315,11 +321,24 @@ An input the baseline carries whole, or refuses, makes no call in either mode, s
 - **In `j2_run.py` one number is both the stop and the cap.** As the stop, it is checked before each run: a run starts only if the ceiling, less what the runs before it spent, covers that run's worst case of 488,160. As the cap, it is passed to each launch as the ceiling less what earlier launches spent, and the provider's ledger enforces it.
 - **The `--out` is short, and on the SSD.** Both directories are under `/var/tmp/cbr-j2`, the disk image the inputs were produced in, attached again so the runs' stores, which are the evidence, stay on the SSD. The harness puts each provider's socket at `<out>/work/<run id>/s/cbr.sock`, and on macOS a Unix socket path must be under 104 bytes; the first survey dry run stopped there with a longer one. These paths are about 50.
 
+### J2 live: what it spent, 2026-09-25
+
+Run from `main` at `041ad5f`, with its binaries built from a clean tree, the scoring rubric committed and pushed first (`84061eb`, 15:39:31Z), and each invocation's ceiling as decided above.
+
+| Invocation | Started | Took | `--run-ceiling` | Spent | Runs |
+|---|---|---:|---:|---:|---|
+| 1 | 15:40:00Z | 26 s | 976,320 | **36,410** | `red-m27hs` 18,714, `red-m3` 17,696 |
+| 2 | 15:40:44Z | 49 s | 1,952,640, the lesser of that and 2,250,000 − 36,410 | **83,657** | `log-m27hs` 19,280, `log-m3` 17,762, `core-m27hs` 23,931, `core-m3` 22,684 |
+
+- **Total 120,067 tokens**: 5.3% of the 2,250,000 held, 4.1% of the 2,928,960 worst case, and 6.1% of the 1,952,640 the dry run's parts allowed. Sixteen calls, none repaired, every one admitted by the local bound alone. Each run's ledger equals the harness's report and the sum of its sealed records' usage.
+- **The estimate was the worst case, and the worst case was far away.** No part came near `PART_BYTES`: the largest request carried 9,808 input tokens, against the 40,680 a part at every bound can cost.
+- **The run failed its rubric**, and J2 runs again after m5a-3 ([JOURNEYS](../../verification/JOURNEYS.md#j2-live-2026-09-25-the-mechanism-held-and-the-model-made-the-projection-worse--failed)). That rerun's inputs, estimate and ceiling are written here before it runs.
+
 ## What this document does not settle
 
 - **No bound is sized.** Each is a pull-request decision, reviewed at its head.
 - **What starts a gap loop on a question with no unmet item** is m5e's to settle (§6), before m5h is written against it.
-- **Whether `orient_repository` and `record_rejected_approach` land in M5.** RELEASE-SCOPE §2 proposes all five families for v0.1, and this split carries three.
+- ~~Whether `orient_repository` and `record_rejected_approach` land in M5.~~ **Settled by the owner on 2026-09-25: both land**, as m5i and m5j.
 - **Whether the ten execution fixtures can run** against the reference executor is m5g's check, not an assumption.
 - **Each live run's cap** is the owner's, set when its estimate exists.
 - **Nothing here is evidence of anything.** M5 has made no call and has no code.

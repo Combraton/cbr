@@ -1,0 +1,26 @@
+{
+  "pair": "P1",
+  "judge": "j0",
+  "A": {
+    "J1": {
+      "score": 3,
+      "why": "Bytes 61051-61621 carry the summary (pass 130, unsupported 5 of 135 fixtures) and a status note saying unsupported outcomes are coverage limits, not passes, so 'nothing failed' is correctly supported. But the five unsupported fixtures and their reason ('participant does not claim execution/1', around bytes 23948-32096) sit in omitted range 711-61051 and are not named."
+    },
+    "J2": {
+      "score": 4,
+      "why": "'failures named: 0' agrees with the carried summary at bytes 61051-61621, which has no fail entry. The status note in the same range stops the consumer reading the 5 unsupported as passes or failures, so nothing invites a false conclusion."
+    }
+  },
+  "B": {
+    "J1": {
+      "score": 3,
+      "why": "Identical to A: the summary is carried at bytes 61051-61621 (pass 130, unsupported 5), but the unsupported fixtures and their reason are inside omitted range 711-61051."
+    },
+    "J2": {
+      "score": 4,
+      "why": "Identical to A: the zero failure count and the carried summary and status note at bytes 61051-61621 agree, and nothing points toward a false conclusion."
+    }
+  },
+  "prefer": "none",
+  "prefer_why": "A and B are byte-identical (same ledger: o1 0-29, e1 29-711, o2 711-61051, e2 61051-61621), so nothing distinguishes them."
+}

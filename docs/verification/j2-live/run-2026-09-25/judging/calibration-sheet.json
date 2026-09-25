@@ -1,0 +1,26 @@
+{
+ "pair": "P1",
+ "judge": "calib",
+ "A": {
+  "J1": {
+   "score": 4,
+   "why": "Bytes 4401-5109 and 8935-10179 carry all 18 '... FAILED' lines (6 j2_harness, 12 journey_two). Bytes 5121-7021 and 10191-14827 carry all 18 panic messages with file:line, e.g. j2_harness.rs:36:5 'j2_run.py is missing' and journey_two.rs:1070:5 with left/right values. The omitted ranges 7021-7475 and 14827-15740 only repeat the names in the 'failures:' lists, and the 'error: 2 targets failed' summary at 65161-65257 is carried."
+  },
+  "J2": {
+   "score": 3,
+   "why": "The header's 'failures named: 21' counts non-test lines, such as the 'error: test failed' line at bytes 7574-7638. The carried result lines at 7475-7574 ('6 failed') and 15740-15997 ('12 failed'), plus the summary at 65161-65257, resolve this to 18 failures in 2 targets. That is a minor ambiguity that the carried bytes correct."
+  }
+ },
+ "B": {
+  "J1": {
+   "score": 2,
+   "why": "Only the header names failing tests: 15 of 18, and 'and 5 more' at bytes 9879-9968 gives no names. The result lines at 7475-7574 and 15740-15840 give the counts 6 and 12. All 18 assertions and file:line locations are in the omitted ranges 4594-7475 and 9133-15740, so the consumer has to fetch them to answer 'what did they assert'."
+  },
+  "J2": {
+   "score": 1,
+   "why": "The ranges 4594-7475 and 9133-15740, which hold every FAILED line and panic message, are marked 'not_selected' (not chosen for this task), so the reason hides the failures. The header's count of 21 cannot be checked: the final 'error: 2 targets failed' summary sits in the omitted range 25021-65257. Meanwhile the carried bytes 21989-25021 are only passing tests."
+  }
+ },
+ "prefer": "A",
+ "prefer_why": "A carries every failing test with its assertion message and file:line (bytes 5121-7021 and 10191-14827), plus the final target summary. B omits all of that as 'not_selected' and uses its space on passing-test lines (21989-25021), so a consumer cannot answer 'what did they assert' without fetching."
+}
