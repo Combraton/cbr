@@ -232,6 +232,11 @@ struct Assist<'a> {
     /// preparation never computes one and so cannot widen it.
     view: &'a [String],
     claims: &'a [String],
+    /// **The evidence artifacts the job may read**, resolved at the
+    /// command like the view and the claims (m5a). A projection copies an
+    /// artifact's bytes into a packet, so an artifact outside this is
+    /// `evidence_unavailable` exactly as one that was never sealed is.
+    evidence: &'a [String],
 }
 
 impl Assist<'_> {
@@ -304,6 +309,11 @@ enum Step {
     /// The terms the first step proposed, which the body prints and the
     /// question's digest covers.
     Choose(Vec<String>),
+    /// **One part of a J2 projection** (m5a): what the body says about
+    /// the document, and how each candidate is labelled. Its selector
+    /// names the artifact, its digest, the projection's format and the
+    /// part, so the question's digest does too.
+    Project(crate::projection::Part),
 }
 
 /// What asking a discovery step came to, this tick.
@@ -473,6 +483,38 @@ impl Provider {
         Ok(readable)
     }
 
+    /// The evidence artifacts a request's items name that this session
+    /// may read, resolved **at the command, where the grant is** (m5a).
+    ///
+    /// A J2 projection copies an artifact's bytes into a packet, so a
+    /// packet is a way to read the artifact — and preparation runs later,
+    /// on the provider's own authority. Before m5a an `evidence_included`
+    /// section only named the artifact; it now carries its bytes, so the
+    /// right to read them is checked where the view and the claims are.
+    fn readable_evidence(
+        &self,
+        params: &Value,
+        payload: &Value,
+    ) -> Result<Vec<String>, ProtocolError> {
+        let named = params.get("grant").and_then(Value::as_str);
+        let grant = self.authorize(named, &[])?;
+        let mut readable = Vec::new();
+        for item in list(payload, &["items"]) {
+            let check = at(item, &["check"]);
+            if text(check, &["kind"]) != "evidence_included" {
+                continue;
+            }
+            let artifact = text(check, &["evidence", "artifact", "id"]).to_string();
+            if self.may_read(grant.as_ref(), &crate::evidence::artifact_key(&artifact))
+                && !readable.contains(&artifact)
+            {
+                readable.push(artifact);
+            }
+        }
+        readable.sort();
+        Ok(readable)
+    }
+
     /// The deterministic compiler, run as the job's first step
     /// (INTERNALS section 5). Returns the steps that replace the marker.
     fn compile(&self, job: &Value, tick: &mut Tick) -> Result<Vec<Value>, TickError> {
@@ -525,6 +567,11 @@ impl Provider {
             .filter_map(Value::as_str)
             .map(str::to_string)
             .collect();
+        let evidence: Vec<String> = list(job, &["readable_evidence"])
+            .iter()
+            .filter_map(Value::as_str)
+            .map(str::to_string)
+            .collect();
         let assist = Assist {
             job: text(&record, &["job"]),
             request: &request,
@@ -534,6 +581,7 @@ impl Provider {
             now: tick.now.clone(),
             view: &view,
             claims: &claims,
+            evidence: &evidence,
             asked: std::cell::RefCell::new(Vec::new()),
         };
         for item in list(job, &["items"]) {
@@ -1209,6 +1257,7 @@ impl Provider {
                 assist.job, assist.request
             ),
             &format!("discovery.terms {question}"),
+            DISCOVERY_ITEM,
             seen,
             Step::Terms,
             tick,
@@ -1329,6 +1378,7 @@ impl Provider {
             // retained different terms asks a different question here and
             // does not answer it from this record.
             &format!("discovery.choose {question} | {}", terms.join(" ")),
+            DISCOVERY_ITEM,
             candidates,
             Step::Choose(terms),
             tick,
@@ -1449,6 +1499,7 @@ impl Provider {
         assist: &Assist<'_>,
         key: &str,
         selector: &str,
+        item: &str,
         candidates: Vec<crate::selection::Candidate>,
         step: Step,
         tick: &mut Tick,
@@ -1462,6 +1513,13 @@ impl Provider {
             )));
         }
         let offered = crate::derivation::offered(&candidates);
+        // **The evidence this question showed a model**, which is what its
+        // record is sealed under: a part of a projection shows one
+        // artifact's bytes, and a discovery step shows none.
+        let evidence: Vec<String> = match &step {
+            Step::Project(part) => vec![part.artifact.clone()],
+            Step::Terms | Step::Choose(_) => Vec::new(),
+        };
         let deadline = crate::clock::unix_of(assist.deadline)
             .zip(crate::clock::unix_of(&assist.now))
             .map(|(deadline, now)| {
@@ -1492,6 +1550,7 @@ impl Provider {
                 selector.to_string(),
                 assist.now.clone(),
             );
+            let item = item.to_string();
             let beside = self.store.open_beside();
             move || {
                 let beside = beside.map_err(|_| "store_unavailable")?;
@@ -1499,6 +1558,9 @@ impl Provider {
                     Step::Terms => crate::discovery::propose(&serving.model, &task, &candidates),
                     Step::Choose(terms) => {
                         crate::discovery::choose(&serving.model, &task, terms, &candidates)
+                    }
+                    Step::Project(part) => {
+                        crate::projection::ask(&serving.model, &task, part, &candidates)
                     }
                 };
                 let started = std::time::Instant::now();
@@ -1510,6 +1572,15 @@ impl Provider {
                         Err(reason) => crate::derivation::Answer::Unmet(reason),
                     },
                     Step::Choose(_) => match crate::discovery::chosen(reply, &candidates) {
+                        Ok(picked) => crate::derivation::Answer::ChoseMany(
+                            picked
+                                .into_iter()
+                                .map(|at| candidates[at].id.clone())
+                                .collect(),
+                        ),
+                        Err(reason) => crate::derivation::Answer::Unmet(reason),
+                    },
+                    Step::Project(_) => match crate::projection::chosen(reply, &candidates) {
                         Ok(picked) => crate::derivation::Answer::ChoseMany(
                             picked
                                 .into_iter()
@@ -1531,7 +1602,7 @@ impl Provider {
                     spend: crate::derivation::Spend { cost, latency_ms },
                     job: &job,
                     request: &request,
-                    item: DISCOVERY_ITEM,
+                    item: &item,
                     made_at: &now,
                 }))
             }
@@ -1539,7 +1610,7 @@ impl Provider {
         Ok(match self.work.progress(key, deadline, asking) {
             crate::work::Progress::Running | crate::work::Progress::Deferred => Asked::NotReady,
             crate::work::Progress::Done(value) => {
-                self.seal_derivation(tick, &value, assist)?;
+                self.seal_derivation(tick, &value, assist, &evidence)?;
                 Asked::Answered(crate::derivation::answer_of(&value).unwrap_or(
                     crate::derivation::Answer::Unmet(crate::derivation::UNREADABLE),
                 ))
@@ -1952,26 +2023,39 @@ impl Provider {
                     .store
                     .subject(&crate::evidence::artifact_key(&artifact))
                     .map_err(|_| ProtocolError::new_internal_error())?;
-                let holds = match &sealed {
-                    Some(state) => {
+                // **Readable first**, and the answer for an artifact the job
+                // may not read is the answer for one that is not there: a
+                // projection copies an artifact's bytes into a packet, so
+                // naming one is otherwise a way to read it, and telling the
+                // two apart is a way to learn that it exists.
+                let readable = assist.evidence.contains(&artifact);
+                let descriptor = match &sealed {
+                    Some(state) if readable => {
                         let value = parse_record(&state.value)?;
-                        text(&value, &["state"]) == "sealed"
+                        (text(&value, &["state"]) == "sealed"
+                            && context::is_null(at(&value, &["purge"]))
                             && text(&value, &["descriptor", "digest"])
-                                == text(&reference, &["digest"])
+                                == text(&reference, &["digest"]))
+                        .then(|| at(&value, &["descriptor"]).clone())
                     }
-                    None => false,
+                    _ => None,
                 };
-                if holds {
-                    decided.evidence.push(compiler::EvidenceSection {
-                        item: item_id,
-                        summary: format!("evidence {artifact}"),
-                        evidence: reference,
-                    });
-                } else {
-                    decided.unmet.push(Unmet {
+                match descriptor {
+                    Some(descriptor) => {
+                        self.project(
+                            &item_id,
+                            &reference,
+                            &artifact,
+                            &descriptor,
+                            assist,
+                            decided,
+                            tick,
+                        )?;
+                    }
+                    None => decided.unmet.push(Unmet {
                         item: item_id,
                         reason: "evidence_unavailable".into(),
-                    });
+                    }),
                 }
             }
             "claim_included" => {
@@ -2003,6 +2087,182 @@ impl Provider {
                 item: item_id,
                 reason: "uncheckable_item".into(),
             }),
+        }
+        Ok(())
+    }
+
+    /// **Journey 2: the evidence an item named, projected** (m5 READINESS
+    /// §3). The artifact was sealed whole before anybody asked, and the job
+    /// may read it; what the item gets is one section that tiles it —
+    /// carried excerpts that are its bytes at their ranges, and declared
+    /// omissions — or a typed reason and no section at all.
+    ///
+    /// The order is [`crate::projection::next`]'s. What is this call site's
+    /// own is the investigation limit: **the parts are claimed together**,
+    /// as discovery's two steps are, because a projection with a part never
+    /// read would name failures from part of a log as if from all of it.
+    /// And a part that fails ends the item with that part's reason, never a
+    /// fall back to the deterministic rule, which would report a
+    /// model-assisted projection that no model made.
+    #[allow(clippy::too_many_arguments)]
+    fn project(
+        &self,
+        item: &str,
+        reference: &Value,
+        artifact: &str,
+        descriptor: &Value,
+        assist: &Assist<'_>,
+        decided: &mut Decided,
+        tick: &mut Tick,
+    ) -> Result<(), TickError> {
+        use crate::projection::{self, Next};
+        let unmet = |decided: &mut Decided, reason: &str| {
+            decided.unmet.push(Unmet {
+                item: item.to_string(),
+                reason: reason.to_string(),
+            });
+        };
+        // **Too large is decided before a byte is read**, so a store holding
+        // a very large artifact cannot make a compile allocate it only to
+        // find it is too large.
+        let size = int(descriptor, &["size"]);
+        if projection::too_large(usize::try_from(size).unwrap_or(usize::MAX)) {
+            unmet(decided, projection::INSUFFICIENT_CAPACITY);
+            return Ok(());
+        }
+        let digest = text(reference, &["digest"]).to_string();
+        let Some(bytes) = self
+            .store
+            .read_object(&digest)?
+            .filter(|bytes| cbr_encoding::digest_bytes(bytes) == digest)
+        else {
+            unmet(decided, "evidence_unavailable");
+            return Ok(());
+        };
+        let read = projection::read(&bytes);
+        let plan = projection::partition(&read, &bytes);
+        let capture: Vec<(String, String)> = list(descriptor, &["capture", "anchors"])
+            .iter()
+            .map(|anchor| {
+                (
+                    text(anchor, &["kind"]).to_string(),
+                    text(anchor, &["id"]).to_string(),
+                )
+            })
+            .collect();
+        let subject = projection::Subject {
+            artifact,
+            digest: &digest,
+            capture: &capture,
+        };
+        // **Zero is the deterministic path**, as it is for selection and
+        // discovery: a request that authorised no investigation gets the
+        // rule, from the same binary.
+        let serving = self.model.clone().filter(|_| assist.investigation > 0);
+        let choice = match projection::next(&read, &bytes, &plan, subject, serving.is_some()) {
+            Next::Insufficient => {
+                unmet(decided, projection::INSUFFICIENT_CAPACITY);
+                return Ok(());
+            }
+            Next::Carry(choice) => choice,
+            Next::Ask => {
+                let Some(serving) = serving else {
+                    unmet(decided, crate::derivation::UNREADABLE);
+                    return Ok(());
+                };
+                if !assist.room_for(plan.parts.len()) {
+                    unmet(decided, INVESTIGATION_EXHAUSTED);
+                    return Ok(());
+                }
+                let of = plan.parts.len();
+                let mut asked = Vec::with_capacity(of);
+                for (index, units) in plan.parts.iter().enumerate() {
+                    let (candidates, labels) =
+                        projection::candidates(&read, &bytes, artifact, units);
+                    let ids: Vec<String> = candidates
+                        .iter()
+                        .map(|candidate| candidate.id.clone())
+                        .collect();
+                    let selector = projection::selector(artifact, &digest, index + 1, of);
+                    // **The key is the question**: this item, this part of
+                    // this artifact under this format.
+                    let key = format!(
+                        "model:{}:{}:project:{item}:{}",
+                        assist.job,
+                        assist.request,
+                        cbr_encoding::digest_bytes(selector.as_bytes())
+                    );
+                    let part = projection::Part {
+                        artifact: artifact.to_string(),
+                        format: read.format.name(),
+                        size: read.size,
+                        number: index + 1,
+                        of,
+                        labels,
+                    };
+                    let answer = self.ask_step(
+                        &serving,
+                        assist,
+                        &key,
+                        &selector,
+                        item,
+                        candidates,
+                        Step::Project(part),
+                        tick,
+                    )?;
+                    asked.push((answer, ids, units));
+                }
+                // **Every part is started before any is waited for**, so the
+                // pool holds as many as its bound allows at once.
+                if asked
+                    .iter()
+                    .any(|(answer, ..)| matches!(answer, Asked::NotReady))
+                {
+                    return Err(TickError::NotReady);
+                }
+                let mut picked = Vec::new();
+                for (answer, ids, units) in asked {
+                    let reason = match answer {
+                        Asked::Answered(crate::derivation::Answer::ChoseMany(chosen)) => {
+                            // The closed set, checked again on the way out:
+                            // an id is only ever resolved against the part it
+                            // was offered in.
+                            let mut unoffered = false;
+                            for id in chosen {
+                                match ids.iter().position(|offered| *offered == id) {
+                                    Some(position) => picked.push(units[position]),
+                                    None => unoffered = true,
+                                }
+                            }
+                            if !unoffered {
+                                continue;
+                            }
+                            crate::selection::NOT_OFFERED
+                        }
+                        Asked::Answered(crate::derivation::Answer::Unmet(reason)) => reason,
+                        Asked::Answered(_) | Asked::NotReady => crate::derivation::UNREADABLE,
+                    };
+                    unmet(decided, reason);
+                    return Ok(());
+                }
+                projection::choose_by_model(&read, &picked)
+            }
+        };
+        let rendered = projection::render(&read, &bytes, &choice, &plan, subject);
+        decided.evidence.push(compiler::EvidenceSection {
+            item: item.to_string(),
+            summary: rendered.content,
+            evidence: reference.clone(),
+        });
+        // **Every omission is a typed record**, in the packet the way M3's
+        // are: under the protocol's own reason, with a section id the
+        // projection's ledger names, where its extent is.
+        for (number, reason) in rendered.omitted {
+            decided.omitted.push(object(vec![
+                ("item_id", string(item)),
+                ("section_id", string(&format!("s-{item}.o{number}"))),
+                ("reason", string(reason)),
+            ]));
         }
         Ok(())
     }
@@ -2541,7 +2801,8 @@ impl Provider {
             // what it spent stays in the ledger, because a call that
             // went out was charged.
             crate::work::Progress::Done(value) => {
-                self.seal_derivation(tick, &value, assist)?;
+                // A selection shows spans of a repository and no evidence.
+                self.seal_derivation(tick, &value, assist, &[])?;
                 match crate::derivation::answer_of(&value) {
                     // The closed set, checked a second time and on the
                     // way out: an id is only ever resolved against the
@@ -2622,6 +2883,7 @@ impl Provider {
                 at(&record, &["readable_under"]),
                 assist.view,
                 assist.claims,
+                assist.evidence,
             ) {
                 continue;
             }
@@ -2674,6 +2936,7 @@ impl Provider {
         tick: &mut Tick,
         record: &Value,
         assist: &Assist<'_>,
+        evidence: &[String],
     ) -> Result<(), TickError> {
         let bytes = crate::derivation::bytes(record);
         let digest = cbr_encoding::digest_bytes(&bytes);
@@ -2695,7 +2958,12 @@ impl Provider {
             // read them is the M3 leak arriving through a new door.
             (
                 "readable_under",
-                crate::derivation::readable_under(assist.view, assist.claims),
+                //
+                // **And the evidence the question showed**, since m5a: not
+                // the job's whole set, because a part of one artifact's
+                // projection reveals nothing of another the same request
+                // named, and a reader who may read this one is owed it.
+                crate::derivation::readable_under(assist.view, assist.claims, evidence),
             ),
         ]);
         let revision = self.tick_save(tick, &artifact_key, &sealed)?;
@@ -2846,11 +3114,12 @@ impl Provider {
         // than allowed to compute one, and cannot widen it.
         let view = self.readable_repositories(params)?;
         let claims = self.readable_claims(params)?;
+        let evidence = self.readable_evidence(params, payload)?;
         let mut joined = None;
         if self.selected_feature("context.shared_jobs") {
             for (job_id, _, value) in self.store.subjects_in_recorded_order(JOB)? {
                 let mut job = parse_record(&value)?;
-                if context::may_join(&job, &principal, payload, &view, &claims) {
+                if context::may_join(&job, &principal, payload, &view, &claims, &evidence) {
                     context::push(&mut job, "requests", string(&id));
                     joined = Some((job_id, job));
                     break;
@@ -2868,6 +3137,11 @@ impl Provider {
                 &mut job,
                 "readable_claims",
                 Value::Array(claims.iter().map(|id| string(id)).collect()),
+            );
+            set(
+                &mut job,
+                "readable_evidence",
+                Value::Array(evidence.iter().map(|id| string(id)).collect()),
             );
             // Compiling is a production capability, and a conformance
             // launch is a test harness: there, a request with no script is

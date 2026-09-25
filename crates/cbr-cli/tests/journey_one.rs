@@ -378,7 +378,7 @@ fn j1_a_question_finds_its_own_answer_with_a_cited_packet() {
 
     assert_eq!(
         text(&packet, &["provenance", "compiler"]),
-        "cbr-context-compiler/2",
+        "cbr-context-compiler/3",
         "a compiled packet says which compiler made it: {packet:?}"
     );
 
@@ -438,7 +438,7 @@ fn j1_a_question_finds_its_own_answer_with_a_cited_packet() {
     assert_eq!(coverage.len(), 1, "{coverage:?}");
     assert_eq!(text(&coverage[0], &["frontier"]), tree, "{coverage:?}");
     assert!(
-        text(&coverage[0], &["producer"]).contains("cbr-context-compiler/2"),
+        text(&coverage[0], &["producer"]).contains("cbr-context-compiler/3"),
         "{coverage:?}"
     );
 

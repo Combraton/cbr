@@ -392,8 +392,20 @@ pub fn proposed(reply: &Reply) -> Result<Vec<String>, &'static str> {
 /// same choice made twice and is taken once; an id that was not offered
 /// is [`crate::selection::NOT_OFFERED`], with no repair and no guess.
 pub fn chosen(reply: &Reply, candidates: &[Candidate]) -> Result<Vec<usize>, &'static str> {
+    chosen_within(reply, candidates, MAX_CHOSEN)
+}
+
+/// [`chosen`], with the bound on how many ids an answer may name given by
+/// the question that asked. **One reading of a list of ids for every step
+/// that asks for one**, so the closed set is checked the same way however
+/// many a step may choose: J2's parts ask with a bound of their own.
+pub fn chosen_within(
+    reply: &Reply,
+    candidates: &[Candidate],
+    max: usize,
+) -> Result<Vec<usize>, &'static str> {
     let ids = array_of(reply, "ids")?;
-    if ids.len() > MAX_CHOSEN {
+    if ids.len() > max {
         return Err(OVER_BOUND);
     }
     let mut picked: Vec<usize> = Vec::new();
@@ -430,4 +442,4 @@ pub fn worth_choosing(candidates: &[Candidate]) -> bool {
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

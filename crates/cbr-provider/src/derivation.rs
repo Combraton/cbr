@@ -389,13 +389,25 @@ fn strings(values: &[Value]) -> Option<Vec<String>> {
 }
 
 /// What a reader must be able to read before this derivation is served to
-/// them: the job's own view and readable claims.
+/// them: the job's own view and readable claims, and **the evidence the
+/// question showed**.
+///
+/// The third was added at m5a. A part of a J2 projection shows a model
+/// excerpts of an evidence artifact, and its record identifies each by
+/// range and by the digest of its bytes — which a reader can confirm a
+/// guess against. So a part's record is sealed under the artifact it was
+/// cut from. **Only that one**, where the view and the claims are the
+/// job's whole: a part of one artifact's projection reveals nothing of
+/// another the same request named, and a reader who may read it is owed
+/// it. A selection or a discovery step shows no evidence and names none,
+/// and a record sealed before m5a has no list at all; both cover every
+/// reader exactly as they did.
 ///
 /// **Kept on the artifact record rather than in the sealed bytes.** Who
 /// may read a thing is a fact about this store, and the sealed bytes are
 /// the derivation itself — the same bytes, from the same question, would
 /// be sealed under a different view in a different store.
-pub fn readable_under(view: &[String], claims: &[String]) -> Value {
+pub fn readable_under(view: &[String], claims: &[String], evidence: &[String]) -> Value {
     object(vec![
         (
             "view",
@@ -405,23 +417,39 @@ pub fn readable_under(view: &[String], claims: &[String]) -> Value {
             "readable_claims",
             Value::Array(claims.iter().map(|id| string(id)).collect()),
         ),
+        (
+            "readable_evidence",
+            Value::Array(evidence.iter().map(|id| string(id)).collect()),
+        ),
     ])
 }
 
-/// Whether a reader who can read exactly `view` and `claims` may be
-/// served a derivation made under `under`.
+/// Whether a reader who can read exactly `view`, `claims` and `evidence`
+/// may be served a derivation made under `under`.
 ///
 /// The rule is **no wider than the reader**, not equal to them: an
 /// authority reads everything, and a reader whose grant has since been
 /// widened is not locked out of a derivation made under a narrower one.
-pub fn covers(under: &Value, view: &[String], claims: &[String]) -> bool {
+pub fn covers(under: &Value, view: &[String], claims: &[String], evidence: &[String]) -> bool {
     let within = |path: &str, readable: &[String]| {
         list(under, &[path])
             .iter()
             .filter_map(Value::as_str)
             .all(|needed| readable.iter().any(|have| have == needed))
     };
-    within("view", view) && within("readable_claims", claims)
+    within("view", view)
+        && within("readable_claims", claims)
+        && within("readable_evidence", evidence)
+}
+
+/// The evidence a record was sealed under, which is all a door has to ask
+/// a reader about: whether they may read each of these.
+pub fn evidence_under(under: &Value) -> Vec<String> {
+    list(under, &["readable_evidence"])
+        .iter()
+        .filter_map(Value::as_str)
+        .map(str::to_string)
+        .collect()
 }
 
 /// The descriptor a derivation record is sealed with. The anchors are the

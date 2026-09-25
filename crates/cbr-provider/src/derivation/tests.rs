@@ -273,44 +273,80 @@ fn every_reason_the_runtime_can_produce_is_one_a_record_can_carry() {
 
 #[test]
 fn a_reader_with_the_same_view_reads_a_derivation() {
-    let under = readable_under(&["app".to_string()], &["adapter".to_string()]);
+    let under = readable_under(
+        &["app".to_string()],
+        &["adapter".to_string()],
+        &["log".to_string()],
+    );
     assert!(covers(
         &under,
         &["app".to_string()],
-        &["adapter".to_string()]
+        &["adapter".to_string()],
+        &["log".to_string()]
     ));
 }
 
 #[test]
-fn a_reader_missing_a_repository_or_a_claim_does_not() {
+fn a_reader_missing_a_repository_a_claim_or_an_artifact_does_not() {
     let under = readable_under(
         &["app".to_string(), "outside".to_string()],
         &["adapter".to_string()],
+        &["log".to_string()],
     );
     assert!(
-        !covers(&under, &["app".to_string()], &["adapter".to_string()]),
+        !covers(
+            &under,
+            &["app".to_string()],
+            &["adapter".to_string()],
+            &["log".to_string()]
+        ),
         "a repository the job could read and the reader cannot"
     );
     assert!(
         !covers(
             &under,
             &["app".to_string(), "outside".to_string()],
-            &[".no-claims".to_string()]
+            &[".no-claims".to_string()],
+            &["log".to_string()]
         ),
         "a claim the job could read and the reader cannot"
     );
+    // **m5a's half**: a part of a projection identifies what it showed by
+    // range and digest, and a reader who cannot read the log it was cut
+    // from is not served that.
+    assert!(
+        !covers(
+            &under,
+            &["app".to_string(), "outside".to_string()],
+            &["adapter".to_string()],
+            &[]
+        ),
+        "an artifact the job could read and the reader cannot"
+    );
+    assert_eq!(evidence_under(&under), ["log".to_string()]);
 }
 
 #[test]
 fn a_reader_who_can_read_more_than_the_job_could_reads_it() {
     // The rule is that the derivation is no wider than the reader, not
     // that the two are equal: an authority reads everything.
-    let under = readable_under(&["app".to_string()], &[]);
+    let under = readable_under(&["app".to_string()], &[], &[]);
     assert!(covers(
         &under,
         &["app".to_string(), "outside".to_string()],
-        &["adapter".to_string()]
+        &["adapter".to_string()],
+        &["log".to_string()]
     ));
+}
+
+#[test]
+fn a_record_sealed_before_the_evidence_half_existed_covers_as_it_did() {
+    // A record sealed before m5a carries no `readable_evidence` at all,
+    // and must be served exactly as it was: an absent list asks nothing.
+    let mut under = readable_under(&["app".to_string()], &[], &[]);
+    crate::context::remove(&mut under, "readable_evidence");
+    assert!(covers(&under, &["app".to_string()], &[], &[]));
+    assert!(evidence_under(&under).is_empty());
 }
 
 #[test]

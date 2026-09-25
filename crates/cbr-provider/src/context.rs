@@ -728,6 +728,7 @@ pub fn may_join(
     payload: &Value,
     view: &[String],
     claims: &[String],
+    evidence: &[String],
 ) -> bool {
     let same_view = list(job, &["view"])
         .iter()
@@ -737,6 +738,10 @@ pub fn may_join(
         .iter()
         .filter_map(Value::as_str)
         .eq(claims.iter().map(String::as_str));
+    let same_evidence = list(job, &["readable_evidence"])
+        .iter()
+        .filter_map(Value::as_str)
+        .eq(evidence.iter().map(String::as_str));
     text(job, &["state"]) == "running"
         && at(job, &["published"]) != &Value::Bool(true)
         && text(job, &["principal"]) == principal
@@ -748,6 +753,10 @@ pub fn may_join(
         // them over.
         && same_view
         && same_claims
+        // And evidence, since m5a: a job whose projection copied an
+        // artifact's bytes into its packet has read what a narrower grant
+        // may not.
+        && same_evidence
 }
 
 // ---- preparation -----------------------------------------------------------
@@ -1804,19 +1813,26 @@ mod tests {
             );
         }
 
-        assert!(may_join(&wide_job, "owner", &payload, &wide, &claims));
+        assert!(may_join(&wide_job, "owner", &payload, &wide, &claims, &[]));
         assert!(
-            !may_join(&wide_job, "owner", &payload, &narrow, &claims),
+            !may_join(&wide_job, "owner", &payload, &narrow, &claims, &[]),
             "a narrower request never joins a wider job"
         );
         assert!(
-            !may_join(&narrow_job, "owner", &payload, &wide, &claims),
+            !may_join(&narrow_job, "owner", &payload, &wide, &claims, &[]),
             "and a wider one never joins a narrower job either: the packet \
              would be short of what it was entitled to without saying so"
         );
-        assert!(may_join(&narrow_job, "owner", &payload, &narrow, &claims));
+        assert!(may_join(
+            &narrow_job,
+            "owner",
+            &payload,
+            &narrow,
+            &claims,
+            &[]
+        ));
         assert!(
-            !may_join(&narrow_job, "someone-else", &payload, &narrow, &claims),
+            !may_join(&narrow_job, "someone-else", &payload, &narrow, &claims, &[]),
             "another principal never joins a job"
         );
         // And the claims a grant could read are part of the scope too: a
@@ -1827,13 +1843,45 @@ mod tests {
                 "owner",
                 &payload,
                 &narrow,
-                &["c-1".into(), "c-2".into()]
+                &["c-1".into(), "c-2".into()],
+                &[]
             ),
             "a request that may read more claims never joins a narrower job"
         );
         assert!(
-            !may_join(&narrow_job, "owner", &payload, &narrow, &[]),
+            !may_join(&narrow_job, "owner", &payload, &narrow, &[], &[]),
             "nor one that may read fewer"
+        );
+        // And the evidence, since m5a: a job whose projection read an
+        // artifact has put its bytes in a packet.
+        let mut reading = narrow_job.clone();
+        set(
+            &mut reading,
+            "readable_evidence",
+            Value::Array(vec![string("log")]),
+        );
+        assert!(may_join(
+            &reading,
+            "owner",
+            &payload,
+            &narrow,
+            &claims,
+            &["log".into()]
+        ));
+        assert!(
+            !may_join(&reading, "owner", &payload, &narrow, &claims, &[]),
+            "a request that may not read the artifact never joins a job that read it"
+        );
+        assert!(
+            !may_join(
+                &narrow_job,
+                "owner",
+                &payload,
+                &narrow,
+                &claims,
+                &["log".into()]
+            ),
+            "nor one that may read it a job that could not"
         );
     }
 }
