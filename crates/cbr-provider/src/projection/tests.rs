@@ -3042,6 +3042,22 @@ fn a_model_arm_of_exactly_the_excerpts_a_projection_holds_is_published_and_one_m
             assert_eq!(published.excerpts, MAX_EXCERPTS);
             assert!(published.content.len() <= PROJECTION_BYTES);
         } else {
+            // The premise: one more record is over on excerpts and not on
+            // bytes, so the refusal below is the excerpt bound's.
+            let drawn = draw(
+                &read,
+                bytes,
+                &model,
+                handed.rule.as_deref().expect("the handed floor"),
+                handed.rule.as_deref(),
+                &Frame::of(SUBJECT, &handed),
+            );
+            assert!(
+                drawn.content.len() <= PROJECTION_BYTES && drawn.excerpts == MAX_EXCERPTS + 1,
+                "the premise: {} bytes, {} excerpts",
+                drawn.content.len(),
+                drawn.excerpts
+            );
             assert!(
                 published.is_none(),
                 "published a model arm of {} excerpts",
