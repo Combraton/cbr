@@ -377,6 +377,16 @@ fn a_runner_identity_without_the_reference_executor_starts_nothing() {
 }
 
 #[test]
+fn a_runner_identity_without_the_reference_digest_starts_nothing() {
+    let tree = Tree::new();
+    tree.write_identity(&format!(
+        r#"{{"format": "cbr-runner-identity/1", "reference_executor": {{"binary": "{REFERENCE}", "schemas": "{SCHEMAS}", "label": "reference executor"}}}}"#
+    ));
+    let output = tree.launch_at(&tree.named("executor", EXECUTOR));
+    assert_refused(&tree, &output, "records no sha256");
+}
+
+#[test]
 fn a_missing_reference_provider_starts_nothing() {
     let tree = Tree::new();
     std::fs::remove_file(tree.path().join(REFERENCE)).expect("remove");

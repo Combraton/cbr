@@ -203,11 +203,13 @@ def main():
         identity["reference_executor"] = {
             "binary": str(reference.relative_to(ROOT)),
             "schemas": str((tree / "schemas").relative_to(ROOT)),
+            "sha256": sha256(reference),
             "label": "reference executor",
             "note": (
                 "The protocol's reference provider from the same verified release extraction and "
-                "Cargo.lock, launched only for participants configured with `executor`. A result "
-                "that used it is labelled a reference executor and is never real-adapter evidence."
+                "Cargo.lock, launched only for named composition participants configured with "
+                "`executor`, and only when it still matches this sha256. A result that used it is "
+                "labelled a reference executor and is never real-adapter evidence."
             ),
         }
     (WORK / "runner.json").write_text(json.dumps(identity, indent=2) + "\n")
