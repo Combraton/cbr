@@ -204,8 +204,16 @@ fn every_id_is_an_identifier_and_no_two_inputs_share_one() {
         // stands and is not encoded, so its tail is a suffix of it.
         for ((prefix, id, _), rest) in ids[..3].iter().zip([&span_id, &span_id, &anchor_id]) {
             if let Some((_, tail)) = shortened(id, prefix) {
-                assert!(decode(tail).is_some(), "the tail of {id} does not decode");
                 assert!(rest.ends_with(tail), "{tail} is not a tail of {rest}");
+                // A tail that started inside an escape still decodes — hex
+                // digits are kept as themselves — but to bytes the input
+                // never ended with.
+                let whole = decode(rest).expect("the rest decodes");
+                let read = decode(tail).expect("the tail decodes");
+                assert!(
+                    whole.ends_with(&read),
+                    "{tail} starts inside an escape of {rest}"
+                );
             }
         }
         let rests = [
@@ -301,13 +309,23 @@ fn the_pairs_a_careless_rule_would_merge_stay_apart() {
 
 #[test]
 fn a_tail_never_starts_inside_an_escape_and_prefers_a_component() {
-    // Every byte of this path is escaped, so any cut is one byte from the
-    // middle of an escape.
-    let path = "\u{e9}".repeat(200);
-    let id = discovered_section(&span("app", &path, 7));
-    let (_, tail) = shortened(&id, "d-").expect("shortened");
-    assert!(tail.starts_with('~'), "{tail}");
-    assert!(decode(tail).is_some(), "{tail}");
+    // Every byte of this path but its last few is escaped, so most cuts
+    // land inside an escape; three lengths of plain bytes at the end move
+    // where the cut falls against the escapes before them, so one of them
+    // lands inside one whatever the arithmetic. (Padding at the front would
+    // move both together and change nothing.)
+    for pad in 0..3 {
+        let path = format!("{}{}", "\u{e9}".repeat(200), "x".repeat(pad));
+        let id = discovered_section(&span("app", &path, 7));
+        let (_, tail) = shortened(&id, "d-").expect("shortened");
+        assert!(tail.starts_with('~'), "{tail}");
+        let read = decode(tail).expect("the tail decodes");
+        let whole = format!("span-app/{path}-7");
+        assert!(
+            whole.as_bytes().ends_with(&read),
+            "{tail} starts inside an escape"
+        );
+    }
 
     // With components to cut at, the tail is whole components.
     let nested = format!("{}/deep/file.rs", "d".repeat(200));

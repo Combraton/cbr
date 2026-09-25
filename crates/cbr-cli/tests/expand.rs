@@ -1072,6 +1072,20 @@ fn every_citation_of_a_hostile_repository_expands_to_its_blob() {
             .any(|path| path.contains(' ') && !path.is_ascii()),
         "a path with a space and letters outside ASCII was followed: {paths:?}"
     );
+    // **An id that fits is still readable**: the repository, the path with
+    // `/` written `:`, and the start byte, rather than the digest a long
+    // one is shortened to. A rule that shortened everything would satisfy
+    // the grammar and tell a reader nothing.
+    assert!(
+        sealed
+            .get("sections")
+            .and_then(Value::as_array)
+            .unwrap_or_default()
+            .iter()
+            .any(|section| section.get("section_id").and_then(Value::as_str)
+                == Some("d-span-app:.hidden:zanzibar.md-0")),
+        "the span of `.hidden/zanzibar.md` is named as itself: {sealed:?}"
+    );
     // The anchor has no citation, so it is held by the grammar alone.
     let anchors: Vec<String> = sealed
         .get("sections")
