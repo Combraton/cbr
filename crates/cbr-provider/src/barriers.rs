@@ -28,6 +28,8 @@ pub const LOCK_CONTENDED: &str = "processing.lock.contended";
 /// An idle session reserved FIFO progress while processing was busy. This is
 /// distinct from command contention and never substitutes for it.
 pub const IDLE_PROCESSING_QUEUED: &str = "processing.idle.queued";
+/// An idle session's socket reader consumed the wake for its front ticket.
+pub const IDLE_PROCESSING_WOKEN: &str = "processing.idle.woken";
 /// A core-test put owns the processing lock but has not begun admission.
 pub const PUT_AFTER_PROCESSING_LOCK: &str = "core-test.put.after-processing-lock";
 

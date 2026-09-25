@@ -233,8 +233,8 @@ fn deliver(outbox: &Arc<Outbox>, provider: &mut Provider) -> Result<(), Ended> {
     deliver_with(outbox, provider, false)
 }
 
-/// An idle poll reserves FIFO processing progress if the lock is occupied,
-/// then returns so the session can read a command on the next loop iteration.
+/// An idle poll with work reserves FIFO processing progress if the lock is
+/// occupied, then returns so the session can read a command or its wake.
 fn deliver_idle(outbox: &Arc<Outbox>, provider: &mut Provider) -> Result<(), Ended> {
     deliver_with(outbox, provider, true)
 }

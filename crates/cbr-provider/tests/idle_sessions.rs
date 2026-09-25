@@ -32,6 +32,7 @@ use std::time::{Duration, Instant};
 const RECHECK: &str = "subscription.recheck.after_authorization";
 const CONTENDED: &str = "processing.lock.contended";
 const IDLE_QUEUED: &str = "processing.idle.queued";
+const IDLE_WOKEN: &str = "processing.idle.woken";
 const PUT_AFTER_PROCESSING: &str = "core-test.put.after-processing-lock";
 /// CORE section 16.5's conformance bound for a lapse or delivery caused by
 /// another socket session.
@@ -230,6 +231,10 @@ fn a_command_sent_to_an_idle_session_reaches_the_lock_while_another_session_hold
     // lock held. Then clear every signal, as the runner does once it has seen
     // the pause: whatever the polls signalled is behind us.
     std::thread::sleep(Duration::from_millis(400));
+    assert!(
+        !barriers.join(format!("{IDLE_QUEUED}.signal")).exists(),
+        "an idle session with no delivery or maintenance owed reserved processing"
+    );
     for entry in std::fs::read_dir(&barriers).expect("barrier dir") {
         let path = entry.expect("entry").path();
         if path
@@ -493,6 +498,13 @@ fn an_idle_subscription_is_not_starved_by_sustained_command_contention() {
         notification.contains(r#""kind":"core-test.subject""#),
         "the idle subscription received the wrong notification: {notification}"
     );
+    assert!(
+        wait_for(
+            &barriers.join(format!("{IDLE_WOKEN}.signal")),
+            Duration::from_secs(1)
+        ),
+        "the front idle reservation waited for the periodic poll instead of waking its session"
+    );
     let blocked = blocker.response();
     assert!(blocked.contains(r#""replay":false"#), "{blocked}");
     running.store(false, Ordering::Relaxed);
@@ -502,5 +514,79 @@ fn an_idle_subscription_is_not_starved_by_sustained_command_contention() {
     assert!(
         committed.load(Ordering::Relaxed) > 0,
         "no contending command committed"
+    );
+}
+
+fn command_throughput_beside(idle_connections: usize, window: Duration) -> (u64, Duration) {
+    let directory = tempfile::tempdir().expect("temp dir");
+    let sockets = directory.path().join("sockets");
+    std::fs::create_dir(&sockets).expect("socket dir");
+    std::fs::set_permissions(&sockets, std::fs::Permissions::from_mode(0o700)).expect("0700");
+    let socket = sockets.join("provider.sock");
+    let data = directory.path().join("data");
+    std::fs::create_dir(&data).expect("data dir");
+    let credential = format!("ccred1.owner.{}", "E".repeat(43));
+    let config = directory.path().join("socket.json");
+    std::fs::write(
+        &config,
+        format!(
+            r#"{{"format":"combraton-conformance-config/1","principal":"owner","authority_principals":["owner"],"credentials":[{{"credential":"{credential}"}}]}}"#
+        ),
+    )
+    .expect("config");
+    let _provider = Running(
+        Command::new(binary())
+            .arg("--data-dir")
+            .arg(&data)
+            .arg("--config")
+            .arg(&config)
+            .arg("--socket")
+            .arg(&socket)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("provider starts"),
+    );
+
+    let _idle: Vec<_> = (0..idle_connections)
+        .map(|_| Session::connect(&socket, &credential))
+        .collect();
+    let mut writer = Session::connect(&socket, &credential);
+    let started = Instant::now();
+    let mut commits = 0u64;
+    let mut max_latency = Duration::ZERO;
+    while started.elapsed() < window {
+        let command_started = Instant::now();
+        let id = format!("throughput-{commits}");
+        let response = writer.call(&command(
+            &id,
+            &format!(
+                r#"{{"operation":"core-test.subject.put","message_id":"m-{id}","command_id":"cmd-{id}","dedupe_generation":1,"subject":{{"kind":"core-test.subject","id":"s-{id}"}},"preconditions":[{{"subject":{{"kind":"core-test.subject","id":"s-{id}"}},"revision":0}}],"authority_epoch":0,"requires":[],"payload":{{"value":"throughput"}}}}"#
+            ),
+        ));
+        assert!(response.contains(r#""replay":false"#), "{response}");
+        max_latency = max_latency.max(command_started.elapsed());
+        commits += 1;
+    }
+    (commits, max_latency)
+}
+
+#[test]
+fn idle_connections_keep_at_least_half_of_command_throughput() {
+    let window = Duration::from_secs(3);
+    let none = command_throughput_beside(0, window);
+    let two = command_throughput_beside(2, window);
+    let eight = command_throughput_beside(8, window);
+    eprintln!(
+        "commits beside idle connections: K=0 {} (max {:?}), K=2 {} (max {:?}), K=8 {} (max {:?})",
+        none.0, none.1, two.0, two.1, eight.0, eight.1
+    );
+    assert!(
+        eight.0.saturating_mul(2) >= none.0,
+        "eight idle connections reduced command throughput below half: K=0 {}, K=2 {}, K=8 {}",
+        none.0,
+        two.0,
+        eight.0
     );
 }
