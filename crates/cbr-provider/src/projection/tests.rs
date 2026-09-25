@@ -3001,3 +3001,23 @@ fn an_input_of_exactly_the_input_bound_is_within_capacity_and_asked() {
     assert!(plan.parts.len() <= MAX_PARTS, "{}", plan.parts.len());
     assert_eq!(next(&read, bytes, &plan, SUBJECT, true), Next::Ask);
 }
+
+#[test]
+fn bytes_over_the_input_bound_are_insufficient_before_they_are_not_text() {
+    // **`next` decides in the order it documents**: capacity first, then
+    // whether the bytes are text. The call site refuses a too-large
+    // artifact before reading it, so only here is a binary over the bound
+    // seen by `next`, which must call it over capacity and never carry
+    // it as omitted whole.
+    let binary: Vec<u8> = (0..=INPUT_BYTES as u32).map(|n| (n % 251) as u8).collect();
+    assert!(too_large(binary.len()));
+    let read = parse(&binary);
+    assert_eq!(read.format, Format::Binary);
+    for may_ask in [true, false] {
+        let plan = partition(&read, &binary, SUBJECT, may_ask);
+        assert_eq!(
+            next(&read, &binary, &plan, SUBJECT, may_ask),
+            Next::Insufficient
+        );
+    }
+}
