@@ -13,7 +13,7 @@ Tracking: [issue #34](https://github.com/Combraton/cbr/issues/34). Scope: [RELEA
 
 **The owner's decision of 2026-09-25:**
 
-5. **`orient_repository` and `record_rejected_approach` land in v0.1**, so all five of [RELEASE-SCOPE §2](../readiness/RELEASE-SCOPE.md)'s families are M5's — §5 and §9 (m5i and m5j). The owner answered the question this document had left open, in the session, in these words: *"yes land orient_repository and record_rejected_approach for v0.1"*. Where the two go in the order is this session's proposal (§9), not part of the decision.
+5. **`orient_repository` and `record_rejected_approach` land in v0.1**, so all five of [RELEASE-SCOPE §2](../readiness/RELEASE-SCOPE.md)'s families are M5's — §5 and §9 (m5i and m5j). The owner answered the question this document had left open, in the session, in these words, which are in that session's transcript and not in this repository: *"yes land orient_repository and record_rejected_approach for v0.1"*. Where the two go in the order is this session's proposal (§9), not part of the decision.
 
 ## 1. Scope, and the promise
 
@@ -332,7 +332,7 @@ Run from `main` at `041ad5f`, with its binaries built from a clean tree, the sco
 | 2 | 15:40:44Z | 49 s | 1,952,640, the lesser of that and 2,250,000 − 36,410 | **83,657** | `log-m27hs` 19,280, `log-m3` 17,762, `core-m27hs` 23,931, `core-m3` 22,684 |
 
 - **Total 120,067 tokens**: 5.3% of the 2,250,000 held, 4.1% of the 2,928,960 worst case, and 6.1% of the 1,952,640 the dry run's parts allowed. Sixteen calls, none repaired, every one admitted by the local bound alone. Each run's ledger equals the harness's report and the sum of its sealed records' usage.
-- **The estimate was the worst case, and in tokens the worst case was far away.** Every part but each input's last was packed to 62 to 93% of `PART_BYTES` in raw bytes, by construction, but the largest request carried 9,808 input tokens and the costliest part 10,348 in all, against the 40,680 a part at every bound can cost: a part's bytes are escaped text, and the bound on tokens is the conservative byte bound.
+- **The estimate was the worst case, and in tokens the worst case was far away.** Each part was closed by its bound as designed — the red log's first at `PART_UNITS`, 64 units, and every other part but each input's last at 80 to 93% of `PART_BYTES` in raw bytes — but the largest request carried 9,808 input tokens and the costliest part 10,348 in all, against the 40,680 a part at every bound can cost: a part's bytes are escaped text, and the bound on tokens is the conservative byte bound.
 - **The run failed its rubric**, and J2 runs again after m5a-3 ([JOURNEYS](../../verification/JOURNEYS.md#j2-live-2026-09-25-the-mechanism-held-and-the-model-made-the-projection-worse--failed)). That rerun's inputs, estimate and ceiling are written here before it runs.
 
 ## What this document does not settle

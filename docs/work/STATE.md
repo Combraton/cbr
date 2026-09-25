@@ -21,7 +21,7 @@ On `m5/j2-live-record`, off `main` at `041ad5f`. Docs and the run's record only;
 
 **Found while planning the path proof: `cbr expand` did not exist.** RELEASE-SCOPE §2 lists "expand a citation" among the client's operations, and `context.expand` has been served since m3a, but the `cbr` command had no verb for it. It is being added test first on `cli/expand`.
 
-**Next.** m5a-3: the parser's failures become a floor a model's choice adds to and cannot remove, with labels that say exactly who chose what; then J2 live again, under the same frozen rubric, with its estimate written into READINESS first. Then m5b.
+**Next.** m5a-3: the parser's failures become a floor a model's choice adds to and cannot remove, with labels that say exactly who chose what; then J2 live again, under the rubric with only mechanical changes, frozen before the rerun, with its estimate written into READINESS first. Then m5b.
 
 ## Earlier — J2's live run, prepared
 
