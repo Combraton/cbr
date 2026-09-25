@@ -522,6 +522,46 @@ fn section(id: &str, citation: &str, evidence: &(String, String)) -> String {
     )
 }
 
+/// Submit `request`, which a script answers, wanting `evidence`, and poll
+/// until `packets` revisions of it are published.
+fn scripted(fixture: &Fixture, request: &str, evidence: &(String, String), packets: usize) {
+    let want = format!("{ITEM}=evidence:{}@{}", evidence.0, evidence.1);
+    let submitted = fixture.cbr(&[
+        "context",
+        request,
+        "--repo",
+        fixture.outside.to_str().expect("utf-8"),
+        "--repo-id",
+        "j2",
+        "--want",
+        &want,
+    ]);
+    assert!(
+        submitted.status.success(),
+        "submit {request}: {}",
+        String::from_utf8_lossy(&submitted.stderr)
+    );
+    let started = Instant::now();
+    loop {
+        let polled = fixture.cbr(&["request", request]);
+        let inspected =
+            cbr_encoding::parse(String::from_utf8_lossy(&polled.stdout).trim().as_bytes())
+                .expect("canonical JSON");
+        let published = inspected
+            .get("packets")
+            .and_then(Value::as_array)
+            .map_or(0, <[Value]>::len);
+        if published == packets {
+            return;
+        }
+        assert!(
+            started.elapsed() < Duration::from_secs(60),
+            "{request} never published {packets} revisions: {inspected:?}"
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
 /// **A request with two packet revisions**, which only a script makes.
 ///
 /// A compiled request publishes once and ends; a second publication needs
@@ -548,41 +588,7 @@ fn two_revisions(
     let provider = fixture.start_configured(&format!(
         r#"{PROVIDER},"context":{{"compile":true,"scripts":{{"two":{script}}}}}"#
     ));
-    let want = format!("{ITEM}=evidence:{}@{}", first.0, first.1);
-    let submitted = fixture.cbr(&[
-        "context",
-        "two",
-        "--repo",
-        fixture.outside.to_str().expect("utf-8"),
-        "--repo-id",
-        "j2",
-        "--want",
-        &want,
-    ]);
-    assert!(
-        submitted.status.success(),
-        "submit: {}",
-        String::from_utf8_lossy(&submitted.stderr)
-    );
-    let started = Instant::now();
-    loop {
-        let polled = fixture.cbr(&["request", "two"]);
-        let inspected =
-            cbr_encoding::parse(String::from_utf8_lossy(&polled.stdout).trim().as_bytes())
-                .expect("canonical JSON");
-        let published = inspected
-            .get("packets")
-            .and_then(Value::as_array)
-            .map_or(0, <[Value]>::len);
-        if published == 2 {
-            break;
-        }
-        assert!(
-            started.elapsed() < Duration::from_secs(60),
-            "two revisions were never published: {inspected:?}"
-        );
-        std::thread::sleep(Duration::from_millis(20));
-    }
+    scripted(fixture, "two", &first, 2);
     (provider, first, second)
 }
 
@@ -664,6 +670,74 @@ fn a_read_larger_than_one_frame_is_put_back_together_from_short_reads() {
         "expand", "two", "c-second", "--offset", "1000", "--length", "1100000",
     ]);
     assert_eq!(succeeded(&printed).stdout, &large[1000..1_101_000]);
+    provider.stop();
+}
+
+// ---- another provider's citation -------------------------------------------
+
+#[test]
+fn a_citation_naming_another_provider_is_refused_as_an_unknown_one_is() {
+    // **A citation is a reference, and a reference names where the
+    // evidence is** (EVIDENCE section 2). One naming another provider is
+    // not this provider's to read, even when this provider happens to
+    // hold an artifact with that id and digest: CONTEXT section 6 makes it
+    // the refusal an unknown citation gets. A compiled packet only ever
+    // cites the provider that compiled it, so only a script reaches this;
+    // the section cites one sealed artifact three ways, naming this
+    // provider, naming none (the provider being asked) and naming
+    // `elsewhere`.
+    let fixture = Fixture::narrow(&["ids:u1"]);
+    let ingesting = start(&fixture);
+    let source = log();
+    let evidence = ingest(&fixture, "run.log", &source);
+    ingesting.stop();
+    let reference = format!(
+        r#""artifact":{{"kind":"evidence.artifact","id":"{}"}},"digest":"{}""#,
+        evidence.0, evidence.1
+    );
+    let script = format!(
+        r#"[{{"section":{{"section_id":"s-log","item_id":"{ITEM}","label":"observation","content":"cited three ways","citations":[{{"citation_id":"c-here","evidence":{{"provider":"cbr",{reference}}}}},{{"citation_id":"c-bare","evidence":{{{reference}}}}},{{"citation_id":"c-other","evidence":{{"provider":"elsewhere",{reference}}}}}]}}}},{{"publish":{{}}}}]"#
+    );
+    let provider = fixture.start_configured(&format!(
+        r#"{PROVIDER},"context":{{"compile":true,"scripts":{{"three":{script}}}}}"#
+    ));
+    scripted(&fixture, "three", &evidence, 1);
+
+    // **The control arms**: the same artifact, cited as this provider's
+    // or as nobody's, is the ingested bytes. Without them the refusal
+    // below could be a script whose citations reach nothing.
+    let here = fixture.cbr(&["expand", "three", "c-here"]);
+    assert_eq!(succeeded(&here).stdout, source);
+    let bare = fixture.cbr(&["expand", "three", "c-bare"]);
+    assert_eq!(succeeded(&bare).stdout, source);
+
+    let refused = |name: &str, citation: &str| -> String {
+        let out = out_file(&fixture, name);
+        let output = fixture.cbr(&[
+            "expand",
+            "three",
+            citation,
+            "--out",
+            out.to_str().expect("utf-8"),
+        ]);
+        assert!(!output.status.success(), "{citation} was expanded");
+        assert!(
+            output.stdout.is_empty(),
+            "{citation} printed on standard output"
+        );
+        assert_nothing_written(&out);
+        stderr(&output)
+    };
+    let unknown = refused("unknown.out", "c-nope");
+    let other = refused("other.out", "c-other");
+    assert!(
+        unknown.contains("permission_denied") && unknown.contains("out_of_scope"),
+        "{unknown}"
+    );
+    assert_eq!(
+        other, unknown,
+        "another provider's citation is told apart from an unknown one"
+    );
     provider.stop();
 }
 
