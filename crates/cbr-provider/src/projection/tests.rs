@@ -2076,14 +2076,16 @@ fn the_header_counts_failing_tests_and_cargo_errors_apart() {
     let libtest = cargo_log(2, 5, &[(0, 1), (1, 3)], 2)
         + "error: test failed, to rerun pass `-p crate_1 --lib`\n";
     let document = manifest(60, &[3, 40]);
-    // **A compiler error in cargo's JSON dialect is a cargo error**, named
-    // by its message where it has one and by its `reason` where it has
-    // not — a string, so on one line wherever the record is — and the
-    // `message` object inside it is not a second one.
+    // **A compiler error in cargo's JSON dialect is a cargo error**. It is
+    // named by its message where it has one, before what it renders, and
+    // by its `reason` where it has neither: a string, so on one line
+    // wherever the record is. The `message` object inside it is not a
+    // second one.
     let lines = "{\"name\":\"a\",\"outcome\":\"pass\"}\n{\"name\":\"b\",\"outcome\":\"fail\"}\n\
                  {\"reason\":\"compiler-message\",\"message\":{\"level\":\"error\"}}\n\
                  {\"reason\":\"compiler-message\",\"package_id\":\"x 0.1.0\",\"message\":\
-                 {\"message\":\"cannot find value `y` in this scope\",\"level\":\"error\"}}\n";
+                 {\"message\":\"cannot find value `y` in this scope\",\"level\":\"error\",\
+                 \"rendered\":\"error[E0425]: cannot find value `y`\"}}\n";
     for (text, tests, errors) in [(libtest, 2, 1), (document, 2, 0), (lines.to_string(), 1, 2)] {
         let read = parse(text.as_bytes());
         let plan = partition(&read, text.as_bytes(), SUBJECT);
