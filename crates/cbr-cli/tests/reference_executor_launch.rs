@@ -274,6 +274,10 @@ fn the_route_is_the_executor_member_and_not_a_name() {
             r#"{"provider_id": "context-two", "executor": {"script": []}}"#,
         ),
         ("ctx", r#"{"provider_id": "context-three", "executor": {}}"#),
+        (
+            "ctx",
+            r#"{"provider_id": "context-four", "executor": {}, "context": {"scripts": {}}}"#,
+        ),
     ] {
         let tree = Tree::new();
         let output = tree.launch_at(&tree.named(participant, config));
@@ -286,15 +290,20 @@ fn the_route_is_the_executor_member_and_not_a_name() {
     }
 
     // Every name an executor goes by, here and in the vendored fixtures,
-    // on a configuration with no `executor` member.
-    for (participant, provider_id) in [
-        ("executor", "executor-x"),
-        ("exe", "executor-1"),
-        ("exe", "executor-one"),
+    // on a configuration with no `executor` member; and CBR's own context
+    // participant naming the executor it would submit to, as eight vendored
+    // composition fixtures start it — `context.executor` is not the member.
+    for (participant, config) in [
+        ("executor", r#"{"provider_id": "executor-x"}"#),
+        ("exe", r#"{"provider_id": "executor-1"}"#),
+        ("exe", r#"{"provider_id": "executor-one"}"#),
+        (
+            "ctx",
+            r#"{"provider_id": "context-1", "context": {"executor": {"provider_id": "executor-1", "socket": "s", "credential": "c", "grant": "g-ctx-execute"}}}"#,
+        ),
     ] {
         let tree = Tree::new();
-        let config = format!(r#"{{"provider_id": "{provider_id}"}}"#);
-        let output = tree.launch_at(&tree.named(participant, &config));
+        let output = tree.launch_at(&tree.named(participant, config));
         assert!(output.status.success(), "{}", said(&output));
         let started = tree.started().expect("something started");
         assert_eq!(
@@ -308,11 +317,15 @@ fn the_route_is_the_executor_member_and_not_a_name() {
 fn an_executor_configuration_outside_a_composition_is_refused() {
     // The misuse the verifier reproduced: execution.requires-core-features
     // through this descriptor passed on the reference provider under a
-    // CBR-named participant, with CBR serving nothing.
+    // CBR-named participant, with CBR serving nothing. That fixture's own
+    // configuration names no provider, so the refusal cannot lean on one.
+    let misuse = r#"{"principal": "owner", "authority_principals": ["owner"], "executor": {}}"#;
     for data in ["data", "data-1"] {
-        let tree = Tree::new();
-        let output = tree.launch_at(&tree.single(data, EXECUTOR));
-        assert_refused(&tree, &output, "composition");
+        for config in [EXECUTOR, misuse] {
+            let tree = Tree::new();
+            let output = tree.launch_at(&tree.single(data, config));
+            assert_refused(&tree, &output, "composition");
+        }
     }
 }
 
