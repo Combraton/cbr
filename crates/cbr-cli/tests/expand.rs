@@ -1212,19 +1212,8 @@ fn anchors_keep_the_order_of_their_key_not_of_their_rendered_id() {
         .expect("writes");
     }
     serving::commit(&fixture.checkout, "a widget");
-    for arguments in [
-        &["init", "-q", "-b", "main"][..],
-        &["add", "-A"],
-        &["commit", "-q", "-m", "a widget"],
-    ] {
-        let status = Command::new("git")
-            .arg("-C")
-            .arg(&second)
-            .args(arguments)
-            .status()
-            .expect("git runs");
-        assert!(status.success(), "git {arguments:?}");
-    }
+    serving::git(&second, &["init", "-q", "-b", "main"]);
+    serving::commit(&second, "a widget");
     let registration = format!("app.x={}", second.display());
     let provider = fixture.start_with(&["--register-repository", &registration]);
     let also = format!("app.x={}", second.display());

@@ -71,7 +71,13 @@ pub fn set_origin(repository: &Path, url: &str) {
     git(repository, &["remote", "add", "origin", url]);
 }
 
-fn git(repository: &Path, arguments: &[&str]) {
+/// Run `git` in `repository` as the fixtures' own author.
+///
+/// **Every write goes through here**, because a commit needs an identity
+/// and a CI runner has none: macOS will guess one from the user and the
+/// host, and Ubuntu's runners refuse. A test that ran `git commit` by
+/// itself passed on the owner's machine and failed on Linux CI.
+pub fn git(repository: &Path, arguments: &[&str]) {
     let output = Command::new("git")
         .arg("-C")
         .arg(repository)
