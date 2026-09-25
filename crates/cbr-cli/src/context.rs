@@ -75,8 +75,10 @@ fn item(
                 .ok_or("an evidence item is <item-id>=evidence:<artifact>@<digest>")?;
             // **No provider**, which is the provider being asked (EVIDENCE
             // section 2): the artifact is one `cbr ingest` sealed over this
-            // same socket, and no answer the protocol gives an authority
-            // principal says what that provider calls itself. It used to
+            // same socket, and on a fresh store no answer the protocol gives
+            // an authority principal says yet what that provider calls
+            // itself: a claim reference, a packet citation or a grant's
+            // audience would, once one exists. It used to
             // say `cbr` here, and a provider called anything else compiled
             // a citation its own `context.expand` refused as another
             // provider's. The packet's citation names the provider by its

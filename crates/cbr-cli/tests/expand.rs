@@ -681,8 +681,10 @@ fn a_citation_naming_another_provider_is_refused_as_an_unknown_one_is() {
     // evidence is** (EVIDENCE section 2). One naming another provider is
     // not this provider's to read, even when this provider happens to
     // hold an artifact with that id and digest: CONTEXT section 6 makes it
-    // the refusal an unknown citation gets. A compiled packet only ever
-    // cites the provider that compiled it, so only a script reaches this;
+    // the refusal an unknown citation gets. A compiled evidence section
+    // cites the provider that compiled it, and a compiled source section
+    // still names `cbr` (a follow-up), which is the provider's id here, so
+    // only a script reaches this;
     // the section cites one sealed artifact three ways, naming this
     // provider, naming none (the provider being asked) and naming
     // `elsewhere`.
