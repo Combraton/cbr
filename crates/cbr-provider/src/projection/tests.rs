@@ -1923,7 +1923,9 @@ fn capacity_is_the_inputs_not_the_offers() {
     let read = parse(bytes);
     let plan = partition(&read, bytes, SUBJECT, true);
     assert_eq!(plan.parts.len(), MAX_PARTS + 1, "{}", plan.parts.len());
-    let (addable, _) = offer(&read, bytes, &plan, SUBJECT).expect("an offer, had one been made");
+    let (addable, _) = work_out(&read, bytes, &plan, SUBJECT)
+        .1
+        .expect("an offer, had one been made");
     let would_offer: Vec<usize> = plan
         .parts
         .iter()
@@ -1961,7 +1963,9 @@ fn capacity_is_the_inputs_not_the_offers() {
     assert_eq!(read.format, Format::Json);
     let plan = partition(&read, bytes, SUBJECT, true);
     assert!(plan.parts.len() <= MAX_PARTS, "{}", plan.parts.len());
-    let (addable, _) = offer(&read, bytes, &plan, SUBJECT).expect("an offer, had one been made");
+    let (addable, _) = work_out(&read, bytes, &plan, SUBJECT)
+        .1
+        .expect("an offer, had one been made");
     assert!(
         plan.parts.iter().flatten().any(|&index| addable[index]),
         "the premise: a result could be added"

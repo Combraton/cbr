@@ -745,11 +745,16 @@ pub struct Plan {
     /// however the model arm's label came out ([`partition`]). Each is a
     /// subset of a planned part, so [`PART_BYTES`], [`PART_UNITS`] and
     /// [`MAX_PARTS`] hold for it too. Empty when everything fits, when the
-    /// floor itself leaves no room, and when nothing could be added.
+    /// floor itself leaves no room, when nothing could be added, and when
+    /// no model may be asked — whose header counts the questions
+    /// [`render`] works out.
     pub asked: Vec<Vec<usize>>,
     /// What each question's preamble says is already carried.
     pub floor: Floor,
-    /// The rule's floor, unit by unit, when [`partition`] worked it out.
+    /// **The rule's floor, unit by unit, when [`partition`] worked it
+    /// out**, which [`render`] then draws on rather than drawing it again:
+    /// the floor is one drawing of the whole projection for each failure
+    /// and each unit of run identity. `None` when nothing was worked out.
     rule: Option<Vec<bool>>,
 }
 
@@ -874,6 +879,12 @@ fn cost(read: &Read, unit: &Unit, bytes: &[u8]) -> usize {
 /// model could choose, and nothing bounds those units until capacity has
 /// been decided.
 ///
+/// **Nothing is offered where nobody may be asked**: with `may_ask` false
+/// — no model, or no investigation — nothing is worked out either, and no
+/// projection is drawn. The header's count of questions is then worked out
+/// by [`render`], from the floor it draws anyway, so a request that may ask
+/// nobody prints the same count as one that may.
+///
 /// **The offer is exactly what could be added.** The rule's projection is
 /// computed first, under the rule's own header; it is the floor, and a
 /// model is asked only when that floor still fits drawn the widest the
@@ -884,7 +895,7 @@ fn cost(read: &Read, unit: &Unit, bytes: &[u8]) -> usize {
 /// drawn that way. **A unit a model adds never joins the floor's
 /// excerpts**: [`draw`] cuts a run wherever the chooser changes, so each is
 /// priced as an excerpt of its own, frame and all.
-pub fn partition(read: &Read, bytes: &[u8], subject: Subject<'_>, _may_ask: bool) -> Plan {
+pub fn partition(read: &Read, bytes: &[u8], subject: Subject<'_>, may_ask: bool) -> Plan {
     let (parts, split) = cut(read, bytes);
     let tests = read
         .named
@@ -903,37 +914,52 @@ pub fn partition(read: &Read, bytes: &[u8], subject: Subject<'_>, _may_ask: bool
         },
         rule: None,
     };
-    if plan.parts.len() > MAX_PARTS || too_large(read.size) || read.format == Format::Binary {
+    if plan.parts.len() > MAX_PARTS
+        || too_large(read.size)
+        || read.format == Format::Binary
+        || !may_ask
+    {
         return plan;
     }
-    if let Some((addable, room)) = offer(read, bytes, &plan, subject) {
-        plan.asked = plan
-            .parts
-            .iter()
-            .map(|units| {
-                units
-                    .iter()
-                    .copied()
-                    .filter(|&index| addable[index])
-                    .collect::<Vec<usize>>()
-            })
-            .filter(|units| !units.is_empty())
-            .collect();
+    let (rule, offered) = work_out(read, bytes, &plan, subject);
+    plan.rule = rule;
+    if let Some((addable, room)) = offered {
+        plan.asked = questions(&plan, &addable);
         (plan.floor.bytes, plan.floor.excerpts) = room;
     }
     plan
 }
 
+/// Each planned part with only the units a model could add, and a part
+/// left with none dropped.
+fn questions(plan: &Plan, addable: &[bool]) -> Vec<Vec<usize>> {
+    plan.parts
+        .iter()
+        .map(|units| {
+            units
+                .iter()
+                .copied()
+                .filter(|&index| addable[index])
+                .collect::<Vec<usize>>()
+        })
+        .filter(|units| !units.is_empty())
+        .collect()
+}
+
 /// Which units a model could add to the rule's floor, and the room the
-/// floor leaves at the model arm's widest; `None` when no question is
-/// needed, because everything fits, or when the floor itself would not fit
-/// beside the model's label. Only ever called on text within capacity.
-fn offer(
+/// floor leaves at the model arm's widest, as `(bytes, excerpts)`.
+type Offer = (Vec<bool>, (usize, usize));
+
+/// The rule's floor and what a model could add to it: `(None, None)` when
+/// everything fits, so that nothing has to be chosen, and otherwise the
+/// floor and [`offer`]'s answer on it. Only ever called on text within
+/// capacity.
+fn work_out(
     read: &Read,
     bytes: &[u8],
     plan: &Plan,
     subject: Subject<'_>,
-) -> Option<(Vec<bool>, (usize, usize))> {
+) -> (Option<Vec<bool>>, Option<Offer>) {
     let frame = Frame::of(subject, plan);
     if draw(
         read,
@@ -945,12 +971,26 @@ fn offer(
     )
     .fits()
     {
-        return None;
+        return (None, None);
     }
     let floor = floor(read, bytes, &frame);
+    let offered = offer(read, bytes, plan, subject, &floor);
+    (Some(floor), offered)
+}
+
+/// Which units a model could add to the rule's `floor`, and the room the
+/// floor leaves at the model arm's widest; `None` when the floor itself
+/// would not fit beside the model's label.
+fn offer(
+    read: &Read,
+    bytes: &[u8],
+    plan: &Plan,
+    subject: Subject<'_>,
+    floor: &[bool],
+) -> Option<Offer> {
     let widest = Frame::widest(subject, plan);
     let model = choose_by_model(read, &[]);
-    let at_floor = draw(read, bytes, &model, &floor, Some(&floor), &widest);
+    let at_floor = draw(read, bytes, &model, floor, Some(floor), &widest);
     if !at_floor.fits() {
         return None;
     }
@@ -958,14 +998,14 @@ fn offer(
         PROJECTION_BYTES.saturating_sub(at_floor.content.len()),
         MAX_EXCERPTS.saturating_sub(at_floor.excerpts),
     );
-    let mut carried = floor.clone();
+    let mut carried = floor.to_vec();
     let addable = (0..read.units.len())
         .map(|index| {
             if read.units[index].kind != Kind::Other || floor[index] {
                 return false;
             }
             carried[index] = true;
-            let fits = draw(read, bytes, &model, &carried, Some(&floor), &widest).fits();
+            let fits = draw(read, bytes, &model, &carried, Some(floor), &widest).fits();
             carried[index] = false;
             fits
         })
@@ -1360,9 +1400,16 @@ fn floor(read: &Read, bytes: &[u8], frame: &Frame<'_>) -> Vec<bool> {
 /// fits beside the model arm's widest label, so nothing a model answers
 /// can take away a byte the rule carries.
 ///
+/// **The floor is drawn once a request.** A plan [`partition`] worked an
+/// offer out for carries its floor, and it is drawn on here; a plan made
+/// for a request that may ask nobody carries none, and the floor is drawn
+/// here, with the questions worked out from it for the header's count
+/// alone, so both arms print the same count.
+///
 /// **`None` is a model arm that does not fit**, which that check makes
-/// unreachable, and which is refused here rather than taken on trust: a
-/// projection over its own bound is never published.
+/// unreachable, and which is refused here rather than taken on trust — on
+/// bytes and on excerpts alike: a projection over its own bound is never
+/// published.
 pub fn render(
     read: &Read,
     bytes: &[u8],
@@ -1392,7 +1439,21 @@ pub fn render(
             return Some(whole);
         }
     }
-    let floor = floor(read, bytes, &frame);
+    let worked;
+    let (plan, floor) = match &plan.rule {
+        Some(rule) => (plan, rule.clone()),
+        None => {
+            let (rule, offered) = work_out(read, bytes, plan, subject);
+            let mut counted = plan.clone();
+            if let Some((addable, _)) = offered {
+                counted.asked = questions(plan, &addable);
+            }
+            let rule = rule.unwrap_or_else(|| floor(read, bytes, &frame));
+            worked = counted;
+            (&worked, rule)
+        }
+    };
+    let frame = Frame::of(subject, plan);
     // **Only the model arm keeps its choosers apart**, so that its header
     // can say which excerpts are the model's and be exactly right.
     let chooser = (choice.by == By::Model).then_some(floor.as_slice());
