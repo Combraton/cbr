@@ -1198,3 +1198,84 @@ fn a_request_id_of_127_characters_is_published_under_an_artifact_id_inside_the_g
     );
     ctx.kill();
 }
+
+#[test]
+fn a_scripted_packet_missing_a_required_id_is_never_published() {
+    // **A missing id is not let through as an absent one.** A script can
+    // leave a section's `section_id` out, which the facts then carry as
+    // `null`, or a citation's `citation_id`, which they then do not carry
+    // at all; the inspect schema requires both. Each is refused at the same
+    // door as an id outside the grammar, and the log names where it is
+    // missing.
+    let directory = tempfile::tempdir().expect("temp dir");
+    let evidence = r#""evidence":{"provider":"context-1","artifact":{"kind":"evidence.artifact","id":"log-1"},"digest":"sha256:0000000000000000000000000000000000000000000000000000000000000000"}"#;
+    let script = |section: &str| format!(r#"[{{"section":{{{section}}}}},{{"publish":{{}}}}]"#);
+    let body = r#""item_id":"i-1","label":"source_inspected","content":"fn main() {}""#;
+    let mut ctx = ContextProvider::start(
+        directory.path(),
+        &format!(
+            r#"{{"format":"combraton-conformance-config/1","provider_id":"context-1","principal":"owner","authority_principals":["owner"],"context":{{"scripts":{{"r-no-section-id":{},"r-no-citation-id":{},"r-good":{}}}}}}}"#,
+            script(body),
+            script(&format!(
+                r#""section_id":"s-1",{body},"citations":[{{{evidence}}}]"#
+            )),
+            script(&format!(r#""section_id":"s-1",{body}"#)),
+        ),
+    );
+    for request in ["r-no-section-id", "r-no-citation-id", "r-good"] {
+        assert_eq!(
+            text(
+                result(&ctx.submit(request, "2030-01-01T01:00:00Z")),
+                &["outcome", "state"]
+            ),
+            "preparing"
+        );
+    }
+    let published = (0..50).find_map(|_| {
+        let inspected = ctx.inspect("r-good");
+        (at(&inspected, &["packets"])
+            .as_array()
+            .is_some_and(|packets| !packets.is_empty()))
+        .then_some(inspected)
+    });
+    assert!(
+        published.is_some(),
+        "a valid job beside the refused ones never published"
+    );
+    for _ in 0..5 {
+        for request in ["r-no-section-id", "r-no-citation-id"] {
+            let refused = ctx.inspect(request);
+            assert_eq!(
+                at(&refused, &["packets"]).as_array().map(<[_]>::len),
+                Some(0),
+                "{request}: a packet missing a required id was published: {refused:?}"
+            );
+        }
+    }
+
+    let logged =
+        std::fs::read_to_string(directory.path().join("context-stderr.log")).expect("the log");
+    let line = |request: &str| {
+        logged
+            .lines()
+            .find(|line| line.contains(&format!("request {request}:")))
+            .unwrap_or_else(|| panic!("nothing logged for {request}: {logged}"))
+            .to_string()
+    };
+    assert!(
+        line("r-no-section-id").contains("/sections/0/section_id"),
+        "the log names the missing section id: {logged}"
+    );
+    let citation = line("r-no-citation-id");
+    for pointer in [
+        "/sections/0/citations/0",
+        "/citations/0/citation_id",
+        "/body/sections/0/citations/0/citation_id",
+    ] {
+        assert!(
+            citation.contains(pointer),
+            "the log names the missing citation id at {pointer}: {citation}"
+        );
+    }
+    ctx.kill();
+}

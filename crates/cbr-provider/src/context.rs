@@ -2106,6 +2106,141 @@ mod tests {
         );
     }
 
+    /// Take the member at `segments` out of `target`, following element 0
+    /// of an array for `*`.
+    fn remove(target: &mut Value, segments: &[&str]) {
+        match segments {
+            [] => {}
+            [last] => {
+                if let Value::Object(members) = target {
+                    members.retain(|(name, _)| name != last);
+                }
+            }
+            [first, rest @ ..] => {
+                let next = if *first == "*" {
+                    match target {
+                        Value::Array(elements) => elements.first_mut(),
+                        _ => None,
+                    }
+                } else {
+                    member_mut(target, first)
+                };
+                if let Some(next) = next {
+                    remove(next, rest);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn the_guard_names_a_required_id_that_is_absent_or_null() {
+        // **An id that is not there is not an id inside the grammar.** The
+        // inspect schema requires a section's `section_id` and a
+        // citation's `citation_id`, and a script can leave either out: the
+        // section's id is copied into the facts as `null` and the
+        // citation's is not copied at all. Each is reported where it is
+        // missing, as a bad value there would be.
+        let facts = full_facts();
+        for (path, pointer) in [
+            ("/request/id", "/request/id"),
+            ("/sections/*/section_id", "/sections/0/section_id"),
+            ("/citations/*/citation_id", "/citations/0/citation_id"),
+            (
+                "/citations/*/evidence/artifact/id",
+                "/citations/0/evidence/artifact/id",
+            ),
+            ("/items/*/item_id", "/items/0/item_id"),
+            ("/body/sections/*/section_id", "/body/sections/0/section_id"),
+            (
+                "/body/sections/*/citations/*/citation_id",
+                "/body/sections/0/citations/0/citation_id",
+            ),
+        ] {
+            let segments: Vec<&str> = path.split('/').skip(1).collect();
+            let mut absent = facts.clone();
+            remove(&mut absent, &segments);
+            assert_eq!(
+                ids_outside_grammar(&absent, "packet.r-1.1"),
+                vec![pointer.to_string()],
+                "{path} absent"
+            );
+            let mut null = facts.clone();
+            insert(&mut null, &segments, Value::Null);
+            assert_eq!(
+                ids_outside_grammar(&null, "packet.r-1.1"),
+                vec![pointer.to_string()],
+                "{path} null"
+            );
+        }
+        // An element of a list of ids is required by being in the list.
+        for (path, pointer) in [
+            ("/sections/*/citations/*", "/sections/0/citations/0"),
+            ("/inclusions/*", "/inclusions/0"),
+        ] {
+            let segments: Vec<&str> = path.split('/').skip(1).collect();
+            let mut null = facts.clone();
+            insert(&mut null, &segments, Value::Null);
+            assert_eq!(
+                ids_outside_grammar(&null, "packet.r-1.1"),
+                vec![pointer.to_string()],
+                "{path} null"
+            );
+        }
+        // **An optional id may be absent**: a section of no item, an
+        // omission of a whole item, evidence that does not name its
+        // provider. So may the object that would hold a required one: a
+        // section that is not a claim has no claim reference to name.
+        for path in [
+            "/sections/*/item_id",
+            "/omissions/*/section_id",
+            "/omissions/*/item_id",
+            "/selected/*/evidence/provider",
+            "/citations/*/evidence/provider",
+            "/body/sections/*/item_id",
+            "/sections/*/claim",
+        ] {
+            let segments: Vec<&str> = path.split('/').skip(1).collect();
+            let mut absent = facts.clone();
+            remove(&mut absent, &segments);
+            assert_eq!(
+                ids_outside_grammar(&absent, "packet.r-1.1"),
+                Vec::<String>::new(),
+                "{path} absent"
+            );
+        }
+    }
+
+    #[test]
+    fn the_guard_reads_the_sealed_body_where_it_differs_from_the_facts() {
+        // **The body is what a consumer reads.** Today its sections and
+        // their citations are built from the same values as the facts, so
+        // a bad id in one is a bad id in the other; these pointers are
+        // written out rather than read from the guard's list, so a body
+        // path dropped from it fails here, whether or not the two could
+        // ever differ.
+        let facts = full_facts();
+        for pointer in [
+            "/body/sections/0/section_id",
+            "/body/sections/0/item_id",
+            "/body/sections/0/citations/0/citation_id",
+            "/body/sections/0/citations/0/evidence/provider",
+            "/body/sections/0/citations/0/evidence/artifact/id",
+        ] {
+            let segments: Vec<&str> = pointer
+                .split('/')
+                .skip(1)
+                .map(|segment| if segment == "0" { "*" } else { segment })
+                .collect();
+            let mut broken = facts.clone();
+            insert(&mut broken, &segments, string("s/x"));
+            assert_eq!(
+                ids_outside_grammar(&broken, "packet.r-1.1"),
+                vec![pointer.to_string()],
+                "the body alone holding a bad id at {pointer}"
+            );
+        }
+    }
+
     /// Every identifier-typed path in a vendored schema, following `$ref`
     /// across files, with `*` for an array's elements.
     fn identifier_paths(file: &std::path::Path) -> std::collections::BTreeSet<String> {

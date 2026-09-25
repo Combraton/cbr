@@ -107,7 +107,12 @@ fn ingest(fixture: &Fixture, name: &str, bytes: &[u8]) -> (String, String) {
 /// settles. The basis names a repository the provider never registered,
 /// as `journey_two` does, so nothing but the item is prepared.
 fn asked(fixture: &Fixture, request: &str, artifact: &str, digest: &str) -> Value {
-    let want = format!("{ITEM}=evidence:{artifact}@{digest}");
+    asked_for(fixture, request, ITEM, artifact, digest)
+}
+
+/// [`asked`], under an item id of the caller's.
+fn asked_for(fixture: &Fixture, request: &str, item: &str, artifact: &str, digest: &str) -> Value {
+    let want = format!("{item}=evidence:{artifact}@{digest}");
     let submitted = fixture.cbr(&[
         "context",
         request,
@@ -1255,5 +1260,157 @@ fn anchors_keep_the_order_of_their_key_not_of_their_rendered_id() {
         ],
         "the anchors, in the order of their key"
     );
+    provider.stop();
+}
+
+// ---- an item id the protocol allows, past what its section id can hold ----
+//
+// An item id is an identifier, so it may be 128 characters, and `s-` and
+// `c-` in front of one of 127 make 129. The compiler shortens those as it
+// shortens a long path; these two follow such an item through a compiled
+// packet to its citation's bytes, once as a source item and once as an
+// evidence item whose projection declares an omission, because the
+// omission's `s-<item>.o<n>` is built at a site of its own.
+
+/// An item id of 127 characters: an identifier, and one that `s-` and `c-`
+/// take past 128.
+fn long_item() -> String {
+    "i".repeat(127)
+}
+
+/// The one sealed section of `item`, and its citation ids.
+fn item_section(sealed: &Value, item: &str) -> (String, Vec<String>) {
+    let sections: Vec<Value> = sealed
+        .get("sections")
+        .and_then(Value::as_array)
+        .unwrap_or_default()
+        .iter()
+        .filter(|section| section.get("item_id").and_then(Value::as_str) == Some(item))
+        .cloned()
+        .collect();
+    assert_eq!(sections.len(), 1, "one section for the item: {sealed:?}");
+    let section = &sections[0];
+    let citations = section
+        .get("citations")
+        .and_then(Value::as_array)
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|citation| citation.get("citation_id").and_then(Value::as_str))
+        .map(str::to_string)
+        .collect();
+    (
+        section
+            .get("section_id")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string(),
+        citations,
+    )
+}
+
+/// Assert a section id and its citation id are the shortened pair of one
+/// item: each inside the grammar, `s-~~` and `c-~~`, with one digest.
+fn assert_shortened_pair(section_id: &str, citation_id: &str) {
+    for (id, prefix) in [(section_id, "s-~~"), (citation_id, "c-~~")] {
+        assert!(
+            serving::is_identifier(id) && id.starts_with(prefix),
+            "{id} ({} bytes) is not a shortened id under {prefix}",
+            id.len()
+        );
+    }
+    assert_eq!(
+        section_id["s-~~".len()..]
+            .get(..32)
+            .expect("a digest of 32 hex digits"),
+        citation_id["c-~~".len()..]
+            .get(..32)
+            .expect("a digest of 32 hex digits"),
+        "a section and its citation digest the same item"
+    );
+}
+
+#[test]
+fn a_source_item_of_127_characters_is_published_and_its_citation_expands() {
+    // **The ids of an item's own section were built raw**, `s-<item>` and
+    // `c-<item>`, and an item of 127 characters made both 129 bytes: the
+    // guard refused the packet on every tick and the request never left
+    // `preparing`. Shortened, the packet is published and the citation
+    // it prints is followed to the file's bytes.
+    let fixture = Fixture::narrow(&["ids:u1"]);
+    let provider = start(&fixture);
+    let item = long_item();
+    let want = format!("{item}=source:queue.md");
+    let (packet, sealed) = compiled(&fixture, "longsource", &["--want", &want]);
+    serving::assert_packet_ids(&packet, &sealed);
+    let (section_id, citations) = item_section(&sealed, &item);
+    assert_eq!(citations.len(), 1, "{sealed:?}");
+    assert_shortened_pair(&section_id, &citations[0]);
+    let printed = fixture.cbr(&["expand", "longsource", &citations[0]]);
+    assert_eq!(
+        succeeded(&printed).stdout,
+        std::fs::read(fixture.checkout.join("queue.md")).expect("reads"),
+        "the long item's citation expands to the file"
+    );
+    provider.stop();
+}
+
+#[test]
+fn an_evidence_item_of_127_characters_declares_its_omission_inside_the_grammar() {
+    // **The same item id at the projection's omission site.** Bytes that
+    // are not text are declared omitted whole, as `s-<item>.o1`: 132 bytes
+    // for this item, shortened to an id that keeps its `.o1`. The packet
+    // is published, the omission names the item, and the section's
+    // citation expands to the ingested bytes.
+    let fixture = Fixture::narrow(&["ids:u1"]);
+    let provider = start(&fixture);
+    let bytes: Vec<u8> = (0..20_000u32).map(|n| (n % 251) as u8 | 0x80).collect();
+    let evidence = ingest(&fixture, "blob.bin", &bytes);
+    let item = long_item();
+    let inspected = asked_for(&fixture, "longevidence", &item, &evidence.0, &evidence.1);
+    assert_ne!(
+        inspected
+            .get("packets")
+            .and_then(Value::as_array)
+            .map_or(0, <[Value]>::len),
+        0,
+        "the long item's packet was published: {inspected:?}"
+    );
+    let packet = serving::packet(&fixture, "longevidence");
+    let sealed = serving::sealed(&packet);
+    serving::assert_packet_ids(&packet, &sealed);
+    let (section_id, citations) = item_section(&sealed, &item);
+    assert_eq!(citations.len(), 1, "{sealed:?}");
+    assert_shortened_pair(&section_id, &citations[0]);
+
+    let omitted: Vec<String> = packet
+        .get("omissions")
+        .and_then(Value::as_array)
+        .unwrap_or_default()
+        .iter()
+        .filter(|omission| omission.get("item_id").and_then(Value::as_str) == Some(&item))
+        .filter_map(|omission| omission.get("section_id").and_then(Value::as_str))
+        .map(str::to_string)
+        .collect();
+    assert_eq!(
+        omitted.len(),
+        1,
+        "one omission, the whole artifact: {packet:?}"
+    );
+    assert!(
+        serving::is_identifier(&omitted[0])
+            && omitted[0].starts_with("s-~~")
+            && omitted[0].ends_with(".o1"),
+        "the omission {} ({} bytes) is not a shortened `s-<item>.o1`",
+        omitted[0],
+        omitted[0].len()
+    );
+
+    let printed = fixture.cbr(&["expand", "longevidence", &citations[0]]);
+    assert_eq!(
+        succeeded(&printed).stdout,
+        bytes,
+        "the long item's citation expands to the ingested bytes"
+    );
+    assert_eq!(bytes, fetched(&fixture, &evidence.0, &evidence.1));
     provider.stop();
 }

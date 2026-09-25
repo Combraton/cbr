@@ -1170,12 +1170,19 @@ pub fn is_identifier(text: &str) -> bool {
 /// its sections, their citation ids, the inclusions, the omissions and
 /// the citations; and from the sealed body, its sections and the
 /// citations they carry.
+///
+/// An id the schemas require that is absent, `null` or not a string is
+/// recorded as the empty string, which no identifier is, so it fails the
+/// grammar rather than going unseen. An optional one that is absent is
+/// left out.
 pub fn packet_ids(inspected: &Value, sealed: &Value) -> Vec<(String, String)> {
     let mut found = Vec::new();
-    let mut push = |place: String, value: Option<&Value>| {
-        if let Some(id) = value.and_then(Value::as_str) {
-            found.push((place, id.to_string()));
-        }
+    let mut push = |place: String, value: Option<&Value>, required: bool| match value
+        .and_then(Value::as_str)
+    {
+        Some(id) => found.push((place, id.to_string())),
+        None if required => found.push((place, String::new())),
+        None => {}
     };
     let array = |value: &Value, name: &str| -> Vec<Value> {
         value
@@ -1188,26 +1195,37 @@ pub fn packet_ids(inspected: &Value, sealed: &Value) -> Vec<(String, String)> {
         push(
             format!("/sections/{n}/section_id"),
             section.get("section_id"),
+            true,
         );
-        push(format!("/sections/{n}/item_id"), section.get("item_id"));
+        push(
+            format!("/sections/{n}/item_id"),
+            section.get("item_id"),
+            false,
+        );
         for (m, citation) in array(section, "citations").iter().enumerate() {
-            push(format!("/sections/{n}/citations/{m}"), Some(citation));
+            push(format!("/sections/{n}/citations/{m}"), Some(citation), true);
         }
     }
     for (n, included) in array(inspected, "inclusions").iter().enumerate() {
-        push(format!("/inclusions/{n}"), Some(included));
+        push(format!("/inclusions/{n}"), Some(included), true);
     }
     for (n, omission) in array(inspected, "omissions").iter().enumerate() {
         push(
             format!("/omissions/{n}/section_id"),
             omission.get("section_id"),
+            false,
         );
-        push(format!("/omissions/{n}/item_id"), omission.get("item_id"));
+        push(
+            format!("/omissions/{n}/item_id"),
+            omission.get("item_id"),
+            false,
+        );
     }
     for (n, citation) in array(inspected, "citations").iter().enumerate() {
         push(
             format!("/citations/{n}/citation_id"),
             citation.get("citation_id"),
+            true,
         );
         push(
             format!("/citations/{n}/evidence/artifact/id"),
@@ -1215,17 +1233,20 @@ pub fn packet_ids(inspected: &Value, sealed: &Value) -> Vec<(String, String)> {
                 .get("evidence")
                 .and_then(|evidence| evidence.get("artifact"))
                 .and_then(|artifact| artifact.get("id")),
+            true,
         );
     }
     for (n, section) in array(sealed, "sections").iter().enumerate() {
         push(
             format!("body /sections/{n}/section_id"),
             section.get("section_id"),
+            true,
         );
         for (m, citation) in array(section, "citations").iter().enumerate() {
             push(
                 format!("body /sections/{n}/citations/{m}/citation_id"),
                 citation.get("citation_id"),
+                true,
             );
         }
     }

@@ -112,6 +112,46 @@ fn shortened<'a>(id: &'a str, prefix: &str) -> Option<(&'a str, &'a str)> {
     Some((&rest[..DIGEST_DIGITS], &rest[DIGEST_DIGITS..]))
 }
 
+/// **What a shortened id's digest is, written out rather than read from
+/// the constants**: 128 bits, as the module says, which is 32 hex digits of
+/// the SHA-256 of the domain tag and the rest. A digest cut shorter is a
+/// birthday collision among shortened ids at a few tens of thousands of
+/// them, and every one of those would be a request the guard holds in
+/// `preparing`.
+fn expected_digest(rest: &str) -> String {
+    let mut digested = DOMAIN.to_vec();
+    digested.extend_from_slice(rest.as_bytes());
+    cbr_encoding::sha256_hex(&digested)[..128 / 4].to_string()
+}
+
+/// Assert `tail` is the tail [`bounded`] owes an encoded `rest` under
+/// `prefix`: the longest that fits, or where one fits the longest that
+/// starts at a `:`. Written against [`decode`] rather than against the
+/// scan `tail` makes, so it says what a reader can check: one byte more
+/// would not fit, would start inside an escape, or would give up a `:`.
+fn assert_longest_tail(prefix: &str, rest: &str, tail: &str) {
+    let room = MAX - prefix.len() - MARK.len() - 128 / 4;
+    let lowest = rest.len().saturating_sub(room);
+    let start = rest.len() - tail.len();
+    let whole = decode(rest).expect("an encoded rest decodes");
+    match rest[lowest..].find(':') {
+        Some(colon) => assert_eq!(
+            start,
+            lowest + colon,
+            "{tail} is not the longest tail of {rest} starting at a `:`"
+        ),
+        None => {
+            for at in lowest..start {
+                let longer = decode(&rest[at..]);
+                assert!(
+                    longer.is_none_or(|read| !whole.ends_with(&read)),
+                    "{tail} is not the longest tail of {rest}: the one at byte {at} fits"
+                );
+            }
+        }
+    }
+}
+
 /// A readable span id back into its parts, for an id that was not
 /// shortened.
 fn read_span(rest: &str) -> (String, Vec<u8>, i64) {
@@ -203,8 +243,10 @@ fn every_id_is_an_identifier_and_no_two_inputs_share_one() {
         // only ever the marker. An item or claim id is an identifier as it
         // stands and is not encoded, so its tail is a suffix of it.
         for ((prefix, id, _), rest) in ids[..3].iter().zip([&span_id, &span_id, &anchor_id]) {
-            if let Some((_, tail)) = shortened(id, prefix) {
+            if let Some((digest, tail)) = shortened(id, prefix) {
                 assert!(rest.ends_with(tail), "{tail} is not a tail of {rest}");
+                assert_eq!(digest, expected_digest(rest), "the digest of {id}");
+                assert_longest_tail(prefix, rest, tail);
                 // A tail that started inside an escape still decodes — hex
                 // digits are kept as themselves — but to bytes the input
                 // never ended with.
@@ -224,8 +266,9 @@ fn every_id_is_an_identifier_and_no_two_inputs_share_one() {
             format!("{item}.{number}"),
         ];
         for ((prefix, id, _), rest) in ids[3..].iter().zip(&rests) {
-            if let Some((_, tail)) = shortened(id, prefix) {
+            if let Some((digest, tail)) = shortened(id, prefix) {
                 assert!(rest.ends_with(tail), "{tail} is not a tail of {rest}");
+                assert_eq!(digest, expected_digest(rest), "the digest of {id}");
             }
         }
         for (prefix, id, _) in &ids[..3] {
@@ -320,11 +363,8 @@ fn a_tail_never_starts_inside_an_escape_and_prefers_a_component() {
         let (_, tail) = shortened(&id, "d-").expect("shortened");
         assert!(tail.starts_with('~'), "{tail}");
         let read = decode(tail).expect("the tail decodes");
-        let whole = format!("span-app/{path}-7");
-        assert!(
-            whole.as_bytes().ends_with(&read),
-            "{tail} starts inside an escape"
-        );
+        let whole = decode(&span("app", &path, 7)).expect("the span decodes");
+        assert!(whole.ends_with(&read), "{tail} starts inside an escape");
     }
 
     // With components to cut at, the tail is whole components.
@@ -332,6 +372,41 @@ fn a_tail_never_starts_inside_an_escape_and_prefers_a_component() {
     let id = discovered_section(&span("app", &nested, 0));
     let (_, tail) = shortened(&id, "d-").expect("shortened");
     assert_eq!(tail, ":deep:file.rs-0");
+}
+
+#[test]
+fn a_shortened_id_is_its_prefix_the_marker_128_bits_of_digest_and_the_longest_tail() {
+    // **Pinned as values**, so a narrower digest or a shorter tail than the
+    // module promises fails here and not only in the property above. An
+    // item of 127 `i`s has no `:` and no escape, so its tail is exactly
+    // the room left: 128 bytes less `s-`, `~~` and 32 hex digits.
+    let item = "i".repeat(127);
+    let id = item_section(&item);
+    assert_eq!(
+        id,
+        format!("s-~~{}{}", expected_digest(&item), "i".repeat(92))
+    );
+    assert_eq!(id.len(), MAX, "the tail fills the id");
+    assert_eq!(
+        item_citation(&item),
+        format!("c-~~{}{}", expected_digest(&item), "i".repeat(92)),
+        "the citation digests the same item"
+    );
+    // A prefix a byte longer leaves a byte less of tail.
+    let rest = claim(&item);
+    assert_eq!(
+        discovered_citation(&rest),
+        format!("dc-~~{}{}", expected_digest(&rest), "i".repeat(91))
+    );
+    // A path with a `:` near the front of the room: the tail starts there,
+    // and one byte more of it would have held no `:`.
+    let path = format!("{}/{}", "a".repeat(100), "b".repeat(60));
+    let rest = span("app", &path, 0);
+    let id = discovered_section(&rest);
+    assert_eq!(
+        id,
+        format!("d-~~{}:{}-0", expected_digest(&rest), "b".repeat(60))
+    );
 }
 
 #[test]

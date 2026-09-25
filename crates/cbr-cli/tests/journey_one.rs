@@ -530,9 +530,9 @@ fn j1_a_question_finds_its_own_answer_with_a_cited_packet() {
     // **every** citation it was given through `cbr expand`, and a packet in
     // which one of them cannot be read back is a failed J1.
     serving::assert_packet_ids(&packet, &body);
-    let mut expanded = 0;
     let mut nested = false;
-    for citation in &citations {
+    let mut ingested = Vec::new();
+    for (expanded, citation) in citations.iter().enumerate() {
         let citation_id = text(citation, &["citation_id"]);
         let artifact = text(citation, &["evidence", "artifact", "id"]);
         let digest = text(citation, &["evidence", "digest"]);
@@ -624,19 +624,32 @@ fn j1_a_question_finds_its_own_answer_with_a_cited_packet() {
                 std::fs::read(&fetched_to).expect("the fetched bytes"),
                 "citation {citation_id} and `cbr fetch` disagree about {artifact}"
             );
+            ingested.push(citation_id.clone());
         } else {
             // No citation J1 is given is unexpandable by design, so there
             // is no list of exceptions: a new kind has to be named here
             // before it can pass.
             panic!("citation {citation_id} cites {artifact}, a kind J1 does not know");
         }
-        expanded += 1;
     }
-    assert_eq!(
-        expanded,
-        citations.len(),
-        "every artifact citation was expanded"
-    );
+    // **Both claims were followed to their records**, not only the source:
+    // the accepted decision and the rejected one each cite the artifact the
+    // claim was proposed from, which is the other kind of citation a J1
+    // reader follows. A claim section that cited nothing, or cited
+    // something `cbr fetch` does not return, fails here.
+    for (claim, section) in [
+        ("gix-decision", claim_section),
+        ("git-binary", rejected_section),
+    ] {
+        let cited: Vec<String> = array(section, &["citations"])
+            .iter()
+            .map(|carried| text(carried, &["citation_id"]))
+            .collect();
+        assert!(
+            !cited.is_empty() && cited.iter().all(|id| ingested.contains(id)),
+            "claim {claim} cites {cited:?}; the ingested artifacts followed were {ingested:?}"
+        );
+    }
     assert!(
         nested,
         "no expanded citation is of a file below the repository's root, which is the case \
