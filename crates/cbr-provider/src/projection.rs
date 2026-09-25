@@ -854,6 +854,13 @@ fn cost(read: &Read, unit: &Unit, bytes: &[u8]) -> usize {
 /// Plan an input: cut every unit that is not run identity into parts, and
 /// decide what a model would be offered of them.
 ///
+/// **Capacity first.** An input over capacity — more parts than
+/// [`MAX_PARTS`], or more bytes than [`INPUT_BYTES`] — and bytes that are
+/// not text are offered nothing, and nothing is worked out for them:
+/// working out an offer draws the whole projection once for every unit a
+/// model could choose, and nothing bounds those units until capacity has
+/// been decided.
+///
 /// **The offer is exactly what could be added.** The rule's projection is
 /// computed first, under the rule's own header; it is the floor, and a
 /// model is asked only when that floor still fits drawn the widest the
@@ -861,7 +868,9 @@ fn cost(read: &Read, unit: &Unit, bytes: &[u8]) -> usize {
 /// may hold, every omission under the longer of its two reasons, and every
 /// cut group's unresolved line. Then each unit the floor leaves out, that
 /// a model may choose, is offered if the floor with it alone still fits
-/// drawn that way. Joins count, because the drawing is the real one.
+/// drawn that way. **A unit a model adds never joins the floor's
+/// excerpts**: [`draw`] cuts a run wherever the chooser changes, so each is
+/// priced as an excerpt of its own, frame and all.
 pub fn partition(read: &Read, bytes: &[u8], subject: Subject<'_>) -> Plan {
     let (parts, split) = cut(read, bytes);
     let tests = read
@@ -880,6 +889,9 @@ pub fn partition(read: &Read, bytes: &[u8], subject: Subject<'_>) -> Plan {
             excerpts: 0,
         },
     };
+    if plan.parts.len() > MAX_PARTS || too_large(read.size) || read.format == Format::Binary {
+        return plan;
+    }
     if let Some((addable, room)) = offer(read, bytes, &plan, subject) {
         plan.asked = plan
             .parts
@@ -900,17 +912,14 @@ pub fn partition(read: &Read, bytes: &[u8], subject: Subject<'_>) -> Plan {
 
 /// Which units a model could add to the rule's floor, and the room the
 /// floor leaves at the model arm's widest; `None` when no question is
-/// needed, because everything fits or the bytes are not text, or when the
-/// floor itself would not fit beside the model's label.
+/// needed, because everything fits, or when the floor itself would not fit
+/// beside the model's label. Only ever called on text within capacity.
 fn offer(
     read: &Read,
     bytes: &[u8],
     plan: &Plan,
     subject: Subject<'_>,
 ) -> Option<(Vec<bool>, (usize, usize))> {
-    if read.format == Format::Binary {
-        return None;
-    }
     let frame = Frame::of(subject, plan);
     if draw(
         read,
@@ -932,8 +941,8 @@ fn offer(
         return None;
     }
     let room = (
-        PROJECTION_BYTES - at_floor.content.len(),
-        MAX_EXCERPTS - at_floor.excerpts,
+        PROJECTION_BYTES.saturating_sub(at_floor.content.len()),
+        MAX_EXCERPTS.saturating_sub(at_floor.excerpts),
     );
     let mut carried = floor.clone();
     let addable = (0..read.units.len())
@@ -1101,10 +1110,10 @@ pub fn too_large(size: usize) -> bool {
 /// What happens next for a read artifact, **in the order that decides
 /// it**:
 ///
-/// 1. more parts than [`MAX_PARTS`] is [`INSUFFICIENT_CAPACITY`], whether
-///    or not a model could have been asked, and whatever it would have
-///    been offered — a capacity is a property of the input, not of who
-///    reads it;
+/// 1. more parts than [`MAX_PARTS`], or more bytes than [`INPUT_BYTES`],
+///    is [`INSUFFICIENT_CAPACITY`], whether or not a model could have been
+///    asked, and whatever it would have been offered — a capacity is a
+///    property of the input, not of who reads it;
 /// 2. bytes that are not text are declared omitted whole;
 /// 3. a whole artifact that fits is carried whole, and **no call is made
 ///    that cannot change the answer**;
@@ -1123,7 +1132,7 @@ pub enum Next {
 }
 
 pub fn next(read: &Read, bytes: &[u8], plan: &Plan, subject: Subject<'_>, may_ask: bool) -> Next {
-    if plan.parts.len() > MAX_PARTS {
+    if plan.parts.len() > MAX_PARTS || too_large(read.size) {
         return Next::Insufficient;
     }
     if read.format == Format::Binary {
