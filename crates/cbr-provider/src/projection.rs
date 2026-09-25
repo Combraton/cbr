@@ -1345,6 +1345,10 @@ fn floor(read: &Read, bytes: &[u8], frame: &Frame<'_>) -> Vec<bool> {
 /// repacked to make room for it: [`next`] asks a model only when the floor
 /// fits beside the model arm's widest label, so nothing a model answers
 /// can take away a byte the rule carries.
+///
+/// **`None` is a model arm that does not fit**, which that check makes
+/// unreachable, and which is refused here rather than taken on trust: a
+/// projection over its own bound is never published.
 pub fn render(
     read: &Read,
     bytes: &[u8],
@@ -1388,7 +1392,8 @@ pub fn render(
             carried[index] = false;
         }
     }
-    Some(draw(read, bytes, choice, &carried, chooser, &frame))
+    let drawn = draw(read, bytes, choice, &carried, chooser, &frame);
+    (choice.by != By::Model || drawn.fits()).then_some(drawn)
 }
 
 /// Draw a projection: the header, then a ledger that tiles the artifact.
