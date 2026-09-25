@@ -266,28 +266,42 @@ fn the_route_is_the_executor_member_and_not_a_name() {
     // fixtures the two coincide — every `exe` is `executor-1` and carries
     // `executor` — so a launcher routing on a name would pass every other
     // test here and misroute the first fixture where they part.
-    let tree = Tree::new();
-    let routed = tree.named(
-        "ctx",
-        r#"{"provider_id": "context-two", "executor": {"script": []}}"#,
-    );
-    let output = tree.launch_at(&routed);
-    assert!(output.status.success(), "{}", said(&output));
-    let started = tree.started().expect("something started");
-    assert_eq!(
-        started[0], "reference-provider",
-        "an executor configuration under another name went to {started:?}"
-    );
+    // An empty `executor` is one too: the schema requires none of its
+    // members, so presence decides and content does not.
+    for (participant, config) in [
+        (
+            "ctx",
+            r#"{"provider_id": "context-two", "executor": {"script": []}}"#,
+        ),
+        ("ctx", r#"{"provider_id": "context-three", "executor": {}}"#),
+    ] {
+        let tree = Tree::new();
+        let output = tree.launch_at(&tree.named(participant, config));
+        assert!(output.status.success(), "{}", said(&output));
+        let started = tree.started().expect("something started");
+        assert_eq!(
+            started[0], "reference-provider",
+            "{config} as {participant} went to {started:?}"
+        );
+    }
 
-    let tree = Tree::new();
-    let named_alike = tree.named("executor", r#"{"provider_id": "executor-x"}"#);
-    let output = tree.launch_at(&named_alike);
-    assert!(output.status.success(), "{}", said(&output));
-    let started = tree.started().expect("something started");
-    assert_eq!(
-        started[0], "cbr-provider",
-        "a configuration with no executor member went to {started:?}"
-    );
+    // Every name an executor goes by, here and in the vendored fixtures,
+    // on a configuration with no `executor` member.
+    for (participant, provider_id) in [
+        ("executor", "executor-x"),
+        ("exe", "executor-1"),
+        ("exe", "executor-one"),
+    ] {
+        let tree = Tree::new();
+        let config = format!(r#"{{"provider_id": "{provider_id}"}}"#);
+        let output = tree.launch_at(&tree.named(participant, &config));
+        assert!(output.status.success(), "{}", said(&output));
+        let started = tree.started().expect("something started");
+        assert_eq!(
+            started[0], "cbr-provider",
+            "{config} as {participant}, with no executor member, went to {started:?}"
+        );
+    }
 }
 
 #[test]
