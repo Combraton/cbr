@@ -1115,7 +1115,10 @@ fn a_packet_holding_an_id_outside_the_identifier_grammar_is_never_published() {
         "no publication event for r-bad"
     );
     // Not even the object: the check runs before the packet's bytes are
-    // written anywhere, so a refused packet leaves nothing to collect.
+    // written anywhere, so a refused scripted packet leaves nothing to
+    // collect. (A compiled one would leave the objects of the sources it
+    // sealed earlier in the tick, uncommitted, for the start-time
+    // collection pass: `publish_one` says so.)
     assert_eq!(
         objects(&data).len(),
         1,

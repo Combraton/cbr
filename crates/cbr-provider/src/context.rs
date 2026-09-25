@@ -1339,6 +1339,27 @@ pub const IDENTIFIER_PATHS: [&str; 30] = [
     "/body/sections/*/citations/*/evidence/artifact/id",
 ];
 
+/// The paths of [`IDENTIFIER_PATHS`] whose member the inspect schema does
+/// not require of the object holding it: a section of no item, an omission
+/// of a whole item, evidence that does not name its provider, and the
+/// optional parts of a claim snapshot. The body's two are the facts' two,
+/// copied. Every other path is required wherever its object is present,
+/// so an id missing there is reported as a bad one would be. The schema
+/// walk checks this list against each object's `required`.
+pub const OPTIONAL_IDENTIFIERS: [&str; 11] = [
+    "/selected/*/evidence/provider",
+    "/sections/*/item_id",
+    "/sections/*/claim/reliance/decision",
+    "/sections/*/claim/applicability/evaluation",
+    "/omissions/*/section_id",
+    "/omissions/*/item_id",
+    "/citations/*/evidence/provider",
+    "/applicability/conditions/*/item_id",
+    "/authority/*/evidence/provider",
+    "/body/sections/*/item_id",
+    "/body/sections/*/citations/*/evidence/provider",
+];
+
 /// The identifier-typed paths of the `context.packet.inspect` result that
 /// are not in the facts a packet is published with, each for a stated
 /// reason, so the schema walk can tell a path left out on purpose from one
@@ -1368,13 +1389,21 @@ pub const IDENTIFIERS_NOT_AT_PUBLISH: [&str; 12] = [
 ];
 
 /// Where a packet about to be published names an id outside the protocol's
-/// identifier grammar, or names one section id or one citation id twice, as
-/// JSON pointers. Empty for a packet that may be published.
+/// identifier grammar, leaves out an id the schema requires, or names one
+/// section id or one citation id twice, as JSON pointers. Empty for a
+/// packet that may be published.
 ///
 /// **The last door before a packet leaves the tick.** The compiler builds
 /// its ids inside the grammar ([`crate::ids`]); a script can still name any
-/// string at all, and nothing else stands between a malformed id and a
-/// sealed, published packet that every consumer's schema would reject.
+/// string at all, or none, and nothing else stands between a malformed id
+/// and a sealed, published packet that every consumer's schema would
+/// reject.
+///
+/// **Missing is reported where the schema requires the member** of an
+/// object that is there ([`OPTIONAL_IDENTIFIERS`] names the rest), and an
+/// element of a list of ids is required by being in it. An object that is
+/// itself absent is not looked into: a section that is not a claim has no
+/// claim reference to name. `null` passes only where the id is optional.
 ///
 /// Pointers only, never the values: an id is often a repository path, and
 /// what this returns is logged.
@@ -1384,23 +1413,31 @@ pub const IDENTIFIERS_NOT_AT_PUBLISH: [&str; 12] = [
 /// item named `x.o1` share an id, and that is a recorded follow-up rather
 /// than a refusal.
 pub fn ids_outside_grammar(facts: &Value, artifact: &str) -> Vec<String> {
-    fn walk(value: &Value, segments: &[&str], pointer: String, found: &mut Vec<String>) {
+    fn walk(
+        value: &Value,
+        segments: &[&str],
+        pointer: String,
+        required: bool,
+        found: &mut Vec<String>,
+    ) {
         match segments.split_first() {
             None => match value {
-                Value::Null => {}
                 Value::String(id) if crate::envelope::is_identifier(id) => {}
+                Value::Null if !required => {}
                 _ => found.push(pointer),
             },
             Some((&"*", rest)) => {
                 for (index, element) in value.as_array().unwrap_or_default().iter().enumerate() {
-                    walk(element, rest, format!("{pointer}/{index}"), found);
+                    walk(element, rest, format!("{pointer}/{index}"), required, found);
                 }
             }
-            Some((name, rest)) => {
-                if let Some(member) = value.get(name) {
-                    walk(member, rest, format!("{pointer}/{name}"), found);
+            Some((name, rest)) => match value.get(name) {
+                Some(member) => walk(member, rest, format!("{pointer}/{name}"), required, found),
+                None if rest.is_empty() && required && value.is_object() => {
+                    found.push(format!("{pointer}/{name}"));
                 }
-            }
+                None => {}
+            },
         }
     }
     let mut found = Vec::new();
@@ -1409,7 +1446,8 @@ pub fn ids_outside_grammar(facts: &Value, artifact: &str) -> Vec<String> {
     }
     for path in IDENTIFIER_PATHS {
         let segments: Vec<&str> = path.split('/').skip(1).collect();
-        walk(facts, &segments, String::new(), &mut found);
+        let required = !OPTIONAL_IDENTIFIERS.contains(&path);
+        walk(facts, &segments, String::new(), required, &mut found);
     }
     // A reader addresses a section and a citation by its id, so one id
     // naming two of either is a packet whose reader cannot tell which.
@@ -2242,8 +2280,10 @@ mod tests {
     }
 
     /// Every identifier-typed path in a vendored schema, following `$ref`
-    /// across files, with `*` for an array's elements.
-    fn identifier_paths(file: &std::path::Path) -> std::collections::BTreeSet<String> {
+    /// across files, with `*` for an array's elements, and whether it is
+    /// required: its member is in the `required` of the object that holds
+    /// it (an element of an array always is), wherever the path is reached.
+    fn identifier_paths(file: &std::path::Path) -> std::collections::BTreeMap<String, bool> {
         fn load(file: &std::path::Path) -> Value {
             let bytes = std::fs::read(file).unwrap_or_else(|e| panic!("{}: {e}", file.display()));
             cbr_encoding::parse(&bytes).unwrap_or_else(|e| panic!("{}: {e:?}", file.display()))
@@ -2252,8 +2292,9 @@ mod tests {
             file: &std::path::Path,
             node: &Value,
             pointer: &str,
+            required: bool,
             depth: usize,
-            found: &mut std::collections::BTreeSet<String>,
+            found: &mut std::collections::BTreeMap<String, bool>,
         ) {
             assert!(depth < 64, "a reference cycle at {pointer}");
             if let Some(reference) = node.get("$ref").and_then(Value::as_str) {
@@ -2265,31 +2306,34 @@ mod tests {
                 };
                 if target.ends_with("core/1/common.schema.json") && fragment == "/$defs/identifier"
                 {
-                    found.insert(pointer.to_string());
+                    *found.entry(pointer.to_string()).or_insert(required) &= required;
                     return;
                 }
                 let mut resolved = load(&target);
                 for part in fragment.split('/').filter(|part| !part.is_empty()) {
                     resolved = resolved.get(part).cloned().expect("the reference resolves");
                 }
-                walk(&target, &resolved, pointer, depth + 1, found);
+                walk(&target, &resolved, pointer, required, depth + 1, found);
             }
             for combinator in ["oneOf", "anyOf", "allOf"] {
                 for option in list(node, &[combinator]) {
-                    walk(file, option, pointer, depth + 1, found);
+                    walk(file, option, pointer, required, depth + 1, found);
                 }
             }
             if let Some(Value::Object(members)) = node.get("properties") {
+                let named = list(node, &["required"]);
                 for (name, member) in members {
-                    walk(file, member, &format!("{pointer}/{name}"), depth + 1, found);
+                    let required = named.iter().any(|n| n.as_str() == Some(name.as_str()));
+                    let pointer = format!("{pointer}/{name}");
+                    walk(file, member, &pointer, required, depth + 1, found);
                 }
             }
             if let Some(items) = node.get("items") {
-                walk(file, items, &format!("{pointer}/*"), depth + 1, found);
+                walk(file, items, &format!("{pointer}/*"), true, depth + 1, found);
             }
         }
-        let mut found = std::collections::BTreeSet::new();
-        walk(file, &load(file), "", 0, &mut found);
+        let mut found = std::collections::BTreeMap::new();
+        walk(file, &load(file), "", true, 0, &mut found);
         found
     }
 
@@ -2312,7 +2356,10 @@ mod tests {
             .chain(IDENTIFIERS_NOT_AT_PUBLISH.iter())
             .map(|path| path.to_string())
             .collect();
-        let missed: Vec<&String> = typed.difference(&accounted).collect();
+        let missed: Vec<&String> = typed
+            .keys()
+            .filter(|path| !accounted.contains(*path))
+            .collect();
         assert!(
             missed.is_empty(),
             "identifier paths the guard does not check: {missed:?}"
@@ -2323,11 +2370,30 @@ mod tests {
         let stale: Vec<&String> = accounted
             .iter()
             .filter(|path| !path.starts_with("/body/"))
-            .filter(|path| !typed.contains(*path))
+            .filter(|path| !typed.contains_key(*path))
             .collect();
         assert!(
             stale.is_empty(),
             "listed paths the schema does not type: {stale:?}"
         );
+        // **And which may be absent**, from the schema's `required`. A body
+        // path is read as the facts' path it is copied from, so each of
+        // them names an identifier the schema types as well.
+        for path in OPTIONAL_IDENTIFIERS {
+            assert!(IDENTIFIER_PATHS.contains(&path), "{path} is not checked");
+        }
+        for path in IDENTIFIER_PATHS {
+            let copied = path
+                .replacen("/body/sections/*/citations/*/", "/citations/*/", 1)
+                .replacen("/body/sections/*/", "/sections/*/", 1);
+            let required = typed
+                .get(&copied)
+                .unwrap_or_else(|| panic!("{path} is read as {copied}, which the schema lacks"));
+            assert_eq!(
+                OPTIONAL_IDENTIFIERS.contains(&path),
+                !required,
+                "{path}: the schema says required is {required}"
+            );
+        }
     }
 }

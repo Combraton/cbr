@@ -173,7 +173,8 @@ enum TickError {
     /// returns, and every other job on this provider carries on.
     NotReady,
     /// **A packet about to be published names an id outside the protocol's
-    /// identifier grammar**, or one section or citation id twice
+    /// identifier grammar**, leaves out one the schema requires, or names
+    /// one section or citation id twice
     /// ([`context::ids_outside_grammar`]). Nothing of the job's tick is
     /// committed and nothing is sealed or sent, and the tick moves on to the
     /// next job, as it does for `NotSealed`: one bad packet must not stop
@@ -3604,7 +3605,7 @@ impl Provider {
                     // that is logged; the ids themselves never are.
                     eprintln!(
                         "cbr-provider: context job {job_id}: request {request}: packet not \
-                         published; an id at {} is outside the identifier grammar or repeated",
+                         published; an id at {} is missing, outside the identifier grammar or repeated",
                         pointers.join(", ")
                     );
                 }
@@ -3852,10 +3853,15 @@ impl Provider {
             None => context::SCRIPT_COMPILER.to_string(),
         };
         let packet = context::compile_packet(request, &record, job, reason, &compiler);
-        // **Checked before anything leaves the tick**: before a capture
+        // **Checked before the packet leaves the tick**: before a capture
         // instant is taken, before the evidence peer is sent a byte and
-        // before an object is written to this store. A packet refused here
-        // leaves nothing behind to collect.
+        // before the packet's own object is written to this store. A
+        // scripted packet refused here leaves nothing behind. A compiled
+        // job has already written the objects of what it sealed this tick
+        // (`seal_source`, `seal_derivation`); a refusal drops the tick's
+        // batch, so no row names them, and they are left for the
+        // start-time collection pass — and written again by each tick that
+        // compiles the job again.
         let pointers = context::ids_outside_grammar(&packet.facts, &packet.artifact);
         if !pointers.is_empty() {
             return Err(TickError::IdOutsideGrammar {
