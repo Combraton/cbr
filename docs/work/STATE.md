@@ -9,7 +9,17 @@ This is a dated navigation snapshot. Reconcile it with Git, linked issues and cu
 - **Owner decision, 2026-09-20, recorded at the m3c review: m3d has two pilot repositories**, as an amendment to [ADR 001](../decisions/001-standalone-v0.1-scope-and-stack.md) question 6. Knowscroll-v2 stays the decision-memory pilot; the owner's **brian2 fork** is added as a brownfield pilot, registered read-only, whose journey tests discovery and code flow rather than decision memory, whose oracle the owner writes before the run, and whose dirty working tree makes it the first journey to exercise the dirty path. **brian2 is CeCILL-licensed and this repository is MIT, so none of its bytes, excerpts or packets are committed here** — digests, paths, spans, counts and costs only. It is recorded now and acted on only after m3c is cleared; no other brian2 work belongs in this pull request.
 - **Inspected revisions:** protocol `v0.1.0` = `cbf8e4df9df2ca8a9b50264df6acace6e4c3a0fc`; combraton `9af69ce`; pio `e65b7c0`; benchmarks `c8d5878`.
 
-## This change — J2 live, run and recorded: failed
+## This change — `cbr expand`
+
+On `cli/expand`, off `main` at `041ad5f`. **No model has been called.** [RELEASE-SCOPE §2](readiness/RELEASE-SCOPE.md#2-in-scope)'s client list names "expand a citation", the provider has served `context.expand` since m3a, and the `cbr` verb did not exist. Found while planning J2 live's path proof: the packet cites the log as `c-log`, and the public client had no way to follow the citation.
+
+- **What.** `cbr expand <request> <citation> [--revision N] [--offset O] [--length L] [--out FILE]`. The revision defaults to the last published one, found as `cbr packet` finds it. The read is `context::assemble`, which asks again from wherever a short answer ended; a whole artifact is checked against the cited digest before anything is written or printed. [VERIFICATION](../VERIFICATION.md#the-cbr-command-and-the-credentials-it-needs) has what it establishes and what it does not.
+- **Tests.** `crates/cbr-cli/tests/expand.rs`, six through `cbr` against the real provider: whole, ranges, past the end, one refusal for an unknown citation and two kinds of unreadable one, `--revision` over a scripted two-revision request, and a 1.2 MB citation larger than one frame. Eight unit tests of the loop and the digest check in `crates/cbr-cli/src/context.rs`. The fixture gains `start_configured` and `issue_grant_to`.
+- **Red.** `cargo test -p cbr-cli --locked --test expand` at the tests-first commit: all six failed, five on the usage line and one on `unknown option --offset`.
+- **Found doing it.** A compiled section's citation names provider `cbr`, because `cbr context` writes the evidence item that way, and a conformance launch is `conformance-provider`, so `context.expand` refuses it as another provider's. Compiling does not check the provider and expanding does. The tests launch as `cbr`. Whether compiling should refuse, or the client should name the provider it negotiated with, is not decided here.
+- **Gates**, from the worktree at the docs commit: `check_docs.py`, `verify_pin.py`, `cargo fmt --check`, `cargo clippy --workspace --all-targets -D warnings`, `cargo build --workspace --locked` and `git diff --check origin/main...HEAD` exit 0; `cargo test --workspace --locked` exits 0 with **662 passed, 0 failed, 1 ignored over 42 `test result` lines**; `Cargo.lock` is unchanged.
+
+## Earlier — J2 live, run and recorded: failed
 
 On `m5/j2-live-record`, off `main` at `041ad5f`. Docs and the run's record only; no code.
 

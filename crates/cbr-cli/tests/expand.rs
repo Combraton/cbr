@@ -2,7 +2,7 @@
 //! bytes.**
 //!
 //! RELEASE-SCOPE §2 lists "expand a citation" among the thin client's
-//! operations, and the provider has served `context.expand` since M2; the
+//! operations, and the provider has served `context.expand` since m3a; the
 //! verb that reaches it did not exist. A packet section that cites an
 //! artifact says *where the rest is*, and this is how a consumer follows
 //! that: the request, the citation id the packet printed, and optionally
