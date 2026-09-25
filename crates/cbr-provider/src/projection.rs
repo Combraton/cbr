@@ -15,9 +15,11 @@
 //! reader can check without it:
 //!
 //! - **what was read, and how** — the artifact, its digest, its size, the
-//!   format a parser recognised, and who chose the excerpts;
-//! - **the failures the document names**, each as the document's own bytes
-//!   at a stated range;
+//!   format a parser recognised, the questions it needed, and who chose
+//!   the excerpts: the rule, and what the model added to it by number;
+//! - **the failures the document names**, counted as failing tests and
+//!   cargo errors apart, each as the document's own bytes at a stated
+//!   range;
 //! - **a ledger that tiles the artifact**: every byte is either inside a
 //!   carried excerpt — which *is* the artifact's bytes at the range its
 //!   frame states — or inside a declared omission with its reason. Nothing
@@ -32,36 +34,64 @@
 //! were written, which is not hypothetical here: brian2's pilot question is
 //! about a unit silently dropped.
 //!
-//! # Deterministic parsing where the format allows, the model for selection
+//! # Deterministic parsing where the format allows, the model to add
 //!
 //! [`read`] recognises four formats and cuts each at the boundaries it
 //! gives: cargo's test output by its runs, statuses and failure blocks; a
 //! JSON document or JSON lines by their structure; any other text by its
-//! lines. A model never reads a structure a parser can. What a model does
-//! is **choose**: it is shown one part of the document as a closed set of
-//! excerpt ids and answers with some of them, and a choice outside the set
-//! is a typed failure, never a guess on its behalf.
+//! lines. A model never reads a structure a parser can.
 //!
-//! With no model, or no investigation authorised, the choice is
-//! [`the deterministic rule`](choose_by_rule): every failure the parser
+//! With no model, or no investigation authorised, the projection is
+//! [`the deterministic rule`](choose_by_rule)'s: every failure the parser
 //! found, then run identity.
+//!
+//! # The rule's projection is a floor the model adds to
+//!
+//! In m5a a model's choice **replaced** the rule's, and whatever it did not
+//! choose was declared `not_selected` — failure blocks the parser had
+//! already named among them. J2's live run measured what that does to a
+//! failing log: both models' projections scored below the rule's, 55 and
+//! 41.25 against 70 of 70 script points, because both left out failures
+//! the rule carries ([JOURNEYS](../../docs/verification/JOURNEYS.md)).
+//!
+//! From `cbr-project-large-result/2` the rule's projection is computed
+//! first, under the rule's own header, and frozen. A model is asked only
+//! what to **add** to it: it is shown, as a closed set of excerpt ids, the
+//! units the floor leaves out that a model may choose and that would fit
+//! beside it, and answers with some of them; a choice outside the set is a
+//! typed failure, never a guess on its behalf. What it adds follows the
+//! floor, and nothing it answers can take any of the floor away, so a
+//! failure the parser found is carried, or declared chosen and out of
+//! room, in both arms. An excerpt is wholly the rule's or wholly the
+//! model's, and the header names the model's by number, or says it added
+//! nothing.
+//!
+//! **A question no answer can change is not asked.** When the floor would
+//! not fit beside the model arm's widest label, or nothing it leaves out
+//! could be added, the projection is the rule's and says so, and no call is
+//! made. The header's count of parts is the questions the input needs,
+//! which both arms print alike.
 //!
 //! # A summariser is never given more than its own capacity
 //!
-//! What the model is shown is partitioned into [`partition`]'s parts, each
-//! at most [`PART_BYTES`] of candidate text as the request body carries it
-//! and [`PART_UNITS`] candidates — one bounded call per part, each with its
-//! own sealed record. An input whose excerpts would need more than
-//! [`MAX_PARTS`] parts, or that is larger than [`INPUT_BYTES`] before
-//! anything is read, is the typed [`INSUFFICIENT_CAPACITY`] outcome: no
-//! section, no partial summary, no call. The parts of one projection are
-//! **claimed together** against the request's investigation limit, because
-//! a projection with a part never read would name failures from part of a
-//! log as if from all of it.
+//! What the model could be shown is partitioned into [`partition`]'s
+//! parts, each at most [`PART_BYTES`] of candidate text as the request
+//! body carries it and [`PART_UNITS`] candidates. An input whose units
+//! would need more than [`MAX_PARTS`] parts, or that is larger than
+//! [`INPUT_BYTES`] before anything is read, is the typed
+//! [`INSUFFICIENT_CAPACITY`] outcome: no section, no partial summary, no
+//! call — **decided on the input**, whatever a model would have been
+//! offered of it. A model is asked one bounded question per part it is
+//! offered, each a subset of a planned part and each with its own sealed
+//! record, and the questions of one projection are **claimed together**
+//! against the request's investigation limit, because a projection with a
+//! part never read would name failures from part of a log as if from all
+//! of it.
 //!
 //! Partitioning cuts only between excerpt groups where it can. A group
-//! larger than a part is the one thing it has to cut, and the projection
-//! says so as an unresolved line rather than leaving a reader to find out.
+//! larger than a part is the one thing it has to cut, and a model arm that
+//! was offered its pieces in more than one question says so as an
+//! unresolved line rather than leaving a reader to find out.
 
 use cbr_encoding::Value;
 
@@ -76,7 +106,10 @@ pub const FAMILY: &str = "project_large_result";
 /// The projection's own format. It is in every projection and in every
 /// part's question, so a change to how a document is cut or rendered is a
 /// different format and a different question: a record answering the old
-/// one never answers the new.
+/// one never answers the new. `/2` is m5a-3's: the rule's projection a
+/// floor the model adds to, the header's counts of failing tests and cargo
+/// errors, a cargo error that stops at the next run, and an empty list at
+/// a document's root read as identity.
 pub const FORMAT: &str = "cbr-project-large-result/2";
 
 /// The item's typed outcome when an input is larger than the projection

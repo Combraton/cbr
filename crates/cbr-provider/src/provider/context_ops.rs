@@ -2130,12 +2130,15 @@ impl Provider {
     /// omissions — or a typed reason and no section at all.
     ///
     /// The order is [`crate::projection::next`]'s. What is this call site's
-    /// own is the investigation limit: **the parts are claimed together**,
-    /// as discovery's two steps are, because a projection with a part never
-    /// read would name failures from part of a log as if from all of it.
-    /// And a part that fails ends the item with that part's reason, never a
-    /// fall back to the deterministic rule, which would report a
-    /// model-assisted projection that no model made.
+    /// own is the investigation limit: **the questions a model is offered
+    /// are claimed together**, as discovery's two steps are, because a
+    /// projection with a part never read would name failures from part of a
+    /// log as if from all of it — and they are the offered parts, at most
+    /// the planned ones, so a part with nothing a model could add is neither
+    /// asked nor charged. A part that fails ends the item with that part's
+    /// reason, never a fall back to the deterministic rule, which would
+    /// report a model-assisted projection that no model made. What the model
+    /// answers is added to the rule's floor, and never replaces it.
     #[allow(clippy::too_many_arguments)]
     fn project(
         &self,
