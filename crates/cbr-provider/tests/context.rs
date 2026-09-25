@@ -17,6 +17,11 @@
 //!   reports the correction in `invalidated_items` and the newer revision in
 //!   `superseded_by`, and the current revision reports neither (CONTEXT
 //!   section 8).
+//! - **A compiled evidence item is read only at the provider it names.**
+//!   An item naming another provider's artifact is `evidence_unavailable`
+//!   even when this store holds one of the same id and digest, and the
+//!   citation of one that named no provider names this one (EVIDENCE
+//!   section 2).
 
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::fs::PermissionsExt;
@@ -852,4 +857,145 @@ fn a_conformance_launch_prepares_nothing_unless_it_asks_to_compile() {
         "{published:?}"
     );
     compiling.kill();
+}
+
+/// Seal `bytes` as artifact `id` in the provider's own store, over the
+/// same session.
+fn seal(ctx: &mut ContextProvider, id: &str, bytes: &[u8]) -> String {
+    let digest = cbr_encoding::digest_bytes(bytes);
+    result(&ctx.call(
+        "evidence.upload.prepare",
+        Some((&format!("prepare-{id}"), ("evidence.artifact", id), 0)),
+        &format!(
+            r#"{{"digest":"{digest}","size":{},"media_type":"text/plain","producer":{{"producer_id":"context-tests"}},"source":{{"kind":"file","id":"{id}"}},"scope":"local","capture":{{"captured_at":"2030-01-01T00:00:00Z","anchors":[]}},"coverage":{{"completeness":"complete"}},"retention_class":"standard"}}"#,
+            bytes.len()
+        ),
+    ));
+    result(&ctx.call(
+        "evidence.upload.append",
+        Some((&format!("append-{id}"), ("evidence.artifact", id), 1)),
+        &format!(
+            r#"{{"offset":0,"data_base64":"{}"}}"#,
+            cbr_encoding::encode_base64(bytes)
+        ),
+    ));
+    result(&ctx.call(
+        "evidence.seal",
+        Some((&format!("seal-{id}"), ("evidence.artifact", id), 2)),
+        "{}",
+    ));
+    digest
+}
+
+#[test]
+fn a_compiled_evidence_item_is_read_only_at_the_provider_its_reference_names() {
+    // **An evidence reference names the provider holding the artifact**,
+    // and one that names none means the provider being asked (EVIDENCE
+    // section 2). Compiling reads this provider's store and no other, so
+    // an item naming another provider's artifact is `evidence_unavailable`
+    // — here an artifact of the same id and digest *is* sealed in this
+    // store, and it is still not the one the item named: equal bytes never
+    // establish equal provenance or permission. `context.expand` already
+    // refused such a citation; compiling used to copy the bytes into the
+    // packet regardless, under a citation its own expand would refuse.
+    //
+    // And a reference a packet carries always names its provider, so an
+    // item that named none is cited under this provider's id.
+    let directory = tempfile::tempdir().expect("temp dir");
+    let mut ctx = ContextProvider::start(
+        directory.path(),
+        r#"{"format":"combraton-conformance-config/1","provider_id":"context-1","principal":"owner","authority_principals":["owner"],"context":{"compile":true}}"#,
+    );
+    let log = b"running 1 test\ntest tests::holds ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s\n";
+    let digest = seal(&mut ctx, "log-1", log);
+    let item = |provider: &str| {
+        format!(
+            r#"{{"item_id":"log","selector":{{"kind":"evidence","value":"log-1"}},"obligation":"required_before_start","reliance":"evidence","selected_by":"owner","check":{{"kind":"evidence_included","evidence":{{{provider}"artifact":{{"kind":"evidence.artifact","id":"log-1"}},"digest":"{digest}"}}}}}}"#
+        )
+    };
+    let requests = [
+        ("r-foreign", r#""provider":"elsewhere","#),
+        ("r-own", r#""provider":"context-1","#),
+        ("r-bare", ""),
+    ];
+    for (request, provider) in requests {
+        let submitted = ctx.submit_with(
+            request,
+            &item(provider),
+            "proceed_with_gap",
+            "2030-01-01T01:00:00Z",
+        );
+        assert_eq!(
+            text(result(&submitted), &["outcome", "state"]),
+            "preparing",
+            "{submitted:?}"
+        );
+    }
+    let mut settled = Vec::new();
+    for (request, _) in requests {
+        let published = (0..50).find_map(|_| {
+            let inspected = ctx.inspect(request);
+            (at(&inspected, &["packets"])
+                .as_array()
+                .is_some_and(|packets| !packets.is_empty()))
+            .then_some(inspected)
+        });
+        let published = published.unwrap_or_else(|| panic!("{request} never published"));
+        let item = at(&published, &["items"]).as_array().expect("items")[0].clone();
+        let reason = item.get("reason").and_then(Value::as_str).unwrap_or("");
+        settled.push((
+            request,
+            text(&item, &["result"]).to_string(),
+            reason.to_string(),
+        ));
+    }
+    assert_eq!(
+        settled,
+        vec![
+            ("r-foreign", "unmet".into(), "evidence_unavailable".into()),
+            ("r-own", "satisfied".into(), String::new()),
+            ("r-bare", "satisfied".into(), String::new()),
+        ]
+    );
+
+    // The citation a packet carries, read from the sealed bytes.
+    let mut citation = |request: &str| {
+        let inspected = ctx.call(
+            "context.packet.inspect",
+            None,
+            &format!(r#"{{"packet":"{request}","revision":1,"max_bytes":1000000}}"#),
+        );
+        let data = text(result(&inspected), &["excerpt", "data_base64"]);
+        let sealed = parse(
+            &String::from_utf8(cbr_encoding::decode_base64(data).expect("base64")).expect("utf-8"),
+        );
+        let cited: Vec<Value> = at(&sealed, &["sections"])
+            .as_array()
+            .expect("sections")
+            .iter()
+            .flat_map(|section| {
+                at(section, &["citations"])
+                    .as_array()
+                    .expect("citations")
+                    .to_vec()
+            })
+            .map(|citation| at(&citation, &["evidence"]).clone())
+            .collect();
+        cited
+    };
+    let named = format!(
+        r#"{{"artifact":{{"id":"log-1","kind":"evidence.artifact"}},"digest":"{digest}","provider":"context-1"}}"#
+    );
+    for request in ["r-own", "r-bare"] {
+        let cited: Vec<String> = citation(request)
+            .iter()
+            .map(|evidence| String::from_utf8(cbr_encoding::to_canonical(evidence)).expect("utf-8"))
+            .collect();
+        assert_eq!(cited, vec![named.clone()], "{request}");
+    }
+    assert!(
+        citation("r-foreign").is_empty(),
+        "another provider's artifact was cited"
+    );
+    ctx.kill();
 }

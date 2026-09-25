@@ -26,7 +26,7 @@
 //! of zero, or is scripted.
 
 use std::path::{Path, PathBuf};
-use std::process::Output;
+use std::process::{Command, Output};
 use std::time::{Duration, Instant};
 
 use cbr_encoding::Value;
@@ -39,13 +39,11 @@ use serving::{Fixture, Running};
 /// `c-log`.
 const ITEM: &str = "log";
 
-/// **The launch names itself `cbr`.** `cbr context` writes an evidence item
-/// as a reference to provider `cbr`, which is what a production launch is
-/// called, and `context.expand` refuses a citation that names another
-/// provider. A conformance launch is `conformance-provider` unless told
-/// otherwise, so under the fixture's own configuration the section's
-/// citation would be refused as foreign — correctly, and uselessly for a
-/// test of reading it. Grants are addressed to the same id.
+/// **The launch names itself `cbr`**, which is what a production launch
+/// is called, so the scripted sections below can cite `cbr` and the
+/// grants can be addressed to it. A compiled section's citation names
+/// whatever the launch is called — the last test here launches under
+/// another id to hold that.
 const PROVIDER: &str = r#""provider_id":"cbr""#;
 
 /// A small cargo test log, a few kilobytes: text, so it is projected, and
@@ -354,9 +352,29 @@ fn an_offset_past_the_end_is_an_error_and_writes_nothing() {
     assert!(printed.stdout.is_empty(), "bytes were printed");
 
     // **An empty range is not a question**, so it is refused before
-    // anything is asked.
+    // anything is asked, in the client's own words. The provider would
+    // refuse a `max_bytes` of zero as well, so a nonzero exit alone
+    // cannot tell the two apart; the words can, and so can asking with
+    // no provider there at all — a client that got as far as connecting
+    // would say so instead.
     let empty = fixture.cbr(&["expand", "past", "c-log", "--length", "0"]);
     assert!(!empty.status.success(), "a zero length succeeded");
+    assert_eq!(
+        stderr(&empty),
+        "cbr: --length is a positive number of bytes\n"
+    );
+    let unconnected = Command::new(env!("CARGO_BIN_EXE_cbr"))
+        .args(["expand", "past", "c-log", "--length", "0", "--socket"])
+        .arg(fixture.directory.path().join("nothing-listens.sock"))
+        .arg("--credential-file")
+        .arg(fixture.directory.path().join("credential"))
+        .output()
+        .expect("cbr runs");
+    assert_eq!(
+        stderr(&unconnected),
+        stderr(&empty),
+        "a zero length reached the socket"
+    );
     provider.stop();
 }
 
@@ -646,5 +664,76 @@ fn a_read_larger_than_one_frame_is_put_back_together_from_short_reads() {
         "expand", "two", "c-second", "--offset", "1000", "--length", "1100000",
     ]);
     assert_eq!(succeeded(&printed).stdout, &large[1000..1_101_000]);
+    provider.stop();
+}
+
+// ---- a provider under another name -----------------------------------------
+
+#[test]
+fn a_compiled_citation_names_the_provider_that_compiled_it_and_expands_there() {
+    // **Whatever the provider is called.** Every test above launches as
+    // `cbr`, as production does. `cbr context` used to write an evidence
+    // item as a reference to provider `cbr` literally, and compiling
+    // copies an item's reference into the section's citation, so under
+    // any other `provider_id` — every conformance launch, or a production
+    // one configured with its own — the packet cited `cbr`, and the
+    // provider's own `context.expand` refused that citation as another
+    // provider's. Now the item names no provider, which is the provider
+    // being asked (EVIDENCE section 2), and the citation the packet
+    // carries names that provider by its own id.
+    const ELSEWHERE: &str = "cbr-elsewhere";
+    let fixture = Fixture::narrow(&["ids:u1"]);
+    let provider = fixture.start_configured(&format!(
+        r#""provider_id":"{ELSEWHERE}","context":{{"compile":true}}"#
+    ));
+    let source = log();
+    let evidence = ingest(&fixture, "run.log", &source);
+    let inspected = asked(&fixture, "elsewhere", &evidence.0, &evidence.1);
+    assert_eq!(
+        serving::result(&inspected, ITEM).0,
+        "satisfied",
+        "{inspected:?}"
+    );
+
+    let packet = serving::sealed(&serving::packet(&fixture, "elsewhere"));
+    let cited: Vec<String> = packet
+        .get("sections")
+        .and_then(Value::as_array)
+        .unwrap_or_default()
+        .iter()
+        .flat_map(|section| {
+            section
+                .get("citations")
+                .and_then(Value::as_array)
+                .unwrap_or_default()
+                .to_vec()
+        })
+        .filter(|citation| citation.get("citation_id").and_then(Value::as_str) == Some("c-log"))
+        .map(|citation| {
+            String::from_utf8(cbr_encoding::to_canonical(
+                citation.get("evidence").unwrap_or(&Value::Null),
+            ))
+            .expect("utf-8")
+        })
+        .collect();
+    assert_eq!(
+        cited,
+        vec![format!(
+            r#"{{"artifact":{{"id":"{}","kind":"evidence.artifact"}},"digest":"{}","provider":"{ELSEWHERE}"}}"#,
+            evidence.0, evidence.1
+        )],
+        "the citation does not name the provider that compiled it"
+    );
+
+    let out = out_file(&fixture, "elsewhere.out");
+    let expanded = fixture.cbr(&[
+        "expand",
+        "elsewhere",
+        "c-log",
+        "--out",
+        out.to_str().expect("utf-8"),
+    ]);
+    succeeded(&expanded);
+    assert_eq!(std::fs::read(&out).expect("the expanded bytes"), source);
     provider.stop();
 }
