@@ -66,6 +66,13 @@ python3 scripts/check_results.py "$OUT/composition" conformance/expectations/com
 
 **`composition` runs over the socket participant and only over it.** Its fixtures are separate CBR instances reaching one another over public sockets, so the stdio participant has no second role to give them: run with `cbr-provider.json` every one of the fourteen is **skipped**, which reads like a regression and is not one. The last two commands were missing from this block until m4c, which is how that mistake was made.
 
+**The ten `composition` fixtures that need an executor run separately, labelled reference executor, and are not gated** (below):
+
+```sh
+python3 scripts/build_runner.py --reference-executor
+python3 scripts/run_fixtures.py --filter composition. --participant conformance/participants/cbr-with-reference-executor-unix.json --out "$OUT/composition-reference-executor"
+```
+
 Source identity shells out to `git`, so the tests need `git` on the path; both CI runners have it.
 
 `build_runner.py` downloads the archive once and reuses it afterwards; `--archive PATH` uses a copy you already have and `--offline` refuses to download. It verifies the archive against the pinned SHA-256, verifies every extracted file against the archive's own `BUNDLE-SHA256SUMS`, checks the archive's recorded commit against the pin, and records the runner identity that `run_fixtures.py` stamps into every results manifest.
@@ -84,8 +91,10 @@ Source identity shells out to `git`, so the tests need `git` on the path; both C
 | `run_fixtures.py --filter socket. --participant …unix.json` | **11 of the 13 `socket` fixtures pass, 2 are unsupported by name, none fails.** | The 2, permanently: they declare `execution`. **Nothing about a different operating-system user** (below). |
 | `run_fixtures.py --filter evidence.` | **All 16 `evidence` fixtures pass.** | Anything the fixtures do not do: they never kill the provider, never use the socket, and never run `cbr` |
 | `run_fixtures.py --filter knowledge.` | **All 10 `knowledge` fixtures pass**, with the `knowledge.store` control. | That CBR's memory is useful, or that any claim is true (KNOWLEDGE §14). No fixture uses `serve_altered_claims`, runs over the socket, or runs `cbr`. |
+| `run_fixtures.py --filter composition. --participant …cbr-provider-unix.json` | **3 of the 14 `composition` fixtures pass, 11 are unsupported by name, none fails**: separate CBR instances as the context, evidence and knowledge providers, and the protocol's client-only `minimal-executor`. | The 11: ten need an executor and one needs `verification/1`, and CBR serves neither. |
+| `run_fixtures.py --filter composition. --participant …cbr-with-reference-executor-unix.json` | **REFERENCE EXECUTOR, measured at m5g and not gated: 11 pass, 2 fail, 1 unsupported.** CBR is every context, evidence and knowledge participant, and the protocol's reference provider is every executor, chosen per participant by `scripts/reference_executor_launch.py`. **8 of the ten executor fixtures pass**: CBR's context and evidence providers work with a second implementation acting as the executor. The 2 failures are CBR's: its context provider does not submit the investigation execution CTX-18 and CTX-19 expect ([READINESS §7](work/m5/READINESS.md#7-j3-j4-and-j5-and-the-fixtures-that-need-an-execution-peer)). | **Anything about a real adapter or PIO**, and anything about the reference provider. No expectation file: `check_results.py` refuses a `fail`, so the passes are recorded here, not gated. The verification fixture stays unsupported. |
 | `result_paths.py conformance/results/*/` | No committed result carries a machine path — the same check `run_fixtures.py` applies when it records a run | That the results are correct |
-| `check_results.py` | **The gate.** The outcome multiset matches a recorded expectation exactly: pass count, total, the named unsupported set, and zero `fail`, `timeout`, `harness_error` and `skipped`. | Every suite with no expectation file. All seven have one: `stream`, `core`, `socket`, `evidence`, `knowledge`, `context` and `composition`. `core`'s is `core-c4`, the last of one per stage from `core-c1`. |
+| `check_results.py` | **The gate.** The outcome multiset matches a recorded expectation exactly: pass count, total, the named unsupported set, and zero `fail`, `timeout`, `harness_error` and `skipped`. | Every suite with no expectation file. All seven have one: `stream`, `core`, `socket`, `evidence`, `knowledge`, `context` and `composition`. `core`'s is `core-c4`, the last of one per stage from `core-c1`. The reference-executor composition run has none. |
 
 ### Why the gate is an outcome multiset
 
@@ -107,7 +116,7 @@ Five of the 135 `core` fixtures declare the `execution` profile and require the 
 
 So the maximum attainable on the `core` suite is **130 of 135**, with exactly those five `unsupported`. Any statement of the form "all 135 core fixtures pass" is unattainable and must not be written.
 
-**What is and is not established.** `stream` passes completely; `core` passes every fixture a provider that never serves `execution/1` can pass. `socket` passes every fixture a provider that never serves `execution/1` can pass. `evidence`, `knowledge` and `context` pass completely. `composition` passes every fixture that needs neither `execution/1` nor `verification/1`, which CBR never serves. The store **is** durable — SQLite in WAL mode with `synchronous=FULL`, verified by reading the PRAGMAs back from the open connection, and by tests that `SIGKILL` the provider and restart it over the same data directory. There is retrieval — a lexical index, code anchors and a dependency evaluator — and since M3 the deterministic packet compiler reaches it over the protocol ([below](#the-deterministic-packet-compiler-and-what-a-packet-is-compiled-from)); since M4 a model is called, only as [the model runtime](#the-model-runtime) allows. The `context` suite's packets are still the `context.script` test control's, which a production launch refuses.
+**What is and is not established.** `stream` passes completely; `core` passes every fixture a provider that never serves `execution/1` can pass. `socket` passes every fixture a provider that never serves `execution/1` can pass. `evidence`, `knowledge` and `context` pass completely. `composition` passes every fixture that needs neither `execution/1` nor `verification/1`, which CBR never serves. With the reference provider as the executor, 8 of the ten executor fixtures also pass. That is evidence about CBR's context and evidence providers alongside a second implementation, never about an adapter, and it is not gated. The store **is** durable — SQLite in WAL mode with `synchronous=FULL`, verified by reading the PRAGMAs back from the open connection, and by tests that `SIGKILL` the provider and restart it over the same data directory. There is retrieval — a lexical index, code anchors and a dependency evaluator — and since M3 the deterministic packet compiler reaches it over the protocol ([below](#the-deterministic-packet-compiler-and-what-a-packet-is-compiled-from)); since M4 a model is called, only as [the model runtime](#the-model-runtime) allows. The `context` suite's packets are still the `context.script` test control's, which a production launch refuses.
 
 ### Knowledge, source identity and the knowledge verbs
 
@@ -177,7 +186,7 @@ Each row has a mutant that fails its test.
 - one grant per audience for direct fetch;
 - the protocol's independently written, client-only `minimal-executor`, vendored from the release archive, enforcing its dispatch boundary from CBR's read-time claim facts, with CBR reading claims at a separate knowledge provider.
 
-The other 11 composition fixtures declare `execution/1` or `verification/1` and are permanently out of reach.
+The other 11 composition fixtures declare `execution/1` or `verification/1`, and are out of reach **with CBR in every role**. Since m5g, ten of them run with the protocol's reference provider as the executor, labelled **reference executor**: 8 pass, and 2 fail on CBR's missing context-initiated investigation (CTX-18, CTX-19). The one that needs `verification/1` stays out of reach, because its single participant would have to serve it ([READINESS §7](work/m5/READINESS.md#7-j3-j4-and-j5-and-the-fixtures-that-need-an-execution-peer)).
 
 **CBR's own tests** (`crates/cbr-provider/tests/context.rs`, and unit tests in `context.rs` and `store.rs`) cover what no fixture reaches:
 - a publication whose seal is held at the evidence provider past the peer timeout replays after the clock moves, because the first attempt's capture instant is kept, and the diagnostic it logs does not contain the peer credential;
