@@ -468,13 +468,14 @@ fn an_idle_subscription_is_not_starved_by_sustained_command_contention() {
         ),
         "the idle subscriber did not reserve bounded progress"
     );
+    let contention = barriers.join(format!("{CONTENDED}.signal"));
+    if contention.exists() {
+        std::fs::remove_file(&contention).expect("clears the blocker's contention signal");
+    }
     start_writing.store(true, Ordering::Release);
 
     assert!(
-        wait_for(
-            &barriers.join(format!("{CONTENDED}.signal")),
-            Duration::from_secs(5)
-        ),
+        wait_for(&contention, Duration::from_secs(5)),
         "the writers never contended for the processing lock"
     );
     std::fs::write(
