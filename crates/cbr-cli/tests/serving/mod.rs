@@ -457,6 +457,23 @@ impl Fixture {
         self.launch(&config, &["--replay-model"])
     }
 
+    /// Start over the same data directory, principals and registrations
+    /// with **members of the test's own** added to the configuration:
+    /// `members` is spliced into its top-level object after the
+    /// principals and credentials, so a test states what it is about —
+    /// a provider id, a script — and nothing else about the launch moves.
+    pub fn start_configured(&self, members: &str) -> Running {
+        let config = self.directory.path().join("cbr-configured.json");
+        std::fs::write(
+            &config,
+            format!(
+                r#"{{"format":"combraton-conformance-config/1","principal":"owner","authority_principals":["owner"],"credentials":[{{"credential":"{CREDENTIAL}"}},{{"credential":"{READER}"}}],{members}}}"#
+            ),
+        )
+        .expect("config");
+        self.launch(&config, &[])
+    }
+
     pub fn cbr(&self, arguments: &[&str]) -> Output {
         Command::new(env!("CARGO_BIN_EXE_cbr"))
             .args(arguments)
@@ -679,6 +696,12 @@ impl Fixture {
     /// conformance launch's provider id, not `cbr`: a grant for another
     /// provider is refused before its rights are read at all.
     pub fn issue_grant(&self, id: &str, rights: &[&str], resources: &str) {
+        self.issue_grant_to("conformance-provider", id, rights, resources);
+    }
+
+    /// The same, addressed to `audience`: a launch that names its own
+    /// `provider_id` only honours grants issued to that id.
+    pub fn issue_grant_to(&self, audience: &str, id: &str, rights: &[&str], resources: &str) {
         use std::io::{BufRead, BufReader, Write};
         let stream = UnixStream::connect(&self.socket).expect("connects");
         let mut reader = BufReader::new(stream.try_clone().expect("clone"));
@@ -702,7 +725,7 @@ impl Fixture {
             .collect::<Vec<_>>()
             .join(",");
         let envelope = format!(
-            r#"{{"operation":"core.grant.issue","message_id":"g","command_id":"grant-{id}","dedupe_generation":1,"subject":{{"kind":"core.grant","id":"{id}"}},"preconditions":[{{"subject":{{"kind":"core.grant","id":"{id}"}},"revision":0}}],"requires":[],"payload":{{"holder":"reader","audience":"conformance-provider","rights":[{rights}],"resources":[{resources}],"delegation":{{"allowed":false,"max_depth":0}}}}}}"#
+            r#"{{"operation":"core.grant.issue","message_id":"g","command_id":"grant-{id}","dedupe_generation":1,"subject":{{"kind":"core.grant","id":"{id}"}},"preconditions":[{{"subject":{{"kind":"core.grant","id":"{id}"}},"revision":0}}],"requires":[],"payload":{{"holder":"reader","audience":"{audience}","rights":[{rights}],"resources":[{resources}],"delegation":{{"allowed":false,"max_depth":0}}}}}}"#
         );
         let digest = cbr_encoding::command_digest(
             &cbr_encoding::parse(envelope.as_bytes()).expect("canonical"),
