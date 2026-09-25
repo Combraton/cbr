@@ -973,7 +973,22 @@ fn a_projection_the_investigation_limit_cannot_cover_is_not_started() {
 
     let inspected = asked(&fixture, "enough", &artifact, &digest, parts);
     assert_eq!(result(&inspected, ITEM).0, "satisfied", "{inspected:?}");
-    assert_eq!(part_records(&fixture).len(), parts);
+    let records = part_records(&fixture);
+    assert_eq!(records.len(), parts);
+    // **Each question is numbered among the questions asked**, not among
+    // the parts the document fills: a record saying `part 1 of 4` where
+    // two questions were asked says the model missed half of what it saw.
+    let mut numbers: Vec<String> = records
+        .iter()
+        .map(|(selector, ..)| {
+            let (_, which) = selector
+                .rsplit_once(" part ")
+                .unwrap_or_else(|| panic!("no part in {selector}"));
+            which.to_string()
+        })
+        .collect();
+    numbers.sort_unstable();
+    assert_eq!(numbers, ["1 of 2", "2 of 2"]);
     provider.stop();
 }
 
@@ -1276,6 +1291,83 @@ fn a_log_whose_floor_leaves_no_room_asks_no_model_and_spends_nothing() {
     assert_eq!(read.extents, ruled.extents);
     assert!(part_records(&fixture).is_empty(), "a part was asked");
     assert!(ledger(&fixture.data()).is_empty(), "a call was charged");
+    provider.stop();
+}
+
+/// The bounds a projection is drawn within, as READINESS §8 publishes them
+/// and the J2 rubric's gate D pins them.
+const PROJECTION_BYTES: usize = 16 * 1024;
+const MAX_EXCERPTS: usize = 24;
+
+/// The model's part of the `read as` line at its longest, which a question
+/// leaves room for: every excerpt a projection may hold, listed.
+fn widest_added() -> String {
+    let ids: Vec<String> = (1..=MAX_EXCERPTS).map(|n| format!("e{n}")).collect();
+    format!(
+        "; then chosen by the model, one question per part, which added {}",
+        ids.join(", ")
+    )
+}
+
+#[test]
+fn a_parts_question_says_what_the_floor_carries_and_the_room_it_leaves() {
+    // **What a model is told is what is true**, read from the bytes that
+    // went out. Every question starts by saying what is carried whatever
+    // the model answers — this log's three failing tests and no cargo
+    // error — and the room the rule's projection leaves drawn at the model
+    // arm's widest: the rule's own section, with the label listing every
+    // excerpt a projection may hold and every omission under the longer
+    // of its two reasons. No group in this log is larger than a part, so
+    // there is no `unresolved:` line to leave room for.
+    let fixture = Fixture::narrow(&["ids:"]);
+    let provider = fixture.start();
+    let log = large_log();
+    let (artifact, digest) = ingest(&fixture, "large.log", log.as_bytes());
+    asked(&fixture, "baseline", &artifact, &digest, 0);
+    let packet = sealed_packet(&fixture, "baseline");
+    let content = projection_section(&packet)
+        .and_then(|section| {
+            section
+                .get("content")
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        })
+        .expect("the baseline's section");
+    let ruled = projection_of(&fixture, "baseline", log.as_bytes());
+    let parts = ruled.parts();
+    assert!(parts >= 2, "the fixture is meant to ask more than one part");
+    let not_selected = ruled
+        .extents
+        .iter()
+        .filter(
+            |extent| matches!(extent, Extent::Omitted { reason, .. } if reason == "not_selected"),
+        )
+        .count();
+    let excerpts = ruled
+        .extents
+        .iter()
+        .filter(|extent| matches!(extent, Extent::Carried { .. }))
+        .count();
+    let widest = content.len() + widest_added().len() + not_selected * 3;
+    let expected = format!(
+        "Carried whatever you answer, as far as they fit: {} failing tests, 0 cargo errors, \
+         run identity. Room left: {} bytes, {} excerpts.",
+        LARGE_FAILURES.len(),
+        PROJECTION_BYTES - widest,
+        MAX_EXCERPTS - excerpts
+    );
+
+    let inspected = asked(&fixture, "assisted", &artifact, &digest, parts);
+    assert_eq!(result(&inspected, ITEM).0, "satisfied", "{inspected:?}");
+    let bodies = serving::bodies_sent(&fixture.data());
+    assert_eq!(bodies.len(), parts, "one question per part");
+    for body in &bodies {
+        assert_eq!(
+            body.matches(&expected).count(),
+            1,
+            "the question does not say {expected:?}:\n{body}"
+        );
+    }
     provider.stop();
 }
 

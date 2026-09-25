@@ -2291,7 +2291,13 @@ impl Provider {
                 projection::choose_by_model(&read, &picked)
             }
         };
-        let rendered = projection::render(&read, &bytes, &choice, &plan, subject);
+        // **A projection over its own bound is never published**: `render`
+        // refuses a model arm that does not fit, which `offer` makes
+        // unreachable, and the item says so rather than carry it.
+        let Some(rendered) = projection::render(&read, &bytes, &choice, &plan, subject) else {
+            unmet(decided, projection::INSUFFICIENT_CAPACITY);
+            return Ok(());
+        };
         decided.evidence.push(compiler::EvidenceSection {
             item: item.to_string(),
             summary: rendered.content,

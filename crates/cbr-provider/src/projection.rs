@@ -1342,17 +1342,17 @@ pub fn render(
     choice: &Choice,
     plan: &Plan,
     subject: Subject<'_>,
-) -> Rendered {
+) -> Option<Rendered> {
     let frame = Frame::of(subject, plan);
     if choice.by == By::NotText {
-        return draw(
+        return Some(draw(
             read,
             bytes,
             choice,
             &vec![false; read.units.len()],
             None,
             &frame,
-        );
+        ));
     }
     // **What fits whole is carried whole, at once.** Carried unit by unit it
     // can pass through more excerpts than the bound on the way — forty
@@ -1362,7 +1362,7 @@ pub fn render(
     if choice.by == By::Everything {
         let whole = draw(read, bytes, choice, &all(read), None, &frame);
         if whole.fits() {
-            return whole;
+            return Some(whole);
         }
     }
     let floor = floor(read, bytes, &frame);
@@ -1379,7 +1379,7 @@ pub fn render(
             carried[index] = false;
         }
     }
-    draw(read, bytes, choice, &carried, chooser, &frame)
+    Some(draw(read, bytes, choice, &carried, chooser, &frame))
 }
 
 /// Draw a projection: the header, then a ledger that tiles the artifact.

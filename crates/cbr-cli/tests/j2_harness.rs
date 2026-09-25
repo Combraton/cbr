@@ -533,6 +533,9 @@ fn a_run_that_offers_nothing_asks_nothing_live_or_dry() {
     assert_eq!(int(run, &["part_records"]), 0, "{run:?}");
     assert_eq!(int(run, &["tokens"]), 0, "{run:?}");
     assert!(out.join("full.assisted.packet.json").exists());
+    // **Nothing was answered, so nothing is replayed**: a replay gate run
+    // here would report a rebuild of a question nobody asked.
+    assert!(run.get("replay").is_none(), "{run:?}");
 }
 
 #[test]
@@ -540,8 +543,9 @@ fn the_harness_names_a_model_arm_that_drops_a_baseline_excerpt() {
     // **The floor, checked by the harness as well as built by the
     // provider**: a model-assisted projection carries every byte the
     // baseline carries, whatever else it carries. Given one that dropped a
-    // baseline excerpt, `checked` names it; given one that carries the
-    // baseline's excerpts and more, or joins two of them, it says nothing.
+    // baseline excerpt, or kept only the start of one, `checked` names it;
+    // given one that carries the baseline's excerpts and more, or joins two
+    // of them, it says nothing.
     let program = r#"
 import json, sys
 sys.path.insert(0, sys.argv[1])
@@ -560,6 +564,10 @@ floor = [(0, 9), (18, 29)]
 cases = {
     "dropped": packet(head + excerpt(1, 0, 9)
                       + "[o1] bytes 9-29, lines 2-3, omitted: not_selected\n", 1),
+    "partial": packet(head + excerpt(1, 0, 9)
+                      + "[o1] bytes 9-18, lines 2-2, omitted: not_selected\n"
+                      + excerpt(2, 18, 25)
+                      + "[o2] bytes 25-29, lines 3-3, omitted: not_selected\n", 2),
     "added": packet(head + excerpt(1, 0, 9) + excerpt(2, 9, 18) + excerpt(3, 18, 29), 0),
     "joined": packet(head + excerpt(1, 0, 29), 0),
 }
@@ -592,6 +600,15 @@ print(json.dumps({name: j2_run.checked(one, source, floor)["problems"] for name,
             .any(|problem| problem.contains("drops the baseline's excerpt at 18-29")),
         "{:?}",
         problems("dropped")
+    );
+    // **A baseline excerpt carried in part is dropped too**: its first
+    // bytes are here and its tail is not.
+    assert!(
+        problems("partial")
+            .iter()
+            .any(|problem| problem.contains("drops the baseline's excerpt at 18-29")),
+        "{:?}",
+        problems("partial")
     );
     assert!(problems("added").is_empty(), "{:?}", problems("added"));
     assert!(problems("joined").is_empty(), "{:?}", problems("joined"));

@@ -183,6 +183,20 @@ fn assert_renders_honestly(rendered: &Rendered, bytes: &[u8]) {
     );
 }
 
+/// [`super::render`], for every test here that renders a projection that
+/// fits: a refusal is a failure of the test that met it.
+/// `a_model_arm_that_does_not_fit_is_refused_and_never_published` calls
+/// the real one.
+fn render(
+    read: &Read,
+    bytes: &[u8],
+    choice: &Choice,
+    plan: &Plan,
+    subject: Subject<'_>,
+) -> Rendered {
+    super::render(read, bytes, choice, plan, subject).expect("a projection that fits")
+}
+
 // ---- reading ---------------------------------------------------------------------
 
 #[test]
@@ -662,6 +676,15 @@ fn a_whole_artifact_that_fits_is_carried_whole_and_nothing_is_asked() {
         extents(&rendered.content).len(),
         1,
         "one excerpt, the whole"
+    );
+    // **It needs no question, and says so**: the header's count is the
+    // questions the input needs, which the harness reads to decide what it
+    // asks.
+    assert!(plan.asked.is_empty(), "offered {:?}", plan.asked);
+    assert!(
+        how(&rendered.content).contains(" in 0 parts;"),
+        "{}",
+        how(&rendered.content)
     );
 }
 
@@ -1879,17 +1902,63 @@ fn capacity_is_the_inputs_not_the_offers() {
     // input whose units need one part more than a projection may ask is
     // insufficient, even where what a model would be offered of it is
     // within the bound.
+    //
+    // **And it is decided before anything is offered.** Working out an
+    // offer draws the whole projection once for every unit a model could
+    // choose, and nothing bounds those units until capacity has been
+    // decided: an input of 131,072 bytes of one-line records took a minute
+    // of a debug build's time to be refused. So an input over capacity has
+    // no questions, although `offer` would have offered this one some.
     let text = tuned(|pad| records(128, 40, 20, pad), 500..1000);
     let bytes = text.as_bytes();
     assert!(bytes.len() <= INPUT_BYTES);
     let read = parse(bytes);
     let plan = partition(&read, bytes, SUBJECT);
     assert_eq!(plan.parts.len(), MAX_PARTS + 1, "{}", plan.parts.len());
+    let (addable, _) = offer(&read, bytes, &plan, SUBJECT).expect("an offer, had one been made");
+    let would_offer: Vec<usize> = plan
+        .parts
+        .iter()
+        .flatten()
+        .copied()
+        .filter(|&index| addable[index])
+        .collect();
     assert!(
-        !plan.asked.is_empty() && plan.asked.len() < MAX_PARTS,
-        "offered {} parts",
-        plan.asked.len()
+        !would_offer.is_empty(),
+        "the premise: something could be added"
     );
+    assert!(plan.asked.is_empty(), "offered {:?}", plan.asked);
+    assert_eq!((plan.floor.bytes, plan.floor.excerpts), (0, 0));
+    for may_ask in [true, false] {
+        assert_eq!(
+            next(&read, bytes, &plan, SUBJECT, may_ask),
+            Next::Insufficient
+        );
+    }
+
+    // **Too large is capacity too**, however few parts the rest of it
+    // fills: a document whose run identity alone is over the input bound,
+    // with a few results a model could otherwise have been offered.
+    let document = format!(
+        "{{\n  \"environment\": \"{}\",\n  \"results\": [\n{}\n  ]\n}}\n",
+        "v".repeat(INPUT_BYTES),
+        (0..20)
+            .map(|n| format!("    {{\"fixture\": \"core.case-{n}\", \"outcome\": \"pass\"}}"))
+            .collect::<Vec<_>>()
+            .join(",\n")
+    );
+    let bytes = document.as_bytes();
+    assert!(too_large(bytes.len()));
+    let read = parse(bytes);
+    assert_eq!(read.format, Format::Json);
+    let plan = partition(&read, bytes, SUBJECT);
+    assert!(plan.parts.len() <= MAX_PARTS, "{}", plan.parts.len());
+    let (addable, _) = offer(&read, bytes, &plan, SUBJECT).expect("an offer, had one been made");
+    assert!(
+        plan.parts.iter().flatten().any(|&index| addable[index]),
+        "the premise: a result could be added"
+    );
+    assert!(plan.asked.is_empty(), "offered {:?}", plan.asked);
     for may_ask in [true, false] {
         assert_eq!(
             next(&read, bytes, &plan, SUBJECT, may_ask),
@@ -1949,6 +2018,15 @@ fn the_offer_preamble_is_bounded() {
         system.contains("empty list is a complete answer"),
         "{system}"
     );
+    // **The instruction and the preamble say the same thing** about what
+    // is carried: a failure the floor had no room for is not carried, and
+    // a model told otherwise is told something false.
+    for said in [system, said.as_str()] {
+        assert!(
+            said.contains("whatever you answer, as far as they fit"),
+            "{said}"
+        );
+    }
 }
 
 #[test]
@@ -1991,9 +2069,14 @@ fn the_header_counts_failing_tests_and_cargo_errors_apart() {
     let libtest = cargo_log(2, 5, &[(0, 1), (1, 3)], 2)
         + "error: test failed, to rerun pass `-p crate_1 --lib`\n";
     let document = manifest(60, &[3, 40]);
+    // **A compiler error in cargo's JSON dialect is a cargo error**, named
+    // by its message where it has one and by its record where it has not,
+    // and the `message` object inside it is not a second one.
     let lines = "{\"name\":\"a\",\"outcome\":\"pass\"}\n{\"name\":\"b\",\"outcome\":\"fail\"}\n\
-                 {\"reason\":\"compiler-message\",\"message\":{\"level\":\"error\"}}\n";
-    for (text, tests, errors) in [(libtest, 2, 1), (document, 2, 0), (lines.to_string(), 1, 0)] {
+                 {\"reason\":\"compiler-message\",\"message\":{\"level\":\"error\"}}\n\
+                 {\"reason\":\"compiler-message\",\"package_id\":\"x 0.1.0\",\"message\":\
+                 {\"message\":\"cannot find value `y` in this scope\",\"level\":\"error\"}}\n";
+    for (text, tests, errors) in [(libtest, 2, 1), (document, 2, 0), (lines.to_string(), 1, 2)] {
         let read = parse(text.as_bytes());
         let plan = partition(&read, text.as_bytes(), SUBJECT);
         let rendered = render(
@@ -2008,6 +2091,23 @@ fn the_header_counts_failing_tests_and_cargo_errors_apart() {
             tests + errors
         );
         assert!(rendered.content.contains(&expected), "{}", rendered.content);
+        let named: Vec<&str> = read
+            .named
+            .iter()
+            .map(|named| &text[named.start..named.end])
+            .collect();
+        if errors == 2 {
+            assert!(
+                named.contains(&"cannot find value `y` in this scope"),
+                "{named:?}"
+            );
+            assert!(
+                named.contains(
+                    &"{\"reason\":\"compiler-message\",\"message\":{\"level\":\"error\"}}"
+                ),
+                "{named:?}"
+            );
+        }
     }
 }
 
@@ -2038,6 +2138,323 @@ fn an_empty_list_at_a_documents_root_is_identity() {
         .find(|unit| unit.start <= result && result < unit.end)
         .expect("tiled");
     assert_eq!(holder.kind, Kind::Other);
+}
+
+// ---- m5a-3's fix round: what the verifiers found unguarded ----------------------
+
+/// A failing cargo log that opens with `groups` blocks of plain lines,
+/// **each larger than a part**: sixteen lines of about two kilobytes, each
+/// its own unit, and four short ones. After them, seven failures between
+/// passing tests, the first failure's block grown by `pad`.
+fn cut_log(groups: usize, pad: usize) -> String {
+    let mut log = String::from("running 30 tests\n");
+    for group in 0..groups {
+        for _ in 0..16 {
+            log.push_str(&format!("{}\n", "w".repeat(2040)));
+        }
+        for line in 0..4 {
+            log.push_str(&format!("short {group}.{line}\n"));
+        }
+    }
+    let failing: Vec<(usize, usize)> = (0..7).map(|test| (0, test * 2 + 1)).collect();
+    log + &cargo_log(1, 30, &failing, 25).replacen(
+        "expected 5 ms\n",
+        &format!("expected 5 ms{}\n", "p".repeat(pad)),
+        1,
+    )
+}
+
+/// The questions that hold a piece of a planned cut's group, numbered as
+/// they are asked.
+fn questions_holding(plan: &Plan, cut: Cut) -> Vec<usize> {
+    let (first, last, _, _) = cut;
+    plan.asked
+        .iter()
+        .enumerate()
+        .filter(|(_, units)| units.iter().any(|&index| index >= first && index <= last))
+        .map(|(number, _)| number)
+        .collect()
+}
+
+#[test]
+fn a_group_offered_in_one_question_is_not_reported_as_cut() {
+    // **A cut is reported only where a model saw one.** The plan cuts this
+    // block across two parts, but its first part's pieces are each too
+    // large to add beside the floor, so only its last pieces are offered,
+    // in one question. That question saw every piece of the block it was
+    // shown, and the model arm says nothing unresolved about it.
+    let log = tuned(|pad| cut_log(1, pad), 700..1500);
+    let bytes = log.as_bytes();
+    let read = parse(bytes);
+    let plan = partition(&read, bytes, SUBJECT);
+    assert_eq!(plan.split.len(), 1, "{:?}", plan.split);
+    let (_, _, from, to) = plan.split[0];
+    assert!(to > from, "the plan cuts the block: {:?}", plan.split[0]);
+    assert_eq!(next(&read, bytes, &plan, SUBJECT, true), Next::Ask);
+    assert_eq!(
+        questions_holding(&plan, plan.split[0]).len(),
+        1,
+        "the premise: one question holds the block's pieces: {:?}",
+        plan.asked
+    );
+    for picks in answers(&plan) {
+        let rendered = render(
+            &read,
+            bytes,
+            &choose_by_model(&read, &picks),
+            &plan,
+            SUBJECT,
+        );
+        assert!(
+            !rendered.content.contains("unresolved: "),
+            "{picks:?}:\n{}",
+            rendered.content
+        );
+    }
+}
+
+/// How far the rule's floor of `text` is from the projection's bytes,
+/// drawn at the model arm's widest: `(with every cut group's unresolved
+/// line, without them)`.
+fn widest_margins(text: &str) -> (i64, i64) {
+    let bytes = text.as_bytes();
+    let read = parse(bytes);
+    let plan = partition(&read, bytes, SUBJECT);
+    let carried = floor(&read, bytes, &Frame::of(SUBJECT, &plan));
+    let model = choose_by_model(&read, &[]);
+    let margin = |frame: &Frame<'_>| {
+        PROJECTION_BYTES as i64
+            - draw(&read, bytes, &model, &carried, Some(&carried), frame)
+                .content
+                .len() as i64
+    };
+    let with = Frame::widest(SUBJECT, &plan);
+    let without = Frame {
+        split: Vec::new(),
+        ..Frame::widest(SUBJECT, &plan)
+    };
+    (margin(&with), margin(&without))
+}
+
+#[test]
+fn a_floor_with_no_room_for_the_lines_a_cut_group_takes_is_not_put_to_a_model() {
+    // **The widest frame counts the model arm's `unresolved:` lines.** Two
+    // blocks larger than a part are cut, and a model arm that was offered
+    // their pieces says so, a line each. This floor fits beside the model's
+    // widest label with room for a passing test, but not beside those two
+    // lines as well: a model asked here could be told its section has room
+    // it has not. So no model is asked, whatever it would have been
+    // offered.
+    let mut pad = 0usize;
+    let mut found = None;
+    for _ in 0..64 {
+        let log = cut_log(2, pad);
+        let (with, without) = widest_margins(&log);
+        if (100..190).contains(&without) {
+            assert!(with < 0, "the fixture's premise: {with} with the lines");
+            found = Some(log);
+            break;
+        }
+        pad = (pad as i64 + without - 145).max(0) as usize;
+    }
+    let log = found.expect("a pad that puts the floor between the two margins");
+    let bytes = log.as_bytes();
+    let read = parse(bytes);
+    let plan = partition(&read, bytes, SUBJECT);
+    assert_eq!(plan.split.len(), 2, "{:?}", plan.split);
+    assert!(plan.parts.len() <= MAX_PARTS);
+    // What a model would have been offered, had the lines not been counted:
+    // a passing test's line, alone, fits beside the floor without them.
+    let rule = render(&read, bytes, &choose_by_rule(&read), &plan, SUBJECT);
+    let floor = units_in(&read, &carried(&rule.content));
+    let without = Frame {
+        split: Vec::new(),
+        ..Frame::widest(SUBJECT, &plan)
+    };
+    let model = choose_by_model(&read, &[]);
+    assert!(
+        (0..read.units.len()).any(|index| {
+            let mut with = floor.clone();
+            with[index] = true;
+            read.units[index].kind == Kind::Other
+                && !floor[index]
+                && draw(&read, bytes, &model, &with, Some(&floor), &without).fits()
+        }),
+        "the premise: something would have been offered"
+    );
+    assert!(plan.asked.is_empty(), "offered {:?}", plan.asked);
+    assert_eq!(
+        next(&read, bytes, &plan, SUBJECT, true),
+        Next::Carry(choose_by_rule(&read))
+    );
+}
+
+#[test]
+fn a_model_arm_that_does_not_fit_is_refused_and_never_published() {
+    // **Defence in depth.** `offer` asks a model only where the floor fits
+    // beside the model arm's widest drawing, so the model arm always fits;
+    // and `render` does not take that on trust. Given a plan that asks a
+    // model about a floor with less room than the model's label, it
+    // refuses, where before it returned a section over the bound.
+    let near = tuned(padded_log, 1..60);
+    let bytes = near.as_bytes();
+    let read = parse(bytes);
+    let plan = partition(&read, bytes, SUBJECT);
+    assert!(plan.asked.is_empty(), "the premise: nothing is asked here");
+    let asked_anyway = Plan {
+        asked: plan.parts.clone(),
+        ..plan.clone()
+    };
+    let refused = super::render(
+        &read,
+        bytes,
+        &choose_by_model(&read, &[]),
+        &asked_anyway,
+        SUBJECT,
+    );
+    assert!(
+        refused.is_none(),
+        "published a model arm of {} bytes",
+        refused.map_or(0, |rendered| rendered.content.len())
+    );
+    // The rule's projection of the same log is published, and one a model
+    // was properly asked about is too.
+    assert!(super::render(&read, bytes, &choose_by_rule(&read), &plan, SUBJECT).is_some());
+    let log = red_shaped();
+    let read = parse(log.as_bytes());
+    let plan = partition(&read, log.as_bytes(), SUBJECT);
+    assert_eq!(next(&read, log.as_bytes(), &plan, SUBJECT, true), Next::Ask);
+    assert!(
+        super::render(
+            &read,
+            log.as_bytes(),
+            &choose_by_model(&read, &offered(&plan)),
+            &plan,
+            SUBJECT
+        )
+        .is_some()
+    );
+}
+
+/// A failing cargo log whose twenty-four failures fill every excerpt a
+/// projection holds **until the run identity between them joins them into
+/// one**: while the floor is full it refuses the run's first identity and
+/// a twenty-fifth failure, and it is then left with room for both. One
+/// passing test sits between the last two failures.
+fn bridged() -> String {
+    let mut log = String::from(
+        "     Running unittests src/lib.rs (target/debug/deps/crate_0-0123456789abcdef)\n\n\
+         test tests::first ... ok\n",
+    );
+    for n in 0..24 {
+        log.push_str(&format!("test tests::failing_{n} ... FAILED\n"));
+        if n < 23 {
+            log.push_str("running 1 test\n");
+        }
+    }
+    log.push_str("test tests::between ... ok\ntest tests::failing_24 ... FAILED\n");
+    for n in 0..700 {
+        log.push_str(&format!("test tests::passing_{n} ... ok\n"));
+    }
+    log
+}
+
+/// The unit holding the first byte of `needle` in `text`.
+fn unit_holding(read: &Read, text: &str, needle: &str) -> usize {
+    let at = text.find(needle).expect("the needle");
+    read.units
+        .iter()
+        .position(|unit| unit.start <= at && at < unit.end)
+        .expect("tiled")
+}
+
+#[test]
+fn run_identity_the_floor_left_out_is_never_offered_though_it_would_fit() {
+    // **Run identity is the rule's to carry, never a model's to add**, and
+    // that holds where the floor left some out that would now fit: its
+    // first identity was refused while the failures held every excerpt,
+    // and the identity after it then joined them into one.
+    let log = bridged();
+    let bytes = log.as_bytes();
+    let read = parse(bytes);
+    let plan = partition(&read, bytes, SUBJECT);
+    assert_eq!(next(&read, bytes, &plan, SUBJECT, true), Next::Ask);
+    let rule = render(&read, bytes, &choose_by_rule(&read), &plan, SUBJECT);
+    let floor = units_in(&read, &carried(&rule.content));
+    let top = unit_holding(&read, &log, "     Running unittests");
+    assert_eq!(read.units[top].kind, Kind::Identity);
+    assert!(
+        !floor[top],
+        "the premise: the floor left the run's identity out"
+    );
+    let mut with = floor.clone();
+    with[top] = true;
+    assert!(
+        draw(
+            &read,
+            bytes,
+            &choose_by_model(&read, &[]),
+            &with,
+            Some(&floor),
+            &Frame::widest(SUBJECT, &plan)
+        )
+        .fits(),
+        "the premise: it would fit beside the floor"
+    );
+    let offer = offered(&plan);
+    assert!(!offer.contains(&top), "run identity was offered to a model");
+    assert!(
+        offer
+            .iter()
+            .all(|&index| read.units[index].kind == Kind::Other),
+        "{offer:?}"
+    );
+}
+
+#[test]
+fn a_failure_the_floor_left_out_is_never_credited_to_the_model() {
+    // **What a model adds is the model's, and nothing else is.** The floor
+    // refused this log's last failure while it was full; a model that adds
+    // the passing test beside it must not bring the failure in with it,
+    // joined to its excerpt and listed as the model's.
+    let log = bridged();
+    let bytes = log.as_bytes();
+    let read = parse(bytes);
+    let plan = partition(&read, bytes, SUBJECT);
+    assert_eq!(next(&read, bytes, &plan, SUBJECT, true), Next::Ask);
+    let rule = render(&read, bytes, &choose_by_rule(&read), &plan, SUBJECT);
+    let floor = units_in(&read, &carried(&rule.content));
+    let last = unit_holding(&read, &log, "test tests::failing_24 ");
+    assert_eq!(read.units[last].kind, Kind::Failure);
+    assert!(!floor[last], "the premise: the floor left the failure out");
+    let between = unit_holding(&read, &log, "test tests::between ");
+    assert!(offered(&plan).contains(&between), "{:?}", plan.asked);
+    for picks in answers(&plan) {
+        let rendered = render(
+            &read,
+            bytes,
+            &choose_by_model(&read, &picks),
+            &plan,
+            SUBJECT,
+        );
+        let excerpts = numbered(&rendered.content);
+        let listed = added(&rendered.content).expect("the header names the model");
+        for number in listed {
+            let (start, end) = excerpts[number - 1];
+            assert!(
+                read.units
+                    .iter()
+                    .filter(|unit| unit.start >= start && unit.end <= end)
+                    .all(|unit| unit.kind == Kind::Other),
+                "{picks:?}: e{number} is listed as the model's and holds a failure:\n{}",
+                rendered.content
+            );
+        }
+        assert!(
+            !units_in(&read, &carried(&rendered.content))[last],
+            "{picks:?}: a failure the floor left out was carried after the model's picks"
+        );
+    }
 }
 
 // ---- what the family can cost ---------------------------------------------------------------
