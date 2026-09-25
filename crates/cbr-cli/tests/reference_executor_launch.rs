@@ -260,6 +260,37 @@ fn a_named_composition_participant_without_executor_is_cbr() {
 }
 
 #[test]
+fn the_route_is_the_executor_member_and_not_a_name() {
+    // **The configuration's own `executor` member decides**, not what the
+    // participant or its provider happens to be called. In the vendored
+    // fixtures the two coincide — every `exe` is `executor-1` and carries
+    // `executor` — so a launcher routing on a name would pass every other
+    // test here and misroute the first fixture where they part.
+    let tree = Tree::new();
+    let routed = tree.named(
+        "ctx",
+        r#"{"provider_id": "context-two", "executor": {"script": []}}"#,
+    );
+    let output = tree.launch_at(&routed);
+    assert!(output.status.success(), "{}", said(&output));
+    let started = tree.started().expect("something started");
+    assert_eq!(
+        started[0], "reference-provider",
+        "an executor configuration under another name went to {started:?}"
+    );
+
+    let tree = Tree::new();
+    let named_alike = tree.named("executor", r#"{"provider_id": "executor-x"}"#);
+    let output = tree.launch_at(&named_alike);
+    assert!(output.status.success(), "{}", said(&output));
+    let started = tree.started().expect("something started");
+    assert_eq!(
+        started[0], "cbr-provider",
+        "a configuration with no executor member went to {started:?}"
+    );
+}
+
+#[test]
 fn an_executor_configuration_outside_a_composition_is_refused() {
     // The misuse the verifier reproduced: execution.requires-core-features
     // through this descriptor passed on the reference provider under a
