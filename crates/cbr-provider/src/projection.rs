@@ -661,10 +661,36 @@ fn clip_label(label: &str) -> String {
 pub struct Plan {
     /// Indices into [`Read::units`], each part in byte order.
     pub parts: Vec<Vec<usize>>,
+    /// STUB (m5a-3, tests first): what each part offers a model. Today,
+    /// everything the part holds.
+    pub asked: Vec<Vec<usize>>,
+    /// STUB (m5a-3, tests first): what is carried whatever a model answers.
+    pub floor: Floor,
     /// A group larger than a part: `(first unit, last unit, first part,
     /// last part)`. Each part that holds some of it saw only its own
     /// pieces, which is a cross-part reference kept rather than lost.
     pub split: Vec<(usize, usize, usize, usize)>,
+}
+
+/// STUB (m5a-3, tests first): what a part's preamble says is carried
+/// whatever the model answers, and the room it leaves.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Floor {
+    pub tests: usize,
+    pub errors: usize,
+    pub bytes: usize,
+    pub excerpts: usize,
+}
+
+/// STUB (m5a-3, tests first).
+pub const ADDED_LABEL_BYTES: usize = 0;
+
+/// STUB (m5a-3, tests first).
+pub const PREAMBLE_BYTES: usize = 0;
+
+/// STUB (m5a-3, tests first).
+pub fn preamble(_floor: &Floor) -> String {
+    String::new()
 }
 
 /// What a unit is called, where the body and the ledger both show it.
@@ -709,7 +735,7 @@ fn cost(read: &Read, unit: &Unit, bytes: &[u8]) -> usize {
 
 /// Cut the offerable units into parts, in byte order, keeping a group in
 /// one part whenever it fits in one.
-pub fn partition(read: &Read, bytes: &[u8]) -> Plan {
+pub fn partition(read: &Read, bytes: &[u8], _subject: Subject<'_>) -> Plan {
     let offerable: Vec<usize> = (0..read.units.len())
         .filter(|&index| read.units[index].kind != Kind::Identity)
         .collect();
@@ -768,7 +794,12 @@ pub fn partition(read: &Read, bytes: &[u8]) -> Plan {
     if !current.is_empty() {
         parts.push(current);
     }
-    Plan { parts, split }
+    Plan {
+        asked: parts.clone(),
+        parts,
+        split,
+        floor: Floor::default(),
+    }
 }
 
 // ---- choosing --------------------------------------------------------------
@@ -1218,6 +1249,8 @@ pub struct Part {
     pub of: usize,
     /// How each candidate is labelled, in the order they are offered.
     pub labels: Vec<String>,
+    /// STUB (m5a-3, tests first).
+    pub floor: Floor,
 }
 
 /// The part's question's selector: the family, this format, the artifact

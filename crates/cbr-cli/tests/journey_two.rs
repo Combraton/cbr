@@ -906,18 +906,55 @@ fn an_input_inside_the_size_bound_that_needs_more_parts_than_a_projection_has_is
     provider.stop();
 }
 
+/// A conformance-shaped document whose run identity is most of a
+/// projection: an `environment` of about fourteen kilobytes, then `small`
+/// results of about a hundred bytes and `big` ones of about 1.9
+/// kilobytes. The rule carries the identity and leaves room for a small
+/// result and not for a big one, so **what a model is offered is fewer
+/// parts than the document fills**.
+fn identity_heavy(small: usize, big: usize) -> String {
+    let environment: Vec<String> = (0..60)
+        .map(|n| format!("    \"key_{n:02}\": \"{}\"", "v".repeat(220)))
+        .collect();
+    let mut results: Vec<String> = (0..small)
+        .map(|n| format!("    {{\"fixture\": \"small.case-{n:03}\", \"outcome\": \"pass\", \"note\": \"quick\"}}"))
+        .collect();
+    results.extend((0..big).map(|n| {
+        format!(
+            "    {{\"fixture\": \"big.case-{n:03}\", \"outcome\": \"pass\", \"transcript\": \"{}\"}}",
+            "t".repeat(1900)
+        )
+    }));
+    format!(
+        "{{\n  \"environment\": {{\n{}\n  }},\n  \"format\": \"combraton-conformance-result/1\",\n  \
+         \"results\": [\n{}\n  ],\n  \"summary\": {{\n    \"pass\": {}\n  }}\n}}\n",
+        environment.join(",\n"),
+        results.join(",\n"),
+        small + big
+    )
+}
+
 #[test]
 fn a_projection_the_investigation_limit_cannot_cover_is_not_started() {
     // **Its parts are one flow and are claimed together** (READINESS §6).
     // A projection with a part never read would name failures from part
     // of a log as if from all of it, so a limit one short of the parts
-    // starts none of them.
+    // starts none of them. **The parts are the ones a model is offered**:
+    // this document fills four, and only the two holding results small
+    // enough to add are asked, so a limit of two is enough and a limit of
+    // one is not.
     let fixture = Fixture::narrow(&["ids:u1"]);
     let provider = fixture.start();
-    let log = large_log();
-    let (artifact, digest) = ingest(&fixture, "large.log", log.as_bytes());
+    let document = identity_heavy(128, 20);
+    let big_results = 20 * 1900;
+    assert!(
+        big_results > 32 * 1024,
+        "the big results alone are more than one part"
+    );
+    let (artifact, digest) = ingest(&fixture, "identity-heavy.json", document.as_bytes());
     asked(&fixture, "baseline", &artifact, &digest, 0);
-    let parts = projection_of(&fixture, "baseline", log.as_bytes()).parts();
+    let parts = projection_of(&fixture, "baseline", document.as_bytes()).parts();
+    assert_eq!(parts, 2, "the offer is meant to be two parts of the four");
 
     let inspected = asked(&fixture, "short", &artifact, &digest, parts - 1);
     assert_eq!(
@@ -933,6 +970,10 @@ fn a_projection_the_investigation_limit_cannot_cover_is_not_started() {
         part_records(&fixture).is_empty(),
         "a part was asked though the flow could not finish"
     );
+
+    let inspected = asked(&fixture, "enough", &artifact, &digest, parts);
+    assert_eq!(result(&inspected, ITEM).0, "satisfied", "{inspected:?}");
+    assert_eq!(part_records(&fixture).len(), parts);
     provider.stop();
 }
 
@@ -1018,16 +1059,66 @@ fn extent_at(read: &Read, at: usize) -> &Extent {
         .expect("every byte is in an extent")
 }
 
+/// The excerpts the header says the model added, by number, or `None`
+/// when it names no model.
+fn added(read: &Read) -> Option<Vec<usize>> {
+    let (_, list) = read.how().split_once(", which added ")?;
+    if list == "nothing" {
+        return Some(Vec::new());
+    }
+    Some(
+        list.split(", ")
+            .map(|id| {
+                id.strip_prefix('e')
+                    .and_then(|number| number.parse().ok())
+                    .unwrap_or_else(|| panic!("not an excerpt id: {id:?}"))
+            })
+            .collect(),
+    )
+}
+
+/// The ranges of a projection's carried excerpts, by their numbers.
+fn excerpt_ranges(read: &Read, numbers: &[usize]) -> Vec<(usize, usize)> {
+    read.extents
+        .iter()
+        .filter_map(|extent| match extent {
+            Extent::Carried {
+                number, start, end, ..
+            } if numbers.contains(number) => Some((*start, *end)),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Every carried excerpt of `floor` is a carried excerpt of `read`, at the
+/// same range: **the rule's projection is a floor**, and nothing a model
+/// answers takes any of it away.
+fn assert_carries_the_floor(read: &Read, floor: &Read) {
+    for extent in &floor.extents {
+        if let Extent::Carried { start, end, .. } = extent {
+            assert!(
+                read.extents.iter().any(|mine| matches!(
+                    mine,
+                    Extent::Carried { start: from, end: to, .. } if from == start && to == end
+                )),
+                "the rule's excerpt at {start}-{end} is not carried: {:?}",
+                read.extents
+            );
+        }
+    }
+}
+
 #[test]
-fn what_the_model_chose_is_what_is_carried() {
-    // **A projection labelled "chosen by the model" carries what the model
-    // chose**, or the label is a lie. The fake picks the second unit of
-    // every part, which in this log is passing tests, where the rule would
-    // have carried the failures. So the projection carries exactly the
-    // units the records say were chosen, besides run identity; every
-    // failure is left out as unchosen; and the projection is not the
-    // rule's. An answer resolved against the wrong units, or not read at
-    // all, fails one of the three.
+fn what_the_model_added_is_carried_beside_everything_the_rule_carries() {
+    // **A projection that says the model added excerpts carries them**, or
+    // the label is a lie, **and carries everything the rule carries**, or
+    // the model has undone what a parser found — J2 live's failure. The
+    // fake names the second unit of every part it is offered, which in
+    // this log is passing tests. So the rule's excerpts are all there, at
+    // their ranges; the excerpts the header lists are exactly the units
+    // the records say were chosen; and the projection is not the rule's.
+    // An answer resolved against the wrong units, or not read at all,
+    // fails one of the three.
     let fixture = Fixture::narrow(&["ids:u2"]);
     let provider = fixture.start();
     let log = large_log();
@@ -1035,6 +1126,7 @@ fn what_the_model_chose_is_what_is_carried() {
     asked(&fixture, "baseline", &artifact, &digest, 0);
     let ruled = projection_of(&fixture, "baseline", log.as_bytes());
     let parts = ruled.parts();
+    assert!(parts >= 2, "the fixture is meant to ask more than one part");
 
     let inspected = asked(&fixture, "assisted", &artifact, &digest, parts);
     assert_eq!(result(&inspected, ITEM).0, "satisfied", "{inspected:?}");
@@ -1070,40 +1162,190 @@ fn what_the_model_chose_is_what_is_carried() {
 
     let read = projection_of(&fixture, "assisted", log.as_bytes());
     assert!(
-        read.how().contains("chosen by the model"),
+        read.how()
+            .contains("chosen by the model, one question per part"),
         "{:?}",
         read.header
     );
-    let carried: Vec<(usize, usize)> = read
-        .extents
-        .iter()
-        .filter_map(|extent| match extent {
-            Extent::Carried {
-                start, end, kind, ..
-            } if kind != "identity" => Some((*start, *end)),
-            _ => None,
-        })
-        .collect();
+    let listed = added(&read).unwrap_or_else(|| panic!("no model named: {:?}", read.header));
     assert_eq!(
-        carried, chosen,
-        "the projection does not carry what the model chose"
+        excerpt_ranges(&read, &listed),
+        chosen,
+        "the excerpts the header lists are not what the model chose"
     );
-    for (name, start, _) in &ruled.named {
+    assert_carries_the_floor(&read, &ruled);
+    for name in LARGE_FAILURES {
         let block = log
             .find(&format!("---- {name} stdout ----"))
             .expect("every failure has its block");
-        for at in [*start, block] {
-            assert!(
-                matches!(extent_at(&read, at), Extent::Omitted { reason, .. } if reason == "not_selected"),
-                "the failure {name} at byte {at} was not left out as unchosen: {:?}",
-                extent_at(&read, at)
-            );
-        }
+        assert!(
+            matches!(extent_at(&read, block), Extent::Carried { .. }),
+            "the failure {name} was not carried: {:?}",
+            extent_at(&read, block)
+        );
     }
     assert_ne!(
         read.extents, ruled.extents,
         "the model's projection is the rule's"
     );
+    provider.stop();
+}
+
+#[test]
+fn a_failure_the_model_did_not_choose_is_still_carried() {
+    // **J2 live, as a control.** Both models left out failure blocks the
+    // parser had found, and the projection declared them `not_selected`.
+    // A model that chooses nothing now leaves the rule's projection as it
+    // was: every excerpt, every omission and every reason, and the header
+    // says the model added nothing.
+    let fixture = Fixture::narrow(&["ids:"]);
+    let provider = fixture.start();
+    let log = large_log();
+    let (artifact, digest) = ingest(&fixture, "large.log", log.as_bytes());
+    asked(&fixture, "baseline", &artifact, &digest, 0);
+    let ruled = projection_of(&fixture, "baseline", log.as_bytes());
+    let parts = ruled.parts();
+    assert!(parts >= 1);
+
+    let inspected = asked(&fixture, "assisted", &artifact, &digest, parts);
+    assert_eq!(result(&inspected, ITEM).0, "satisfied", "{inspected:?}");
+    let records = part_records(&fixture);
+    assert_eq!(records.len(), parts, "the model was asked every part");
+    for (selector, answer, ..) in &records {
+        assert_eq!(
+            answer
+                .get("chose_ids")
+                .and_then(Value::as_array)
+                .map(<[Value]>::len),
+            Some(0),
+            "{selector}: {answer:?}"
+        );
+    }
+    let read = projection_of(&fixture, "assisted", log.as_bytes());
+    assert!(
+        read.how().ends_with(
+            "excerpts chosen by the deterministic rule: failures, then run identity; \
+             then chosen by the model, one question per part, which added nothing"
+        ),
+        "{:?}",
+        read.header
+    );
+    let without_how = |read: &Read| {
+        read.header
+            .iter()
+            .filter(|line| !line.starts_with("read as "))
+            .cloned()
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(without_how(&read), without_how(&ruled));
+    assert_eq!(read.named, ruled.named);
+    assert_eq!(
+        read.extents, ruled.extents,
+        "a model that chose nothing changed the rule's ledger"
+    );
+    provider.stop();
+}
+
+#[test]
+fn a_log_whose_floor_leaves_no_room_asks_no_model_and_spends_nothing() {
+    // **A question no answer can change is not asked.** Forty failures,
+    // each between passing tests, are forty excerpts where a projection
+    // holds twenty-four: the rule's floor is full, nothing a model could
+    // add would fit, and a request that authorises every part a projection
+    // may ask gets the rule's projection, with no record and no charge.
+    let fixture = Fixture::narrow(&["ids:u1"]);
+    let provider = fixture.start();
+    let failing: Vec<(usize, usize)> = (0..40).map(|test| (0, test * 2 + 1)).collect();
+    let log = test_log(1, 80, &failing);
+    let (artifact, digest) = ingest(&fixture, "full.log", log.as_bytes());
+    asked(&fixture, "baseline", &artifact, &digest, 0);
+    let ruled = projection_of(&fixture, "baseline", log.as_bytes());
+    assert_eq!(ruled.parts(), 0, "{:?}", ruled.header);
+
+    let max_parts = declared_by_the_harness("MAX_PARTS");
+    let inspected = asked(&fixture, "assisted", &artifact, &digest, max_parts);
+    assert_eq!(result(&inspected, ITEM).0, "satisfied", "{inspected:?}");
+    let read = projection_of(&fixture, "assisted", log.as_bytes());
+    assert!(
+        read.how()
+            .ends_with("excerpts chosen by the deterministic rule: failures, then run identity"),
+        "{:?}",
+        read.header
+    );
+    assert_eq!(read.header, ruled.header);
+    assert_eq!(read.extents, ruled.extents);
+    assert!(part_records(&fixture).is_empty(), "a part was asked");
+    assert!(ledger(&fixture.data()).is_empty(), "a call was charged");
+    provider.stop();
+}
+
+/// A conformance manifest of `results` results, the third of them
+/// `unsupported` with its reason: shaped as the core suite's is, where an
+/// unsupported fixture is not a failure and the rule has no reason to
+/// carry it.
+fn core_manifest(results: usize) -> String {
+    let entries: Vec<String> = (0..results)
+        .map(|at| {
+            let (outcome, reason) = if at == 2 {
+                ("unsupported", "\"core.capabilities is not claimed\"")
+            } else {
+                ("pass", "null")
+            };
+            format!(
+                "    {{\n      \"failed_step\": null,\n      \"fixture\": \"core.fixture-number-{at}-holds\",\n      \
+                 \"fixture_digest\": \"sha256:{at:064x}\",\n      \"outcome\": \"{outcome}\",\n      \
+                 \"reason\": {reason},\n      \"requirements\": [\n        \"CORE-{at}\"\n      ],\n      \
+                 \"transcript\": \"transcripts/core.fixture-number-{at}-holds.jsonl\",\n      \"version\": 1\n    }}"
+            )
+        })
+        .collect();
+    format!(
+        "{{\n  \"format\": \"combraton-conformance-result/1\",\n  \"results\": [\n{}\n  ],\n  \
+         \"summary\": {{\n    \"pass\": {},\n    \"unsupported\": 1\n  }}\n}}\n",
+        entries.join(",\n"),
+        results - 1
+    )
+}
+
+#[test]
+fn an_unsupported_record_the_model_adds_is_carried_and_attributed_to_it() {
+    // **Where a model has a job the rule cannot do.** An unsupported
+    // fixture is not a failure, so the rule does not carry it; a model
+    // that names it adds it, the header says the model added it, and the
+    // rule's own excerpts are all still there.
+    let fixture = Fixture::narrow(&["ids:u3"]);
+    let provider = fixture.start();
+    let json = core_manifest(50);
+    let (artifact, digest) = ingest(&fixture, "core.manifest.json", json.as_bytes());
+    asked(&fixture, "baseline", &artifact, &digest, 0);
+    let ruled = projection_of(&fixture, "baseline", json.as_bytes());
+    let parts = ruled.parts();
+    assert_eq!(parts, 1, "{:?}", ruled.header);
+
+    let inspected = asked(&fixture, "assisted", &artifact, &digest, parts);
+    assert_eq!(result(&inspected, ITEM).0, "satisfied", "{inspected:?}");
+    let records = part_records(&fixture);
+    assert_eq!(records.len(), 1);
+    let (_, _, offered, _) = &records[0];
+    let third = offered
+        .iter()
+        .find(|candidate| candidate.get("id").and_then(Value::as_str) == Some("u3"))
+        .expect("u3 was offered");
+    let range = range_of_path(third.get("path").and_then(Value::as_str).expect("a path"));
+    assert!(
+        json[range.0..range.1].contains("\"outcome\": \"unsupported\""),
+        "the fixture's premise: u3 is the unsupported result, and is {:?}",
+        &json[range.0..range.1]
+    );
+    assert!(
+        !matches!(extent_at(&ruled, range.0), Extent::Carried { .. }),
+        "the rule already carries the unsupported result"
+    );
+
+    let read = projection_of(&fixture, "assisted", json.as_bytes());
+    let listed = added(&read).unwrap_or_else(|| panic!("no model named: {:?}", read.header));
+    assert_eq!(excerpt_ranges(&read, &listed), [range]);
+    assert_carries_the_floor(&read, &ruled);
     provider.stop();
 }
 

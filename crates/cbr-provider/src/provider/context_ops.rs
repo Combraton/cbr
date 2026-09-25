@@ -2172,7 +2172,6 @@ impl Provider {
             return Ok(());
         };
         let read = projection::read(&bytes);
-        let plan = projection::partition(&read, &bytes);
         let capture: Vec<(String, String)> = list(descriptor, &["capture", "anchors"])
             .iter()
             .map(|anchor| {
@@ -2187,6 +2186,7 @@ impl Provider {
             digest: &digest,
             capture: &capture,
         };
+        let plan = projection::partition(&read, &bytes, subject);
         // **Zero is the deterministic path**, as it is for selection and
         // discovery: a request that authorised no investigation gets the
         // rule, from the same binary.
@@ -2231,6 +2231,7 @@ impl Provider {
                         number: index + 1,
                         of,
                         labels,
+                        floor: plan.floor.clone(),
                     };
                     let answer = self.ask_step(
                         &serving,
