@@ -1395,9 +1395,11 @@ pub const IDENTIFIERS_NOT_AT_PUBLISH: [&str; 12] = [
 ///
 /// **The last door before a packet leaves the tick.** The compiler builds
 /// its ids inside the grammar ([`crate::ids`]); a script can still name any
-/// string at all, or none, and nothing else stands between a malformed id
-/// and a sealed, published packet that every consumer's schema would
-/// reject.
+/// string at all, or leave an id out, and nothing else stands between a
+/// malformed id and a sealed, published packet that every consumer's schema
+/// would reject. It checks the ids of objects that are there: a required
+/// object a script leaves out altogether, such as a citation's `evidence`,
+/// is not reported, which is a follow-up recorded in STATE.
 ///
 /// **Missing is reported where the schema requires the member** of an
 /// object that is there ([`OPTIONAL_IDENTIFIERS`] names the rest), and an
