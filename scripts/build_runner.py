@@ -18,6 +18,12 @@ Steps:
   5. Write `runner.json`: the runner path and the three identities that any
      results manifest must carry.
 
+With `--reference-executor`, step 4 also builds the protocol's reference
+provider, `combraton-reference-provider`, from the same extraction and
+lockfile, and `runner.json` records it. It is used only as the executor peer
+of the composition fixtures, through `scripts/reference_executor_launch.py`
+(docs/VERIFICATION.md, the composition row), and is never a CBR dependency.
+
 Exits nonzero on any failure. Verifies the runner's provenance, not CBR.
 """
 
@@ -132,6 +138,11 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--archive", help="Use this already-downloaded source archive")
     parser.add_argument("--offline", action="store_true", help="Never download")
+    parser.add_argument(
+        "--reference-executor",
+        action="store_true",
+        help="Also build the protocol's reference provider, the composition fixtures' executor peer",
+    )
     args = parser.parse_args()
 
     pin = json.loads(PIN.read_text())
@@ -176,6 +187,29 @@ def main():
         "archive_sha256": pin["bundle_sha256"],
         "cargo_lock_sha256": lock_sha256,
     }
+
+    if args.reference_executor:
+        print("building combraton-reference-provider with the same Cargo.lock, as the executor peer")
+        build = subprocess.run(
+            ["cargo", "build", "-p", "combraton-reference-provider", "--locked"],
+            cwd=tree,
+            check=False,
+        )
+        if build.returncode != 0:
+            sys.exit(f"cargo build of the reference provider failed with exit {build.returncode}")
+        reference = tree / "target" / "debug" / "combraton-reference-provider"
+        if not reference.is_file():
+            sys.exit(f"reference provider binary not found at {reference}")
+        identity["reference_executor"] = {
+            "binary": str(reference.relative_to(ROOT)),
+            "schemas": str((tree / "schemas").relative_to(ROOT)),
+            "label": "reference executor",
+            "note": (
+                "The protocol's reference provider from the same verified release extraction and "
+                "Cargo.lock, launched only for participants configured with `executor`. A result "
+                "that used it is labelled a reference executor and is never real-adapter evidence."
+            ),
+        }
     (WORK / "runner.json").write_text(json.dumps(identity, indent=2) + "\n")
 
     print(json.dumps(identity, indent=2))
