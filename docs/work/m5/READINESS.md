@@ -346,7 +346,7 @@ Run from `main` at `041ad5f`, with its binaries built from a clean tree, the sco
 
 ### J2 live rerun after m5a-3: inputs, estimate and ceiling
 
-**Written before the rerun, and not yet decided.** The ceiling is the owner's, and the rubric's mechanical changes are frozen before the rerun, in the change that runs it.
+**Written before the rerun, and decided on 2026-09-26 under the owner's standing grant of 2026-09-25** — MiniMax as much as the work needs, with each run's estimate and ceiling written here before it and its spend after, inside ADR 001's account ceilings. **Invocation 1's `--run-ceiling` is 492,204 and invocation 2's is 861,357**, the least the harness's stop admits (below); the rerun as a whole is held to **738,306** by the parts the survey found, and is expected to spend about 47,000. Both are far inside the 20,000,000 a five-hour window allows. **Rubric v1.1**, v1's mechanical changes for the `/2` projection, is committed and pushed in the change that runs the rerun, before its first call, and the rerun is scored under v1 as well.
 
 **The inputs and the invocations are as before.** The same three inputs, byte-identical to the digests in the table above, each on `MiniMax-M2.7-highspeed` and `MiniMax-M3`:
 
