@@ -2293,6 +2293,65 @@ fn a_floor_with_no_room_for_the_lines_a_cut_group_takes_is_not_put_to_a_model() 
 }
 
 #[test]
+fn no_question_is_asked_about_a_floor_over_the_bound_though_an_addition_would_shrink_it() {
+    // **The floor must fit beside the model's widest label before anything
+    // is offered**, and that check is not implied by the offer's own: a
+    // model's unit is drawn as an excerpt of its own, and an excerpt of a
+    // one-byte unit is shorter than the omission line it replaces. The
+    // blank line between this log's two cargo errors is such a unit: drawn
+    // at the widest, the floor is a few bytes over the bound, and the floor
+    // with that line carried is under it. So the question would be asked
+    // about a floor that does not fit — unless the floor is checked first.
+    let mut found = None;
+    let mut pad = 0usize;
+    for _ in 0..64 {
+        let log = padded_log(pad)
+            + "error: test failed, to rerun pass `-p crate_0 --lib`\n\n\
+               error: 1 target failed:\n    `-p crate_0 --lib`\n";
+        let (margin, _) = widest_margins(&log);
+        if (-6..0).contains(&margin) {
+            found = Some(log);
+            break;
+        }
+        pad = (pad as i64 + margin + 3).max(0) as usize;
+    }
+    let log = found.expect("a pad that puts the floor a few bytes over the bound");
+    let bytes = log.as_bytes();
+    let read = parse(bytes);
+    let plan = partition(&read, bytes, SUBJECT);
+    let carried = floor(&read, bytes, &Frame::of(SUBJECT, &plan));
+    let gap = read
+        .units
+        .iter()
+        .position(|unit| {
+            &log[unit.start..unit.end] == "\n"
+                && log[unit.end..].starts_with("error: 1 target failed")
+        })
+        .expect("the blank line between the errors");
+    assert_eq!(read.units[gap].kind, Kind::Other);
+    assert!(carried[gap - 1] && carried[gap + 1] && !carried[gap]);
+    let mut with = carried.clone();
+    with[gap] = true;
+    assert!(
+        draw(
+            &read,
+            bytes,
+            &choose_by_model(&read, &[]),
+            &with,
+            Some(&carried),
+            &Frame::widest(SUBJECT, &plan)
+        )
+        .fits(),
+        "the premise: carrying the blank line brings the floor under the bound"
+    );
+    assert!(plan.asked.is_empty(), "offered {:?}", plan.asked);
+    assert_eq!(
+        next(&read, bytes, &plan, SUBJECT, true),
+        Next::Carry(choose_by_rule(&read))
+    );
+}
+
+#[test]
 fn a_model_arm_that_does_not_fit_is_refused_and_never_published() {
     // **Defence in depth.** `offer` asks a model only where the floor fits
     // beside the model arm's widest drawing, so the model arm always fits;
