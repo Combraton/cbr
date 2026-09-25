@@ -1,0 +1,218 @@
+{
+ "core-m27hs": {
+  "assisted": {
+   "J1": [
+    3.0,
+    3.0,
+    3.0
+   ],
+   "J2": [
+    4.0,
+    3.0,
+    3.0
+   ]
+  },
+  "baseline": {
+   "J1": [
+    3.0,
+    3.0,
+    3.0
+   ],
+   "J2": [
+    4.0,
+    3.0,
+    3.0
+   ]
+  },
+  "prefer": [
+   "none",
+   "none",
+   "none"
+  ],
+  "sheets": [
+   "j1-P3.json",
+   "j3-P3.json",
+   "j5-P3.json"
+  ]
+ },
+ "core-m3": {
+  "assisted": {
+   "J1": [
+    3.0,
+    3.0,
+    3.0
+   ],
+   "J2": [
+    4.0,
+    3.0,
+    4.0
+   ]
+  },
+  "baseline": {
+   "J1": [
+    3.0,
+    3.0,
+    3.0
+   ],
+   "J2": [
+    4.0,
+    3.0,
+    4.0
+   ]
+  },
+  "prefer": [
+   "none",
+   "none",
+   "none"
+  ],
+  "sheets": [
+   "j0-P1.json",
+   "j2-P1.json",
+   "j4-P1.json"
+  ]
+ },
+ "log-m27hs": {
+  "assisted": {
+   "J1": [
+    3.0,
+    3.0,
+    3.0
+   ],
+   "J2": [
+    4.0,
+    3.0,
+    3.0
+   ]
+  },
+  "baseline": {
+   "J1": [
+    3.0,
+    3.0,
+    3.0
+   ],
+   "J2": [
+    4.0,
+    3.0,
+    3.0
+   ]
+  },
+  "prefer": [
+   "none",
+   "none",
+   "none"
+  ],
+  "sheets": [
+   "j0-P5.json",
+   "j3-P5.json",
+   "j5-P5.json"
+  ]
+ },
+ "log-m3": {
+  "assisted": {
+   "J1": [
+    3.0,
+    3.0,
+    3.0
+   ],
+   "J2": [
+    3.0,
+    3.0,
+    3.0
+   ]
+  },
+  "baseline": {
+   "J1": [
+    3.0,
+    3.0,
+    3.0
+   ],
+   "J2": [
+    3.0,
+    3.0,
+    3.0
+   ]
+  },
+  "prefer": [
+   "none",
+   "none",
+   "none"
+  ],
+  "sheets": [
+   "j1-P6.json",
+   "j2-P6.json",
+   "j4-P6.json"
+  ]
+ },
+ "red-m27hs": {
+  "assisted": {
+   "J1": [
+    2,
+    2,
+    2
+   ],
+   "J2": [
+    2,
+    2,
+    2
+   ]
+  },
+  "baseline": {
+   "J1": [
+    4,
+    4,
+    4
+   ],
+   "J2": [
+    3,
+    3,
+    3
+   ]
+  },
+  "prefer": [
+   "baseline",
+   "baseline",
+   "baseline"
+  ],
+  "sheets": [
+   "j3-P4.json",
+   "j4-P4.json",
+   "j5-P4.json"
+  ]
+ },
+ "red-m3": {
+  "assisted": {
+   "J1": [
+    2,
+    2,
+    2
+   ],
+   "J2": [
+    2,
+    2,
+    2
+   ]
+  },
+  "baseline": {
+   "J1": [
+    4,
+    4,
+    4
+   ],
+   "J2": [
+    3,
+    3,
+    3
+   ]
+  },
+  "prefer": [
+   "baseline",
+   "baseline",
+   "baseline"
+  ],
+  "sheets": [
+   "j0-P2.json",
+   "j1-P2.json",
+   "j2-P2.json"
+  ]
+ }
+}

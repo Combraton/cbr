@@ -1,0 +1,26 @@
+{
+  "pair": "P5",
+  "judge": "j0",
+  "A": {
+    "J1": {
+      "score": 3,
+      "why": "The correct answer is 'nothing failed'. 25 carried result lines (bytes 5741-23953) all read '0 failed'. But the last 15 targets sit in over_projection range 23953-66535 and are supported only by the header's 'failures named: 0'. The '1 ignored' in stall.rs is carried at 20083-20176, but its reason is in omitted range 19949-20083."
+    },
+    "J2": {
+      "score": 4,
+      "why": "Every carried result line (e.g. bytes 12076-12274, 20083-20176) shows 0 failed, which agrees with the header count of 0. The single ignored test is plainly not a failure, so nothing invites a false conclusion."
+    }
+  },
+  "B": {
+    "J1": {
+      "score": 3,
+      "why": "Identical to A: result lines carried through byte 23953 all read ok. The tail 23953-66535 is omitted over_projection and backed only by the header count, and the ignored test's reason (19949-20083) is not carried."
+    },
+    "J2": {
+      "score": 4,
+      "why": "Identical to A: the carried '0 failed' result lines (5741-23953) and the header's 0 failures agree, and nothing points toward a false conclusion."
+    }
+  },
+  "prefer": "none",
+  "prefer_why": "A and B are byte-identical (same 24 excerpts, ending with over_projection 23953-66535), so nothing distinguishes them."
+}

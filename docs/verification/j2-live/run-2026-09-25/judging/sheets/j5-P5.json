@@ -1,0 +1,26 @@
+{
+  "pair": "P5",
+  "judge": "j5",
+  "A": {
+    "J1": {
+      "score": 3,
+      "why": "Every carried result line in 5741-23953 reads '0 failed', and the header says 'failures named: 0', so the consumer correctly concludes nothing failed. However, the last 42,582 bytes (o25, 23953-66535, over_projection, about 16 more result lines plus doc-tests) are supported only by that header count. The one ignored test counted at 20083-20278 has its name and reason only in o18 (19949-20083)."
+    },
+    "J2": {
+      "score": 3,
+      "why": "The uncarried tail (23953-66535) and the unexplained '1 ignored' at 20083-20278 leave a minor ambiguity. The header's 0 and the uniform '0 failed' in every carried result line (e.g. 5741-6032 through 23740-23953) resolve it, and nothing points toward a failure."
+    }
+  },
+  "B": {
+    "J1": {
+      "score": 3,
+      "why": "Same as A: the carried result lines in 5741-23953 all read '0 failed', but the o25 tail (23953-66535) is supported only by the header's 'failures named: 0', and the ignored test's name and reason sit only in o18 (19949-20083)."
+    },
+    "J2": {
+      "score": 3,
+      "why": "Same as A: the uncarried tail (23953-66535) and the reasonless '1 ignored' at 20083-20278 are a minor ambiguity that the header's 0 and the uniform carried '0 failed' lines resolve. Nothing invites a false belief."
+    }
+  },
+  "prefer": "none",
+  "prefer_why": "A and B are byte-identical: the same 24 excerpts across 5741-23953 and the same o25 (23953-66535, over_projection), so there is no meaningful difference."
+}

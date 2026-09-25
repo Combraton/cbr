@@ -1,0 +1,37 @@
+{
+ "format": "j2-blind-key/1",
+ "pairs": {
+  "P1": {
+   "identical_after_redaction": false,
+   "model_name_in_excerpt_bytes": {
+    "A": false,
+    "B": false
+   },
+   "run": "red-m3",
+   "sha256": {
+    "A": "73e4fafe40c7b5c883f684fce68e8470326458d55ad5a181ba0ad3a4d98cae9d",
+    "B": "2553e5e0f0c50dd846d1009ba7f428b4c6ed94e08d1d23a98d123003f047ec4d"
+   },
+   "sides": {
+    "A": "baseline",
+    "B": "assisted"
+   }
+  },
+  "P2": {
+   "identical_after_redaction": false,
+   "model_name_in_excerpt_bytes": {
+    "A": false,
+    "B": false
+   },
+   "run": "red-m27hs",
+   "sha256": {
+    "A": "73e4fafe40c7b5c883f684fce68e8470326458d55ad5a181ba0ad3a4d98cae9d",
+    "B": "2553e5e0f0c50dd846d1009ba7f428b4c6ed94e08d1d23a98d123003f047ec4d"
+   },
+   "sides": {
+    "A": "baseline",
+    "B": "assisted"
+   }
+  }
+ }
+}

@@ -1,0 +1,7241 @@
+{
+ "checks": [
+  {
+   "check": "red failing tests",
+   "given": 18,
+   "got": 18,
+   "ok": true
+  },
+  {
+   "check": "red by binary",
+   "given": {
+    "j2_harness": 6,
+    "journey_two": 12
+   },
+   "got": {
+    "j2_harness": 6,
+    "journey_two": 12
+   },
+   "ok": true
+  },
+  {
+   "check": "red cargo error atoms",
+   "given": 3,
+   "got": 3,
+   "ok": true
+  },
+  {
+   "check": "red named failures",
+   "given": 21,
+   "got": 21,
+   "ok": true
+  },
+  {
+   "check": "red result lines",
+   "given": 40,
+   "got": 40,
+   "ok": true
+  },
+  {
+   "check": "red FAILED result lines sum",
+   "given": 18,
+   "got": 18,
+   "ok": true
+  },
+  {
+   "check": "red every failing test has a block, panic and message",
+   "given": true,
+   "got": true,
+   "ok": true
+  },
+  {
+   "check": "green passed",
+   "given": 644,
+   "got": 644,
+   "ok": true
+  },
+  {
+   "check": "green failed",
+   "given": 0,
+   "got": 0,
+   "ok": true
+  },
+  {
+   "check": "green ignored",
+   "given": 1,
+   "got": 1,
+   "ok": true
+  },
+  {
+   "check": "green result lines",
+   "given": 40,
+   "got": 40,
+   "ok": true
+  },
+  {
+   "check": "green all ok",
+   "given": true,
+   "got": true,
+   "ok": true
+  },
+  {
+   "check": "green no FAILED/panic/error",
+   "given": 0,
+   "got": 0,
+   "ok": true
+  },
+  {
+   "check": "green ignored lines",
+   "given": 1,
+   "got": 1,
+   "ok": true
+  },
+  {
+   "check": "core pass",
+   "given": 130,
+   "got": 130,
+   "ok": true
+  },
+  {
+   "check": "core unsupported",
+   "given": 5,
+   "got": 5,
+   "ok": true
+  },
+  {
+   "check": "core results",
+   "given": 135,
+   "got": 135,
+   "ok": true
+  },
+  {
+   "check": "core summary agrees",
+   "given": {
+    "pass": 130,
+    "unsupported": 5
+   },
+   "got": {
+    "pass": 130,
+    "unsupported": 5
+   },
+   "ok": true
+  },
+  {
+   "check": "core suite.fixtures",
+   "given": 135,
+   "got": 135,
+   "ok": true
+  },
+  {
+   "check": "core no failure outcome",
+   "given": [],
+   "got": [],
+   "ok": true
+  }
+ ],
+ "format": "j2-answer-key/1",
+ "inputs": {
+  "core": {
+   "expected_named_count": 0,
+   "failure_outcomes": [],
+   "identity_members": {
+    "format": [
+     94,
+     136
+    ],
+    "participant": [
+     140,
+     707
+    ],
+    "runner": [
+     61051,
+     61126
+    ],
+    "suite": [
+     61362,
+     61561
+    ]
+   },
+   "input": "conformance-core.manifest.json",
+   "non_pass": [
+    {
+     "fixture": "core.events.older-consumer-is-closed-without-notice",
+     "index": 52,
+     "members": {
+      "fixture": [
+       23777,
+       23841
+      ],
+      "outcome": [
+       23948,
+       23972
+      ],
+      "reason": [
+       24010,
+       24060
+      ]
+     },
+     "outcome": "unsupported",
+     "polarity": "negative",
+     "range": [
+      23742,
+      24245
+     ],
+     "reason": "participant does not claim execution/1"
+    },
+    {
+     "fixture": "core.events.slow-consumer-is-closed-with-notice-and-resumes",
+     "index": 59,
+     "members": {
+      "fixture": [
+       27027,
+       27099
+      ],
+      "outcome": [
+       27206,
+       27230
+      ],
+      "reason": [
+       27268,
+       27318
+      ]
+     },
+     "outcome": "unsupported",
+     "polarity": "negative",
+     "range": [
+      26992,
+      27528
+     ],
+     "reason": "participant does not claim execution/1"
+    },
+    {
+     "fixture": "core.events.slow-consumer-recovery-reports-retention-gap",
+     "index": 60,
+     "members": {
+      "fixture": [
+       27569,
+       27638
+      ],
+      "outcome": [
+       27745,
+       27769
+      ],
+      "reason": [
+       27807,
+       27857
+      ]
+     },
+     "outcome": "unsupported",
+     "polarity": "negative",
+     "range": [
+      27534,
+      28047
+     ],
+     "reason": "participant does not claim execution/1"
+    },
+    {
+     "fixture": "core.events.unread-ending-notice-does-not-hold-the-connection",
+     "index": 67,
+     "members": {
+      "fixture": [
+       30878,
+       30952
+      ],
+      "outcome": [
+       31059,
+       31083
+      ],
+      "reason": [
+       31121,
+       31171
+      ]
+     },
+     "outcome": "unsupported",
+     "polarity": "negative",
+     "range": [
+      30843,
+      31349
+     ],
+     "reason": "participant does not claim execution/1"
+    },
+    {
+     "fixture": "core.feature-dependencies-match-negotiation",
+     "index": 69,
+     "members": {
+      "fixture": [
+       31860,
+       31916
+      ],
+      "outcome": [
+       32023,
+       32047
+      ],
+      "reason": [
+       32085,
+       32135
+      ]
+     },
+     "outcome": "unsupported",
+     "polarity": "positive",
+     "range": [
+      31825,
+      32313
+     ],
+     "reason": "participant does not claim execution/1"
+    }
+   ],
+   "outcome_counts": {
+    "pass": 130,
+    "unsupported": 5
+   },
+   "pass_records": [
+    [
+     728,
+     1197
+    ],
+    [
+     1203,
+     1684
+    ],
+    [
+     1690,
+     2137
+    ],
+    [
+     2143,
+     2560
+    ],
+    [
+     2566,
+     3025
+    ],
+    [
+     3031,
+     3442
+    ],
+    [
+     3448,
+     3863
+    ],
+    [
+     3869,
+     4329
+    ],
+    [
+     4335,
+     4828
+    ],
+    [
+     4834,
+     5275
+    ],
+    [
+     5281,
+     5747
+    ],
+    [
+     5753,
+     6221
+    ],
+    [
+     6227,
+     6680
+    ],
+    [
+     6686,
+     7113
+    ],
+    [
+     7119,
+     7549
+    ],
+    [
+     7555,
+     7971
+    ],
+    [
+     7977,
+     8407
+    ],
+    [
+     8413,
+     8879
+    ],
+    [
+     8885,
+     9355
+    ],
+    [
+     9361,
+     9803
+    ],
+    [
+     9809,
+     10233
+    ],
+    [
+     10239,
+     10637
+    ],
+    [
+     10643,
+     11067
+    ],
+    [
+     11073,
+     11479
+    ],
+    [
+     11485,
+     11895
+    ],
+    [
+     11901,
+     12325
+    ],
+    [
+     12331,
+     12745
+    ],
+    [
+     12751,
+     13189
+    ],
+    [
+     13195,
+     13595
+    ],
+    [
+     13601,
+     14013
+    ],
+    [
+     14019,
+     14431
+    ],
+    [
+     14437,
+     14877
+    ],
+    [
+     14883,
+     15311
+    ],
+    [
+     15317,
+     15755
+    ],
+    [
+     15761,
+     16195
+    ],
+    [
+     16201,
+     16630
+    ],
+    [
+     16636,
+     17074
+    ],
+    [
+     17080,
+     17546
+    ],
+    [
+     17552,
+     18002
+    ],
+    [
+     18008,
+     18449
+    ],
+    [
+     18455,
+     18929
+    ],
+    [
+     18935,
+     19361
+    ],
+    [
+     19367,
+     19795
+    ],
+    [
+     19801,
+     20214
+    ],
+    [
+     20220,
+     20663
+    ],
+    [
+     20669,
+     21105
+    ],
+    [
+     21111,
+     21567
+    ],
+    [
+     21573,
+     22003
+    ],
+    [
+     22009,
+     22429
+    ],
+    [
+     22435,
+     22861
+    ],
+    [
+     22867,
+     23309
+    ],
+    [
+     23315,
+     23736
+    ],
+    [
+     24251,
+     24707
+    ],
+    [
+     24713,
+     25177
+    ],
+    [
+     25183,
+     25639
+    ],
+    [
+     25645,
+     26105
+    ],
+    [
+     26111,
+     26536
+    ],
+    [
+     26542,
+     26986
+    ],
+    [
+     28053,
+     28509
+    ],
+    [
+     28515,
+     28975
+    ],
+    [
+     28981,
+     29449
+    ],
+    [
+     29455,
+     29911
+    ],
+    [
+     29917,
+     30393
+    ],
+    [
+     30399,
+     30837
+    ],
+    [
+     31355,
+     31819
+    ],
+    [
+     32319,
+     32773
+    ],
+    [
+     32779,
+     33211
+    ],
+    [
+     33217,
+     33640
+    ],
+    [
+     33646,
+     34085
+    ],
+    [
+     34091,
+     34524
+    ],
+    [
+     34530,
+     34967
+    ],
+    [
+     34973,
+     35407
+    ],
+    [
+     35413,
+     35864
+    ],
+    [
+     35870,
+     36273
+    ],
+    [
+     36279,
+     36735
+    ],
+    [
+     36741,
+     37188
+    ],
+    [
+     37194,
+     37618
+    ],
+    [
+     37624,
+     38031
+    ],
+    [
+     38037,
+     38446
+    ],
+    [
+     38452,
+     38873
+    ],
+    [
+     38879,
+     39334
+    ],
+    [
+     39340,
+     39781
+    ],
+    [
+     39787,
+     40218
+    ],
+    [
+     40224,
+     40632
+    ],
+    [
+     40638,
+     41076
+    ],
+    [
+     41082,
+     41481
+    ],
+    [
+     41487,
+     41906
+    ],
+    [
+     41912,
+     42341
+    ],
+    [
+     42347,
+     42788
+    ],
+    [
+     42794,
+     43241
+    ],
+    [
+     43247,
+     43695
+    ],
+    [
+     43701,
+     44157
+    ],
+    [
+     44163,
+     44568
+    ],
+    [
+     44574,
+     45005
+    ],
+    [
+     45011,
+     45463
+    ],
+    [
+     45469,
+     45884
+    ],
+    [
+     45890,
+     46337
+    ],
+    [
+     46343,
+     46773
+    ],
+    [
+     46779,
+     47207
+    ],
+    [
+     47213,
+     47667
+    ],
+    [
+     47673,
+     48119
+    ],
+    [
+     48125,
+     48560
+    ],
+    [
+     48566,
+     49005
+    ],
+    [
+     49011,
+     49475
+    ],
+    [
+     49481,
+     49920
+    ],
+    [
+     49926,
+     50359
+    ],
+    [
+     50365,
+     50819
+    ],
+    [
+     50825,
+     51304
+    ],
+    [
+     51310,
+     51726
+    ],
+    [
+     51732,
+     52197
+    ],
+    [
+     52203,
+     52629
+    ],
+    [
+     52635,
+     53043
+    ],
+    [
+     53049,
+     53502
+    ],
+    [
+     53508,
+     53973
+    ],
+    [
+     53979,
+     54418
+    ],
+    [
+     54424,
+     54882
+    ],
+    [
+     54888,
+     55359
+    ],
+    [
+     55365,
+     55797
+    ],
+    [
+     55803,
+     56237
+    ],
+    [
+     56243,
+     56671
+    ],
+    [
+     56677,
+     57121
+    ],
+    [
+     57127,
+     57573
+    ],
+    [
+     57579,
+     58019
+    ],
+    [
+     58025,
+     58443
+    ],
+    [
+     58449,
+     58875
+    ],
+    [
+     58881,
+     59311
+    ],
+    [
+     59317,
+     59745
+    ],
+    [
+     59751,
+     60169
+    ],
+    [
+     60175,
+     60613
+    ],
+    [
+     60619,
+     61043
+    ]
+   ],
+   "results_count": 135,
+   "root_members": {
+    "coverage_limits": [
+     4,
+     25
+    ],
+    "environment": [
+     29,
+     90
+    ],
+    "format": [
+     94,
+     136
+    ],
+    "participant": [
+     140,
+     707
+    ],
+    "results": [
+     711,
+     61047
+    ],
+    "runner": [
+     61051,
+     61126
+    ],
+    "status_note": [
+     61130,
+     61358
+    ],
+    "suite": [
+     61362,
+     61561
+    ],
+    "summary": [
+     61565,
+     61619
+    ]
+   },
+   "sha256": "sha256:06a0f54234b49df6c459cfec6217e8f1b50c6dd5e03cc4ede619ffbd2ed69a35",
+   "size": 61621,
+   "status_note_member": [
+    61130,
+    61358
+   ],
+   "suite_fixtures": 135,
+   "suite_fixtures_member": [
+    61377,
+    61392
+   ],
+   "suite_member": [
+    61362,
+    61561
+   ],
+   "summary_counts": {
+    "pass": 130,
+    "unsupported": 5
+   },
+   "summary_member": [
+    61565,
+    61619
+   ]
+  },
+  "green": {
+   "binaries": [
+    {
+     "binary": "cbr",
+     "result_line": [
+      5835,
+      5928
+     ],
+     "running_line": [
+      5741,
+      5816
+     ],
+     "tests": 0
+    },
+    {
+     "binary": "debug_launch",
+     "result_line": [
+      6342,
+      6435
+     ],
+     "running_line": [
+      5930,
+      6014
+     ],
+     "tests": 5
+    },
+    {
+     "binary": "derivation_claims",
+     "result_line": [
+      7047,
+      7140
+     ],
+     "running_line": [
+      6437,
+      6531
+     ],
+     "tests": 7
+    },
+    {
+     "binary": "derivation_records",
+     "result_line": [
+      8009,
+      8103
+     ],
+     "running_line": [
+      7142,
+      7238
+     ],
+     "tests": 10
+    },
+    {
+     "binary": "derivation_replay",
+     "result_line": [
+      8930,
+      9024
+     ],
+     "running_line": [
+      8105,
+      8199
+     ],
+     "tests": 10
+    },
+    {
+     "binary": "derivation_view",
+     "result_line": [
+      9500,
+      9593
+     ],
+     "running_line": [
+      9026,
+      9116
+     ],
+     "tests": 5
+    },
+    {
+     "binary": "ingest_and_fetch",
+     "result_line": [
+      9913,
+      10006
+     ],
+     "running_line": [
+      9595,
+      9687
+     ],
+     "tests": 3
+    },
+    {
+     "binary": "j2_harness",
+     "result_line": [
+      10685,
+      10778
+     ],
+     "running_line": [
+      10008,
+      10088
+     ],
+     "tests": 7
+    },
+    {
+     "binary": "journey_one",
+     "result_line": [
+      12076,
+      12171
+     ],
+     "running_line": [
+      10780,
+      10862
+     ],
+     "tests": 8
+    },
+    {
+     "binary": "journey_two",
+     "result_line": [
+      13905,
+      13999
+     ],
+     "running_line": [
+      12173,
+      12255
+     ],
+     "tests": 20
+    },
+    {
+     "binary": "knowledge_verbs",
+     "result_line": [
+      14263,
+      14356
+     ],
+     "running_line": [
+      14001,
+      14091
+     ],
+     "tests": 2
+    },
+    {
+     "binary": "m4e_harness",
+     "result_line": [
+      15674,
+      15768
+     ],
+     "running_line": [
+      14358,
+      14440
+     ],
+     "tests": 16
+    },
+    {
+     "binary": "model_crash_matrix",
+     "result_line": [
+      16301,
+      16394
+     ],
+     "running_line": [
+      15770,
+      15866
+     ],
+     "tests": 6
+    },
+    {
+     "binary": "model_discovery",
+     "result_line": [
+      17509,
+      17604
+     ],
+     "running_line": [
+      16396,
+      16486
+     ],
+     "tests": 15
+    },
+    {
+     "binary": "model_selection",
+     "result_line": [
+      18412,
+      18506
+     ],
+     "running_line": [
+      17606,
+      17696
+     ],
+     "tests": 10
+    },
+    {
+     "binary": "pilot_findings",
+     "result_line": [
+      18964,
+      19057
+     ],
+     "running_line": [
+      18508,
+      18596
+     ],
+     "tests": 4
+    },
+    {
+     "binary": "registration_and_decisions",
+     "result_line": [
+      19767,
+      19860
+     ],
+     "running_line": [
+      19059,
+      19171
+     ],
+     "tests": 7
+    },
+    {
+     "binary": "stall",
+     "result_line": [
+      20083,
+      20176
+     ],
+     "running_line": [
+      19862,
+      19932
+     ],
+     "tests": 1
+    },
+    {
+     "binary": "cbr_encoding",
+     "result_line": [
+      20359,
+      20452
+     ],
+     "running_line": [
+      20178,
+      20261
+     ],
+     "tests": 1
+    },
+    {
+     "binary": "properties",
+     "result_line": [
+      21432,
+      21526
+     ],
+     "running_line": [
+      20454,
+      20534
+     ],
+     "tests": 15
+    },
+    {
+     "binary": "vectors",
+     "result_line": [
+      21844,
+      21937
+     ],
+     "running_line": [
+      21528,
+      21602
+     ],
+     "tests": 4
+    },
+    {
+     "binary": "cbr_identity",
+     "result_line": [
+      22041,
+      22134
+     ],
+     "running_line": [
+      21939,
+      22022
+     ],
+     "tests": 0
+    },
+    {
+     "binary": "identity",
+     "result_line": [
+      22693,
+      22786
+     ],
+     "running_line": [
+      22136,
+      22212
+     ],
+     "tests": 7
+    },
+    {
+     "binary": "cbr_memory",
+     "result_line": [
+      23115,
+      23208
+     ],
+     "running_line": [
+      22788,
+      22869
+     ],
+     "tests": 3
+    },
+    {
+     "binary": "anchors",
+     "result_line": [
+      23740,
+      23833
+     ],
+     "running_line": [
+      23210,
+      23284
+     ],
+     "tests": 7
+    },
+    {
+     "binary": "evaluator_properties",
+     "result_line": [
+      24496,
+      24591
+     ],
+     "running_line": [
+      23835,
+      23935
+     ],
+     "tests": 6
+    },
+    {
+     "binary": "golden_index",
+     "result_line": [
+      24783,
+      24876
+     ],
+     "running_line": [
+      24593,
+      24677
+     ],
+     "tests": 1
+    },
+    {
+     "binary": "index_tree",
+     "result_line": [
+      25131,
+      25224
+     ],
+     "running_line": [
+      24878,
+      24958
+     ],
+     "tests": 2
+    },
+    {
+     "binary": "lexical",
+     "result_line": [
+      25835,
+      25928
+     ],
+     "running_line": [
+      25226,
+      25300
+     ],
+     "tests": 9
+    },
+    {
+     "binary": "retrieval",
+     "result_line": [
+      27038,
+      27132
+     ],
+     "running_line": [
+      25930,
+      26008
+     ],
+     "tests": 12
+    },
+    {
+     "binary": "cbr_provider",
+     "result_line": [
+      61717,
+      61812
+     ],
+     "running_line": [
+      27134,
+      27218
+     ],
+     "tests": 400
+    },
+    {
+     "binary": "context",
+     "result_line": [
+      62398,
+      62491
+     ],
+     "running_line": [
+      61814,
+      61888
+     ],
+     "tests": 6
+    },
+    {
+     "binary": "crash_matrix",
+     "result_line": [
+      63221,
+      63314
+     ],
+     "running_line": [
+      62493,
+      62577
+     ],
+     "tests": 8
+    },
+    {
+     "binary": "credential_discipline",
+     "result_line": [
+      63585,
+      63678
+     ],
+     "running_line": [
+      63316,
+      63418
+     ],
+     "tests": 2
+    },
+    {
+     "binary": "knowledge",
+     "result_line": [
+      63929,
+      64022
+     ],
+     "running_line": [
+      63680,
+      63758
+     ],
+     "tests": 2
+    },
+    {
+     "binary": "model_launch",
+     "result_line": [
+      65174,
+      65268
+     ],
+     "running_line": [
+      64024,
+      64108
+     ],
+     "tests": 15
+    },
+    {
+     "binary": "production_and_restart",
+     "result_line": [
+      66025,
+      66118
+     ],
+     "running_line": [
+      65270,
+      65374
+     ],
+     "tests": 9
+    },
+    {
+     "binary": "doctests:cbr_encoding",
+     "result_line": [
+      66164,
+      66257
+     ],
+     "running_line": [
+      66120,
+      66145
+     ],
+     "tests": 0
+    },
+    {
+     "binary": "doctests:cbr_identity",
+     "result_line": [
+      66303,
+      66396
+     ],
+     "running_line": [
+      66259,
+      66284
+     ],
+     "tests": 0
+    },
+    {
+     "binary": "doctests:cbr_memory",
+     "result_line": [
+      66440,
+      66533
+     ],
+     "running_line": [
+      66398,
+      66421
+     ],
+     "tests": 0
+    }
+   ],
+   "error_lines": [],
+   "expected_named_count": 0,
+   "failed_status_lines": [],
+   "ignored_tests": [
+    {
+     "binary": "stall",
+     "line": [
+      19949,
+      20081
+     ],
+     "name": "the_preparation_tick_is_not_held_by_an_index_build",
+     "result_line": [
+      20083,
+      20176
+     ],
+     "text": "test the_preparation_tick_is_not_held_by_an_index_build ... ignored, measures a stall against a checkout named by CBR_STALL_CHECKOUT"
+    }
+   ],
+   "input": "cargo-test.log",
+   "line_classes": [
+    [
+     0,
+     5741,
+     "build"
+    ],
+    [
+     5741,
+     5817,
+     "identity"
+    ],
+    [
+     5817,
+     5818,
+     "blank"
+    ],
+    [
+     5818,
+     5834,
+     "identity"
+    ],
+    [
+     5834,
+     5835,
+     "blank"
+    ],
+    [
+     5835,
+     5929,
+     "identity"
+    ],
+    [
+     5929,
+     5930,
+     "blank"
+    ],
+    [
+     5930,
+     6015,
+     "identity"
+    ],
+    [
+     6015,
+     6016,
+     "blank"
+    ],
+    [
+     6016,
+     6032,
+     "identity"
+    ],
+    [
+     6032,
+     6341,
+     "pass"
+    ],
+    [
+     6341,
+     6342,
+     "blank"
+    ],
+    [
+     6342,
+     6436,
+     "identity"
+    ],
+    [
+     6436,
+     6437,
+     "blank"
+    ],
+    [
+     6437,
+     6532,
+     "identity"
+    ],
+    [
+     6532,
+     6533,
+     "blank"
+    ],
+    [
+     6533,
+     6549,
+     "identity"
+    ],
+    [
+     6549,
+     7046,
+     "pass"
+    ],
+    [
+     7046,
+     7047,
+     "blank"
+    ],
+    [
+     7047,
+     7141,
+     "identity"
+    ],
+    [
+     7141,
+     7142,
+     "blank"
+    ],
+    [
+     7142,
+     7239,
+     "identity"
+    ],
+    [
+     7239,
+     7240,
+     "blank"
+    ],
+    [
+     7240,
+     7257,
+     "identity"
+    ],
+    [
+     7257,
+     8008,
+     "pass"
+    ],
+    [
+     8008,
+     8009,
+     "blank"
+    ],
+    [
+     8009,
+     8104,
+     "identity"
+    ],
+    [
+     8104,
+     8105,
+     "blank"
+    ],
+    [
+     8105,
+     8200,
+     "identity"
+    ],
+    [
+     8200,
+     8201,
+     "blank"
+    ],
+    [
+     8201,
+     8218,
+     "identity"
+    ],
+    [
+     8218,
+     8929,
+     "pass"
+    ],
+    [
+     8929,
+     8930,
+     "blank"
+    ],
+    [
+     8930,
+     9025,
+     "identity"
+    ],
+    [
+     9025,
+     9026,
+     "blank"
+    ],
+    [
+     9026,
+     9117,
+     "identity"
+    ],
+    [
+     9117,
+     9118,
+     "blank"
+    ],
+    [
+     9118,
+     9134,
+     "identity"
+    ],
+    [
+     9134,
+     9499,
+     "pass"
+    ],
+    [
+     9499,
+     9500,
+     "blank"
+    ],
+    [
+     9500,
+     9594,
+     "identity"
+    ],
+    [
+     9594,
+     9595,
+     "blank"
+    ],
+    [
+     9595,
+     9688,
+     "identity"
+    ],
+    [
+     9688,
+     9689,
+     "blank"
+    ],
+    [
+     9689,
+     9705,
+     "identity"
+    ],
+    [
+     9705,
+     9912,
+     "pass"
+    ],
+    [
+     9912,
+     9913,
+     "blank"
+    ],
+    [
+     9913,
+     10007,
+     "identity"
+    ],
+    [
+     10007,
+     10008,
+     "blank"
+    ],
+    [
+     10008,
+     10089,
+     "identity"
+    ],
+    [
+     10089,
+     10090,
+     "blank"
+    ],
+    [
+     10090,
+     10106,
+     "identity"
+    ],
+    [
+     10106,
+     10684,
+     "pass"
+    ],
+    [
+     10684,
+     10685,
+     "blank"
+    ],
+    [
+     10685,
+     10779,
+     "identity"
+    ],
+    [
+     10779,
+     10780,
+     "blank"
+    ],
+    [
+     10780,
+     10863,
+     "identity"
+    ],
+    [
+     10863,
+     10864,
+     "blank"
+    ],
+    [
+     10864,
+     10880,
+     "identity"
+    ],
+    [
+     10880,
+     11035,
+     "pass"
+    ],
+    [
+     11035,
+     11645,
+     "other"
+    ],
+    [
+     11645,
+     12075,
+     "pass"
+    ],
+    [
+     12075,
+     12076,
+     "blank"
+    ],
+    [
+     12076,
+     12172,
+     "identity"
+    ],
+    [
+     12172,
+     12173,
+     "blank"
+    ],
+    [
+     12173,
+     12256,
+     "identity"
+    ],
+    [
+     12256,
+     12257,
+     "blank"
+    ],
+    [
+     12257,
+     12274,
+     "identity"
+    ],
+    [
+     12274,
+     13904,
+     "pass"
+    ],
+    [
+     13904,
+     13905,
+     "blank"
+    ],
+    [
+     13905,
+     14000,
+     "identity"
+    ],
+    [
+     14000,
+     14001,
+     "blank"
+    ],
+    [
+     14001,
+     14092,
+     "identity"
+    ],
+    [
+     14092,
+     14093,
+     "blank"
+    ],
+    [
+     14093,
+     14109,
+     "identity"
+    ],
+    [
+     14109,
+     14262,
+     "pass"
+    ],
+    [
+     14262,
+     14263,
+     "blank"
+    ],
+    [
+     14263,
+     14357,
+     "identity"
+    ],
+    [
+     14357,
+     14358,
+     "blank"
+    ],
+    [
+     14358,
+     14441,
+     "identity"
+    ],
+    [
+     14441,
+     14442,
+     "blank"
+    ],
+    [
+     14442,
+     14459,
+     "identity"
+    ],
+    [
+     14459,
+     15673,
+     "pass"
+    ],
+    [
+     15673,
+     15674,
+     "blank"
+    ],
+    [
+     15674,
+     15769,
+     "identity"
+    ],
+    [
+     15769,
+     15770,
+     "blank"
+    ],
+    [
+     15770,
+     15867,
+     "identity"
+    ],
+    [
+     15867,
+     15868,
+     "blank"
+    ],
+    [
+     15868,
+     15884,
+     "identity"
+    ],
+    [
+     15884,
+     16300,
+     "pass"
+    ],
+    [
+     16300,
+     16301,
+     "blank"
+    ],
+    [
+     16301,
+     16395,
+     "identity"
+    ],
+    [
+     16395,
+     16396,
+     "blank"
+    ],
+    [
+     16396,
+     16487,
+     "identity"
+    ],
+    [
+     16487,
+     16488,
+     "blank"
+    ],
+    [
+     16488,
+     16505,
+     "identity"
+    ],
+    [
+     16505,
+     17508,
+     "pass"
+    ],
+    [
+     17508,
+     17509,
+     "blank"
+    ],
+    [
+     17509,
+     17605,
+     "identity"
+    ],
+    [
+     17605,
+     17606,
+     "blank"
+    ],
+    [
+     17606,
+     17697,
+     "identity"
+    ],
+    [
+     17697,
+     17698,
+     "blank"
+    ],
+    [
+     17698,
+     17715,
+     "identity"
+    ],
+    [
+     17715,
+     18411,
+     "pass"
+    ],
+    [
+     18411,
+     18412,
+     "blank"
+    ],
+    [
+     18412,
+     18507,
+     "identity"
+    ],
+    [
+     18507,
+     18508,
+     "blank"
+    ],
+    [
+     18508,
+     18597,
+     "identity"
+    ],
+    [
+     18597,
+     18598,
+     "blank"
+    ],
+    [
+     18598,
+     18614,
+     "identity"
+    ],
+    [
+     18614,
+     18963,
+     "pass"
+    ],
+    [
+     18963,
+     18964,
+     "blank"
+    ],
+    [
+     18964,
+     19058,
+     "identity"
+    ],
+    [
+     19058,
+     19059,
+     "blank"
+    ],
+    [
+     19059,
+     19172,
+     "identity"
+    ],
+    [
+     19172,
+     19173,
+     "blank"
+    ],
+    [
+     19173,
+     19189,
+     "identity"
+    ],
+    [
+     19189,
+     19766,
+     "pass"
+    ],
+    [
+     19766,
+     19767,
+     "blank"
+    ],
+    [
+     19767,
+     19861,
+     "identity"
+    ],
+    [
+     19861,
+     19862,
+     "blank"
+    ],
+    [
+     19862,
+     19933,
+     "identity"
+    ],
+    [
+     19933,
+     19934,
+     "blank"
+    ],
+    [
+     19934,
+     19949,
+     "identity"
+    ],
+    [
+     19949,
+     20082,
+     "ignored"
+    ],
+    [
+     20082,
+     20083,
+     "blank"
+    ],
+    [
+     20083,
+     20177,
+     "identity"
+    ],
+    [
+     20177,
+     20178,
+     "blank"
+    ],
+    [
+     20178,
+     20262,
+     "identity"
+    ],
+    [
+     20262,
+     20263,
+     "blank"
+    ],
+    [
+     20263,
+     20278,
+     "identity"
+    ],
+    [
+     20278,
+     20358,
+     "pass"
+    ],
+    [
+     20358,
+     20359,
+     "blank"
+    ],
+    [
+     20359,
+     20453,
+     "identity"
+    ],
+    [
+     20453,
+     20454,
+     "blank"
+    ],
+    [
+     20454,
+     20535,
+     "identity"
+    ],
+    [
+     20535,
+     20536,
+     "blank"
+    ],
+    [
+     20536,
+     20553,
+     "identity"
+    ],
+    [
+     20553,
+     21431,
+     "pass"
+    ],
+    [
+     21431,
+     21432,
+     "blank"
+    ],
+    [
+     21432,
+     21527,
+     "identity"
+    ],
+    [
+     21527,
+     21528,
+     "blank"
+    ],
+    [
+     21528,
+     21603,
+     "identity"
+    ],
+    [
+     21603,
+     21604,
+     "blank"
+    ],
+    [
+     21604,
+     21620,
+     "identity"
+    ],
+    [
+     21620,
+     21843,
+     "pass"
+    ],
+    [
+     21843,
+     21844,
+     "blank"
+    ],
+    [
+     21844,
+     21938,
+     "identity"
+    ],
+    [
+     21938,
+     21939,
+     "blank"
+    ],
+    [
+     21939,
+     22023,
+     "identity"
+    ],
+    [
+     22023,
+     22024,
+     "blank"
+    ],
+    [
+     22024,
+     22040,
+     "identity"
+    ],
+    [
+     22040,
+     22041,
+     "blank"
+    ],
+    [
+     22041,
+     22135,
+     "identity"
+    ],
+    [
+     22135,
+     22136,
+     "blank"
+    ],
+    [
+     22136,
+     22213,
+     "identity"
+    ],
+    [
+     22213,
+     22214,
+     "blank"
+    ],
+    [
+     22214,
+     22230,
+     "identity"
+    ],
+    [
+     22230,
+     22692,
+     "pass"
+    ],
+    [
+     22692,
+     22693,
+     "blank"
+    ],
+    [
+     22693,
+     22787,
+     "identity"
+    ],
+    [
+     22787,
+     22788,
+     "blank"
+    ],
+    [
+     22788,
+     22870,
+     "identity"
+    ],
+    [
+     22870,
+     22871,
+     "blank"
+    ],
+    [
+     22871,
+     22887,
+     "identity"
+    ],
+    [
+     22887,
+     23114,
+     "pass"
+    ],
+    [
+     23114,
+     23115,
+     "blank"
+    ],
+    [
+     23115,
+     23209,
+     "identity"
+    ],
+    [
+     23209,
+     23210,
+     "blank"
+    ],
+    [
+     23210,
+     23285,
+     "identity"
+    ],
+    [
+     23285,
+     23286,
+     "blank"
+    ],
+    [
+     23286,
+     23302,
+     "identity"
+    ],
+    [
+     23302,
+     23739,
+     "pass"
+    ],
+    [
+     23739,
+     23740,
+     "blank"
+    ],
+    [
+     23740,
+     23834,
+     "identity"
+    ],
+    [
+     23834,
+     23835,
+     "blank"
+    ],
+    [
+     23835,
+     23936,
+     "identity"
+    ],
+    [
+     23936,
+     23937,
+     "blank"
+    ],
+    [
+     23937,
+     23953,
+     "identity"
+    ],
+    [
+     23953,
+     24303,
+     "pass"
+    ],
+    [
+     24303,
+     24414,
+     "other"
+    ],
+    [
+     24414,
+     24495,
+     "pass"
+    ],
+    [
+     24495,
+     24496,
+     "blank"
+    ],
+    [
+     24496,
+     24592,
+     "identity"
+    ],
+    [
+     24592,
+     24593,
+     "blank"
+    ],
+    [
+     24593,
+     24678,
+     "identity"
+    ],
+    [
+     24678,
+     24679,
+     "blank"
+    ],
+    [
+     24679,
+     24694,
+     "identity"
+    ],
+    [
+     24694,
+     24782,
+     "pass"
+    ],
+    [
+     24782,
+     24783,
+     "blank"
+    ],
+    [
+     24783,
+     24877,
+     "identity"
+    ],
+    [
+     24877,
+     24878,
+     "blank"
+    ],
+    [
+     24878,
+     24959,
+     "identity"
+    ],
+    [
+     24959,
+     24960,
+     "blank"
+    ],
+    [
+     24960,
+     24976,
+     "identity"
+    ],
+    [
+     24976,
+     25130,
+     "pass"
+    ],
+    [
+     25130,
+     25131,
+     "blank"
+    ],
+    [
+     25131,
+     25225,
+     "identity"
+    ],
+    [
+     25225,
+     25226,
+     "blank"
+    ],
+    [
+     25226,
+     25301,
+     "identity"
+    ],
+    [
+     25301,
+     25302,
+     "blank"
+    ],
+    [
+     25302,
+     25318,
+     "identity"
+    ],
+    [
+     25318,
+     25834,
+     "pass"
+    ],
+    [
+     25834,
+     25835,
+     "blank"
+    ],
+    [
+     25835,
+     25929,
+     "identity"
+    ],
+    [
+     25929,
+     25930,
+     "blank"
+    ],
+    [
+     25930,
+     26009,
+     "identity"
+    ],
+    [
+     26009,
+     26010,
+     "blank"
+    ],
+    [
+     26010,
+     26027,
+     "identity"
+    ],
+    [
+     26027,
+     27037,
+     "pass"
+    ],
+    [
+     27037,
+     27038,
+     "blank"
+    ],
+    [
+     27038,
+     27133,
+     "identity"
+    ],
+    [
+     27133,
+     27134,
+     "blank"
+    ],
+    [
+     27134,
+     27219,
+     "identity"
+    ],
+    [
+     27219,
+     27220,
+     "blank"
+    ],
+    [
+     27220,
+     27238,
+     "identity"
+    ],
+    [
+     27238,
+     61716,
+     "pass"
+    ],
+    [
+     61716,
+     61717,
+     "blank"
+    ],
+    [
+     61717,
+     61813,
+     "identity"
+    ],
+    [
+     61813,
+     61814,
+     "blank"
+    ],
+    [
+     61814,
+     61889,
+     "identity"
+    ],
+    [
+     61889,
+     61890,
+     "blank"
+    ],
+    [
+     61890,
+     61906,
+     "identity"
+    ],
+    [
+     61906,
+     62397,
+     "pass"
+    ],
+    [
+     62397,
+     62398,
+     "blank"
+    ],
+    [
+     62398,
+     62492,
+     "identity"
+    ],
+    [
+     62492,
+     62493,
+     "blank"
+    ],
+    [
+     62493,
+     62578,
+     "identity"
+    ],
+    [
+     62578,
+     62579,
+     "blank"
+    ],
+    [
+     62579,
+     62595,
+     "identity"
+    ],
+    [
+     62595,
+     63220,
+     "pass"
+    ],
+    [
+     63220,
+     63221,
+     "blank"
+    ],
+    [
+     63221,
+     63315,
+     "identity"
+    ],
+    [
+     63315,
+     63316,
+     "blank"
+    ],
+    [
+     63316,
+     63419,
+     "identity"
+    ],
+    [
+     63419,
+     63420,
+     "blank"
+    ],
+    [
+     63420,
+     63436,
+     "identity"
+    ],
+    [
+     63436,
+     63584,
+     "pass"
+    ],
+    [
+     63584,
+     63585,
+     "blank"
+    ],
+    [
+     63585,
+     63679,
+     "identity"
+    ],
+    [
+     63679,
+     63680,
+     "blank"
+    ],
+    [
+     63680,
+     63759,
+     "identity"
+    ],
+    [
+     63759,
+     63760,
+     "blank"
+    ],
+    [
+     63760,
+     63776,
+     "identity"
+    ],
+    [
+     63776,
+     63928,
+     "pass"
+    ],
+    [
+     63928,
+     63929,
+     "blank"
+    ],
+    [
+     63929,
+     64023,
+     "identity"
+    ],
+    [
+     64023,
+     64024,
+     "blank"
+    ],
+    [
+     64024,
+     64109,
+     "identity"
+    ],
+    [
+     64109,
+     64110,
+     "blank"
+    ],
+    [
+     64110,
+     64127,
+     "identity"
+    ],
+    [
+     64127,
+     65173,
+     "pass"
+    ],
+    [
+     65173,
+     65174,
+     "blank"
+    ],
+    [
+     65174,
+     65269,
+     "identity"
+    ],
+    [
+     65269,
+     65270,
+     "blank"
+    ],
+    [
+     65270,
+     65375,
+     "identity"
+    ],
+    [
+     65375,
+     65376,
+     "blank"
+    ],
+    [
+     65376,
+     65392,
+     "identity"
+    ],
+    [
+     65392,
+     66024,
+     "pass"
+    ],
+    [
+     66024,
+     66025,
+     "blank"
+    ],
+    [
+     66025,
+     66119,
+     "identity"
+    ],
+    [
+     66119,
+     66120,
+     "blank"
+    ],
+    [
+     66120,
+     66146,
+     "identity"
+    ],
+    [
+     66146,
+     66147,
+     "blank"
+    ],
+    [
+     66147,
+     66163,
+     "identity"
+    ],
+    [
+     66163,
+     66164,
+     "blank"
+    ],
+    [
+     66164,
+     66258,
+     "identity"
+    ],
+    [
+     66258,
+     66259,
+     "blank"
+    ],
+    [
+     66259,
+     66285,
+     "identity"
+    ],
+    [
+     66285,
+     66286,
+     "blank"
+    ],
+    [
+     66286,
+     66302,
+     "identity"
+    ],
+    [
+     66302,
+     66303,
+     "blank"
+    ],
+    [
+     66303,
+     66397,
+     "identity"
+    ],
+    [
+     66397,
+     66398,
+     "blank"
+    ],
+    [
+     66398,
+     66422,
+     "identity"
+    ],
+    [
+     66422,
+     66423,
+     "blank"
+    ],
+    [
+     66423,
+     66439,
+     "identity"
+    ],
+    [
+     66439,
+     66440,
+     "blank"
+    ],
+    [
+     66440,
+     66534,
+     "identity"
+    ],
+    [
+     66534,
+     66535,
+     "blank"
+    ]
+   ],
+   "lines": 1065,
+   "panic_lines": [],
+   "result_lines": [
+    {
+     "binary": "cbr",
+     "failed": 0,
+     "ignored": 0,
+     "line": [
+      5835,
+      5928
+     ],
+     "line_no": 178,
+     "passed": 0,
+     "status": "ok"
+    },
+    {
+     "binary": "debug_launch",
+     "failed": 0,
+     "ignored": 0,
+     "line": [
+      6342,
+      6435
+     ],
+     "line_no": 189,
+     "passed": 5,
+     "status": "ok"
+    },
+    {
+     "binary": "derivation_claims",
+     "failed": 0,
+     "ignored": 0,
+     "line": [
+      7047,
+      7140
+     ],
+     "line_no": 202,
+     "passed": 7,
+     "status": "ok"
+    },
+    {
+     "binary": "derivation_records",
+     "failed": 0,
+     "ignored": 0,
+     "line": [
+      8009,
+      8103
+     ],
+     "line_no": 218,
+     "passed": 10,
+     "status": "ok"
+    },
+    {
+     "binary": "derivation_replay",
+     "failed": 0,
+     "ignored": 0,
+     "line": [
+      8930,
+      9024
+     ],
+     "line_no": 234,
+     "passed": 10,
+     "status": "ok"
+    },
+    {
+     "binary": "derivation_view",
+     "failed": 0,
+     "ignored": 0,
+     "line": [
+      9500,
+      9593
+     ],
+     "line_no": 245,
+     "passed": 5,
+     "status": "ok"
+    },
+    {
+     "binary": "ingest_and_fetch",
+     "failed": 0,
+     "ignored": 0,
+     "line": [
+      9913,
+      10006
+     ],
+     "line_no": 254,
+     "passed": 3,
+     "status": "ok"
+    },
+    {
+     "binary": "j2_harness",
+     "failed": 0,
+     "ignored": 0,
+     "line": [
+      10685,
+      10778
+     ],
+     "line_no": 267,
+     "passed": 7,
+     "status": "ok"
+    },
+    {
+     "binary": "journey_one",
+     "failed": 0,
+     "ignored": 0,
+     "line": [
+      12076,
+      12171
+     ],
+     "line_no": 287,
+     "passed": 8,
+     "status": "ok"
+    },
+    {
+     "binary": "journey_two",
+     "failed": 0,
+     "ignored": 0,
+     "line": [
+      13905,
+      13999
+     ],
+     "line_no": 313,
+     "passed": 20,
+     "status": "ok"
+    },
+    {
+     "binary": "knowledge_verbs",
+     "failed": 0,
+     "ignored": 0,
+     "line": [
+      14263,
+      14356
+     ],
+     "line_no": 321,
+     "passed": 2,
+     "status": "ok"
+    },
+    {
+     "binary": "m4e_harness",
+     "failed": 0,
+     "ignored": 0,
+     "line": [
+      15674,
+      15768
+     ],
+     "line_no": 343,
+     "passed": 16,
+     "status": "ok"
+    },
+    {
+     "binary": "model_crash_matrix",
+     "failed": 0,
+     "ignored": 0,
+     "line": [
+      16301,
+      16394
+     ],
+     "line_no": 355,
+     "passed": 6,
+     "status": "ok"
+    },
+    {
+     "binary": "model_discovery",
+     "failed": 0,
+     "ignored": 0,
+     "line": [
+      17509,
+      17604
+     ],
+     "line_no": 376,
+     "passed": 15,
+     "status": "ok"
+    },
+    {
+     "binary": "model_selection",
+     "failed": 0,
+     "ignored": 0,
+     "line": [
+      18412,
+      18506
+     ],
+     "line_no": 392,
+     "passed": 10,
+     "status": "ok"
+    },
+    {
+     "binary": "pilot_findings",
+     "failed": 0,
+     "ignored": 0,
+     "line": [
+      18964,
+      19057
+     ],
+     "line_no": 402,
+     "passed": 4,
+     "status": "ok"
+    },
+    {
+     "binary": "registration_and_decisions",
+     "failed": 0,
+     "ignored": 0,
+     "line": [
+      19767,
+      19860
+     ],
+     "line_no": 415,
+     "passed": 7,
+     "status": "ok"
+    },
+    {
+     "binary": "stall",
+     "failed": 0,
+     "ignored": 1,
+     "line": [
+      20083,
+      20176
+     ],
+     "line_no": 422,
+     "passed": 0,
+     "status": "ok"
+    },
+    {
+     "binary": "cbr_encoding",
+     "failed": 0,
+     "ignored": 0,
+     "line": [
+      20359,
+      20452
+     ],
+     "line_no": 429,
+     "passed": 1,
+     "status": "ok"
+    },
+    {
+     "binary": "properties",
+     "failed": 0,
+     "ignored": 0,
+     "line": [
+      21432,
+      21526
+     ],
+     "line_no": 450,
+     "passed": 15,
+     "status": "ok"
+    },
+    {
+     "binary": "vectors",
+     "failed": 0,
+     "ignored": 0,
+     "line": [
+      21844,
+      21937
+     ],
+     "line_no": 460,
+     "passed": 4,
+     "status": "ok"
+    },
+    {
+     "binary": "cbr_identity",
+     "failed": 0,
+     "ignored": 0,
+     "line": [
+      22041,
+      22134
+     ],
+     "line_no": 466,
+     "passed": 0,
+     "status": "ok"
+    },
+    {
+     "binary": "identity",
+     "failed": 0,
+     "ignored": 0,
+     "line": [
+      22693,
+      22786
+     ],
+     "line_no": 479,
+     "passed": 7,
+     "status": "ok"
+    },
+    {
+     "binary": "cbr_memory",
+     "failed": 0,
+     "ignored": 0,
+     "line": [
+      23115,
+      23208
+     ],
+     "line_no": 488,
+     "passed": 3,
+     "status": "ok"
+    },
+    {
+     "binary": "anchors",
+     "failed": 0,
+     "ignored": 0,
+     "line": [
+      23740,
+      23833
+     ],
+     "line_no": 501,
+     "passed": 7,
+     "status": "ok"
+    },
+    {
+     "binary": "evaluator_properties",
+     "failed": 0,
+     "ignored": 0,
+     "line": [
+      24496,
+      24591
+     ],
+     "line_no": 514,
+     "passed": 6,
+     "status": "ok"
+    },
+    {
+     "binary": "golden_index",
+     "failed": 0,
+     "ignored": 0,
+     "line": [
+      24783,
+      24876
+     ],
+     "line_no": 521,
+     "passed": 1,
+     "status": "ok"
+    },
+    {
+     "binary": "index_tree",
+     "failed": 0,
+     "ignored": 0,
+     "line": [
+      25131,
+      25224
+     ],
+     "line_no": 529,
+     "passed": 2,
+     "status": "ok"
+    },
+    {
+     "binary": "lexical",
+     "failed": 0,
+     "ignored": 0,
+     "line": [
+      25835,
+      25928
+     ],
+     "line_no": 544,
+     "passed": 9,
+     "status": "ok"
+    },
+    {
+     "binary": "retrieval",
+     "failed": 0,
+     "ignored": 0,
+     "line": [
+      27038,
+      27132
+     ],
+     "line_no": 562,
+     "passed": 12,
+     "status": "ok"
+    },
+    {
+     "binary": "cbr_provider",
+     "failed": 0,
+     "ignored": 0,
+     "line": [
+      61717,
+      61812
+     ],
+     "line_no": 968,
+     "passed": 400,
+     "status": "ok"
+    },
+    {
+     "binary": "context",
+     "failed": 0,
+     "ignored": 0,
+     "line": [
+      62398,
+      62491
+     ],
+     "line_no": 980,
+     "passed": 6,
+     "status": "ok"
+    },
+    {
+     "binary": "crash_matrix",
+     "failed": 0,
+     "ignored": 0,
+     "line": [
+      63221,
+      63314
+     ],
+     "line_no": 994,
+     "passed": 8,
+     "status": "ok"
+    },
+    {
+     "binary": "credential_discipline",
+     "failed": 0,
+     "ignored": 0,
+     "line": [
+      63585,
+      63678
+     ],
+     "line_no": 1002,
+     "passed": 2,
+     "status": "ok"
+    },
+    {
+     "binary": "knowledge",
+     "failed": 0,
+     "ignored": 0,
+     "line": [
+      63929,
+      64022
+     ],
+     "line_no": 1010,
+     "passed": 2,
+     "status": "ok"
+    },
+    {
+     "binary": "model_launch",
+     "failed": 0,
+     "ignored": 0,
+     "line": [
+      65174,
+      65268
+     ],
+     "line_no": 1031,
+     "passed": 15,
+     "status": "ok"
+    },
+    {
+     "binary": "production_and_restart",
+     "failed": 0,
+     "ignored": 0,
+     "line": [
+      66025,
+      66118
+     ],
+     "line_no": 1046,
+     "passed": 9,
+     "status": "ok"
+    },
+    {
+     "binary": "doctests:cbr_encoding",
+     "failed": 0,
+     "ignored": 0,
+     "line": [
+      66164,
+      66257
+     ],
+     "line_no": 1052,
+     "passed": 0,
+     "status": "ok"
+    },
+    {
+     "binary": "doctests:cbr_identity",
+     "failed": 0,
+     "ignored": 0,
+     "line": [
+      66303,
+      66396
+     ],
+     "line_no": 1058,
+     "passed": 0,
+     "status": "ok"
+    },
+    {
+     "binary": "doctests:cbr_memory",
+     "failed": 0,
+     "ignored": 0,
+     "line": [
+      66440,
+      66533
+     ],
+     "line_no": 1064,
+     "passed": 0,
+     "status": "ok"
+    }
+   ],
+   "sha256": "sha256:b89ad11e5a5ce5975f89b70ca91d14d400fa8c490f971fa5f603f80470898807",
+   "size": 66535,
+   "tail": [
+    66440,
+    66535
+   ],
+   "tests_total": 645,
+   "totals": {
+    "failed": 0,
+    "ignored": 1,
+    "passed": 644
+   }
+  },
+  "red": {
+   "binaries": [
+    {
+     "binary": "cbr",
+     "result_line": [
+      323,
+      416
+     ],
+     "running_line": [
+      229,
+      304
+     ],
+     "tests": 0
+    },
+    {
+     "binary": "debug_launch",
+     "result_line": [
+      830,
+      923
+     ],
+     "running_line": [
+      418,
+      502
+     ],
+     "tests": 5
+    },
+    {
+     "binary": "derivation_claims",
+     "result_line": [
+      1535,
+      1628
+     ],
+     "running_line": [
+      925,
+      1019
+     ],
+     "tests": 7
+    },
+    {
+     "binary": "derivation_records",
+     "result_line": [
+      2497,
+      2591
+     ],
+     "running_line": [
+      1630,
+      1726
+     ],
+     "tests": 10
+    },
+    {
+     "binary": "derivation_replay",
+     "result_line": [
+      3418,
+      3512
+     ],
+     "running_line": [
+      2593,
+      2687
+     ],
+     "tests": 10
+    },
+    {
+     "binary": "derivation_view",
+     "result_line": [
+      3988,
+      4081
+     ],
+     "running_line": [
+      3514,
+      3604
+     ],
+     "tests": 5
+    },
+    {
+     "binary": "ingest_and_fetch",
+     "result_line": [
+      4401,
+      4494
+     ],
+     "running_line": [
+      4083,
+      4175
+     ],
+     "tests": 3
+    },
+    {
+     "binary": "j2_harness",
+     "result_line": [
+      7475,
+      7572
+     ],
+     "running_line": [
+      4496,
+      4576
+     ],
+     "tests": 6
+    },
+    {
+     "binary": "journey_one",
+     "result_line": [
+      8935,
+      9030
+     ],
+     "running_line": [
+      7639,
+      7721
+     ],
+     "tests": 8
+    },
+    {
+     "binary": "journey_two",
+     "result_line": [
+      15740,
+      15838
+     ],
+     "running_line": [
+      9032,
+      9114
+     ],
+     "tests": 12
+    },
+    {
+     "binary": "knowledge_verbs",
+     "result_line": [
+      16168,
+      16261
+     ],
+     "running_line": [
+      15906,
+      15996
+     ],
+     "tests": 2
+    },
+    {
+     "binary": "m4e_harness",
+     "result_line": [
+      17579,
+      17673
+     ],
+     "running_line": [
+      16263,
+      16345
+     ],
+     "tests": 16
+    },
+    {
+     "binary": "model_crash_matrix",
+     "result_line": [
+      18206,
+      18299
+     ],
+     "running_line": [
+      17675,
+      17771
+     ],
+     "tests": 6
+    },
+    {
+     "binary": "model_discovery",
+     "result_line": [
+      19414,
+      19509
+     ],
+     "running_line": [
+      18301,
+      18391
+     ],
+     "tests": 15
+    },
+    {
+     "binary": "model_selection",
+     "result_line": [
+      20317,
+      20412
+     ],
+     "running_line": [
+      19511,
+      19601
+     ],
+     "tests": 10
+    },
+    {
+     "binary": "pilot_findings",
+     "result_line": [
+      20870,
+      20963
+     ],
+     "running_line": [
+      20414,
+      20502
+     ],
+     "tests": 4
+    },
+    {
+     "binary": "registration_and_decisions",
+     "result_line": [
+      21673,
+      21766
+     ],
+     "running_line": [
+      20965,
+      21077
+     ],
+     "tests": 7
+    },
+    {
+     "binary": "stall",
+     "result_line": [
+      21989,
+      22082
+     ],
+     "running_line": [
+      21768,
+      21838
+     ],
+     "tests": 1
+    },
+    {
+     "binary": "cbr_encoding",
+     "result_line": [
+      22265,
+      22358
+     ],
+     "running_line": [
+      22084,
+      22167
+     ],
+     "tests": 1
+    },
+    {
+     "binary": "properties",
+     "result_line": [
+      23338,
+      23432
+     ],
+     "running_line": [
+      22360,
+      22440
+     ],
+     "tests": 15
+    },
+    {
+     "binary": "vectors",
+     "result_line": [
+      23750,
+      23843
+     ],
+     "running_line": [
+      23434,
+      23508
+     ],
+     "tests": 4
+    },
+    {
+     "binary": "cbr_identity",
+     "result_line": [
+      23947,
+      24040
+     ],
+     "running_line": [
+      23845,
+      23928
+     ],
+     "tests": 0
+    },
+    {
+     "binary": "identity",
+     "result_line": [
+      24599,
+      24692
+     ],
+     "running_line": [
+      24042,
+      24118
+     ],
+     "tests": 7
+    },
+    {
+     "binary": "cbr_memory",
+     "result_line": [
+      25021,
+      25114
+     ],
+     "running_line": [
+      24694,
+      24775
+     ],
+     "tests": 3
+    },
+    {
+     "binary": "anchors",
+     "result_line": [
+      25646,
+      25739
+     ],
+     "running_line": [
+      25116,
+      25190
+     ],
+     "tests": 7
+    },
+    {
+     "binary": "evaluator_properties",
+     "result_line": [
+      26402,
+      26497
+     ],
+     "running_line": [
+      25741,
+      25841
+     ],
+     "tests": 6
+    },
+    {
+     "binary": "golden_index",
+     "result_line": [
+      26689,
+      26782
+     ],
+     "running_line": [
+      26499,
+      26583
+     ],
+     "tests": 1
+    },
+    {
+     "binary": "index_tree",
+     "result_line": [
+      27037,
+      27130
+     ],
+     "running_line": [
+      26784,
+      26864
+     ],
+     "tests": 2
+    },
+    {
+     "binary": "lexical",
+     "result_line": [
+      27741,
+      27834
+     ],
+     "running_line": [
+      27132,
+      27206
+     ],
+     "tests": 9
+    },
+    {
+     "binary": "retrieval",
+     "result_line": [
+      28944,
+      29038
+     ],
+     "running_line": [
+      27836,
+      27914
+     ],
+     "tests": 12
+    },
+    {
+     "binary": "cbr_provider",
+     "result_line": [
+      60343,
+      60438
+     ],
+     "running_line": [
+      29040,
+      29124
+     ],
+     "tests": 365
+    },
+    {
+     "binary": "context",
+     "result_line": [
+      61024,
+      61117
+     ],
+     "running_line": [
+      60440,
+      60514
+     ],
+     "tests": 6
+    },
+    {
+     "binary": "crash_matrix",
+     "result_line": [
+      61847,
+      61940
+     ],
+     "running_line": [
+      61119,
+      61203
+     ],
+     "tests": 8
+    },
+    {
+     "binary": "credential_discipline",
+     "result_line": [
+      62211,
+      62304
+     ],
+     "running_line": [
+      61942,
+      62044
+     ],
+     "tests": 2
+    },
+    {
+     "binary": "knowledge",
+     "result_line": [
+      62555,
+      62648
+     ],
+     "running_line": [
+      62306,
+      62384
+     ],
+     "tests": 2
+    },
+    {
+     "binary": "model_launch",
+     "result_line": [
+      63800,
+      63894
+     ],
+     "running_line": [
+      62650,
+      62734
+     ],
+     "tests": 15
+    },
+    {
+     "binary": "production_and_restart",
+     "result_line": [
+      64651,
+      64744
+     ],
+     "running_line": [
+      63896,
+      64000
+     ],
+     "tests": 9
+    },
+    {
+     "binary": "doctests:cbr_encoding",
+     "result_line": [
+      64790,
+      64883
+     ],
+     "running_line": [
+      64746,
+      64771
+     ],
+     "tests": 0
+    },
+    {
+     "binary": "doctests:cbr_identity",
+     "result_line": [
+      64929,
+      65022
+     ],
+     "running_line": [
+      64885,
+      64910
+     ],
+     "tests": 0
+    },
+    {
+     "binary": "doctests:cbr_memory",
+     "result_line": [
+      65066,
+      65159
+     ],
+     "running_line": [
+      65024,
+      65047
+     ],
+     "tests": 0
+    }
+   ],
+   "by_binary": {
+    "j2_harness": 6,
+    "journey_two": 12
+   },
+   "cargo_errors": [
+    {
+     "atom": [
+      7574,
+      7638
+     ],
+     "continuation": [],
+     "line": [
+      7574,
+      7638
+     ],
+     "text": "error: test failed, to rerun pass `-p cbr-cli --test j2_harness`"
+    },
+    {
+     "atom": [
+      15840,
+      15905
+     ],
+     "continuation": [],
+     "line": [
+      15840,
+      15905
+     ],
+     "text": "error: test failed, to rerun pass `-p cbr-cli --test journey_two`"
+    },
+    {
+     "atom": [
+      65161,
+      65256
+     ],
+     "continuation": [
+      [
+       65186,
+       65220
+      ],
+      [
+       65221,
+       65256
+      ]
+     ],
+     "line": [
+      65161,
+      65185
+     ],
+     "text": "error: 2 targets failed:"
+    }
+   ],
+   "expected_named": [
+    {
+     "kind": "test",
+     "name": "the_harness_stops_before_a_run_its_ceiling_could_not_cover",
+     "range": [
+      4599,
+      4657
+     ]
+    },
+    {
+     "kind": "test",
+     "name": "the_harness_refuses_an_input_that_carries_a_machine_path_before_anything_starts",
+     "range": [
+      4674,
+      4753
+     ]
+    },
+    {
+     "kind": "test",
+     "name": "the_harness_refuses_every_run_it_should_before_anything_is_spent",
+     "range": [
+      4770,
+      4834
+     ]
+    },
+    {
+     "kind": "test",
+     "name": "a_dry_run_projects_a_test_log_checks_it_against_its_bytes_and_rebuilds_it",
+     "range": [
+      4851,
+      4924
+     ]
+    },
+    {
+     "kind": "test",
+     "name": "an_input_over_the_projections_capacity_is_reported_as_such_and_nothing_is_asked",
+     "range": [
+      4941,
+      5020
+     ]
+    },
+    {
+     "kind": "test",
+     "name": "the_harness_names_every_way_a_projection_can_fail_its_checks",
+     "range": [
+      5037,
+      5097
+     ]
+    },
+    {
+     "kind": "cargo_error",
+     "name": null,
+     "range": [
+      7574,
+      7638
+     ]
+    },
+    {
+     "kind": "test",
+     "name": "a_small_result_is_carried_whole_and_asks_nothing",
+     "range": [
+      9138,
+      9186
+     ]
+    },
+    {
+     "kind": "test",
+     "name": "bytes_that_are_not_text_are_declared_omitted_whole",
+     "range": [
+      9203,
+      9253
+     ]
+    },
+    {
+     "kind": "test",
+     "name": "a_projection_the_investigation_limit_cannot_cover_is_not_started",
+     "range": [
+      9270,
+      9334
+     ]
+    },
+    {
+     "kind": "test",
+     "name": "a_part_that_answers_outside_its_offer_leaves_the_item_unmet_with_that_reason",
+     "range": [
+      9351,
+      9427
+     ]
+    },
+    {
+     "kind": "test",
+     "name": "a_parts_record_is_readable_only_by_a_reader_who_can_read_the_evidence_it_was_made_from",
+     "range": [
+      9444,
+      9530
+     ]
+    },
+    {
+     "kind": "test",
+     "name": "a_projection_rebuilt_offline_reproduces_its_section",
+     "range": [
+      9547,
+      9598
+     ]
+    },
+    {
+     "kind": "test",
+     "name": "a_large_test_log_is_projected_and_every_byte_is_carried_or_declared_omitted",
+     "range": [
+      9615,
+      9690
+     ]
+    },
+    {
+     "kind": "test",
+     "name": "a_json_document_is_projected_by_its_structure_and_its_failures_are_named",
+     "range": [
+      9707,
+      9779
+     ]
+    },
+    {
+     "kind": "test",
+     "name": "a_parts_record_is_sealed_under_the_artifact_it_showed_and_no_other",
+     "range": [
+      9796,
+      9862
+     ]
+    },
+    {
+     "kind": "test",
+     "name": "evidence_the_submitter_cannot_read_is_unavailable_exactly_as_evidence_that_does_not_exist",
+     "range": [
+      9879,
+      9968
+     ]
+    },
+    {
+     "kind": "test",
+     "name": "with_no_investigation_the_projection_carries_run_identity_and_the_failures",
+     "range": [
+      9985,
+      10059
+     ]
+    },
+    {
+     "kind": "test",
+     "name": "an_input_over_the_projections_capacity_is_insufficient_capacity_and_never_a_partial_summary",
+     "range": [
+      10076,
+      10167
+     ]
+    },
+    {
+     "kind": "cargo_error",
+     "name": null,
+     "range": [
+      15840,
+      15905
+     ]
+    },
+    {
+     "kind": "cargo_error",
+     "name": null,
+     "range": [
+      65161,
+      65185
+     ]
+    }
+   ],
+   "expected_named_count": 21,
+   "failing_result_lines": [
+    [
+     7475,
+     7572
+    ],
+    [
+     15740,
+     15838
+    ]
+   ],
+   "failing_tests": [
+    {
+     "assertion": [
+      5198,
+      5387
+     ],
+     "binary": "j2_harness",
+     "block": [
+      5121,
+      5465
+     ],
+     "block_header": [
+      5121,
+      5196
+     ],
+     "failures_list_entry": [
+      7411,
+      7473
+     ],
+     "failures_list_heading": [
+      7021,
+      7030
+     ],
+     "location": "crates/cbr-cli/tests/j2_harness.rs:36:5",
+     "message_lines": [
+      [
+       5331,
+       5387
+      ]
+     ],
+     "message_sha256": [
+      "e8efb50493192e688b1b23337efa15892df7ccf50cb41ca5615766a7305559f2"
+     ],
+     "message_text": [
+      null
+     ],
+     "name": "the_harness_stops_before_a_run_its_ceiling_could_not_cover",
+     "name_range": [
+      4599,
+      4657
+     ],
+     "panic_line": [
+      5198,
+      5330
+     ],
+     "status_line": [
+      4594,
+      4668
+     ],
+     "value_bearing": false
+    },
+    {
+     "assertion": [
+      5565,
+      5775
+     ],
+     "binary": "j2_harness",
+     "block": [
+      5467,
+      5775
+     ],
+     "block_header": [
+      5467,
+      5563
+     ],
+     "failures_list_entry": [
+      7258,
+      7341
+     ],
+     "failures_list_heading": [
+      7021,
+      7030
+     ],
+     "location": "crates/cbr-cli/tests/j2_harness.rs:36:5",
+     "message_lines": [
+      [
+       5719,
+       5775
+      ]
+     ],
+     "message_sha256": [
+      "e8efb50493192e688b1b23337efa15892df7ccf50cb41ca5615766a7305559f2"
+     ],
+     "message_text": [
+      null
+     ],
+     "name": "the_harness_refuses_an_input_that_carries_a_machine_path_before_anything_starts",
+     "name_range": [
+      4674,
+      4753
+     ],
+     "panic_line": [
+      5565,
+      5718
+     ],
+     "status_line": [
+      4669,
+      4764
+     ],
+     "value_bearing": false
+    },
+    {
+     "assertion": [
+      5860,
+      6055
+     ],
+     "binary": "j2_harness",
+     "block": [
+      5777,
+      6055
+     ],
+     "block_header": [
+      5777,
+      5858
+     ],
+     "failures_list_entry": [
+      7342,
+      7410
+     ],
+     "failures_list_heading": [
+      7021,
+      7030
+     ],
+     "location": "crates/cbr-cli/tests/j2_harness.rs:36:5",
+     "message_lines": [
+      [
+       5999,
+       6055
+      ]
+     ],
+     "message_sha256": [
+      "e8efb50493192e688b1b23337efa15892df7ccf50cb41ca5615766a7305559f2"
+     ],
+     "message_text": [
+      null
+     ],
+     "name": "the_harness_refuses_every_run_it_should_before_anything_is_spent",
+     "name_range": [
+      4770,
+      4834
+     ],
+     "panic_line": [
+      5860,
+      5998
+     ],
+     "status_line": [
+      4765,
+      4845
+     ],
+     "value_bearing": false
+    },
+    {
+     "assertion": [
+      6149,
+      6353
+     ],
+     "binary": "j2_harness",
+     "block": [
+      6057,
+      6353
+     ],
+     "block_header": [
+      6057,
+      6147
+     ],
+     "failures_list_entry": [
+      7031,
+      7108
+     ],
+     "failures_list_heading": [
+      7021,
+      7030
+     ],
+     "location": "crates/cbr-cli/tests/j2_harness.rs:36:5",
+     "message_lines": [
+      [
+       6297,
+       6353
+      ]
+     ],
+     "message_sha256": [
+      "e8efb50493192e688b1b23337efa15892df7ccf50cb41ca5615766a7305559f2"
+     ],
+     "message_text": [
+      null
+     ],
+     "name": "a_dry_run_projects_a_test_log_checks_it_against_its_bytes_and_rebuilds_it",
+     "name_range": [
+      4851,
+      4924
+     ],
+     "panic_line": [
+      6149,
+      6296
+     ],
+     "status_line": [
+      4846,
+      4935
+     ],
+     "value_bearing": false
+    },
+    {
+     "assertion": [
+      6453,
+      6663
+     ],
+     "binary": "j2_harness",
+     "block": [
+      6355,
+      6663
+     ],
+     "block_header": [
+      6355,
+      6451
+     ],
+     "failures_list_entry": [
+      7109,
+      7192
+     ],
+     "failures_list_heading": [
+      7021,
+      7030
+     ],
+     "location": "crates/cbr-cli/tests/j2_harness.rs:36:5",
+     "message_lines": [
+      [
+       6607,
+       6663
+      ]
+     ],
+     "message_sha256": [
+      "e8efb50493192e688b1b23337efa15892df7ccf50cb41ca5615766a7305559f2"
+     ],
+     "message_text": [
+      null
+     ],
+     "name": "an_input_over_the_projections_capacity_is_reported_as_such_and_nothing_is_asked",
+     "name_range": [
+      4941,
+      5020
+     ],
+     "panic_line": [
+      6453,
+      6606
+     ],
+     "status_line": [
+      4936,
+      5031
+     ],
+     "value_bearing": false
+    },
+    {
+     "assertion": [
+      6744,
+      7017
+     ],
+     "binary": "j2_harness",
+     "block": [
+      6665,
+      7017
+     ],
+     "block_header": [
+      6665,
+      6742
+     ],
+     "failures_list_entry": [
+      7193,
+      7257
+     ],
+     "failures_list_heading": [
+      7021,
+      7030
+     ],
+     "location": "crates/cbr-cli/tests/j2_harness.rs:503:5",
+     "message_lines": [
+      [
+       6880,
+       6914
+      ],
+      [
+       6915,
+       6953
+      ],
+      [
+       6954,
+       6971
+      ],
+      [
+       6972,
+       7017
+      ]
+     ],
+     "message_sha256": [
+      "5dd94ced5a2afb4af3a0a9521dc8f9306236b23b01882c52a80e482ae00be37f",
+      "bec833d5dda5a14efddd51937352f779264a041f282cd8e7cf0e306e5b23bc61",
+      "38e9e68e0876b2a19c5864262d43630258bfb1c3a74fc88b00a3785ce3f70840",
+      "c63a4bc3594534d2d8e68394c8873ba50257e540c2715ed8240f85dbbd6c5976"
+     ],
+     "message_text": [
+      "Traceback (most recent call last):",
+      "  File \"<string>\", line 4, in <module>",
+      "    import j2_run",
+      "ModuleNotFoundError: No module named 'j2_run'"
+     ],
+     "name": "the_harness_names_every_way_a_projection_can_fail_its_checks",
+     "name_range": [
+      5037,
+      5097
+     ],
+     "panic_line": [
+      6744,
+      6879
+     ],
+     "status_line": [
+      5032,
+      5108
+     ],
+     "value_bearing": false
+    },
+    {
+     "assertion": [
+      10258,
+      10414
+     ],
+     "binary": "journey_two",
+     "block": [
+      10191,
+      10492
+     ],
+     "block_header": [
+      10191,
+      10256
+     ],
+     "failures_list_entry": [
+      15362,
+      15414
+     ],
+     "failures_list_heading": [
+      14827,
+      14836
+     ],
+     "location": "crates/cbr-cli/tests/journey_two.rs:467:46",
+     "message_lines": [
+      [
+       10384,
+       10414
+      ]
+     ],
+     "message_sha256": [
+      "36577bf4e20080f5bfe62e814e6069653d29397523cbe20cef888b0366f61a54"
+     ],
+     "message_text": [
+      "a header, then a failures line"
+     ],
+     "name": "a_small_result_is_carried_whole_and_asks_nothing",
+     "name_range": [
+      9138,
+      9186
+     ],
+     "panic_line": [
+      10258,
+      10383
+     ],
+     "status_line": [
+      9133,
+      9197
+     ],
+     "value_bearing": false
+    },
+    {
+     "assertion": [
+      10563,
+      10721
+     ],
+     "binary": "journey_two",
+     "block": [
+      10494,
+      10721
+     ],
+     "block_header": [
+      10494,
+      10561
+     ],
+     "failures_list_entry": [
+      15511,
+      15565
+     ],
+     "failures_list_heading": [
+      14827,
+      14836
+     ],
+     "location": "crates/cbr-cli/tests/journey_two.rs:467:46",
+     "message_lines": [
+      [
+       10691,
+       10721
+      ]
+     ],
+     "message_sha256": [
+      "36577bf4e20080f5bfe62e814e6069653d29397523cbe20cef888b0366f61a54"
+     ],
+     "message_text": [
+      "a header, then a failures line"
+     ],
+     "name": "bytes_that_are_not_text_are_declared_omitted_whole",
+     "name_range": [
+      9203,
+      9253
+     ],
+     "panic_line": [
+      10563,
+      10690
+     ],
+     "status_line": [
+      9198,
+      9264
+     ],
+     "value_bearing": false
+    },
+    {
+     "assertion": [
+      10806,
+      10978
+     ],
+     "binary": "journey_two",
+     "block": [
+      10723,
+      10978
+     ],
+     "block_header": [
+      10723,
+      10804
+     ],
+     "failures_list_entry": [
+      15293,
+      15361
+     ],
+     "failures_list_heading": [
+      14827,
+      14836
+     ],
+     "location": "crates/cbr-cli/tests/journey_two.rs:467:46",
+     "message_lines": [
+      [
+       10948,
+       10978
+      ]
+     ],
+     "message_sha256": [
+      "36577bf4e20080f5bfe62e814e6069653d29397523cbe20cef888b0366f61a54"
+     ],
+     "message_text": [
+      "a header, then a failures line"
+     ],
+     "name": "a_projection_the_investigation_limit_cannot_cover_is_not_started",
+     "name_range": [
+      9270,
+      9334
+     ],
+     "panic_line": [
+      10806,
+      10947
+     ],
+     "status_line": [
+      9265,
+      9345
+     ],
+     "value_bearing": false
+    },
+    {
+     "assertion": [
+      11075,
+      11259
+     ],
+     "binary": "journey_two",
+     "block": [
+      10980,
+      11259
+     ],
+     "block_header": [
+      10980,
+      11073
+     ],
+     "failures_list_entry": [
+      14994,
+      15074
+     ],
+     "failures_list_heading": [
+      14827,
+      14836
+     ],
+     "location": "crates/cbr-cli/tests/journey_two.rs:467:46",
+     "message_lines": [
+      [
+       11229,
+       11259
+      ]
+     ],
+     "message_sha256": [
+      "36577bf4e20080f5bfe62e814e6069653d29397523cbe20cef888b0366f61a54"
+     ],
+     "message_text": [
+      "a header, then a failures line"
+     ],
+     "name": "a_part_that_answers_outside_its_offer_leaves_the_item_unmet_with_that_reason",
+     "name_range": [
+      9351,
+      9427
+     ],
+     "panic_line": [
+      11075,
+      11228
+     ],
+     "status_line": [
+      9346,
+      9438
+     ],
+     "value_bearing": false
+    },
+    {
+     "assertion": [
+      11366,
+      11560
+     ],
+     "binary": "journey_two",
+     "block": [
+      11261,
+      11560
+     ],
+     "block_header": [
+      11261,
+      11364
+     ],
+     "failures_list_entry": [
+      15075,
+      15165
+     ],
+     "failures_list_heading": [
+      14827,
+      14836
+     ],
+     "location": "crates/cbr-cli/tests/journey_two.rs:467:46",
+     "message_lines": [
+      [
+       11530,
+       11560
+      ]
+     ],
+     "message_sha256": [
+      "36577bf4e20080f5bfe62e814e6069653d29397523cbe20cef888b0366f61a54"
+     ],
+     "message_text": [
+      "a header, then a failures line"
+     ],
+     "name": "a_parts_record_is_readable_only_by_a_reader_who_can_read_the_evidence_it_was_made_from",
+     "name_range": [
+      9444,
+      9530
+     ],
+     "panic_line": [
+      11366,
+      11529
+     ],
+     "status_line": [
+      9439,
+      9541
+     ],
+     "value_bearing": false
+    },
+    {
+     "assertion": [
+      11632,
+      11791
+     ],
+     "binary": "journey_two",
+     "block": [
+      11562,
+      11791
+     ],
+     "block_header": [
+      11562,
+      11630
+     ],
+     "failures_list_entry": [
+      15237,
+      15292
+     ],
+     "failures_list_heading": [
+      14827,
+      14836
+     ],
+     "location": "crates/cbr-cli/tests/journey_two.rs:467:46",
+     "message_lines": [
+      [
+       11761,
+       11791
+      ]
+     ],
+     "message_sha256": [
+      "36577bf4e20080f5bfe62e814e6069653d29397523cbe20cef888b0366f61a54"
+     ],
+     "message_text": [
+      "a header, then a failures line"
+     ],
+     "name": "a_projection_rebuilt_offline_reproduces_its_section",
+     "name_range": [
+      9547,
+      9598
+     ],
+     "panic_line": [
+      11632,
+      11760
+     ],
+     "status_line": [
+      9542,
+      9609
+     ],
+     "value_bearing": false
+    },
+    {
+     "assertion": [
+      11887,
+      12070
+     ],
+     "binary": "journey_two",
+     "block": [
+      11793,
+      12070
+     ],
+     "block_header": [
+      11793,
+      11885
+     ],
+     "failures_list_entry": [
+      14914,
+      14993
+     ],
+     "failures_list_heading": [
+      14827,
+      14836
+     ],
+     "location": "crates/cbr-cli/tests/journey_two.rs:467:46",
+     "message_lines": [
+      [
+       12040,
+       12070
+      ]
+     ],
+     "message_sha256": [
+      "36577bf4e20080f5bfe62e814e6069653d29397523cbe20cef888b0366f61a54"
+     ],
+     "message_text": [
+      "a header, then a failures line"
+     ],
+     "name": "a_large_test_log_is_projected_and_every_byte_is_carried_or_declared_omitted",
+     "name_range": [
+      9615,
+      9690
+     ],
+     "panic_line": [
+      11887,
+      12039
+     ],
+     "status_line": [
+      9610,
+      9701
+     ],
+     "value_bearing": false
+    },
+    {
+     "assertion": [
+      12163,
+      12343
+     ],
+     "binary": "journey_two",
+     "block": [
+      12072,
+      12343
+     ],
+     "block_header": [
+      12072,
+      12161
+     ],
+     "failures_list_entry": [
+      14837,
+      14913
+     ],
+     "failures_list_heading": [
+      14827,
+      14836
+     ],
+     "location": "crates/cbr-cli/tests/journey_two.rs:467:46",
+     "message_lines": [
+      [
+       12313,
+       12343
+      ]
+     ],
+     "message_sha256": [
+      "36577bf4e20080f5bfe62e814e6069653d29397523cbe20cef888b0366f61a54"
+     ],
+     "message_text": [
+      "a header, then a failures line"
+     ],
+     "name": "a_json_document_is_projected_by_its_structure_and_its_failures_are_named",
+     "name_range": [
+      9707,
+      9779
+     ],
+     "panic_line": [
+      12163,
+      12312
+     ],
+     "status_line": [
+      9702,
+      9790
+     ],
+     "value_bearing": false
+    },
+    {
+     "assertion": [
+      12430,
+      12604
+     ],
+     "binary": "journey_two",
+     "block": [
+      12345,
+      12604
+     ],
+     "block_header": [
+      12345,
+      12428
+     ],
+     "failures_list_entry": [
+      15166,
+      15236
+     ],
+     "failures_list_heading": [
+      14827,
+      14836
+     ],
+     "location": "crates/cbr-cli/tests/journey_two.rs:467:46",
+     "message_lines": [
+      [
+       12574,
+       12604
+      ]
+     ],
+     "message_sha256": [
+      "36577bf4e20080f5bfe62e814e6069653d29397523cbe20cef888b0366f61a54"
+     ],
+     "message_text": [
+      "a header, then a failures line"
+     ],
+     "name": "a_parts_record_is_sealed_under_the_artifact_it_showed_and_no_other",
+     "name_range": [
+      9796,
+      9862
+     ],
+     "panic_line": [
+      12430,
+      12573
+     ],
+     "status_line": [
+      9791,
+      9873
+     ],
+     "value_bearing": false
+    },
+    {
+     "assertion": [
+      12714,
+      12981
+     ],
+     "binary": "journey_two",
+     "block": [
+      12606,
+      12981
+     ],
+     "block_header": [
+      12606,
+      12712
+     ],
+     "failures_list_entry": [
+      15566,
+      15659
+     ],
+     "failures_list_heading": [
+      14827,
+      14836
+     ],
+     "location": "crates/cbr-cli/tests/journey_two.rs:1070:5",
+     "message_lines": [
+      [
+       12881,
+       12913
+      ],
+      [
+       12914,
+       12939
+      ],
+      [
+       12940,
+       12981
+      ]
+     ],
+     "message_sha256": [
+      "20de177785ff42552884c0fc2b6204bd2db1e696429bf8ec75f4862029a5eeb7",
+      "c5c6702c1db29b79051647ca3264906cc992f7cbd16b62f7415e8367d90eb02c",
+      "29179632c90c332f38a3ddf688190a86ffb6fb33aaf6b1393bf56e2525d1e3e0"
+     ],
+     "message_text": [
+      "assertion `left == right` failed",
+      "  left: (\"satisfied\", \"\")",
+      " right: (\"unmet\", \"evidence_unavailable\")"
+     ],
+     "name": "evidence_the_submitter_cannot_read_is_unavailable_exactly_as_evidence_that_does_not_exist",
+     "name_range": [
+      9879,
+      9968
+     ],
+     "panic_line": [
+      12714,
+      12880
+     ],
+     "status_line": [
+      9874,
+      9979
+     ],
+     "value_bearing": true
+    },
+    {
+     "assertion": [
+      13076,
+      13258
+     ],
+     "binary": "journey_two",
+     "block": [
+      12983,
+      13258
+     ],
+     "block_header": [
+      12983,
+      13074
+     ],
+     "failures_list_entry": [
+      15660,
+      15738
+     ],
+     "failures_list_heading": [
+      14827,
+      14836
+     ],
+     "location": "crates/cbr-cli/tests/journey_two.rs:467:46",
+     "message_lines": [
+      [
+       13228,
+       13258
+      ]
+     ],
+     "message_sha256": [
+      "36577bf4e20080f5bfe62e814e6069653d29397523cbe20cef888b0366f61a54"
+     ],
+     "message_text": [
+      "a header, then a failures line"
+     ],
+     "name": "with_no_investigation_the_projection_carries_run_identity_and_the_failures",
+     "name_range": [
+      9985,
+      10059
+     ],
+     "panic_line": [
+      13076,
+      13227
+     ],
+     "status_line": [
+      9980,
+      10070
+     ],
+     "value_bearing": false
+    },
+    {
+     "assertion": [
+      13370,
+      14824
+     ],
+     "binary": "journey_two",
+     "block": [
+      13260,
+      14824
+     ],
+     "block_header": [
+      13260,
+      13368
+     ],
+     "failures_list_entry": [
+      15415,
+      15510
+     ],
+     "failures_list_heading": [
+      14827,
+      14836
+     ],
+     "location": "crates/cbr-cli/tests/journey_two.rs:788:9",
+     "message_lines": [
+      [
+       13538,
+       14755
+      ],
+      [
+       14756,
+       14781
+      ],
+      [
+       14782,
+       14824
+      ]
+     ],
+     "message_sha256": [
+      "aaa017f44a98ca00edea9a4657c6fb45de57b7c943c86a5dfab93de823bcd194",
+      "c5c6702c1db29b79051647ca3264906cc992f7cbd16b62f7415e8367d90eb02c",
+      "db55b260588f1ce2e827a729ccaf0cd9814a2b6ed06e3e5be7b9af1b6bd9104c"
+     ],
+     "message_text": [
+      "assertion `left == right` failed: assisted: Object([(\"consumer\", Object([(\"principal\", String(\"cbr-cli\")), (\"task\", String(\"which tests failed, and what did they assert\"))])), (\"items\", Array([Object([(\"item_id\", String(\"log\")), (\"obligation\", String(\"required_before_start\")), (\"result\", String(\"satisfied\"))])])), (\"job\", Object([(\"id\", String(\"assisted\")), (\"kind\", String(\"context.job\"))])), (\"limits\", Object([(\"deadline\", String(\"2099-01-01T00:00:00Z\")), (\"investigation\", Object([(\"amount\", Int(8)), (\"units\", String(\"calls\"))])), (\"output_capacity\", Object([(\"amount\", Int(65536)), (\"units\", String(\"bytes\"))]))])), (\"packets\", Array([Object([(\"current\", Bool(true)), (\"reference\", Object([(\"artifact\", Object([(\"artifact\", Object([(\"id\", String(\"packet.assisted.1\")), (\"kind\", String(\"evidence.artifact\"))])), (\"digest\", String(\"sha256:6dfbdb8d4313d77a7b982f91671c9f25258f659e6af1c9645ed96d07a82d0a56\")), (\"provider\", String(\"conformance-provider\"))])), (\"packet\", Object([(\"id\", String(\"assisted\")), (\"kind\", String(\"context.packet\"))])), (\"revision\", Int(1))]))])])), (\"request\", Object([(\"id\", String(\"assisted\")), (\"kind\", String(\"context.request\"))])), (\"revision\", Int(2)), (\"state\", String(\"ready\"))])",
+      "  left: (\"satisfied\", \"\")",
+      " right: (\"unmet\", \"insufficient_capacity\")"
+     ],
+     "name": "an_input_over_the_projections_capacity_is_insufficient_capacity_and_never_a_partial_summary",
+     "name_range": [
+      10076,
+      10167
+     ],
+     "panic_line": [
+      13370,
+      13537
+     ],
+     "status_line": [
+      10071,
+      10178
+     ],
+     "value_bearing": true
+    }
+   ],
+   "failing_tests_count": 18,
+   "failures_lists": [
+    {
+     "binary": "j2_harness",
+     "entries": [
+      [
+       7031,
+       7108
+      ],
+      [
+       7109,
+       7192
+      ],
+      [
+       7193,
+       7257
+      ],
+      [
+       7258,
+       7341
+      ],
+      [
+       7342,
+       7410
+      ],
+      [
+       7411,
+       7473
+      ]
+     ],
+     "heading": [
+      7021,
+      7030
+     ]
+    },
+    {
+     "binary": "journey_two",
+     "entries": [
+      [
+       14837,
+       14913
+      ],
+      [
+       14914,
+       14993
+      ],
+      [
+       14994,
+       15074
+      ],
+      [
+       15075,
+       15165
+      ],
+      [
+       15166,
+       15236
+      ],
+      [
+       15237,
+       15292
+      ],
+      [
+       15293,
+       15361
+      ],
+      [
+       15362,
+       15414
+      ],
+      [
+       15415,
+       15510
+      ],
+      [
+       15511,
+       15565
+      ],
+      [
+       15566,
+       15659
+      ],
+      [
+       15660,
+       15738
+      ]
+     ],
+     "heading": [
+      14827,
+      14836
+     ]
+    }
+   ],
+   "ignored_tests": [
+    {
+     "binary": "stall",
+     "line": [
+      21855,
+      21987
+     ],
+     "name": "the_preparation_tick_is_not_held_by_an_index_build",
+     "text": "test the_preparation_tick_is_not_held_by_an_index_build ... ignored, measures a stall against a checkout named by CBR_STALL_CHECKOUT"
+    }
+   ],
+   "input": "cargo-test-f73415d.log",
+   "line_classes": [
+    [
+     0,
+     229,
+     "build"
+    ],
+    [
+     229,
+     305,
+     "identity"
+    ],
+    [
+     305,
+     306,
+     "blank"
+    ],
+    [
+     306,
+     322,
+     "identity"
+    ],
+    [
+     322,
+     323,
+     "blank"
+    ],
+    [
+     323,
+     417,
+     "identity"
+    ],
+    [
+     417,
+     418,
+     "blank"
+    ],
+    [
+     418,
+     503,
+     "identity"
+    ],
+    [
+     503,
+     504,
+     "blank"
+    ],
+    [
+     504,
+     520,
+     "identity"
+    ],
+    [
+     520,
+     829,
+     "pass"
+    ],
+    [
+     829,
+     830,
+     "blank"
+    ],
+    [
+     830,
+     924,
+     "identity"
+    ],
+    [
+     924,
+     925,
+     "blank"
+    ],
+    [
+     925,
+     1020,
+     "identity"
+    ],
+    [
+     1020,
+     1021,
+     "blank"
+    ],
+    [
+     1021,
+     1037,
+     "identity"
+    ],
+    [
+     1037,
+     1534,
+     "pass"
+    ],
+    [
+     1534,
+     1535,
+     "blank"
+    ],
+    [
+     1535,
+     1629,
+     "identity"
+    ],
+    [
+     1629,
+     1630,
+     "blank"
+    ],
+    [
+     1630,
+     1727,
+     "identity"
+    ],
+    [
+     1727,
+     1728,
+     "blank"
+    ],
+    [
+     1728,
+     1745,
+     "identity"
+    ],
+    [
+     1745,
+     2496,
+     "pass"
+    ],
+    [
+     2496,
+     2497,
+     "blank"
+    ],
+    [
+     2497,
+     2592,
+     "identity"
+    ],
+    [
+     2592,
+     2593,
+     "blank"
+    ],
+    [
+     2593,
+     2688,
+     "identity"
+    ],
+    [
+     2688,
+     2689,
+     "blank"
+    ],
+    [
+     2689,
+     2706,
+     "identity"
+    ],
+    [
+     2706,
+     3417,
+     "pass"
+    ],
+    [
+     3417,
+     3418,
+     "blank"
+    ],
+    [
+     3418,
+     3513,
+     "identity"
+    ],
+    [
+     3513,
+     3514,
+     "blank"
+    ],
+    [
+     3514,
+     3605,
+     "identity"
+    ],
+    [
+     3605,
+     3606,
+     "blank"
+    ],
+    [
+     3606,
+     3622,
+     "identity"
+    ],
+    [
+     3622,
+     3987,
+     "pass"
+    ],
+    [
+     3987,
+     3988,
+     "blank"
+    ],
+    [
+     3988,
+     4082,
+     "identity"
+    ],
+    [
+     4082,
+     4083,
+     "blank"
+    ],
+    [
+     4083,
+     4176,
+     "identity"
+    ],
+    [
+     4176,
+     4177,
+     "blank"
+    ],
+    [
+     4177,
+     4193,
+     "identity"
+    ],
+    [
+     4193,
+     4400,
+     "pass"
+    ],
+    [
+     4400,
+     4401,
+     "blank"
+    ],
+    [
+     4401,
+     4495,
+     "identity"
+    ],
+    [
+     4495,
+     4496,
+     "blank"
+    ],
+    [
+     4496,
+     4577,
+     "identity"
+    ],
+    [
+     4577,
+     4578,
+     "blank"
+    ],
+    [
+     4578,
+     4594,
+     "identity"
+    ],
+    [
+     4594,
+     5109,
+     "failure"
+    ],
+    [
+     5109,
+     5110,
+     "blank"
+    ],
+    [
+     5110,
+     5120,
+     "failure"
+    ],
+    [
+     5120,
+     5121,
+     "blank"
+    ],
+    [
+     5121,
+     5466,
+     "failure"
+    ],
+    [
+     5466,
+     5467,
+     "blank"
+    ],
+    [
+     5467,
+     5776,
+     "failure"
+    ],
+    [
+     5776,
+     5777,
+     "blank"
+    ],
+    [
+     5777,
+     6056,
+     "failure"
+    ],
+    [
+     6056,
+     6057,
+     "blank"
+    ],
+    [
+     6057,
+     6354,
+     "failure"
+    ],
+    [
+     6354,
+     6355,
+     "blank"
+    ],
+    [
+     6355,
+     6664,
+     "failure"
+    ],
+    [
+     6664,
+     6665,
+     "blank"
+    ],
+    [
+     6665,
+     7018,
+     "failure"
+    ],
+    [
+     7018,
+     7021,
+     "blank"
+    ],
+    [
+     7021,
+     7474,
+     "failure"
+    ],
+    [
+     7474,
+     7475,
+     "blank"
+    ],
+    [
+     7475,
+     7573,
+     "failure"
+    ],
+    [
+     7573,
+     7574,
+     "blank"
+    ],
+    [
+     7574,
+     7639,
+     "failure"
+    ],
+    [
+     7639,
+     7722,
+     "identity"
+    ],
+    [
+     7722,
+     7723,
+     "blank"
+    ],
+    [
+     7723,
+     7739,
+     "identity"
+    ],
+    [
+     7739,
+     7894,
+     "pass"
+    ],
+    [
+     7894,
+     8504,
+     "other"
+    ],
+    [
+     8504,
+     8934,
+     "pass"
+    ],
+    [
+     8934,
+     8935,
+     "blank"
+    ],
+    [
+     8935,
+     9031,
+     "identity"
+    ],
+    [
+     9031,
+     9032,
+     "blank"
+    ],
+    [
+     9032,
+     9115,
+     "identity"
+    ],
+    [
+     9115,
+     9116,
+     "blank"
+    ],
+    [
+     9116,
+     9133,
+     "identity"
+    ],
+    [
+     9133,
+     10179,
+     "failure"
+    ],
+    [
+     10179,
+     10180,
+     "blank"
+    ],
+    [
+     10180,
+     10190,
+     "failure"
+    ],
+    [
+     10190,
+     10191,
+     "blank"
+    ],
+    [
+     10191,
+     10493,
+     "failure"
+    ],
+    [
+     10493,
+     10494,
+     "blank"
+    ],
+    [
+     10494,
+     10722,
+     "failure"
+    ],
+    [
+     10722,
+     10723,
+     "blank"
+    ],
+    [
+     10723,
+     10979,
+     "failure"
+    ],
+    [
+     10979,
+     10980,
+     "blank"
+    ],
+    [
+     10980,
+     11260,
+     "failure"
+    ],
+    [
+     11260,
+     11261,
+     "blank"
+    ],
+    [
+     11261,
+     11561,
+     "failure"
+    ],
+    [
+     11561,
+     11562,
+     "blank"
+    ],
+    [
+     11562,
+     11792,
+     "failure"
+    ],
+    [
+     11792,
+     11793,
+     "blank"
+    ],
+    [
+     11793,
+     12071,
+     "failure"
+    ],
+    [
+     12071,
+     12072,
+     "blank"
+    ],
+    [
+     12072,
+     12344,
+     "failure"
+    ],
+    [
+     12344,
+     12345,
+     "blank"
+    ],
+    [
+     12345,
+     12605,
+     "failure"
+    ],
+    [
+     12605,
+     12606,
+     "blank"
+    ],
+    [
+     12606,
+     12982,
+     "failure"
+    ],
+    [
+     12982,
+     12983,
+     "blank"
+    ],
+    [
+     12983,
+     13259,
+     "failure"
+    ],
+    [
+     13259,
+     13260,
+     "blank"
+    ],
+    [
+     13260,
+     14825,
+     "failure"
+    ],
+    [
+     14825,
+     14827,
+     "blank"
+    ],
+    [
+     14827,
+     15739,
+     "failure"
+    ],
+    [
+     15739,
+     15740,
+     "blank"
+    ],
+    [
+     15740,
+     15839,
+     "failure"
+    ],
+    [
+     15839,
+     15840,
+     "blank"
+    ],
+    [
+     15840,
+     15906,
+     "failure"
+    ],
+    [
+     15906,
+     15997,
+     "identity"
+    ],
+    [
+     15997,
+     15998,
+     "blank"
+    ],
+    [
+     15998,
+     16014,
+     "identity"
+    ],
+    [
+     16014,
+     16167,
+     "pass"
+    ],
+    [
+     16167,
+     16168,
+     "blank"
+    ],
+    [
+     16168,
+     16262,
+     "identity"
+    ],
+    [
+     16262,
+     16263,
+     "blank"
+    ],
+    [
+     16263,
+     16346,
+     "identity"
+    ],
+    [
+     16346,
+     16347,
+     "blank"
+    ],
+    [
+     16347,
+     16364,
+     "identity"
+    ],
+    [
+     16364,
+     17578,
+     "pass"
+    ],
+    [
+     17578,
+     17579,
+     "blank"
+    ],
+    [
+     17579,
+     17674,
+     "identity"
+    ],
+    [
+     17674,
+     17675,
+     "blank"
+    ],
+    [
+     17675,
+     17772,
+     "identity"
+    ],
+    [
+     17772,
+     17773,
+     "blank"
+    ],
+    [
+     17773,
+     17789,
+     "identity"
+    ],
+    [
+     17789,
+     18205,
+     "pass"
+    ],
+    [
+     18205,
+     18206,
+     "blank"
+    ],
+    [
+     18206,
+     18300,
+     "identity"
+    ],
+    [
+     18300,
+     18301,
+     "blank"
+    ],
+    [
+     18301,
+     18392,
+     "identity"
+    ],
+    [
+     18392,
+     18393,
+     "blank"
+    ],
+    [
+     18393,
+     18410,
+     "identity"
+    ],
+    [
+     18410,
+     19413,
+     "pass"
+    ],
+    [
+     19413,
+     19414,
+     "blank"
+    ],
+    [
+     19414,
+     19510,
+     "identity"
+    ],
+    [
+     19510,
+     19511,
+     "blank"
+    ],
+    [
+     19511,
+     19602,
+     "identity"
+    ],
+    [
+     19602,
+     19603,
+     "blank"
+    ],
+    [
+     19603,
+     19620,
+     "identity"
+    ],
+    [
+     19620,
+     20316,
+     "pass"
+    ],
+    [
+     20316,
+     20317,
+     "blank"
+    ],
+    [
+     20317,
+     20413,
+     "identity"
+    ],
+    [
+     20413,
+     20414,
+     "blank"
+    ],
+    [
+     20414,
+     20503,
+     "identity"
+    ],
+    [
+     20503,
+     20504,
+     "blank"
+    ],
+    [
+     20504,
+     20520,
+     "identity"
+    ],
+    [
+     20520,
+     20869,
+     "pass"
+    ],
+    [
+     20869,
+     20870,
+     "blank"
+    ],
+    [
+     20870,
+     20964,
+     "identity"
+    ],
+    [
+     20964,
+     20965,
+     "blank"
+    ],
+    [
+     20965,
+     21078,
+     "identity"
+    ],
+    [
+     21078,
+     21079,
+     "blank"
+    ],
+    [
+     21079,
+     21095,
+     "identity"
+    ],
+    [
+     21095,
+     21672,
+     "pass"
+    ],
+    [
+     21672,
+     21673,
+     "blank"
+    ],
+    [
+     21673,
+     21767,
+     "identity"
+    ],
+    [
+     21767,
+     21768,
+     "blank"
+    ],
+    [
+     21768,
+     21839,
+     "identity"
+    ],
+    [
+     21839,
+     21840,
+     "blank"
+    ],
+    [
+     21840,
+     21855,
+     "identity"
+    ],
+    [
+     21855,
+     21988,
+     "ignored"
+    ],
+    [
+     21988,
+     21989,
+     "blank"
+    ],
+    [
+     21989,
+     22083,
+     "identity"
+    ],
+    [
+     22083,
+     22084,
+     "blank"
+    ],
+    [
+     22084,
+     22168,
+     "identity"
+    ],
+    [
+     22168,
+     22169,
+     "blank"
+    ],
+    [
+     22169,
+     22184,
+     "identity"
+    ],
+    [
+     22184,
+     22264,
+     "pass"
+    ],
+    [
+     22264,
+     22265,
+     "blank"
+    ],
+    [
+     22265,
+     22359,
+     "identity"
+    ],
+    [
+     22359,
+     22360,
+     "blank"
+    ],
+    [
+     22360,
+     22441,
+     "identity"
+    ],
+    [
+     22441,
+     22442,
+     "blank"
+    ],
+    [
+     22442,
+     22459,
+     "identity"
+    ],
+    [
+     22459,
+     23337,
+     "pass"
+    ],
+    [
+     23337,
+     23338,
+     "blank"
+    ],
+    [
+     23338,
+     23433,
+     "identity"
+    ],
+    [
+     23433,
+     23434,
+     "blank"
+    ],
+    [
+     23434,
+     23509,
+     "identity"
+    ],
+    [
+     23509,
+     23510,
+     "blank"
+    ],
+    [
+     23510,
+     23526,
+     "identity"
+    ],
+    [
+     23526,
+     23749,
+     "pass"
+    ],
+    [
+     23749,
+     23750,
+     "blank"
+    ],
+    [
+     23750,
+     23844,
+     "identity"
+    ],
+    [
+     23844,
+     23845,
+     "blank"
+    ],
+    [
+     23845,
+     23929,
+     "identity"
+    ],
+    [
+     23929,
+     23930,
+     "blank"
+    ],
+    [
+     23930,
+     23946,
+     "identity"
+    ],
+    [
+     23946,
+     23947,
+     "blank"
+    ],
+    [
+     23947,
+     24041,
+     "identity"
+    ],
+    [
+     24041,
+     24042,
+     "blank"
+    ],
+    [
+     24042,
+     24119,
+     "identity"
+    ],
+    [
+     24119,
+     24120,
+     "blank"
+    ],
+    [
+     24120,
+     24136,
+     "identity"
+    ],
+    [
+     24136,
+     24598,
+     "pass"
+    ],
+    [
+     24598,
+     24599,
+     "blank"
+    ],
+    [
+     24599,
+     24693,
+     "identity"
+    ],
+    [
+     24693,
+     24694,
+     "blank"
+    ],
+    [
+     24694,
+     24776,
+     "identity"
+    ],
+    [
+     24776,
+     24777,
+     "blank"
+    ],
+    [
+     24777,
+     24793,
+     "identity"
+    ],
+    [
+     24793,
+     25020,
+     "pass"
+    ],
+    [
+     25020,
+     25021,
+     "blank"
+    ],
+    [
+     25021,
+     25115,
+     "identity"
+    ],
+    [
+     25115,
+     25116,
+     "blank"
+    ],
+    [
+     25116,
+     25191,
+     "identity"
+    ],
+    [
+     25191,
+     25192,
+     "blank"
+    ],
+    [
+     25192,
+     25208,
+     "identity"
+    ],
+    [
+     25208,
+     25645,
+     "pass"
+    ],
+    [
+     25645,
+     25646,
+     "blank"
+    ],
+    [
+     25646,
+     25740,
+     "identity"
+    ],
+    [
+     25740,
+     25741,
+     "blank"
+    ],
+    [
+     25741,
+     25842,
+     "identity"
+    ],
+    [
+     25842,
+     25843,
+     "blank"
+    ],
+    [
+     25843,
+     25859,
+     "identity"
+    ],
+    [
+     25859,
+     26209,
+     "pass"
+    ],
+    [
+     26209,
+     26320,
+     "other"
+    ],
+    [
+     26320,
+     26401,
+     "pass"
+    ],
+    [
+     26401,
+     26402,
+     "blank"
+    ],
+    [
+     26402,
+     26498,
+     "identity"
+    ],
+    [
+     26498,
+     26499,
+     "blank"
+    ],
+    [
+     26499,
+     26584,
+     "identity"
+    ],
+    [
+     26584,
+     26585,
+     "blank"
+    ],
+    [
+     26585,
+     26600,
+     "identity"
+    ],
+    [
+     26600,
+     26688,
+     "pass"
+    ],
+    [
+     26688,
+     26689,
+     "blank"
+    ],
+    [
+     26689,
+     26783,
+     "identity"
+    ],
+    [
+     26783,
+     26784,
+     "blank"
+    ],
+    [
+     26784,
+     26865,
+     "identity"
+    ],
+    [
+     26865,
+     26866,
+     "blank"
+    ],
+    [
+     26866,
+     26882,
+     "identity"
+    ],
+    [
+     26882,
+     27036,
+     "pass"
+    ],
+    [
+     27036,
+     27037,
+     "blank"
+    ],
+    [
+     27037,
+     27131,
+     "identity"
+    ],
+    [
+     27131,
+     27132,
+     "blank"
+    ],
+    [
+     27132,
+     27207,
+     "identity"
+    ],
+    [
+     27207,
+     27208,
+     "blank"
+    ],
+    [
+     27208,
+     27224,
+     "identity"
+    ],
+    [
+     27224,
+     27740,
+     "pass"
+    ],
+    [
+     27740,
+     27741,
+     "blank"
+    ],
+    [
+     27741,
+     27835,
+     "identity"
+    ],
+    [
+     27835,
+     27836,
+     "blank"
+    ],
+    [
+     27836,
+     27915,
+     "identity"
+    ],
+    [
+     27915,
+     27916,
+     "blank"
+    ],
+    [
+     27916,
+     27933,
+     "identity"
+    ],
+    [
+     27933,
+     28943,
+     "pass"
+    ],
+    [
+     28943,
+     28944,
+     "blank"
+    ],
+    [
+     28944,
+     29039,
+     "identity"
+    ],
+    [
+     29039,
+     29040,
+     "blank"
+    ],
+    [
+     29040,
+     29125,
+     "identity"
+    ],
+    [
+     29125,
+     29126,
+     "blank"
+    ],
+    [
+     29126,
+     29144,
+     "identity"
+    ],
+    [
+     29144,
+     60342,
+     "pass"
+    ],
+    [
+     60342,
+     60343,
+     "blank"
+    ],
+    [
+     60343,
+     60439,
+     "identity"
+    ],
+    [
+     60439,
+     60440,
+     "blank"
+    ],
+    [
+     60440,
+     60515,
+     "identity"
+    ],
+    [
+     60515,
+     60516,
+     "blank"
+    ],
+    [
+     60516,
+     60532,
+     "identity"
+    ],
+    [
+     60532,
+     61023,
+     "pass"
+    ],
+    [
+     61023,
+     61024,
+     "blank"
+    ],
+    [
+     61024,
+     61118,
+     "identity"
+    ],
+    [
+     61118,
+     61119,
+     "blank"
+    ],
+    [
+     61119,
+     61204,
+     "identity"
+    ],
+    [
+     61204,
+     61205,
+     "blank"
+    ],
+    [
+     61205,
+     61221,
+     "identity"
+    ],
+    [
+     61221,
+     61846,
+     "pass"
+    ],
+    [
+     61846,
+     61847,
+     "blank"
+    ],
+    [
+     61847,
+     61941,
+     "identity"
+    ],
+    [
+     61941,
+     61942,
+     "blank"
+    ],
+    [
+     61942,
+     62045,
+     "identity"
+    ],
+    [
+     62045,
+     62046,
+     "blank"
+    ],
+    [
+     62046,
+     62062,
+     "identity"
+    ],
+    [
+     62062,
+     62210,
+     "pass"
+    ],
+    [
+     62210,
+     62211,
+     "blank"
+    ],
+    [
+     62211,
+     62305,
+     "identity"
+    ],
+    [
+     62305,
+     62306,
+     "blank"
+    ],
+    [
+     62306,
+     62385,
+     "identity"
+    ],
+    [
+     62385,
+     62386,
+     "blank"
+    ],
+    [
+     62386,
+     62402,
+     "identity"
+    ],
+    [
+     62402,
+     62554,
+     "pass"
+    ],
+    [
+     62554,
+     62555,
+     "blank"
+    ],
+    [
+     62555,
+     62649,
+     "identity"
+    ],
+    [
+     62649,
+     62650,
+     "blank"
+    ],
+    [
+     62650,
+     62735,
+     "identity"
+    ],
+    [
+     62735,
+     62736,
+     "blank"
+    ],
+    [
+     62736,
+     62753,
+     "identity"
+    ],
+    [
+     62753,
+     63799,
+     "pass"
+    ],
+    [
+     63799,
+     63800,
+     "blank"
+    ],
+    [
+     63800,
+     63895,
+     "identity"
+    ],
+    [
+     63895,
+     63896,
+     "blank"
+    ],
+    [
+     63896,
+     64001,
+     "identity"
+    ],
+    [
+     64001,
+     64002,
+     "blank"
+    ],
+    [
+     64002,
+     64018,
+     "identity"
+    ],
+    [
+     64018,
+     64650,
+     "pass"
+    ],
+    [
+     64650,
+     64651,
+     "blank"
+    ],
+    [
+     64651,
+     64745,
+     "identity"
+    ],
+    [
+     64745,
+     64746,
+     "blank"
+    ],
+    [
+     64746,
+     64772,
+     "identity"
+    ],
+    [
+     64772,
+     64773,
+     "blank"
+    ],
+    [
+     64773,
+     64789,
+     "identity"
+    ],
+    [
+     64789,
+     64790,
+     "blank"
+    ],
+    [
+     64790,
+     64884,
+     "identity"
+    ],
+    [
+     64884,
+     64885,
+     "blank"
+    ],
+    [
+     64885,
+     64911,
+     "identity"
+    ],
+    [
+     64911,
+     64912,
+     "blank"
+    ],
+    [
+     64912,
+     64928,
+     "identity"
+    ],
+    [
+     64928,
+     64929,
+     "blank"
+    ],
+    [
+     64929,
+     65023,
+     "identity"
+    ],
+    [
+     65023,
+     65024,
+     "blank"
+    ],
+    [
+     65024,
+     65048,
+     "identity"
+    ],
+    [
+     65048,
+     65049,
+     "blank"
+    ],
+    [
+     65049,
+     65065,
+     "identity"
+    ],
+    [
+     65065,
+     65066,
+     "blank"
+    ],
+    [
+     65066,
+     65160,
+     "identity"
+    ],
+    [
+     65160,
+     65161,
+     "blank"
+    ],
+    [
+     65161,
+     65257,
+     "failure"
+    ]
+   ],
+   "lines": 984,
+   "rerun_lines": [
+    [
+     7574,
+     7638
+    ],
+    [
+     15840,
+     15905
+    ]
+   ],
+   "result_lines": [
+    {
+     "binary": "cbr",
+     "failed": 0,
+     "ignored": 0,
+     "line": [
+      323,
+      416
+     ],
+     "line_no": 8,
+     "passed": 0,
+     "status": "ok"
+    },
+    {
+     "binary": "debug_launch",
+     "failed": 0,
+     "ignored": 0,
+     "line": [
+      830,
+      923
+     ],
+     "line_no": 19,
+     "passed": 5,
+     "status": "ok"
+    },
+    {
+     "binary": "derivation_claims",
+     "failed": 0,
+     "ignored": 0,
+     "line": [
+      1535,
+      1628
+     ],
+     "line_no": 32,
+     "passed": 7,
+     "status": "ok"
+    },
+    {
+     "binary": "derivation_records",
+     "failed": 0,
+     "ignored": 0,
+     "line": [
+      2497,
+      2591
+     ],
+     "line_no": 48,
+     "passed": 10,
+     "status": "ok"
+    },
+    {
+     "binary": "derivation_replay",
+     "failed": 0,
+     "ignored": 0,
+     "line": [
+      3418,
+      3512
+     ],
+     "line_no": 64,
+     "passed": 10,
+     "status": "ok"
+    },
+    {
+     "binary": "derivation_view",
+     "failed": 0,
+     "ignored": 0,
+     "line": [
+      3988,
+      4081
+     ],
+     "line_no": 75,
+     "passed": 5,
+     "status": "ok"
+    },
+    {
+     "binary": "ingest_and_fetch",
+     "failed": 0,
+     "ignored": 0,
+     "line": [
+      4401,
+      4494
+     ],
+     "line_no": 84,
+     "passed": 3,
+     "status": "ok"
+    },
+    {
+     "binary": "j2_harness",
+     "failed": 6,
+     "ignored": 0,
+     "line": [
+      7475,
+      7572
+     ],
+     "line_no": 142,
+     "passed": 0,
+     "status": "FAILED"
+    },
+    {
+     "binary": "journey_one",
+     "failed": 0,
+     "ignored": 0,
+     "line": [
+      8935,
+      9030
+     ],
+     "line_no": 163,
+     "passed": 8,
+     "status": "ok"
+    },
+    {
+     "binary": "journey_two",
+     "failed": 12,
+     "ignored": 0,
+     "line": [
+      15740,
+      15838
+     ],
+     "line_no": 263,
+     "passed": 0,
+     "status": "FAILED"
+    },
+    {
+     "binary": "knowledge_verbs",
+     "failed": 0,
+     "ignored": 0,
+     "line": [
+      16168,
+      16261
+     ],
+     "line_no": 272,
+     "passed": 2,
+     "status": "ok"
+    },
+    {
+     "binary": "m4e_harness",
+     "failed": 0,
+     "ignored": 0,
+     "line": [
+      17579,
+      17673
+     ],
+     "line_no": 294,
+     "passed": 16,
+     "status": "ok"
+    },
+    {
+     "binary": "model_crash_matrix",
+     "failed": 0,
+     "ignored": 0,
+     "line": [
+      18206,
+      18299
+     ],
+     "line_no": 306,
+     "passed": 6,
+     "status": "ok"
+    },
+    {
+     "binary": "model_discovery",
+     "failed": 0,
+     "ignored": 0,
+     "line": [
+      19414,
+      19509
+     ],
+     "line_no": 327,
+     "passed": 15,
+     "status": "ok"
+    },
+    {
+     "binary": "model_selection",
+     "failed": 0,
+     "ignored": 0,
+     "line": [
+      20317,
+      20412
+     ],
+     "line_no": 343,
+     "passed": 10,
+     "status": "ok"
+    },
+    {
+     "binary": "pilot_findings",
+     "failed": 0,
+     "ignored": 0,
+     "line": [
+      20870,
+      20963
+     ],
+     "line_no": 353,
+     "passed": 4,
+     "status": "ok"
+    },
+    {
+     "binary": "registration_and_decisions",
+     "failed": 0,
+     "ignored": 0,
+     "line": [
+      21673,
+      21766
+     ],
+     "line_no": 366,
+     "passed": 7,
+     "status": "ok"
+    },
+    {
+     "binary": "stall",
+     "failed": 0,
+     "ignored": 1,
+     "line": [
+      21989,
+      22082
+     ],
+     "line_no": 373,
+     "passed": 0,
+     "status": "ok"
+    },
+    {
+     "binary": "cbr_encoding",
+     "failed": 0,
+     "ignored": 0,
+     "line": [
+      22265,
+      22358
+     ],
+     "line_no": 380,
+     "passed": 1,
+     "status": "ok"
+    },
+    {
+     "binary": "properties",
+     "failed": 0,
+     "ignored": 0,
+     "line": [
+      23338,
+      23432
+     ],
+     "line_no": 401,
+     "passed": 15,
+     "status": "ok"
+    },
+    {
+     "binary": "vectors",
+     "failed": 0,
+     "ignored": 0,
+     "line": [
+      23750,
+      23843
+     ],
+     "line_no": 411,
+     "passed": 4,
+     "status": "ok"
+    },
+    {
+     "binary": "cbr_identity",
+     "failed": 0,
+     "ignored": 0,
+     "line": [
+      23947,
+      24040
+     ],
+     "line_no": 417,
+     "passed": 0,
+     "status": "ok"
+    },
+    {
+     "binary": "identity",
+     "failed": 0,
+     "ignored": 0,
+     "line": [
+      24599,
+      24692
+     ],
+     "line_no": 430,
+     "passed": 7,
+     "status": "ok"
+    },
+    {
+     "binary": "cbr_memory",
+     "failed": 0,
+     "ignored": 0,
+     "line": [
+      25021,
+      25114
+     ],
+     "line_no": 439,
+     "passed": 3,
+     "status": "ok"
+    },
+    {
+     "binary": "anchors",
+     "failed": 0,
+     "ignored": 0,
+     "line": [
+      25646,
+      25739
+     ],
+     "line_no": 452,
+     "passed": 7,
+     "status": "ok"
+    },
+    {
+     "binary": "evaluator_properties",
+     "failed": 0,
+     "ignored": 0,
+     "line": [
+      26402,
+      26497
+     ],
+     "line_no": 465,
+     "passed": 6,
+     "status": "ok"
+    },
+    {
+     "binary": "golden_index",
+     "failed": 0,
+     "ignored": 0,
+     "line": [
+      26689,
+      26782
+     ],
+     "line_no": 472,
+     "passed": 1,
+     "status": "ok"
+    },
+    {
+     "binary": "index_tree",
+     "failed": 0,
+     "ignored": 0,
+     "line": [
+      27037,
+      27130
+     ],
+     "line_no": 480,
+     "passed": 2,
+     "status": "ok"
+    },
+    {
+     "binary": "lexical",
+     "failed": 0,
+     "ignored": 0,
+     "line": [
+      27741,
+      27834
+     ],
+     "line_no": 495,
+     "passed": 9,
+     "status": "ok"
+    },
+    {
+     "binary": "retrieval",
+     "failed": 0,
+     "ignored": 0,
+     "line": [
+      28944,
+      29038
+     ],
+     "line_no": 513,
+     "passed": 12,
+     "status": "ok"
+    },
+    {
+     "binary": "cbr_provider",
+     "failed": 0,
+     "ignored": 0,
+     "line": [
+      60343,
+      60438
+     ],
+     "line_no": 884,
+     "passed": 365,
+     "status": "ok"
+    },
+    {
+     "binary": "context",
+     "failed": 0,
+     "ignored": 0,
+     "line": [
+      61024,
+      61117
+     ],
+     "line_no": 896,
+     "passed": 6,
+     "status": "ok"
+    },
+    {
+     "binary": "crash_matrix",
+     "failed": 0,
+     "ignored": 0,
+     "line": [
+      61847,
+      61940
+     ],
+     "line_no": 910,
+     "passed": 8,
+     "status": "ok"
+    },
+    {
+     "binary": "credential_discipline",
+     "failed": 0,
+     "ignored": 0,
+     "line": [
+      62211,
+      62304
+     ],
+     "line_no": 918,
+     "passed": 2,
+     "status": "ok"
+    },
+    {
+     "binary": "knowledge",
+     "failed": 0,
+     "ignored": 0,
+     "line": [
+      62555,
+      62648
+     ],
+     "line_no": 926,
+     "passed": 2,
+     "status": "ok"
+    },
+    {
+     "binary": "model_launch",
+     "failed": 0,
+     "ignored": 0,
+     "line": [
+      63800,
+      63894
+     ],
+     "line_no": 947,
+     "passed": 15,
+     "status": "ok"
+    },
+    {
+     "binary": "production_and_restart",
+     "failed": 0,
+     "ignored": 0,
+     "line": [
+      64651,
+      64744
+     ],
+     "line_no": 962,
+     "passed": 9,
+     "status": "ok"
+    },
+    {
+     "binary": "doctests:cbr_encoding",
+     "failed": 0,
+     "ignored": 0,
+     "line": [
+      64790,
+      64883
+     ],
+     "line_no": 968,
+     "passed": 0,
+     "status": "ok"
+    },
+    {
+     "binary": "doctests:cbr_identity",
+     "failed": 0,
+     "ignored": 0,
+     "line": [
+      64929,
+      65022
+     ],
+     "line_no": 974,
+     "passed": 0,
+     "status": "ok"
+    },
+    {
+     "binary": "doctests:cbr_memory",
+     "failed": 0,
+     "ignored": 0,
+     "line": [
+      65066,
+      65159
+     ],
+     "line_no": 980,
+     "passed": 0,
+     "status": "ok"
+    }
+   ],
+   "sha256": "sha256:05a1090e4ec78780d625c7e28958bed65ab0a4f83566debd9c64e5c583d2a326",
+   "signatures": [
+    {
+     "first_message_sha256": "e8efb50493192e688b1b23337efa15892df7ccf50cb41ca5615766a7305559f2",
+     "first_message_text": null,
+     "location": "crates/cbr-cli/tests/j2_harness.rs:36:5",
+     "tests": [
+      "the_harness_stops_before_a_run_its_ceiling_could_not_cover",
+      "the_harness_refuses_an_input_that_carries_a_machine_path_before_anything_starts",
+      "the_harness_refuses_every_run_it_should_before_anything_is_spent",
+      "a_dry_run_projects_a_test_log_checks_it_against_its_bytes_and_rebuilds_it",
+      "an_input_over_the_projections_capacity_is_reported_as_such_and_nothing_is_asked"
+     ]
+    },
+    {
+     "first_message_sha256": "5dd94ced5a2afb4af3a0a9521dc8f9306236b23b01882c52a80e482ae00be37f",
+     "first_message_text": "Traceback (most recent call last):",
+     "location": "crates/cbr-cli/tests/j2_harness.rs:503:5",
+     "tests": [
+      "the_harness_names_every_way_a_projection_can_fail_its_checks"
+     ]
+    },
+    {
+     "first_message_sha256": "36577bf4e20080f5bfe62e814e6069653d29397523cbe20cef888b0366f61a54",
+     "first_message_text": "a header, then a failures line",
+     "location": "crates/cbr-cli/tests/journey_two.rs:467:46",
+     "tests": [
+      "a_small_result_is_carried_whole_and_asks_nothing",
+      "bytes_that_are_not_text_are_declared_omitted_whole",
+      "a_projection_the_investigation_limit_cannot_cover_is_not_started",
+      "a_part_that_answers_outside_its_offer_leaves_the_item_unmet_with_that_reason",
+      "a_parts_record_is_readable_only_by_a_reader_who_can_read_the_evidence_it_was_made_from",
+      "a_projection_rebuilt_offline_reproduces_its_section",
+      "a_large_test_log_is_projected_and_every_byte_is_carried_or_declared_omitted",
+      "a_json_document_is_projected_by_its_structure_and_its_failures_are_named",
+      "a_parts_record_is_sealed_under_the_artifact_it_showed_and_no_other",
+      "with_no_investigation_the_projection_carries_run_identity_and_the_failures"
+     ]
+    },
+    {
+     "first_message_sha256": "20de177785ff42552884c0fc2b6204bd2db1e696429bf8ec75f4862029a5eeb7",
+     "first_message_text": "assertion `left == right` failed",
+     "location": "crates/cbr-cli/tests/journey_two.rs:1070:5",
+     "tests": [
+      "evidence_the_submitter_cannot_read_is_unavailable_exactly_as_evidence_that_does_not_exist"
+     ]
+    },
+    {
+     "first_message_sha256": "aaa017f44a98ca00edea9a4657c6fb45de57b7c943c86a5dfab93de823bcd194",
+     "first_message_text": "assertion `left == right` failed: assisted: Object([(\"consumer\", Object([(\"principal\", String(\"cbr-cli\")), (\"task\", String(\"which tests failed, and what did they assert\"))])), (\"items\", Array([Object([(\"item_id\", String(\"log\")), (\"obligation\", String(\"required_before_start\")), (\"result\", String(\"satisfied\"))])])), (\"job\", Object([(\"id\", String(\"assisted\")), (\"kind\", String(\"context.job\"))])), (\"limits\", Object([(\"deadline\", String(\"2099-01-01T00:00:00Z\")), (\"investigation\", Object([(\"amount\", Int(8)), (\"units\", String(\"calls\"))])), (\"output_capacity\", Object([(\"amount\", Int(65536)), (\"units\", String(\"bytes\"))]))])), (\"packets\", Array([Object([(\"current\", Bool(true)), (\"reference\", Object([(\"artifact\", Object([(\"artifact\", Object([(\"id\", String(\"packet.assisted.1\")), (\"kind\", String(\"evidence.artifact\"))])), (\"digest\", String(\"sha256:6dfbdb8d4313d77a7b982f91671c9f25258f659e6af1c9645ed96d07a82d0a56\")), (\"provider\", String(\"conformance-provider\"))])), (\"packet\", Object([(\"id\", String(\"assisted\")), (\"kind\", String(\"context.packet\"))])), (\"revision\", Int(1))]))])])), (\"request\", Object([(\"id\", String(\"assisted\")), (\"kind\", String(\"context.request\"))])), (\"revision\", Int(2)), (\"state\", String(\"ready\"))])",
+     "location": "crates/cbr-cli/tests/journey_two.rs:788:9",
+     "tests": [
+      "an_input_over_the_projections_capacity_is_insufficient_capacity_and_never_a_partial_summary"
+     ]
+    }
+   ],
+   "size": 65257,
+   "targets_block": [
+    65161,
+    65256
+   ],
+   "totals": {
+    "failed": 18,
+    "ignored": 1,
+    "passed": 582
+   }
+  }
+ },
+ "mismatches": [],
+ "ranges": "half-open [start, end) byte offsets; line ranges exclude the newline"
+}

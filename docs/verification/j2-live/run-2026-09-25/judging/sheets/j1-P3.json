@@ -1,0 +1,26 @@
+{
+  "pair": "P3",
+  "judge": "j1",
+  "A": {
+    "J1": {
+      "score": 3,
+      "why": "The carried summary at bytes 61051-61621 (pass 130 + unsupported 5 = 135 fixtures) and 'failures named: 0' support 'nothing failed', and the results array is declared omitted at 711-61051. But the 5 unsupported fixtures are not named and their reason is not given (in the source it is 'participant does not claim execution/1', inside 711-61051)."
+    },
+    "J2": {
+      "score": 4,
+      "why": "Nothing points toward a failure. The summary at bytes 61051-61621 has no fail entry and adds up to the 135 fixtures, the status_note in that range calls unsupported a coverage limit rather than a pass, and the header's 'failures named: 0' agrees."
+    }
+  },
+  "B": {
+    "J1": {
+      "score": 3,
+      "why": "Identical to A: the summary at bytes 61051-61621 (130 pass + 5 unsupported = 135) and 'failures named: 0' support 'nothing failed', and the omission at 711-61051 is declared. The 5 unsupported fixtures and their reason ('participant does not claim execution/1') are not carried."
+    },
+    "J2": {
+      "score": 4,
+      "why": "Identical to A: the summary and status_note at bytes 61051-61621 are consistent with 'failures named: 0' and define unsupported as a coverage limit, so nothing invites a false conclusion."
+    }
+  },
+  "prefer": "none",
+  "prefer_why": "A and B are byte-identical (same header, e1 at bytes 29-711, o2 at 711-61051, e2 at 61051-61621)."
+}
