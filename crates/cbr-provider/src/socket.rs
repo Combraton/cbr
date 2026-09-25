@@ -28,6 +28,7 @@ use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
+use std::{io, io::Read};
 
 use crate::clock::Clock;
 use crate::config::Config;
@@ -40,6 +41,69 @@ use crate::work::Pool;
 /// events other sessions committed. Well inside the 2-second bound CORE
 /// section 16.5 gives lapses caused elsewhere.
 const POLL: Duration = Duration::from_millis(40);
+
+/// A socket reader that also wakes when this session's FIFO processing ticket
+/// reaches the front. The ordinary timeout remains the cadence for
+/// opportunistic maintenance and subscription checks when nothing is queued.
+struct PollingStream {
+    socket: UnixStream,
+    wake: UnixStream,
+}
+
+impl Read for PollingStream {
+    fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+        loop {
+            let mut descriptors = [
+                libc::pollfd {
+                    fd: self.socket.as_raw_fd(),
+                    events: libc::POLLIN,
+                    revents: 0,
+                },
+                libc::pollfd {
+                    fd: self.wake.as_raw_fd(),
+                    events: libc::POLLIN,
+                    revents: 0,
+                },
+            ];
+            // SAFETY: `descriptors` is a live array of two pollfd values for
+            // the duration of the call; poll changes only their `revents`.
+            let ready = unsafe {
+                libc::poll(
+                    descriptors.as_mut_ptr(),
+                    descriptors.len() as libc::nfds_t,
+                    POLL.as_millis() as libc::c_int,
+                )
+            };
+            if ready < 0 {
+                let error = io::Error::last_os_error();
+                if error.kind() == io::ErrorKind::Interrupted {
+                    continue;
+                }
+                return Err(error);
+            }
+            if ready == 0 {
+                return Err(io::Error::from(io::ErrorKind::WouldBlock));
+            }
+            let socket_events = descriptors[0].revents;
+            if socket_events & (libc::POLLIN | libc::POLLHUP | libc::POLLERR) != 0 {
+                return self.socket.read(buffer);
+            }
+            if descriptors[1].revents & (libc::POLLIN | libc::POLLHUP | libc::POLLERR) != 0 {
+                crate::barriers::signal(crate::barriers::IDLE_PROCESSING_WOKEN);
+                let mut wake = [0u8; 64];
+                loop {
+                    match self.wake.read(&mut wake) {
+                        Ok(0) => break,
+                        Ok(_) => {}
+                        Err(error) if error.kind() == io::ErrorKind::WouldBlock => break,
+                        Err(error) => return Err(error),
+                    }
+                }
+                return Err(io::Error::from(io::ErrorKind::WouldBlock));
+            }
+        }
+    }
+}
 
 /// Refuse a socket directory another user could reach into (STREAM section 6).
 pub fn check_directory(socket: &Path) -> Result<(), String> {
@@ -118,10 +182,19 @@ fn serve_connection(
         .with_model(model);
     let writer = stream.try_clone().map_err(|error| error.to_string())?;
     let closer = stream.try_clone().map_err(|error| error.to_string())?;
-    stream
-        .set_read_timeout(Some(POLL))
+    let (wake_reader, wake_writer) = UnixStream::pair().map_err(|error| error.to_string())?;
+    wake_reader
+        .set_nonblocking(true)
         .map_err(|error| error.to_string())?;
-    match session::serve(&stream, writer, &mut provider, Some(&closer))? {
+    let wake = Arc::new(
+        crate::provider::ProcessingWake::new(wake_writer).map_err(|error| error.to_string())?,
+    );
+    provider.set_processing_wake(wake);
+    let input = PollingStream {
+        socket: stream,
+        wake: wake_reader,
+    };
+    match session::serve(input, writer, &mut provider, Some(&closer))? {
         session::Ended::Normally => {}
         session::Ended::TooSlow(record) => eprintln!("cbr-provider: {}", record.record()),
     }

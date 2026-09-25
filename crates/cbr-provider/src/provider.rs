@@ -285,25 +285,192 @@ fn is_grant_operation(operation: &str) -> bool {
     operation.starts_with("core.grant.")
 }
 
-/// One process-wide lock serializing request processing and subscription
+/// One process-wide FIFO lock serializing request processing and subscription
 /// re-checks across every session (STACK section 2). A re-check re-authorizes
 /// a subscription and reads the events to deliver under it, so no command can
 /// commit between the two: an item committed after a revocation is never
 /// delivered under the revoked grant (CORE section 16.5).
-static PROCESSING: std::sync::Mutex<()> = std::sync::Mutex::new(());
+///
+/// An idle session reserves a ticket but never waits for it: the socket thread
+/// remains free to read its next command. Once that ticket reaches the front,
+/// later commands cannot overtake it and a per-session socket wakes immediately
+/// to consume it. A command arriving on the same session consumes its reserved
+/// ticket instead. Sessions with neither subscriptions nor time-driven work do
+/// not reserve at all.
+struct ProcessingLock {
+    next: std::sync::atomic::AtomicU64,
+    serving: std::sync::atomic::AtomicU64,
+    state: std::sync::Mutex<ProcessingState>,
+    ready: std::sync::Condvar,
+}
 
-fn processing() -> std::sync::MutexGuard<'static, ()> {
-    match PROCESSING.try_lock() {
-        Ok(guard) => guard,
-        Err(std::sync::TryLockError::WouldBlock) => {
-            crate::barriers::signal(crate::barriers::LOCK_CONTENDED);
-            PROCESSING
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
+struct ProcessingState {
+    cancelled: std::collections::BTreeSet<u64>,
+    idle_wakes: std::collections::BTreeMap<u64, std::sync::Arc<ProcessingWake>>,
+}
+
+/// The socket-side wake half for an idle FIFO reservation. Signalling is
+/// non-blocking: a full buffer already means the session has a wake pending.
+pub(crate) struct ProcessingWake {
+    writer: std::sync::Mutex<std::os::unix::net::UnixStream>,
+}
+
+impl ProcessingWake {
+    pub(crate) fn new(writer: std::os::unix::net::UnixStream) -> std::io::Result<Self> {
+        writer.set_nonblocking(true)?;
+        Ok(Self {
+            writer: std::sync::Mutex::new(writer),
+        })
+    }
+
+    fn signal(&self) {
+        use std::io::Write as _;
+
+        let mut writer = self
+            .writer
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        match writer.write(&[1]) {
+            Ok(_) => {}
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    std::io::ErrorKind::WouldBlock | std::io::ErrorKind::BrokenPipe
+                ) => {}
+            Err(error) => eprintln!("cbr-provider: waking an idle session failed: {error}"),
         }
-        Err(std::sync::TryLockError::Poisoned(poisoned)) => poisoned.into_inner(),
     }
 }
+
+impl ProcessingLock {
+    const fn new() -> Self {
+        Self {
+            next: std::sync::atomic::AtomicU64::new(0),
+            serving: std::sync::atomic::AtomicU64::new(0),
+            state: std::sync::Mutex::new(ProcessingState {
+                cancelled: std::collections::BTreeSet::new(),
+                idle_wakes: std::collections::BTreeMap::new(),
+            }),
+            ready: std::sync::Condvar::new(),
+        }
+    }
+
+    fn reserve(&self) -> u64 {
+        self.next.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    }
+
+    fn is_ready(&self, ticket: u64) -> bool {
+        self.serving.load(std::sync::atomic::Ordering::Acquire) == ticket
+    }
+
+    fn wait(&'static self, ticket: u64) -> ProcessingGuard {
+        let mut state = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        while !self.is_ready(ticket) {
+            state = self
+                .ready
+                .wait(state)
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+        }
+        ProcessingGuard { lock: self }
+    }
+
+    fn try_take(&'static self, ticket: u64) -> Option<ProcessingGuard> {
+        self.is_ready(ticket)
+            .then(|| ProcessingGuard { lock: self })
+    }
+
+    fn arm_idle_wake(&self, ticket: u64, wake: std::sync::Arc<ProcessingWake>) {
+        let signal_now = {
+            let mut state = self
+                .state
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if self.is_ready(ticket) {
+                true
+            } else {
+                state.idle_wakes.insert(ticket, wake.clone());
+                false
+            }
+        };
+        if signal_now {
+            wake.signal();
+        }
+    }
+
+    fn disarm_idle_wake(&self, ticket: u64) {
+        self.state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .idle_wakes
+            .remove(&ticket);
+    }
+
+    fn cancel(&self, ticket: u64) {
+        let mut state = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        state.idle_wakes.remove(&ticket);
+        let serving = self.serving.load(std::sync::atomic::Ordering::Acquire);
+        if ticket < serving {
+            return;
+        }
+        let wake = if ticket == serving {
+            let mut next = ticket.wrapping_add(1);
+            while state.cancelled.remove(&next) {
+                next = next.wrapping_add(1);
+            }
+            self.serving
+                .store(next, std::sync::atomic::Ordering::Release);
+            state.idle_wakes.remove(&next)
+        } else {
+            state.cancelled.insert(ticket);
+            None
+        };
+        drop(state);
+        self.ready.notify_all();
+        if let Some(wake) = wake {
+            wake.signal();
+        }
+    }
+
+    fn release(&self) {
+        let mut state = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut next = self
+            .serving
+            .load(std::sync::atomic::Ordering::Relaxed)
+            .wrapping_add(1);
+        while state.cancelled.remove(&next) {
+            next = next.wrapping_add(1);
+        }
+        self.serving
+            .store(next, std::sync::atomic::Ordering::Release);
+        let wake = state.idle_wakes.remove(&next);
+        drop(state);
+        self.ready.notify_all();
+        if let Some(wake) = wake {
+            wake.signal();
+        }
+    }
+}
+
+struct ProcessingGuard {
+    lock: &'static ProcessingLock,
+}
+
+impl Drop for ProcessingGuard {
+    fn drop(&mut self) {
+        self.lock.release();
+    }
+}
+
+static PROCESSING: ProcessingLock = ProcessingLock::new();
 
 pub struct Provider {
     pub config: Config,
@@ -335,6 +502,25 @@ pub struct Provider {
     caller_receive_limit: usize,
     subscriptions: Vec<Subscription>,
     next_subscription: u64,
+    /// A FIFO place reserved by an idle poll that found processing busy. The
+    /// socket wake, next input, or next request on this session consumes it;
+    /// dropping the session cancels it so no abandoned ticket can stop the queue.
+    idle_processing_ticket: Option<u64>,
+    /// Wakes a socket reader as soon as this session's idle ticket reaches the
+    /// front. Stdio never polls and therefore has no wake half.
+    processing_wake: Option<std::sync::Arc<ProcessingWake>>,
+    /// This session has started work whose time-driven state must advance even
+    /// when it has no subscriptions. Authentication and negotiation alone do
+    /// not create such work.
+    idle_maintenance_owed: bool,
+}
+
+impl Drop for Provider {
+    fn drop(&mut self) {
+        if let Some(ticket) = self.idle_processing_ticket.take() {
+            PROCESSING.cancel(ticket);
+        }
+    }
 }
 
 /// What a model call opens, when serving makes one.
@@ -537,6 +723,9 @@ impl Provider {
             caller_receive_limit: crate::frames::PRE_NEGOTIATION_LIMIT,
             subscriptions: Vec::new(),
             next_subscription: 0,
+            idle_processing_ticket: None,
+            processing_wake: None,
+            idle_maintenance_owed: false,
         };
         // Last, and before any session exists: objects a crash left without a
         // root are collected (see `collect_unreferenced_objects`).
@@ -570,7 +759,14 @@ impl Provider {
             caller_receive_limit: crate::frames::PRE_NEGOTIATION_LIMIT,
             subscriptions: Vec::new(),
             next_subscription: 0,
+            idle_processing_ticket: None,
+            processing_wake: None,
+            idle_maintenance_owed: false,
         })
+    }
+
+    pub(crate) fn set_processing_wake(&mut self, wake: std::sync::Arc<ProcessingWake>) {
+        self.processing_wake = Some(wake);
     }
 
     /// The clock every session of this process shares.
@@ -1132,10 +1328,50 @@ impl Provider {
 
     // ---- dispatch ---------------------------------------------------------
 
+    /// Take this session's reserved place, or join the end of the FIFO queue.
+    /// Only a request reports contention; an earlier idle reservation is still
+    /// reported here when the request must wait for its turn.
+    fn processing(&mut self) -> ProcessingGuard {
+        let ticket = match self.idle_processing_ticket.take() {
+            Some(ticket) => {
+                PROCESSING.disarm_idle_wake(ticket);
+                ticket
+            }
+            None => PROCESSING.reserve(),
+        };
+        if !PROCESSING.is_ready(ticket) {
+            crate::barriers::signal(crate::barriers::LOCK_CONTENDED);
+        }
+        PROCESSING.wait(ticket)
+    }
+
+    /// Reserve FIFO progress for idle work without waiting or signalling. The
+    /// reservation stays with the session when its turn has not arrived yet.
+    fn idle_processing(&mut self) -> Option<ProcessingGuard> {
+        let ticket = match self.idle_processing_ticket {
+            Some(ticket) => ticket,
+            None => {
+                let ticket = PROCESSING.reserve();
+                self.idle_processing_ticket = Some(ticket);
+                ticket
+            }
+        };
+        let Some(guard) = PROCESSING.try_take(ticket) else {
+            if let Some(wake) = &self.processing_wake {
+                PROCESSING.arm_idle_wake(ticket, wake.clone());
+            }
+            crate::barriers::signal(crate::barriers::IDLE_PROCESSING_QUEUED);
+            return None;
+        };
+        PROCESSING.disarm_idle_wake(ticket);
+        self.idle_processing_ticket = None;
+        Some(guard)
+    }
+
     /// Handle one request. `method` is the transport method, which the envelope
     /// must agree with.
     pub fn handle(&mut self, method: &str, params: &Value) -> Result<Value, ProtocolError> {
-        let _processing = processing();
+        let _processing = self.processing();
         // Step 1: operation known, session negotiated, profile selected. These
         // are decided from the transport method, before the envelope is read.
         // Time-driven effect state first, so an obligation whose deadline has
@@ -1211,7 +1447,7 @@ impl Provider {
             // deduplication: CORE section 15.5 has a replay skip step 6, so a
             // holder replaying its own bound command still receives its stored
             // result once the grant has been revoked.
-            return match method {
+            let result = match method {
                 "core-test.subject.put" => self.subject_put(params, command),
                 "core-test.authority.claim" => self.authority_claim(params, command),
                 "core.grant.issue" => self.grant_issue(params, command),
@@ -1236,6 +1472,18 @@ impl Provider {
                 "context.request.cancel" => self.context_cancel(params, command),
                 _ => Err(ProtocolError::method_not_found(method)),
             };
+            if result.is_ok()
+                && matches!(
+                    method,
+                    "context.request.submit"
+                        | "evidence.upload.prepare"
+                        | "evidence.hold"
+                        | "evidence.purge"
+                )
+            {
+                self.idle_maintenance_owed = true;
+            }
+            return result;
         }
 
         let query = envelope::parse_query(params)?;
@@ -2001,11 +2249,9 @@ impl Provider {
     /// does not name the overdue event's subject or payload; CBR uses the
     /// effect subject and the same `{ effect, obligation, target }` payload as
     /// the aborted event, so a consumer reads both the same way.
-    /// Idle maintenance for a session with no request in hand: mark passed
-    /// obligations overdue under the processing lock. Subscription re-checks
-    /// happen in `drain_subscriptions`, which the session calls next.
-    pub fn tick(&mut self) {
-        let _processing = processing();
+    /// Idle maintenance for a session with no request in hand. `poll_idle`
+    /// runs this and the subscription re-check under one processing guard.
+    fn tick_locked(&mut self) {
         if let Err(error) = self.tick_effects() {
             eprintln!(
                 "cbr-provider: marking overdue obligations failed: {}",
@@ -2353,7 +2599,26 @@ impl Provider {
     /// not produced and its subscription's cursor does not move, so its items
     /// are produced again later: **withheld, never skipped** (CORE 16.5).
     pub fn drain_subscriptions(&mut self, room: usize, whole: bool) -> (Vec<Value>, bool) {
-        let _processing = processing();
+        let _processing = self.processing();
+        self.drain_subscriptions_locked(room, whole)
+    }
+
+    /// Produce notifications during an idle socket poll, or return immediately
+    /// after reserving FIFO progress when processing is busy. Later commands
+    /// cannot overtake that reservation; reaching the front wakes this socket
+    /// immediately, with the 40 ms periodic poll only a fallback. A session
+    /// with neither subscriptions nor time-driven work reserves nothing. The
+    /// guard spans both re-authorization and the event read.
+    pub fn poll_idle(&mut self, room: usize, whole: bool) -> Option<(Vec<Value>, bool)> {
+        if self.subscriptions.is_empty() && !self.idle_maintenance_owed {
+            return Some((Vec::new(), false));
+        }
+        let _processing = self.idle_processing()?;
+        self.tick_locked();
+        Some(self.drain_subscriptions_locked(room, whole))
+    }
+
+    fn drain_subscriptions_locked(&mut self, room: usize, whole: bool) -> (Vec<Value>, bool) {
         let mut frames = Vec::new();
         let mut produced = 0usize;
         let mut withheld = false;
@@ -2879,6 +3144,7 @@ impl Provider {
     }
 
     fn subject_put(&mut self, params: &Value, command: Command) -> Result<Value, ProtocolError> {
+        crate::barriers::pause(crate::barriers::PUT_AFTER_PROCESSING_LOCK);
         if let Some(stored) = self.admit_command(
             params,
             &command,

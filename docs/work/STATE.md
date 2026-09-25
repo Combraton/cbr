@@ -229,13 +229,13 @@ Two observations stand behind it:
 - with the wait forced to 0 s, the failure prints the provider's stderr;
 - a provider that logs its registered checkout is still caught by the test that reads it, now from the file.
 
-**The socket fixture's 10 s is a race in CBR, not load**, and the reviewer withdrew the "re-run it" rule for that fixture at round 59:
+**The socket fixture's idle-poll race is fixed** ([#37](https://github.com/Combraton/cbr/issues/37)):
 
-- An idle session takes the processing lock on every 40 ms poll, in `tick()` and in `drain_subscriptions()`.
-- If that poll contends while the fixture's re-check is paused under the lock, before the runner clears the signals, its signal is deleted. The session is then held inside its own poll and never reads the revoke.
-- Shortening the idle poll to 1 ms made it fail in 76 of 100 runs, against 0 of 100 at the stock 40 ms.
-- A regression test was written and observed red against current code. It is kept outside the repository and is not committed.
-- Its strengthening and the fix were stopped by a safety check on the builder's output, and are the owner's to decide.
+- The processing lock is FIFO. A socket session with a subscription or time-driven work may reserve a ticket while processing is busy, but never waits or emits the command-contention signal in its idle poll. A nonblocking per-session wake socket makes its reader consume the reservation as soon as the ticket reaches the front; simultaneous command input takes priority and consumes the same ticket. The 40 ms poll remains a fallback, not the progress bound.
+- An authenticated, negotiated session with neither a subscription nor time-driven work returns from its idle poll without reserving. Beside eight such connections, one writer committed 7,542 commands in the same three-second window in which it committed 8,412 beside none (7,696 beside two), above the test's one-half floor.
+- Request processing consumes any ticket the session already reserved, signals when it must wait, and then blocks. Idle maintenance and subscription delivery share one guard, and every subscription re-check still holds that guard across re-authorization and its event read, so no command commits between them.
+- The regression test proves a no-work idle session neither reserves nor signals across several poll intervals, then requires a command on that session to signal contention. Bounded progress passed 200 serial repetitions and 200 four-way parallel rounds under sustained command contention, with the two-second CORE section 16.5 bound unchanged; separate cases kill a missing wake, try-lock-and-skip, a blocking idle poll and a guard split between re-authorization and event reading.
+- With the fix, `socket.subscription-recheck-race-regression` passed 100 of 100 runs with the poll temporarily shortened to 1 ms and 100 of 100 at the stock 40 ms; before the fix, 76 of 100 and 0 of 100 failed respectively.
 
 ### Constraints for later heads, from the reviewer's round 59
 

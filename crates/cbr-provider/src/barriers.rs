@@ -25,6 +25,13 @@ pub const RECHECK_AFTER_AUTHORIZATION: &str = "subscription.recheck.after_author
 pub const PACKET_AFTER_OBJECT_PUBLISHED: &str = "context.packet.after_object_published";
 /// A request found the processing lock held by someone else.
 pub const LOCK_CONTENDED: &str = "processing.lock.contended";
+/// An idle session reserved FIFO progress while processing was busy. This is
+/// distinct from command contention and never substitutes for it.
+pub const IDLE_PROCESSING_QUEUED: &str = "processing.idle.queued";
+/// An idle session's socket reader consumed the wake for its front ticket.
+pub const IDLE_PROCESSING_WOKEN: &str = "processing.idle.woken";
+/// A core-test put owns the processing lock but has not begun admission.
+pub const PUT_AFTER_PROCESSING_LOCK: &str = "core-test.put.after-processing-lock";
 
 const WATCHDOG: Duration = Duration::from_secs(30);
 
