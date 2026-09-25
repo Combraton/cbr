@@ -1,0 +1,26 @@
+{
+  "pair": "P2",
+  "judge": "r2",
+  "A": {
+    "J1": {
+      "score": 4,
+      "why": "All 18 failing tests are named in carried bytes 4594-5109 (j2_harness, 6) and 8935-10179 (journey_two, 12), and each one's panic location and message is carried in bytes 5121-7021 and 10191-14827. 16 have plain messages (j2_run.py is missing, the ModuleNotFoundError traceback, 'a header, then a failures line') and 2 have left/right values (journey_two.rs:1070:5 and 788:9). The omitted ranges 5109-5121, 7021-7475 and 14827-15740 only repeat the failures lists, and the carried line at 65161-65257 closes off the 22084-65161 omission because it names only the two failing targets."
+    },
+    "J2": {
+      "score": 3,
+      "why": "Minor ambiguity: 'failures named: 21' puts the cargo line 'error: test failed...' (7574-7638) among the test names. The header's 'failing tests: 18; cargo errors: 3' and the carried result lines at 7475-7563 (6 failed) and 15740-15828 (12 failed) settle it. Checked against the source, every carried excerpt matches its range, and no failure sits in the 22084-65161 omission."
+    }
+  },
+  "B": {
+    "J1": {
+      "score": 4,
+      "why": "All 18 failing tests are named in carried bytes 4594-5109 (j2_harness, 6) and 8935-10179 (journey_two, 12), and each one's panic location and message is carried in bytes 5121-7021 and 10191-14827. 16 have plain messages (j2_run.py is missing, the ModuleNotFoundError traceback, 'a header, then a failures line') and 2 have left/right values (journey_two.rs:1070:5 and 788:9). The omitted ranges 5109-5121, 7021-7475 and 14827-15740 only repeat the failures lists, and the carried line at 65161-65257 closes off the 22084-65161 omission because it names only the two failing targets."
+    },
+    "J2": {
+      "score": 3,
+      "why": "Minor ambiguity: 'failures named: 21' puts the cargo line 'error: test failed...' (7574-7638) among the test names. The header's 'failing tests: 18; cargo errors: 3' and the carried result lines at 7475-7563 (6 failed) and 15740-15828 (12 failed) settle it. Checked against the source, every carried excerpt matches its range, and no failure sits in the 22084-65161 omission."
+    }
+  },
+  "prefer": "none",
+  "prefer_why": "A.txt and B.txt are byte-identical (same sha256, 16276 bytes), with the same header, ledger and excerpts. Nothing distinguishes them."
+}

@@ -1,0 +1,114 @@
+{
+  "commit": "f73415d67abb939a98e9c8b8a97e3cbca302f2a4",
+  "mode": "live",
+  "remedy_for_an_ambiguous_question": "An ambiguous question is replayable again only once one of its records is gone. Purging one is an authority's act: `evidence.purge` on the record's artifact, by a principal in `authority_principals`, in a session that negotiated `evidence.retention_control`. It destroys evidence, so it is the owner's decision and never this harness's -- and the record to purge is the failed call, never the successful one, because purging the answer that worked would leave a history nobody made. See READINESS section 6.",
+  "run_ceiling_tokens": 492204,
+  "runs": [
+    {
+      "artifact": "ingest.05a1090e4ec78780.1790377044431230000",
+      "assisted": {
+        "baseline_excerpts_carried": 21,
+        "bytes_carried": 11969,
+        "bytes_omitted": 53288,
+        "content_bytes": 16350,
+        "excerpts": 21,
+        "how": "read as libtest: 65257 bytes, 984 lines, 215 units in 0 parts; excerpts chosen by the deterministic rule: failures, then run identity",
+        "investigation": 4,
+        "item": {
+          "reason": "",
+          "result": "satisfied"
+        },
+        "named_failures": 21,
+        "omissions": 21,
+        "parts": 0,
+        "problems": [],
+        "section": true,
+        "unresolved": 0
+      },
+      "baseline": {
+        "baseline_excerpts_carried": null,
+        "bytes_carried": 11969,
+        "bytes_omitted": 53288,
+        "content_bytes": 16350,
+        "excerpts": 21,
+        "how": "read as libtest: 65257 bytes, 984 lines, 215 units in 0 parts; excerpts chosen by the deterministic rule: failures, then run identity",
+        "item": {
+          "reason": "",
+          "result": "satisfied"
+        },
+        "named_failures": 21,
+        "omissions": 21,
+        "parts": 0,
+        "problems": [],
+        "section": true,
+        "unresolved": 0
+      },
+      "charges": [],
+      "commit": "f73415d67abb939a98e9c8b8a97e3cbca302f2a4",
+      "id": "red-m27hs",
+      "input": {
+        "digest": "sha256:05a1090e4ec78780d625c7e28958bed65ab0a4f83566debd9c64e5c583d2a326",
+        "name": "cargo-test-f73415d.log",
+        "size": 65257
+      },
+      "launch_ceiling": 492204,
+      "model": "MiniMax-M2.7-highspeed",
+      "part_records": 0,
+      "tokens": 0
+    },
+    {
+      "artifact": "ingest.05a1090e4ec78780.1790377045147691000",
+      "assisted": {
+        "baseline_excerpts_carried": 21,
+        "bytes_carried": 11969,
+        "bytes_omitted": 53288,
+        "content_bytes": 16350,
+        "excerpts": 21,
+        "how": "read as libtest: 65257 bytes, 984 lines, 215 units in 0 parts; excerpts chosen by the deterministic rule: failures, then run identity",
+        "investigation": 4,
+        "item": {
+          "reason": "",
+          "result": "satisfied"
+        },
+        "named_failures": 21,
+        "omissions": 21,
+        "parts": 0,
+        "problems": [],
+        "section": true,
+        "unresolved": 0
+      },
+      "baseline": {
+        "baseline_excerpts_carried": null,
+        "bytes_carried": 11969,
+        "bytes_omitted": 53288,
+        "content_bytes": 16350,
+        "excerpts": 21,
+        "how": "read as libtest: 65257 bytes, 984 lines, 215 units in 0 parts; excerpts chosen by the deterministic rule: failures, then run identity",
+        "item": {
+          "reason": "",
+          "result": "satisfied"
+        },
+        "named_failures": 21,
+        "omissions": 21,
+        "parts": 0,
+        "problems": [],
+        "section": true,
+        "unresolved": 0
+      },
+      "charges": [],
+      "commit": "f73415d67abb939a98e9c8b8a97e3cbca302f2a4",
+      "id": "red-m3",
+      "input": {
+        "digest": "sha256:05a1090e4ec78780d625c7e28958bed65ab0a4f83566debd9c64e5c583d2a326",
+        "name": "cargo-test-f73415d.log",
+        "size": 65257
+      },
+      "launch_ceiling": 492204,
+      "model": "MiniMax-M3",
+      "part_records": 0,
+      "tokens": 0
+    }
+  ],
+  "tokens": 0,
+  "worst_case_projection_tokens": 492204
+}

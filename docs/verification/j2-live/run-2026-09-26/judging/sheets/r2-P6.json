@@ -1,0 +1,26 @@
+{
+  "pair": "P6",
+  "judge": "r2",
+  "A": {
+    "J1": {
+      "score": 3,
+      "why": "The consumer correctly concludes that nothing failed: the header reports 0 failing tests, 0 cargo errors and 0 failures named, and 24 'test result: ok' lines are carried between bytes 5741 and 23953. But the last 560 lines (23953-66535, over_projection) back that only through the header count. The one ignored test shows only as '1 ignored' at 20083-20178; its name and reason are in the omitted range 19949-20083."
+    },
+    "J2": {
+      "score": 3,
+      "why": "Minor ambiguity: 64% of the log (23953-66535) is omitted with the reason over_projection ('chosen but no room'), which could make a consumer wonder whether relevant material was dropped. The header's zero counts and the uniform 'ok' result lines resolve it. Checked against the source: the omitted tail holds only ok and doc-test results."
+    }
+  },
+  "B": {
+    "J1": {
+      "score": 3,
+      "why": "The consumer correctly concludes that nothing failed: the header reports 0 failing tests, 0 cargo errors and 0 failures named, and 24 'test result: ok' lines are carried between bytes 5741 and 23953. But the last 560 lines (23953-66535, over_projection) back that only through the header count. The one ignored test shows only as '1 ignored' at 20083-20178; its name and reason are in the omitted range 19949-20083."
+    },
+    "J2": {
+      "score": 3,
+      "why": "Minor ambiguity: 64% of the log (23953-66535) is omitted with the reason over_projection ('chosen but no room'), which could make a consumer wonder whether relevant material was dropped. The header's zero counts and the uniform 'ok' result lines resolve it. Checked against the source: the omitted tail holds only ok and doc-test results."
+    }
+  },
+  "prefer": "none",
+  "prefer_why": "A.txt and B.txt are byte-identical (same sha256, 8430 bytes), so nothing distinguishes them."
+}

@@ -346,7 +346,7 @@ Run from `main` at `041ad5f`, with its binaries built from a clean tree, the sco
 
 ### J2 live rerun after m5a-3: inputs, estimate and ceiling
 
-**Written before the rerun, and decided on 2026-09-26 under the owner's standing grant of 2026-09-25** — MiniMax as much as the work needs, with each run's estimate and ceiling written here before it and its spend after, inside ADR 001's account ceilings. **Invocation 1's `--run-ceiling` is 492,204 and invocation 2's is 861,357**, the least the harness's stop admits (below); the rerun as a whole is held to **738,306** by the parts the survey found, and is expected to spend about 47,000. Both are far inside the 20,000,000 a five-hour window allows. **Rubric v1.1**, v1's mechanical changes for the `/2` projection, is committed and pushed in the change that runs the rerun, before its first call, and the rerun is scored under v1 as well.
+**Written before the rerun, decided on 2026-09-26 under the owner's standing grant of 2026-09-25, and run the same day** ([what it spent](#j2-live-rerun-what-it-spent-2026-09-26)) — MiniMax as much as the work needs, with each run's estimate and ceiling written here before it and its spend after, inside ADR 001's account ceilings. **Invocation 1's `--run-ceiling` is 492,204 and invocation 2's is 861,357**, the least the harness's stop admits (below); the rerun as a whole is held to **738,306** by the parts the survey found, and is expected to spend about 47,000. Both are far inside the 20,000,000 a five-hour window allows. **Rubric v1.1**, v1's mechanical changes for the `/2` projection, is committed and pushed in the change that runs the rerun, before its first call, and the rerun is scored under v1 as well.
 
 **The inputs and the invocations are as before.** The same three inputs, byte-identical to the digests in the table above, each on `MiniMax-M2.7-highspeed` and `MiniMax-M3`:
 
@@ -369,6 +369,18 @@ Run from `main` at `041ad5f`, with its binaries built from a clean tree, the sco
 - **The expected spend is 46,615 to 48,637, about 47,000.** The core runs spent 23,931 and 22,684 at `/1`, 46,615 in all, with three parts each. At `/2` the core manifest is offered every unit of its three planned parts, 59, 58 and 18 (computed from the input at m5a-3's head), so its questions carry the candidates `/1`'s did. Each is at most 337 bytes longer: a part's worst case grew from 40,680 to 41,017 with the preamble and the instruction's new words, and the byte bound counts those as at most 337 tokens, 2,022 over six questions. Red and green, which spent 73,452 between them at `/1`, now spend nothing.
 - **The harness's stop needs more than that as its `--run-ceiling`.** Before each run it requires a whole projection's worst case, 492,204, to be left, whatever the input's parts. So invocation 1 needs at least 492,204, and spends nothing. Invocation 2 needs at least 861,357: `core-m27hs`'s 369,153 worst case, then 492,204 left for `core-m3`. The provider's ledger still holds each launch to what the ceiling leaves, and the parts the survey found hold the whole rerun to 738,306. A stop computed from the input's own parts would remove the gap, and that is a change to the harness, not to this plan.
 - **The hard cap stays 5,000,000.** The `--out` directories are short and under `/var/tmp/cbr-j2`, as before.
+
+### J2 live rerun: what it spent, 2026-09-26
+
+Run from `main` at `80cdfbe`, with rubric v1.1 committed and pushed first (`8d08bef`, 22:57:15Z).
+
+| Invocation | Started | Took | `--run-ceiling` | Spent | Runs |
+|---|---|---:|---:|---:|---|
+| 1 | 22:57:23Z | 2 s | 492,204 | **0** | `red-m27hs` 0, `red-m3` 0 |
+| 2 | 22:57:25Z | 18 s | 861,357 | **46,452** | `log-m27hs` 0, `log-m3` 0, `core-m27hs` 23,559, `core-m3` 22,893 |
+
+- **46,452 tokens**, 6 calls, no repair: 6.3% of the 738,306 the parts allowed, and inside the 46,615 to 48,637 estimated. **J2's live runs have spent 166,519 in all.**
+- **The rerun passed** its rubric, and every run was equal to the rule ([JOURNEYS](../../verification/JOURNEYS.md#j2-live-rerun-2026-09-26-passed--and-the-model-added-nothing)).
 
 ## What this document does not settle
 

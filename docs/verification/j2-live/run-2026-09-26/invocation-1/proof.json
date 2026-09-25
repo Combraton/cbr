@@ -1,0 +1,113 @@
+{
+  "binaries": {
+    "cbr": "sha256:4f9ee141d256fc5be646bafe648ec3eaa597b3b5d556855ccced1e1affac1bae",
+    "cbr-provider": "sha256:0fb354e6e9dd42cd9787c1a6604afac3017d0a0858cee060aa710c8de3761e66"
+  },
+  "report_digest": "sha256:3875eda6959b176e61f086128b27fe353273f52ab36e2329d22e8495bf5355d4",
+  "runs": [
+    {
+      "id": "red-m27hs",
+      "input_digest_matches": true,
+      "key_scan": {
+        "counts": {
+          "bearer": 0,
+          "jwt": 0,
+          "keychain_service": 0,
+          "sk": 0
+        },
+        "files": 8
+      },
+      "ledger_equals_report": true,
+      "model": "MiniMax-M2.7-highspeed",
+      "store": {
+        "commands": 5,
+        "event_types": {
+          "context.packet.published": 2,
+          "context.request.changed": 4,
+          "evidence.artifact.appended": 1,
+          "evidence.artifact.sealed": 3,
+          "evidence.artifact.staged": 3
+        },
+        "ledger": [],
+        "model_calls": [],
+        "model_calls_all_configured_model": true,
+        "part_records": [],
+        "spent": 0
+      },
+      "through_client": {
+        "assisted": {
+          "cited_artifact": "ingest.05a1090e4ec78780.1790377044431230000",
+          "cited_digest": "sha256:05a1090e4ec78780d625c7e28958bed65ab0a4f83566debd9c64e5c583d2a326",
+          "excerpts_checked": 21,
+          "excerpts_not_equal_to_fetched_bytes": [],
+          "fetch_exit": 0,
+          "fetched_digest": "sha256:05a1090e4ec78780d625c7e28958bed65ab0a4f83566debd9c64e5c583d2a326",
+          "fetched_equals_input": true,
+          "packet_same_after_restart": true
+        },
+        "baseline": {
+          "cited_artifact": "ingest.05a1090e4ec78780.1790377044431230000",
+          "cited_digest": "sha256:05a1090e4ec78780d625c7e28958bed65ab0a4f83566debd9c64e5c583d2a326",
+          "excerpts_checked": 21,
+          "excerpts_not_equal_to_fetched_bytes": [],
+          "fetch_exit": 0,
+          "fetched_digest": "sha256:05a1090e4ec78780d625c7e28958bed65ab0a4f83566debd9c64e5c583d2a326",
+          "fetched_equals_input": true,
+          "packet_same_after_restart": true
+        }
+      }
+    },
+    {
+      "id": "red-m3",
+      "input_digest_matches": true,
+      "key_scan": {
+        "counts": {
+          "bearer": 0,
+          "jwt": 0,
+          "keychain_service": 0,
+          "sk": 0
+        },
+        "files": 8
+      },
+      "ledger_equals_report": true,
+      "model": "MiniMax-M3",
+      "store": {
+        "commands": 5,
+        "event_types": {
+          "context.packet.published": 2,
+          "context.request.changed": 4,
+          "evidence.artifact.appended": 1,
+          "evidence.artifact.sealed": 3,
+          "evidence.artifact.staged": 3
+        },
+        "ledger": [],
+        "model_calls": [],
+        "model_calls_all_configured_model": true,
+        "part_records": [],
+        "spent": 0
+      },
+      "through_client": {
+        "assisted": {
+          "cited_artifact": "ingest.05a1090e4ec78780.1790377045147691000",
+          "cited_digest": "sha256:05a1090e4ec78780d625c7e28958bed65ab0a4f83566debd9c64e5c583d2a326",
+          "excerpts_checked": 21,
+          "excerpts_not_equal_to_fetched_bytes": [],
+          "fetch_exit": 0,
+          "fetched_digest": "sha256:05a1090e4ec78780d625c7e28958bed65ab0a4f83566debd9c64e5c583d2a326",
+          "fetched_equals_input": true,
+          "packet_same_after_restart": true
+        },
+        "baseline": {
+          "cited_artifact": "ingest.05a1090e4ec78780.1790377045147691000",
+          "cited_digest": "sha256:05a1090e4ec78780d625c7e28958bed65ab0a4f83566debd9c64e5c583d2a326",
+          "excerpts_checked": 21,
+          "excerpts_not_equal_to_fetched_bytes": [],
+          "fetch_exit": 0,
+          "fetched_digest": "sha256:05a1090e4ec78780d625c7e28958bed65ab0a4f83566debd9c64e5c583d2a326",
+          "fetched_equals_input": true,
+          "packet_same_after_restart": true
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "pair": "P1",
+  "judge": "r4",
+  "A": {
+    "J1": {
+      "score": 3,
+      "why": "The carried summary at bytes 61051-61621 (pass 130, unsupported 5, fixtures 135, no fail key) and the header 'failing tests: 0' support the conclusion that nothing failed. But the 5 unsupported fixtures and their reason ('participant does not claim execution/1') are only in omitted o1 (bytes 711-61051, not_selected), so the unsupported items are not shown with their reason."
+    },
+    "J2": {
+      "score": 3,
+      "why": "'unsupported': 5 (bytes 61051-61621), shown next to the carried '\"coverage_limits\": []' (bytes 0-711), is a minor ambiguity: are these failures, and are there really no limits? The carried status_note ('skipped and unsupported outcomes are coverage limits, not passes') and the summary, which has no fail key and whose 130+5 equals the 135 fixtures, show that none failed."
+    }
+  },
+  "B": {
+    "J1": {
+      "score": 3,
+      "why": "Byte-identical to A: the carried summary at 61051-61621 (130 pass, 5 unsupported, of 135) supports 'nothing failed'. The names and reason of the 5 unsupported fixtures are only in omitted 711-61051."
+    },
+    "J2": {
+      "score": 3,
+      "why": "Same as A: the empty coverage_limits at 0-711 and 'unsupported': 5 at 61051-61621 are a minor ambiguity. The carried status_note (unsupported outcomes are 'coverage limits, not passes') and totals of 130+5=135 at 61051-61621 resolve it: nothing failed."
+    }
+  },
+  "prefer": "none",
+  "prefer_why": "A.txt and B.txt are byte-identical, with the same two excerpts (0-711, 61051-61621) and the same omission, so there is no meaningful difference."
+}

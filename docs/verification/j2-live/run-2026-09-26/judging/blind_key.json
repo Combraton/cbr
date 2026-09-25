@@ -1,0 +1,101 @@
+{
+ "format": "j2-blind-key/1",
+ "pairs": {
+  "P1": {
+   "identical_after_redaction": true,
+   "model_name_in_excerpt_bytes": {
+    "A": false,
+    "B": false
+   },
+   "run": "core-m3",
+   "sha256": {
+    "A": "9c5bcf5fa7400650ac6d74ade4bd5c6f61fa622f21edd18104355ad81702b595",
+    "B": "9c5bcf5fa7400650ac6d74ade4bd5c6f61fa622f21edd18104355ad81702b595"
+   },
+   "sides": {
+    "A": "assisted",
+    "B": "baseline"
+   }
+  },
+  "P2": {
+   "identical_after_redaction": true,
+   "model_name_in_excerpt_bytes": {
+    "A": false,
+    "B": false
+   },
+   "run": "red-m3",
+   "sha256": {
+    "A": "0b515e8b14917f53cac7d2885edd68ffac5314a322604b5876b566f7d85bbda7",
+    "B": "0b515e8b14917f53cac7d2885edd68ffac5314a322604b5876b566f7d85bbda7"
+   },
+   "sides": {
+    "A": "baseline",
+    "B": "assisted"
+   }
+  },
+  "P3": {
+   "identical_after_redaction": true,
+   "model_name_in_excerpt_bytes": {
+    "A": false,
+    "B": false
+   },
+   "run": "core-m27hs",
+   "sha256": {
+    "A": "9c5bcf5fa7400650ac6d74ade4bd5c6f61fa622f21edd18104355ad81702b595",
+    "B": "9c5bcf5fa7400650ac6d74ade4bd5c6f61fa622f21edd18104355ad81702b595"
+   },
+   "sides": {
+    "A": "baseline",
+    "B": "assisted"
+   }
+  },
+  "P4": {
+   "identical_after_redaction": true,
+   "model_name_in_excerpt_bytes": {
+    "A": false,
+    "B": false
+   },
+   "run": "red-m27hs",
+   "sha256": {
+    "A": "0b515e8b14917f53cac7d2885edd68ffac5314a322604b5876b566f7d85bbda7",
+    "B": "0b515e8b14917f53cac7d2885edd68ffac5314a322604b5876b566f7d85bbda7"
+   },
+   "sides": {
+    "A": "baseline",
+    "B": "assisted"
+   }
+  },
+  "P5": {
+   "identical_after_redaction": true,
+   "model_name_in_excerpt_bytes": {
+    "A": false,
+    "B": false
+   },
+   "run": "log-m27hs",
+   "sha256": {
+    "A": "1878fc648b3eb60197214d272bf60077ce316702f286e173c4a1cf52da64c0b9",
+    "B": "1878fc648b3eb60197214d272bf60077ce316702f286e173c4a1cf52da64c0b9"
+   },
+   "sides": {
+    "A": "assisted",
+    "B": "baseline"
+   }
+  },
+  "P6": {
+   "identical_after_redaction": true,
+   "model_name_in_excerpt_bytes": {
+    "A": false,
+    "B": false
+   },
+   "run": "log-m3",
+   "sha256": {
+    "A": "1878fc648b3eb60197214d272bf60077ce316702f286e173c4a1cf52da64c0b9",
+    "B": "1878fc648b3eb60197214d272bf60077ce316702f286e173c4a1cf52da64c0b9"
+   },
+   "sides": {
+    "A": "assisted",
+    "B": "baseline"
+   }
+  }
+ }
+}

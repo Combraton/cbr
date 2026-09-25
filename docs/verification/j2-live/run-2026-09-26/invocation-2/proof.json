@@ -1,0 +1,475 @@
+{
+  "binaries": {
+    "cbr": "sha256:4f9ee141d256fc5be646bafe648ec3eaa597b3b5d556855ccced1e1affac1bae",
+    "cbr-provider": "sha256:0fb354e6e9dd42cd9787c1a6604afac3017d0a0858cee060aa710c8de3761e66"
+  },
+  "report_digest": "sha256:4a5ebfd6d782dd66ee341f0b901c7a21bc201e9d336cdd6623143707ac89caec",
+  "runs": [
+    {
+      "id": "log-m27hs",
+      "input_digest_matches": true,
+      "key_scan": {
+        "counts": {
+          "bearer": 0,
+          "jwt": 0,
+          "keychain_service": 0,
+          "sk": 0
+        },
+        "files": 8
+      },
+      "ledger_equals_report": true,
+      "model": "MiniMax-M2.7-highspeed",
+      "store": {
+        "commands": 5,
+        "event_types": {
+          "context.packet.published": 2,
+          "context.request.changed": 4,
+          "evidence.artifact.appended": 1,
+          "evidence.artifact.sealed": 3,
+          "evidence.artifact.staged": 3
+        },
+        "ledger": [],
+        "model_calls": [],
+        "model_calls_all_configured_model": true,
+        "part_records": [],
+        "spent": 0
+      },
+      "through_client": {
+        "assisted": {
+          "cited_artifact": "ingest.b89ad11e5a5ce597.1790377046135185000",
+          "cited_digest": "sha256:b89ad11e5a5ce5975f89b70ca91d14d400fa8c490f971fa5f603f80470898807",
+          "excerpts_checked": 24,
+          "excerpts_not_equal_to_fetched_bytes": [],
+          "fetch_exit": 0,
+          "fetched_digest": "sha256:b89ad11e5a5ce5975f89b70ca91d14d400fa8c490f971fa5f603f80470898807",
+          "fetched_equals_input": true,
+          "packet_same_after_restart": true
+        },
+        "baseline": {
+          "cited_artifact": "ingest.b89ad11e5a5ce597.1790377046135185000",
+          "cited_digest": "sha256:b89ad11e5a5ce5975f89b70ca91d14d400fa8c490f971fa5f603f80470898807",
+          "excerpts_checked": 24,
+          "excerpts_not_equal_to_fetched_bytes": [],
+          "fetch_exit": 0,
+          "fetched_digest": "sha256:b89ad11e5a5ce5975f89b70ca91d14d400fa8c490f971fa5f603f80470898807",
+          "fetched_equals_input": true,
+          "packet_same_after_restart": true
+        }
+      }
+    },
+    {
+      "id": "log-m3",
+      "input_digest_matches": true,
+      "key_scan": {
+        "counts": {
+          "bearer": 0,
+          "jwt": 0,
+          "keychain_service": 0,
+          "sk": 0
+        },
+        "files": 8
+      },
+      "ledger_equals_report": true,
+      "model": "MiniMax-M3",
+      "store": {
+        "commands": 5,
+        "event_types": {
+          "context.packet.published": 2,
+          "context.request.changed": 4,
+          "evidence.artifact.appended": 1,
+          "evidence.artifact.sealed": 3,
+          "evidence.artifact.staged": 3
+        },
+        "ledger": [],
+        "model_calls": [],
+        "model_calls_all_configured_model": true,
+        "part_records": [],
+        "spent": 0
+      },
+      "through_client": {
+        "assisted": {
+          "cited_artifact": "ingest.b89ad11e5a5ce597.1790377046631283000",
+          "cited_digest": "sha256:b89ad11e5a5ce5975f89b70ca91d14d400fa8c490f971fa5f603f80470898807",
+          "excerpts_checked": 24,
+          "excerpts_not_equal_to_fetched_bytes": [],
+          "fetch_exit": 0,
+          "fetched_digest": "sha256:b89ad11e5a5ce5975f89b70ca91d14d400fa8c490f971fa5f603f80470898807",
+          "fetched_equals_input": true,
+          "packet_same_after_restart": true
+        },
+        "baseline": {
+          "cited_artifact": "ingest.b89ad11e5a5ce597.1790377046631283000",
+          "cited_digest": "sha256:b89ad11e5a5ce5975f89b70ca91d14d400fa8c490f971fa5f603f80470898807",
+          "excerpts_checked": 24,
+          "excerpts_not_equal_to_fetched_bytes": [],
+          "fetch_exit": 0,
+          "fetched_digest": "sha256:b89ad11e5a5ce5975f89b70ca91d14d400fa8c490f971fa5f603f80470898807",
+          "fetched_equals_input": true,
+          "packet_same_after_restart": true
+        }
+      }
+    },
+    {
+      "id": "core-m27hs",
+      "input_digest_matches": true,
+      "key_scan": {
+        "counts": {
+          "bearer": 0,
+          "jwt": 0,
+          "keychain_service": 0,
+          "sk": 0
+        },
+        "files": 12
+      },
+      "ledger_equals_report": true,
+      "model": "MiniMax-M2.7-highspeed",
+      "store": {
+        "commands": 6,
+        "event_types": {
+          "context.packet.published": 3,
+          "context.request.changed": 6,
+          "evidence.artifact.appended": 1,
+          "evidence.artifact.sealed": 7,
+          "evidence.artifact.staged": 4
+        },
+        "ledger": [
+          {
+            "estimate": 36723,
+            "kind": "usage",
+            "tokens": 9985
+          },
+          {
+            "estimate": 36723,
+            "kind": "admitted_local",
+            "tokens": 0
+          },
+          {
+            "estimate": 36550,
+            "kind": "usage",
+            "tokens": 10313
+          },
+          {
+            "estimate": 36550,
+            "kind": "admitted_local",
+            "tokens": 0
+          },
+          {
+            "estimate": 14130,
+            "kind": "usage",
+            "tokens": 3261
+          },
+          {
+            "estimate": 14130,
+            "kind": "admitted_local",
+            "tokens": 0
+          }
+        ],
+        "model_calls": [
+          {
+            "answered_by": "MiniMax-M2.7-highspeed",
+            "call": "completion",
+            "configured_model": "MiniMax-M2.7-highspeed",
+            "dialect": "responses",
+            "input_tokens": 9607,
+            "output_tokens": 378,
+            "received_bytes": 3351,
+            "sent_bytes": 33635,
+            "status": "completed"
+          },
+          {
+            "answered_by": "MiniMax-M2.7-highspeed",
+            "call": "completion",
+            "configured_model": "MiniMax-M2.7-highspeed",
+            "dialect": "responses",
+            "input_tokens": 9744,
+            "output_tokens": 569,
+            "received_bytes": 3557,
+            "sent_bytes": 33462,
+            "status": "completed"
+          },
+          {
+            "answered_by": "MiniMax-M2.7-highspeed",
+            "call": "completion",
+            "configured_model": "MiniMax-M2.7-highspeed",
+            "dialect": "responses",
+            "input_tokens": 3095,
+            "output_tokens": 166,
+            "received_bytes": 2461,
+            "sent_bytes": 11042,
+            "status": "completed"
+          }
+        ],
+        "model_calls_all_configured_model": true,
+        "part_records": [
+          {
+            "id": "der.05bce223bf8344e8e5c734a38b65ffa0278710e3e8a5676580f8475d3eb59236",
+            "model": "MiniMax-M2.7-highspeed",
+            "outcome": null,
+            "selector": "project_large_result cbr-project-large-result/2 ingest.06a0f54234b49df6.1790377047129220000 sha256:06a0f54234b49df6c459cfec6217e8f1b50c6dd5e03cc4ede619ffbd2ed69a35 part 1 of 3",
+            "usage": {
+              "attempts": [
+                {
+                  "admission": "admitted_local",
+                  "count_tokens": null,
+                  "counted_tokens": null,
+                  "input_tokens": 9607,
+                  "tokens": 9985
+                }
+              ],
+              "counted_tokens": null,
+              "input_tokens": 9607,
+              "repairs": 0,
+              "tokens": 9985
+            }
+          },
+          {
+            "id": "der.488ca04fa104602e92cb3c781dd20cfc3dabf8b3eedf07db0d09d93ec2e5d0ab",
+            "model": "MiniMax-M2.7-highspeed",
+            "outcome": null,
+            "selector": "project_large_result cbr-project-large-result/2 ingest.06a0f54234b49df6.1790377047129220000 sha256:06a0f54234b49df6c459cfec6217e8f1b50c6dd5e03cc4ede619ffbd2ed69a35 part 3 of 3",
+            "usage": {
+              "attempts": [
+                {
+                  "admission": "admitted_local",
+                  "count_tokens": null,
+                  "counted_tokens": null,
+                  "input_tokens": 3095,
+                  "tokens": 3261
+                }
+              ],
+              "counted_tokens": null,
+              "input_tokens": 3095,
+              "repairs": 0,
+              "tokens": 3261
+            }
+          },
+          {
+            "id": "der.84a93f80a596005ffec5ce16d18fca413116c0c73e7ca731d33c0fdebe28e491",
+            "model": "MiniMax-M2.7-highspeed",
+            "outcome": null,
+            "selector": "project_large_result cbr-project-large-result/2 ingest.06a0f54234b49df6.1790377047129220000 sha256:06a0f54234b49df6c459cfec6217e8f1b50c6dd5e03cc4ede619ffbd2ed69a35 part 2 of 3",
+            "usage": {
+              "attempts": [
+                {
+                  "admission": "admitted_local",
+                  "count_tokens": null,
+                  "counted_tokens": null,
+                  "input_tokens": 9744,
+                  "tokens": 10313
+                }
+              ],
+              "counted_tokens": null,
+              "input_tokens": 9744,
+              "repairs": 0,
+              "tokens": 10313
+            }
+          }
+        ],
+        "spent": 23559
+      },
+      "through_client": {
+        "assisted": {
+          "cited_artifact": "ingest.06a0f54234b49df6.1790377047129220000",
+          "cited_digest": "sha256:06a0f54234b49df6c459cfec6217e8f1b50c6dd5e03cc4ede619ffbd2ed69a35",
+          "excerpts_checked": 2,
+          "excerpts_not_equal_to_fetched_bytes": [],
+          "fetch_exit": 0,
+          "fetched_digest": "sha256:06a0f54234b49df6c459cfec6217e8f1b50c6dd5e03cc4ede619ffbd2ed69a35",
+          "fetched_equals_input": true,
+          "packet_same_after_restart": true
+        },
+        "baseline": {
+          "cited_artifact": "ingest.06a0f54234b49df6.1790377047129220000",
+          "cited_digest": "sha256:06a0f54234b49df6c459cfec6217e8f1b50c6dd5e03cc4ede619ffbd2ed69a35",
+          "excerpts_checked": 2,
+          "excerpts_not_equal_to_fetched_bytes": [],
+          "fetch_exit": 0,
+          "fetched_digest": "sha256:06a0f54234b49df6c459cfec6217e8f1b50c6dd5e03cc4ede619ffbd2ed69a35",
+          "fetched_equals_input": true,
+          "packet_same_after_restart": true
+        }
+      }
+    },
+    {
+      "id": "core-m3",
+      "input_digest_matches": true,
+      "key_scan": {
+        "counts": {
+          "bearer": 0,
+          "jwt": 0,
+          "keychain_service": 0,
+          "sk": 0
+        },
+        "files": 12
+      },
+      "ledger_equals_report": true,
+      "model": "MiniMax-M3",
+      "store": {
+        "commands": 6,
+        "event_types": {
+          "context.packet.published": 3,
+          "context.request.changed": 6,
+          "evidence.artifact.appended": 1,
+          "evidence.artifact.sealed": 7,
+          "evidence.artifact.staged": 4
+        },
+        "ledger": [
+          {
+            "estimate": 36538,
+            "kind": "usage",
+            "tokens": 9893
+          },
+          {
+            "estimate": 36538,
+            "kind": "admitted_local",
+            "tokens": 0
+          },
+          {
+            "estimate": 36711,
+            "kind": "usage",
+            "tokens": 9756
+          },
+          {
+            "estimate": 36711,
+            "kind": "admitted_local",
+            "tokens": 0
+          },
+          {
+            "estimate": 14118,
+            "kind": "usage",
+            "tokens": 3244
+          },
+          {
+            "estimate": 14118,
+            "kind": "admitted_local",
+            "tokens": 0
+          }
+        ],
+        "model_calls": [
+          {
+            "answered_by": "MiniMax-M3",
+            "call": "completion",
+            "configured_model": "MiniMax-M3",
+            "dialect": "responses",
+            "input_tokens": 9887,
+            "output_tokens": 6,
+            "received_bytes": 1561,
+            "sent_bytes": 33450,
+            "status": "completed"
+          },
+          {
+            "answered_by": "MiniMax-M3",
+            "call": "completion",
+            "configured_model": "MiniMax-M3",
+            "dialect": "responses",
+            "input_tokens": 9750,
+            "output_tokens": 6,
+            "received_bytes": 1559,
+            "sent_bytes": 33623,
+            "status": "completed"
+          },
+          {
+            "answered_by": "MiniMax-M3",
+            "call": "completion",
+            "configured_model": "MiniMax-M3",
+            "dialect": "responses",
+            "input_tokens": 3238,
+            "output_tokens": 6,
+            "received_bytes": 1561,
+            "sent_bytes": 11030,
+            "status": "completed"
+          }
+        ],
+        "model_calls_all_configured_model": true,
+        "part_records": [
+          {
+            "id": "der.14472aa4120835a9e77998eaed1d2f8be5bb6d12021c70f4cb18c83e22160f7e",
+            "model": "MiniMax-M3",
+            "outcome": null,
+            "selector": "project_large_result cbr-project-large-result/2 ingest.06a0f54234b49df6.1790377059755425000 sha256:06a0f54234b49df6c459cfec6217e8f1b50c6dd5e03cc4ede619ffbd2ed69a35 part 1 of 3",
+            "usage": {
+              "attempts": [
+                {
+                  "admission": "admitted_local",
+                  "count_tokens": null,
+                  "counted_tokens": null,
+                  "input_tokens": 9750,
+                  "tokens": 9756
+                }
+              ],
+              "counted_tokens": null,
+              "input_tokens": 9750,
+              "repairs": 0,
+              "tokens": 9756
+            }
+          },
+          {
+            "id": "der.4a613f169cac302286997c3cafdffaedbc21be60399d678a686911349677d912",
+            "model": "MiniMax-M3",
+            "outcome": null,
+            "selector": "project_large_result cbr-project-large-result/2 ingest.06a0f54234b49df6.1790377059755425000 sha256:06a0f54234b49df6c459cfec6217e8f1b50c6dd5e03cc4ede619ffbd2ed69a35 part 3 of 3",
+            "usage": {
+              "attempts": [
+                {
+                  "admission": "admitted_local",
+                  "count_tokens": null,
+                  "counted_tokens": null,
+                  "input_tokens": 3238,
+                  "tokens": 3244
+                }
+              ],
+              "counted_tokens": null,
+              "input_tokens": 3238,
+              "repairs": 0,
+              "tokens": 3244
+            }
+          },
+          {
+            "id": "der.d277bbe4b5f50b0a52084705785558b2457c313fc12c625f1c89c183057f4738",
+            "model": "MiniMax-M3",
+            "outcome": null,
+            "selector": "project_large_result cbr-project-large-result/2 ingest.06a0f54234b49df6.1790377059755425000 sha256:06a0f54234b49df6c459cfec6217e8f1b50c6dd5e03cc4ede619ffbd2ed69a35 part 2 of 3",
+            "usage": {
+              "attempts": [
+                {
+                  "admission": "admitted_local",
+                  "count_tokens": null,
+                  "counted_tokens": null,
+                  "input_tokens": 9887,
+                  "tokens": 9893
+                }
+              ],
+              "counted_tokens": null,
+              "input_tokens": 9887,
+              "repairs": 0,
+              "tokens": 9893
+            }
+          }
+        ],
+        "spent": 22893
+      },
+      "through_client": {
+        "assisted": {
+          "cited_artifact": "ingest.06a0f54234b49df6.1790377059755425000",
+          "cited_digest": "sha256:06a0f54234b49df6c459cfec6217e8f1b50c6dd5e03cc4ede619ffbd2ed69a35",
+          "excerpts_checked": 2,
+          "excerpts_not_equal_to_fetched_bytes": [],
+          "fetch_exit": 0,
+          "fetched_digest": "sha256:06a0f54234b49df6c459cfec6217e8f1b50c6dd5e03cc4ede619ffbd2ed69a35",
+          "fetched_equals_input": true,
+          "packet_same_after_restart": true
+        },
+        "baseline": {
+          "cited_artifact": "ingest.06a0f54234b49df6.1790377059755425000",
+          "cited_digest": "sha256:06a0f54234b49df6c459cfec6217e8f1b50c6dd5e03cc4ede619ffbd2ed69a35",
+          "excerpts_checked": 2,
+          "excerpts_not_equal_to_fetched_bytes": [],
+          "fetch_exit": 0,
+          "fetched_digest": "sha256:06a0f54234b49df6c459cfec6217e8f1b50c6dd5e03cc4ede619ffbd2ed69a35",
+          "fetched_equals_input": true,
+          "packet_same_after_restart": true
+        }
+      }
+    }
+  ]
+}

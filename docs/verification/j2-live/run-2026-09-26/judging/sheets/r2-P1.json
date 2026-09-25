@@ -1,0 +1,26 @@
+{
+  "pair": "P1",
+  "judge": "r2",
+  "A": {
+    "J1": {
+      "score": 3,
+      "why": "The consumer can correctly conclude that nothing failed. The header reports 0 failing tests, and the carried summary at 61565-61621 shows pass 130 and unsupported 5, with no fail key; that adds up to suite.fixtures 135. Not a 4 because the whole results array (711-61051, o1 not_selected) is omitted. The 5 unsupported fixtures and their reason ('participant does not claim execution/1') are never identified."
+    },
+    "J2": {
+      "score": 3,
+      "why": "Minor ambiguity: the carried 'coverage_limits': [] at bytes 4-26 sits beside 'unsupported': 5 and a status_note (61130+) saying unsupported outcomes are coverage limits. The carried summary and note make clear these 5 are not failures, so nothing points toward a false answer. Checked against the source: no result has a fail outcome."
+    }
+  },
+  "B": {
+    "J1": {
+      "score": 3,
+      "why": "The consumer can correctly conclude that nothing failed. The header reports 0 failing tests, and the carried summary at 61565-61621 shows pass 130 and unsupported 5, with no fail key; that adds up to suite.fixtures 135. Not a 4 because the whole results array (711-61051, o1 not_selected) is omitted. The 5 unsupported fixtures and their reason ('participant does not claim execution/1') are never identified."
+    },
+    "J2": {
+      "score": 3,
+      "why": "Minor ambiguity: the carried 'coverage_limits': [] at bytes 4-26 sits beside 'unsupported': 5 and a status_note (61130+) saying unsupported outcomes are coverage limits. The carried summary and note make clear these 5 are not failures, so nothing points toward a false answer. Checked against the source: no result has a fail outcome."
+    }
+  },
+  "prefer": "none",
+  "prefer_why": "A.txt and B.txt are byte-identical (same sha256, 1843 bytes), so nothing distinguishes them."
+}
