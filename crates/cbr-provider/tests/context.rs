@@ -999,3 +999,201 @@ fn a_compiled_evidence_item_is_read_only_at_the_provider_its_reference_names() {
     );
     ctx.kill();
 }
+
+/// The protocol's identifier grammar (`core/1/common.schema.json`), which
+/// the `context` schemas require of a section id, a citation id and an
+/// artifact id. Written out because the provider is a binary with no
+/// library target.
+fn is_identifier(text: &str) -> bool {
+    let bytes = text.as_bytes();
+    !bytes.is_empty()
+        && bytes.len() <= 128
+        && bytes[0].is_ascii_alphanumeric()
+        && bytes[1..]
+            .iter()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b':' | b'~' | b'-'))
+}
+
+/// Every object file the store holds.
+fn objects(data: &Path) -> Vec<PathBuf> {
+    fn walk(directory: &Path, found: &mut Vec<PathBuf>) {
+        let Ok(entries) = std::fs::read_dir(directory) else {
+            return;
+        };
+        for entry in entries.filter_map(Result::ok) {
+            if entry.file_type().is_ok_and(|kind| kind.is_dir()) {
+                walk(&entry.path(), found);
+            } else {
+                found.push(entry.path());
+            }
+        }
+    }
+    let mut found = Vec::new();
+    walk(&data.join("objects").join("sha256"), &mut found);
+    found
+}
+
+#[test]
+fn a_packet_holding_an_id_outside_the_identifier_grammar_is_never_published() {
+    // **The last door before a packet is published.** The compiler builds
+    // ids inside the grammar now, and a test control can still script any
+    // string at all: `context.script` checks nothing about a section's id.
+    // So the packet is checked where it is sealed, before anything leaves
+    // the tick — no capture, no object, no artifact, no event — and a job
+    // whose packet fails is logged and passed over, while every other job
+    // on the provider carries on.
+    //
+    // The log names **where** each bad id is, as a JSON pointer, and never
+    // the id itself: the id is often a path, and a provider's log is the
+    // kind of thing that ends up in a committed record.
+    let directory = tempfile::tempdir().expect("temp dir");
+    let section = |id: &str| {
+        format!(
+            r#"[{{"section":{{"section_id":"{id}","item_id":"i-1","label":"source_inspected","content":"fn main() {{}}","source":{{"repository":"repo-a","path":"src/main.rs","tree":"tree-1"}}}}}},{{"publish":{{}}}}]"#
+        )
+    };
+    let mut ctx = ContextProvider::start(
+        directory.path(),
+        &format!(
+            r#"{{"format":"combraton-conformance-config/1","provider_id":"context-1","principal":"owner","authority_principals":["owner"],"context":{{"scripts":{{"r-bad":{},"r-good":{}}}}}}}"#,
+            section("s/x-secret-path"),
+            section("s-1"),
+        ),
+    );
+    // The bad request first, so its job is the first the tick walks: a
+    // refusal that stopped the tick would stop the good one with it.
+    for request in ["r-bad", "r-good"] {
+        assert_eq!(
+            text(
+                result(&ctx.submit(request, "2030-01-01T01:00:00Z")),
+                &["outcome", "state"]
+            ),
+            "preparing"
+        );
+    }
+    let published = (0..50).find_map(|_| {
+        let inspected = ctx.inspect("r-good");
+        (at(&inspected, &["packets"])
+            .as_array()
+            .is_some_and(|packets| !packets.is_empty()))
+        .then_some(inspected)
+    });
+    assert!(
+        published.is_some(),
+        "a valid job beside the refused one never published"
+    );
+    for _ in 0..5 {
+        let refused = ctx.inspect("r-bad");
+        assert_eq!(
+            at(&refused, &["packets"]).as_array().map(<[_]>::len),
+            Some(0),
+            "a packet with an id outside the grammar was published: {refused:?}"
+        );
+        assert_eq!(text(&refused, &["state"]), "preparing", "{refused:?}");
+    }
+
+    let data = directory.path().join("context-data");
+    let connection = rusqlite::Connection::open(data.join("cbr.sqlite")).expect("opens the store");
+    let artifacts: Vec<String> = connection
+        .prepare("SELECT id FROM subjects WHERE kind = 'evidence.artifact'")
+        .expect("prepares")
+        .query_map([], |row| row.get::<_, String>(0))
+        .expect("queries")
+        .collect::<Result<_, _>>()
+        .expect("reads");
+    assert_eq!(artifacts, ["packet.r-good.1"], "no artifact for r-bad");
+    let published_events: Vec<String> = connection
+        .prepare("SELECT subject_id FROM events WHERE type = 'context.packet.published'")
+        .expect("prepares")
+        .query_map([], |row| row.get::<_, String>(0))
+        .expect("queries")
+        .collect::<Result<_, _>>()
+        .expect("reads");
+    assert_eq!(
+        published_events,
+        ["r-good"],
+        "no publication event for r-bad"
+    );
+    // Not even the object: the check runs before the packet's bytes are
+    // written anywhere, so a refused packet leaves nothing to collect.
+    assert_eq!(
+        objects(&data).len(),
+        1,
+        "only r-good's packet has an object: {:?}",
+        objects(&data)
+    );
+
+    let logged =
+        std::fs::read_to_string(directory.path().join("context-stderr.log")).expect("the log");
+    assert!(
+        logged.contains("r-bad") && logged.contains("/sections/0/section_id"),
+        "the log names the request and where the id is: {logged}"
+    );
+    assert!(
+        !logged.contains("secret-path"),
+        "the log repeats the id itself: {logged}"
+    );
+    ctx.kill();
+}
+
+#[test]
+fn a_request_id_of_127_characters_is_published_under_an_artifact_id_inside_the_grammar() {
+    // **`packet.<request>.<revision>` is a convention, not a guarantee.**
+    // A request id may be 128 characters, and `packet.` and `.1` take
+    // nine more, so the artifact a packet is sealed as would be outside
+    // the grammar its own reference is checked against. Past 128 the id
+    // keeps the `packet.` prefix a grant's `id_prefix` names, then a
+    // digest of the rest and as much of its tail as fits.
+    let directory = tempfile::tempdir().expect("temp dir");
+    let mut ctx = ContextProvider::start(
+        directory.path(),
+        r#"{"format":"combraton-conformance-config/1","provider_id":"context-1","principal":"owner","authority_principals":["owner"],"context":{"compile":true}}"#,
+    );
+    let log = b"running 1 test\ntest tests::holds ... ok\n";
+    let digest = seal(&mut ctx, "log-1", log);
+    let request = format!("r{}", "x".repeat(126));
+    assert_eq!(request.len(), 127);
+    let payload = format!(
+        r#"{{"consumer":{{"task":"fix the build","principal":"owner"}},"basis":{{"repositories":[{{"id":"repo-a","tree":"tree-1","workspace":"clean","dirty":null}}],"completeness":"complete"}},"items":[{{"item_id":"log","selector":{{"kind":"evidence","value":"log-1"}},"obligation":"required_before_start","reliance":"evidence","selected_by":"owner","check":{{"kind":"evidence_included","evidence":{{"artifact":{{"kind":"evidence.artifact","id":"log-1"}},"digest":"{digest}"}}}}}}],"fallback":"proceed_with_gap","limits":{{"deadline":"2030-01-01T01:00:00Z","investigation":{{"units":"queries","amount":0}},"output_capacity":{{"units":"bytes","amount":4096}}}}}}"#
+    );
+    // A short command id: the request's own id is already 127, and a
+    // command id is an identifier too.
+    let submitted = ctx.call(
+        "context.request.submit",
+        Some(("submit-long", ("context.request", &request), 0)),
+        &payload,
+    );
+    assert_eq!(
+        text(result(&submitted), &["outcome", "state"]),
+        "preparing",
+        "{submitted:?}"
+    );
+    let published = (0..50)
+        .find_map(|_| {
+            let inspected = ctx.inspect(&request);
+            at(&inspected, &["packets"])
+                .as_array()
+                .and_then(<[Value]>::first)
+                .cloned()
+        })
+        .expect("the long request published");
+    let artifact = text(&published, &["reference", "artifact", "artifact", "id"]).to_string();
+    assert!(
+        is_identifier(&artifact) && artifact.starts_with("packet."),
+        "the packet artifact id {artifact} ({} bytes) is outside the grammar",
+        artifact.len()
+    );
+
+    let expanded = ctx.call(
+        "context.expand",
+        None,
+        &format!(r#"{{"packet":"{request}","revision":1,"citation":"c-log","max_bytes":4096}}"#),
+    );
+    let data = text(result(&expanded), &["excerpt", "data_base64"]);
+    assert_eq!(
+        cbr_encoding::decode_base64(data).expect("base64"),
+        log,
+        "the long request's citation expands"
+    );
+    ctx.kill();
+}
