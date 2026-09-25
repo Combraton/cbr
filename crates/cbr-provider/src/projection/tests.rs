@@ -482,7 +482,7 @@ fn a_part_holds_at_most_its_bytes_as_the_body_carries_them() {
     let plain = "x".repeat(60) + "\n";
     let log: String = plain.repeat(1500);
     let read_plain = parse(log.as_bytes());
-    let plan = partition(&read_plain, log.as_bytes(), SUBJECT);
+    let plan = partition(&read_plain, log.as_bytes(), SUBJECT, true);
     let costs = part_costs(&read_plain, log.as_bytes(), &plan);
     assert!(plan.parts.len() >= 2, "{costs:?}");
     assert!(costs.iter().all(|&cost| cost <= PART_BYTES), "{costs:?}");
@@ -500,7 +500,7 @@ fn a_part_holds_at_most_its_bytes_as_the_body_carries_them() {
     let control = "\u{1}".repeat(60) + "\n";
     let noisy: String = control.repeat(1500);
     let read_noisy = parse(noisy.as_bytes());
-    let noisy_plan = partition(&read_noisy, noisy.as_bytes(), SUBJECT);
+    let noisy_plan = partition(&read_noisy, noisy.as_bytes(), SUBJECT, true);
     assert!(
         noisy_plan.parts.len() > plan.parts.len() * 4,
         "escaping was not counted: {} parts against {}",
@@ -522,7 +522,7 @@ fn a_part_holds_at_most_its_count_of_candidates() {
     let records: String = (0..=PART_UNITS).map(|n| format!("[{n}]\n")).collect();
     let read = parse(records.as_bytes());
     assert_eq!(read.units.len(), PART_UNITS + 1);
-    let plan = partition(&read, records.as_bytes(), SUBJECT);
+    let plan = partition(&read, records.as_bytes(), SUBJECT, true);
     let sizes: Vec<usize> = plan.parts.iter().map(Vec::len).collect();
     assert_eq!(sizes, [PART_UNITS, 1]);
 }
@@ -531,7 +531,7 @@ fn a_part_holds_at_most_its_count_of_candidates() {
 fn identity_is_never_offered_to_a_model() {
     let log = cargo_log(2, 3, &[(0, 1)], 2);
     let read = parse(log.as_bytes());
-    let plan = partition(&read, log.as_bytes(), SUBJECT);
+    let plan = partition(&read, log.as_bytes(), SUBJECT, true);
     for units in &plan.parts {
         for &index in units {
             assert_ne!(read.units[index].kind, Kind::Identity);
@@ -556,7 +556,7 @@ fn a_group_larger_than_a_part_is_the_one_cut_and_the_model_is_told_it_was_made()
     // partitioning has to cut.
     let log = cargo_log(1, 2, &[(0, 0)], 1400);
     let read = parse(log.as_bytes());
-    let plan = partition(&read, log.as_bytes(), SUBJECT);
+    let plan = partition(&read, log.as_bytes(), SUBJECT, true);
     assert!(plan.parts.len() >= 3, "{}", plan.parts.len());
     assert_eq!(plan.split.len(), 1, "{:?}", plan.split);
     let (first, last, from, to) = plan.split[0];
@@ -582,7 +582,7 @@ fn a_group_larger_than_a_part_is_the_one_cut_and_the_model_is_told_it_was_made()
     // arm says so, numbered by the questions it was asked.
     let text = format!("{}\n", "y".repeat(2000)).repeat(BLOCK_LINES);
     let read = parse(text.as_bytes());
-    let plan = partition(&read, text.as_bytes(), SUBJECT);
+    let plan = partition(&read, text.as_bytes(), SUBJECT, true);
     assert_eq!(plan.split.len(), 1, "{:?}", plan.split);
     assert_eq!(plan.asked.len(), 2, "{:?}", plan.asked);
     let (first, _, _, _) = plan.split[0];
@@ -621,7 +621,7 @@ fn filling(parts: usize) -> String {
         count += 1;
         if count % BLOCK_LINES == 0 {
             let read = parse(text.as_bytes());
-            if partition(&read, text.as_bytes(), SUBJECT).parts.len() > parts {
+            if partition(&read, text.as_bytes(), SUBJECT, true).parts.len() > parts {
                 // One block too many: take it back.
                 text.truncate(text.len() - line.len() * BLOCK_LINES);
                 return text;
@@ -635,7 +635,7 @@ fn more_parts_than_the_bound_is_insufficient_capacity_with_or_without_a_model() 
     // **The capacity, reached from both sides.**
     let at_bound = filling(MAX_PARTS);
     let read_at = parse(at_bound.as_bytes());
-    let plan_at = partition(&read_at, at_bound.as_bytes(), SUBJECT);
+    let plan_at = partition(&read_at, at_bound.as_bytes(), SUBJECT, true);
     assert_eq!(plan_at.parts.len(), MAX_PARTS);
     for may_ask in [true, false] {
         assert_ne!(
@@ -649,7 +649,7 @@ fn more_parts_than_the_bound_is_insufficient_capacity_with_or_without_a_model() 
         format!("{}\n", "z".repeat(89)).repeat(BLOCK_LINES)
     );
     let read_over = parse(over.as_bytes());
-    let plan_over = partition(&read_over, over.as_bytes(), SUBJECT);
+    let plan_over = partition(&read_over, over.as_bytes(), SUBJECT, true);
     assert_eq!(plan_over.parts.len(), MAX_PARTS + 1);
     for may_ask in [true, false] {
         assert_eq!(
@@ -671,7 +671,7 @@ fn more_parts_than_the_bound_is_insufficient_capacity_with_or_without_a_model() 
 fn a_whole_artifact_that_fits_is_carried_whole_and_nothing_is_asked() {
     let log = cargo_log(1, 6, &[(0, 2)], 3);
     let read = parse(log.as_bytes());
-    let plan = partition(&read, log.as_bytes(), SUBJECT);
+    let plan = partition(&read, log.as_bytes(), SUBJECT, true);
     let Next::Carry(choice) = next(&read, log.as_bytes(), &plan, SUBJECT, true) else {
         panic!("a model was asked about a log that fits whole");
     };
@@ -705,7 +705,7 @@ fn a_whole_artifact_is_carried_as_one_excerpt_however_many_units_it_has() {
     let log = cargo_log(1, 80, &failing, 0);
     assert!(log.len() < PROJECTION_BYTES / 2, "{}", log.len());
     let read = parse(log.as_bytes());
-    let plan = partition(&read, log.as_bytes(), SUBJECT);
+    let plan = partition(&read, log.as_bytes(), SUBJECT, true);
     let Next::Carry(choice) = next(&read, log.as_bytes(), &plan, SUBJECT, true) else {
         panic!("a model was asked about a log that fits whole");
     };
@@ -727,7 +727,7 @@ fn with_nothing_a_model_could_be_offered_the_rule_is_used_and_says_so() {
         .collect();
     let read = parse(log.as_bytes());
     assert!(read.units.iter().all(|unit| unit.kind == Kind::Identity));
-    let plan = partition(&read, log.as_bytes(), SUBJECT);
+    let plan = partition(&read, log.as_bytes(), SUBJECT, true);
     assert!(plan.parts.is_empty());
     let Next::Carry(choice) = next(&read, log.as_bytes(), &plan, SUBJECT, true) else {
         panic!("a model was to be asked with nothing to show it");
@@ -739,7 +739,7 @@ fn with_nothing_a_model_could_be_offered_the_rule_is_used_and_says_so() {
 fn with_no_model_the_rule_carries_the_failures_and_then_the_runs_identity() {
     let log = cargo_log(6, 150, &[(2, 5), (4, 9)], 6);
     let read = parse(log.as_bytes());
-    let plan = partition(&read, log.as_bytes(), SUBJECT);
+    let plan = partition(&read, log.as_bytes(), SUBJECT, true);
     let Next::Carry(choice) = next(&read, log.as_bytes(), &plan, SUBJECT, false) else {
         panic!("no model, and something was asked");
     };
@@ -784,7 +784,7 @@ fn a_failure_is_carried_even_where_run_identity_alone_would_fill_the_projection(
         .filter(|pair| pair[0].kind == Kind::Identity && pair[1].kind != Kind::Identity)
         .count();
     assert!(identity_runs > MAX_EXCERPTS, "{identity_runs}");
-    let plan = partition(&read, log.as_bytes(), SUBJECT);
+    let plan = partition(&read, log.as_bytes(), SUBJECT, true);
     let rendered = render(
         &read,
         log.as_bytes(),
@@ -805,7 +805,7 @@ fn a_failure_is_carried_even_where_run_identity_alone_would_fill_the_projection(
 fn bytes_that_are_not_text_are_one_declared_omission() {
     let bytes = vec![0x80_u8; 5000];
     let read = parse(&bytes);
-    let plan = partition(&read, &bytes, SUBJECT);
+    let plan = partition(&read, &bytes, SUBJECT, true);
     let Next::Carry(choice) = next(&read, &bytes, &plan, SUBJECT, true) else {
         panic!("a model was asked about bytes that are not text");
     };
@@ -827,7 +827,7 @@ fn an_omission_that_held_something_chosen_is_over_projection_and_one_that_held_n
     let failing: Vec<(usize, usize)> = (0..20).map(|test| (0, test * 3)).collect();
     let log = cargo_log(1, 60, &failing, 30);
     let read = parse(log.as_bytes());
-    let plan = partition(&read, log.as_bytes(), SUBJECT);
+    let plan = partition(&read, log.as_bytes(), SUBJECT, true);
     let choice = choose_by_rule(&read);
     let rendered = render(&read, log.as_bytes(), &choice, &plan, SUBJECT);
     assert_renders_honestly(&rendered, log.as_bytes());
@@ -873,7 +873,7 @@ fn a_projection_never_exceeds_its_bytes_and_this_one_reaches_them() {
     let failing: Vec<(usize, usize)> = (0..40).map(|test| (0, test)).collect();
     let log = cargo_log(1, 40, &failing, 25);
     let read = parse(log.as_bytes());
-    let plan = partition(&read, log.as_bytes(), SUBJECT);
+    let plan = partition(&read, log.as_bytes(), SUBJECT, true);
     let rendered = render(
         &read,
         log.as_bytes(),
@@ -911,7 +911,7 @@ fn a_projection_carries_at_most_its_count_of_excerpts() {
     let failing: Vec<(usize, usize)> = (0..60).map(|test| (0, test * 25 + 12)).collect();
     let log = cargo_log(1, 1500, &failing, 0);
     let read = parse(log.as_bytes());
-    let plan = partition(&read, log.as_bytes(), SUBJECT);
+    let plan = partition(&read, log.as_bytes(), SUBJECT, true);
     let choice = Choice {
         by: By::Model,
         chosen: read
@@ -939,7 +939,7 @@ fn named_failures_are_listed_to_their_bound_and_counted_past_it() {
     let failing: Vec<(usize, usize)> = (0..NAMED_FAILURES + 4).map(|test| (0, test)).collect();
     let log = cargo_log(1, NAMED_FAILURES + 10, &failing, 0);
     let read = parse(log.as_bytes());
-    let plan = partition(&read, log.as_bytes(), SUBJECT);
+    let plan = partition(&read, log.as_bytes(), SUBJECT, true);
     let rendered = render(
         &read,
         log.as_bytes(),
@@ -970,7 +970,7 @@ fn a_long_name_is_shown_to_its_bound_at_the_range_it_shows() {
     let name = format!("tests::{}", "\u{4e00}".repeat(NAME_BYTES));
     let log = format!("running 1 test\ntest {name} ... FAILED\n\ntest result: FAILED.\n");
     let read = parse(log.as_bytes());
-    let plan = partition(&read, log.as_bytes(), SUBJECT);
+    let plan = partition(&read, log.as_bytes(), SUBJECT, true);
     let rendered = render(
         &read,
         log.as_bytes(),
@@ -1009,7 +1009,7 @@ fn the_capture_anchors_are_shown_to_their_bound() {
     };
     let log = cargo_log(1, 2, &[], 0);
     let read = parse(log.as_bytes());
-    let plan = partition(&read, log.as_bytes(), subject);
+    let plan = partition(&read, log.as_bytes(), subject, true);
     let rendered = render(
         &read,
         log.as_bytes(),
@@ -1061,7 +1061,7 @@ fn a_capture_anchor_is_shown_on_one_line_whatever_it_holds() {
     };
     let log = cargo_log(1, 2, &[(0, 1)], 1);
     let read = parse(log.as_bytes());
-    let plan = partition(&read, log.as_bytes(), subject);
+    let plan = partition(&read, log.as_bytes(), subject, true);
     let rendered = render(
         &read,
         log.as_bytes(),
@@ -1116,6 +1116,7 @@ fn the_largest_header_leaves_most_of_a_projection_for_its_ledger() {
         split: vec![(0, 0, 0, MAX_PARTS - 1); MAX_PARTS - 1],
         asked: vec![Vec::new(); MAX_PARTS],
         floor: Floor::default(),
+        rule: None,
     };
     let nothing = Choice {
         by: By::Model,
@@ -1160,7 +1161,7 @@ fn the_projection_a_fixed_fixture_renders_has_not_changed_without_its_format() {
         capture: &anchors,
         ..SUBJECT
     };
-    let plan = partition(&read, log.as_bytes(), subject);
+    let plan = partition(&read, log.as_bytes(), subject, true);
     let rendered = render(
         &read,
         log.as_bytes(),
@@ -1193,7 +1194,7 @@ fn a_parts_body_carries_no_more_than_the_partition_counted() {
     let failing: Vec<(usize, usize)> = (0..30).map(|test| (0, test * 5)).collect();
     let log = cargo_log(2, 160, &failing, 12);
     let read = parse(log.as_bytes());
-    let plan = partition(&read, log.as_bytes(), SUBJECT);
+    let plan = partition(&read, log.as_bytes(), SUBJECT, true);
     assert!(plan.parts.len() >= 2);
     for (number, units) in plan.parts.iter().enumerate() {
         let (candidates, labels) = candidates(&read, log.as_bytes(), SUBJECT.artifact, units);
@@ -1235,7 +1236,7 @@ fn a_parts_body_carries_no_more_than_the_partition_counted() {
 fn an_answer_is_read_against_its_own_part_and_nothing_else() {
     let log = cargo_log(1, 30, &[(0, 3)], 4);
     let read = parse(log.as_bytes());
-    let plan = partition(&read, log.as_bytes(), SUBJECT);
+    let plan = partition(&read, log.as_bytes(), SUBJECT, true);
     let (candidates, _) = candidates(&read, log.as_bytes(), SUBJECT.artifact, &plan.parts[0]);
     let reply = |json: &str| {
         crate::wire::response::Reply::Structure(cbr_encoding::parse(json.as_bytes()).expect("json"))
@@ -1267,7 +1268,7 @@ fn an_answer_is_read_against_its_own_part_and_nothing_else() {
 fn cbrs_own_instruction_is_the_only_instruction_and_the_selector_names_the_part() {
     let log = cargo_log(1, 30, &[(0, 3)], 4);
     let read = parse(log.as_bytes());
-    let plan = partition(&read, log.as_bytes(), SUBJECT);
+    let plan = partition(&read, log.as_bytes(), SUBJECT, true);
     let (candidates, labels) = candidates(&read, log.as_bytes(), SUBJECT.artifact, &plan.parts[0]);
     let part = Part {
         artifact: SUBJECT.artifact.to_string(),
@@ -1404,7 +1405,7 @@ fn offered(plan: &Plan) -> Vec<usize> {
 /// the projection's bytes.
 fn slack(text: &str) -> usize {
     let read = parse(text.as_bytes());
-    let plan = partition(&read, text.as_bytes(), SUBJECT);
+    let plan = partition(&read, text.as_bytes(), SUBJECT, true);
     let rendered = render(
         &read,
         text.as_bytes(),
@@ -1533,7 +1534,7 @@ fn joined_floor() -> String {
     // identity yet, is carried: the moment the last failure is accepted.
     let before_identity = |text: &str| {
         let read = parse(text.as_bytes());
-        let plan = partition(&read, text.as_bytes(), SUBJECT);
+        let plan = partition(&read, text.as_bytes(), SUBJECT, true);
         let failures: Vec<bool> = read
             .units
             .iter()
@@ -1555,7 +1556,7 @@ fn joined_floor() -> String {
         let room = before_identity(&text);
         if (1..60).contains(&room) {
             let read = parse(text.as_bytes());
-            let plan = partition(&read, text.as_bytes(), SUBJECT);
+            let plan = partition(&read, text.as_bytes(), SUBJECT, true);
             assert_eq!(
                 next(&read, text.as_bytes(), &plan, SUBJECT, true),
                 Next::Ask,
@@ -1590,7 +1591,7 @@ fn the_model_arm_carries_every_byte_the_rule_carries_whatever_the_model_answers(
     for text in &fixtures {
         let bytes = text.as_bytes();
         let read = parse(bytes);
-        let plan = partition(&read, bytes, SUBJECT);
+        let plan = partition(&read, bytes, SUBJECT, true);
         let rule = render(&read, bytes, &choose_by_rule(&read), &plan, SUBJECT);
         let floor = carried(&rule.content);
         asked_somewhere |= next(&read, bytes, &plan, SUBJECT, true) == Next::Ask;
@@ -1620,7 +1621,7 @@ fn a_failure_the_parser_named_is_never_not_selected_in_either_arm() {
     ] {
         let bytes = text.as_bytes();
         let read = parse(bytes);
-        let plan = partition(&read, bytes, SUBJECT);
+        let plan = partition(&read, bytes, SUBJECT, true);
         let mut arms = vec![render(&read, bytes, &choose_by_rule(&read), &plan, SUBJECT)];
         let all = offered(&plan);
         for picks in [
@@ -1676,7 +1677,7 @@ fn only_units_the_rule_does_not_carry_and_that_could_fit_are_offered() {
     for text in &fixtures {
         let bytes = text.as_bytes();
         let read = parse(bytes);
-        let plan = partition(&read, bytes, SUBJECT);
+        let plan = partition(&read, bytes, SUBJECT, true);
         assert!(plan.split.is_empty(), "the oracle here draws no cut groups");
         assert!(plan.parts.len() <= MAX_PARTS);
         let rule = render(&read, bytes, &choose_by_rule(&read), &plan, SUBJECT);
@@ -1748,7 +1749,7 @@ fn no_question_is_asked_when_the_floor_would_not_fit_under_the_models_header() {
     let near = tuned(padded_log, 1..60);
     let bytes = near.as_bytes();
     let read = parse(bytes);
-    let plan = partition(&read, bytes, SUBJECT);
+    let plan = partition(&read, bytes, SUBJECT, true);
     assert_eq!(
         next(&read, bytes, &plan, SUBJECT, true),
         Next::Carry(choose_by_rule(&read))
@@ -1764,7 +1765,7 @@ fn no_question_is_asked_when_the_floor_would_not_fit_under_the_models_header() {
     // The same shape with room is asked.
     let roomy = tuned(padded_log, 1500..4000);
     let read = parse(roomy.as_bytes());
-    let plan = partition(&read, roomy.as_bytes(), SUBJECT);
+    let plan = partition(&read, roomy.as_bytes(), SUBJECT, true);
     assert_eq!(
         next(&read, roomy.as_bytes(), &plan, SUBJECT, true),
         Next::Ask
@@ -1781,7 +1782,7 @@ fn with_nothing_that_could_fit_no_model_is_asked_and_the_header_says_so() {
     let log = cargo_log(1, 80, &failing, 20);
     let bytes = log.as_bytes();
     let read = parse(bytes);
-    let plan = partition(&read, bytes, SUBJECT);
+    let plan = partition(&read, bytes, SUBJECT, true);
     assert!(plan.parts.len() <= MAX_PARTS && !plan.parts.is_empty());
     assert!(plan.asked.is_empty(), "offered {:?}", plan.asked);
     let Next::Carry(choice) = next(&read, bytes, &plan, SUBJECT, true) else {
@@ -1812,7 +1813,7 @@ fn the_header_names_exactly_the_excerpts_the_model_added() {
     let log = red_shaped();
     let bytes = log.as_bytes();
     let read = parse(bytes);
-    let plan = partition(&read, bytes, SUBJECT);
+    let plan = partition(&read, bytes, SUBJECT, true);
     assert_eq!(next(&read, bytes, &plan, SUBJECT, true), Next::Ask);
     let offer = offered(&plan);
     let beside = *offer
@@ -1857,7 +1858,7 @@ fn an_empty_answer_is_the_rules_ledger_and_says_the_model_added_nothing() {
     let log = red_shaped();
     let bytes = log.as_bytes();
     let read = parse(bytes);
-    let plan = partition(&read, bytes, SUBJECT);
+    let plan = partition(&read, bytes, SUBJECT, true);
     assert_eq!(next(&read, bytes, &plan, SUBJECT, true), Next::Ask);
     let rule = render(&read, bytes, &choose_by_rule(&read), &plan, SUBJECT);
     let nothing = render(&read, bytes, &choose_by_model(&read, &[]), &plan, SUBJECT);
@@ -1883,7 +1884,7 @@ fn the_longest_model_header_is_computed_and_a_fixture_reaches_it() {
     let text = "xxx\n".repeat(BLOCK_LINES * 210);
     let bytes = text.as_bytes();
     let read = parse(bytes);
-    let plan = partition(&read, bytes, SUBJECT);
+    let plan = partition(&read, bytes, SUBJECT, true);
     assert!(plan.parts.len() <= MAX_PARTS);
     assert_eq!(next(&read, bytes, &plan, SUBJECT, true), Next::Ask);
     let picks: Vec<usize> = (0..MAX_EXCERPTS).map(|n| n * 2).collect();
@@ -1920,7 +1921,7 @@ fn capacity_is_the_inputs_not_the_offers() {
     let bytes = text.as_bytes();
     assert!(bytes.len() <= INPUT_BYTES);
     let read = parse(bytes);
-    let plan = partition(&read, bytes, SUBJECT);
+    let plan = partition(&read, bytes, SUBJECT, true);
     assert_eq!(plan.parts.len(), MAX_PARTS + 1, "{}", plan.parts.len());
     let (addable, _) = offer(&read, bytes, &plan, SUBJECT).expect("an offer, had one been made");
     let would_offer: Vec<usize> = plan
@@ -1958,7 +1959,7 @@ fn capacity_is_the_inputs_not_the_offers() {
     assert!(too_large(bytes.len()));
     let read = parse(bytes);
     assert_eq!(read.format, Format::Json);
-    let plan = partition(&read, bytes, SUBJECT);
+    let plan = partition(&read, bytes, SUBJECT, true);
     assert!(plan.parts.len() <= MAX_PARTS, "{}", plan.parts.len());
     let (addable, _) = offer(&read, bytes, &plan, SUBJECT).expect("an offer, had one been made");
     assert!(
@@ -2001,7 +2002,7 @@ fn the_offer_preamble_is_bounded() {
     }
     let log = red_shaped();
     let read = parse(log.as_bytes());
-    let plan = partition(&read, log.as_bytes(), SUBJECT);
+    let plan = partition(&read, log.as_bytes(), SUBJECT, true);
     let (candidates, labels) = candidates(&read, log.as_bytes(), SUBJECT.artifact, &plan.asked[0]);
     let part = Part {
         artifact: SUBJECT.artifact.to_string(),
@@ -2088,7 +2089,7 @@ fn the_header_counts_failing_tests_and_cargo_errors_apart() {
                  \"rendered\":\"error[E0425]: cannot find value `y`\"}}\n";
     for (text, tests, errors) in [(libtest, 2, 1), (document, 2, 0), (lines.to_string(), 1, 2)] {
         let read = parse(text.as_bytes());
-        let plan = partition(&read, text.as_bytes(), SUBJECT);
+        let plan = partition(&read, text.as_bytes(), SUBJECT, true);
         let rendered = render(
             &read,
             text.as_bytes(),
@@ -2191,7 +2192,7 @@ fn a_group_offered_in_one_question_is_not_reported_as_cut() {
     let log = tuned(|pad| cut_log(1, pad), 700..1500);
     let bytes = log.as_bytes();
     let read = parse(bytes);
-    let plan = partition(&read, bytes, SUBJECT);
+    let plan = partition(&read, bytes, SUBJECT, true);
     assert_eq!(plan.split.len(), 1, "{:?}", plan.split);
     let (_, _, from, to) = plan.split[0];
     assert!(to > from, "the plan cuts the block: {:?}", plan.split[0]);
@@ -2224,7 +2225,7 @@ fn a_group_offered_in_one_question_is_not_reported_as_cut() {
 fn widest_margins(text: &str) -> (i64, i64) {
     let bytes = text.as_bytes();
     let read = parse(bytes);
-    let plan = partition(&read, bytes, SUBJECT);
+    let plan = partition(&read, bytes, SUBJECT, true);
     let carried = floor(&read, bytes, &Frame::of(SUBJECT, &plan));
     let model = choose_by_model(&read, &[]);
     let margin = |frame: &Frame<'_>| {
@@ -2265,7 +2266,7 @@ fn a_floor_with_no_room_for_the_lines_a_cut_group_takes_is_not_put_to_a_model() 
     let log = found.expect("a pad that puts the floor between the two margins");
     let bytes = log.as_bytes();
     let read = parse(bytes);
-    let plan = partition(&read, bytes, SUBJECT);
+    let plan = partition(&read, bytes, SUBJECT, true);
     assert_eq!(plan.split.len(), 2, "{:?}", plan.split);
     assert!(plan.parts.len() <= MAX_PARTS);
     // What a model would have been offered, had the lines not been counted:
@@ -2320,7 +2321,7 @@ fn no_question_is_asked_about_a_floor_over_the_bound_though_an_addition_would_sh
     let log = found.expect("a pad that puts the floor a few bytes over the bound");
     let bytes = log.as_bytes();
     let read = parse(bytes);
-    let plan = partition(&read, bytes, SUBJECT);
+    let plan = partition(&read, bytes, SUBJECT, true);
     let carried = floor(&read, bytes, &Frame::of(SUBJECT, &plan));
     let gap = read
         .units
@@ -2363,7 +2364,7 @@ fn a_model_arm_that_does_not_fit_is_refused_and_never_published() {
     let near = tuned(padded_log, 1..60);
     let bytes = near.as_bytes();
     let read = parse(bytes);
-    let plan = partition(&read, bytes, SUBJECT);
+    let plan = partition(&read, bytes, SUBJECT, true);
     assert!(plan.asked.is_empty(), "the premise: nothing is asked here");
     let asked_anyway = Plan {
         asked: plan.parts.clone(),
@@ -2386,7 +2387,7 @@ fn a_model_arm_that_does_not_fit_is_refused_and_never_published() {
     assert!(super::render(&read, bytes, &choose_by_rule(&read), &plan, SUBJECT).is_some());
     let log = red_shaped();
     let read = parse(log.as_bytes());
-    let plan = partition(&read, log.as_bytes(), SUBJECT);
+    let plan = partition(&read, log.as_bytes(), SUBJECT, true);
     assert_eq!(next(&read, log.as_bytes(), &plan, SUBJECT, true), Next::Ask);
     assert!(
         super::render(
@@ -2441,7 +2442,7 @@ fn run_identity_the_floor_left_out_is_never_offered_though_it_would_fit() {
     let log = bridged();
     let bytes = log.as_bytes();
     let read = parse(bytes);
-    let plan = partition(&read, bytes, SUBJECT);
+    let plan = partition(&read, bytes, SUBJECT, true);
     assert_eq!(next(&read, bytes, &plan, SUBJECT, true), Next::Ask);
     let rule = render(&read, bytes, &choose_by_rule(&read), &plan, SUBJECT);
     let floor = units_in(&read, &carried(&rule.content));
@@ -2484,7 +2485,7 @@ fn a_failure_the_floor_left_out_is_never_credited_to_the_model() {
     let log = bridged();
     let bytes = log.as_bytes();
     let read = parse(bytes);
-    let plan = partition(&read, bytes, SUBJECT);
+    let plan = partition(&read, bytes, SUBJECT, true);
     assert_eq!(next(&read, bytes, &plan, SUBJECT, true), Next::Ask);
     let rule = render(&read, bytes, &choose_by_rule(&read), &plan, SUBJECT);
     let floor = units_in(&read, &carried(&rule.content));
@@ -2660,4 +2661,339 @@ fn the_harness_stops_against_the_same_worst_case_this_module_computes() {
         "the harness stops against a worst case this module does not compute"
     );
     assert_eq!(figure("MAX_PARTS = "), Some(MAX_PARTS as u64));
+}
+
+// ---- what planning and rendering draw ----------------------------------------------
+
+/// What `work` returns, and how many projections it drew on the way.
+fn drawing<T>(work: impl FnOnce() -> T) -> (T, usize) {
+    let before = DRAWS.with(|draws| draws.get());
+    let value = work();
+    (value, DRAWS.with(|draws| draws.get()) - before)
+}
+
+/// A JSON document whose run identity is an array of `identity` zeros,
+/// **a unit of about two bytes each**, which the rule's floor is drawn
+/// once for apiece, beside one failing result and `passing` passing ones
+/// of about 1.9 kilobytes a model could be offered.
+fn identity_heavy(identity: usize, passing: usize) -> String {
+    let results: Vec<String> = (0..passing)
+        .map(|n| {
+            format!(
+                "    {{\"fixture\": \"core.case-{n}\", \"outcome\": \"pass\", \"detail\": \"{}\"}}",
+                "b".repeat(1900)
+            )
+        })
+        .chain(std::iter::once(
+            "    {\"fixture\": \"core.broken\", \"outcome\": \"fail\"}".to_string(),
+        ))
+        .collect();
+    format!(
+        "{{\n  \"environment\": {{\"x\": [{}]}},\n  \"results\": [\n{}\n  ]\n}}\n",
+        vec!["0"; identity].join(","),
+        results.join(",\n")
+    )
+}
+
+/// The two inputs `capacity_is_the_inputs_not_the_offers` is over
+/// capacity with, and bytes that are not text.
+fn over_capacity() -> Vec<Vec<u8>> {
+    let five_parts = tuned(|pad| records(128, 40, 20, pad), 500..1000);
+    let too_large = format!(
+        "{{\n  \"environment\": \"{}\",\n  \"results\": [\n{}\n  ]\n}}\n",
+        "v".repeat(INPUT_BYTES),
+        (0..20)
+            .map(|n| format!("    {{\"fixture\": \"core.case-{n}\", \"outcome\": \"pass\"}}"))
+            .collect::<Vec<_>>()
+            .join(",\n")
+    );
+    let binary: Vec<u8> = (0..4096u32).map(|n| (n % 251) as u8).collect();
+    vec![five_parts.into_bytes(), too_large.into_bytes(), binary]
+}
+
+#[test]
+fn nothing_is_drawn_to_plan_an_input_over_capacity() {
+    // **Capacity is decided before anything is drawn**, and what is
+    // counted is the drawing: an offer worked out and then thrown away
+    // changes no output, and costs what the capacity check exists to
+    // save — a minute of a debug build's time for 131,072 bytes of
+    // one-line records.
+    for bytes in over_capacity() {
+        let read = parse(&bytes);
+        for may_ask in [true, false] {
+            let (plan, drawn) = drawing(|| partition(&read, &bytes, SUBJECT, may_ask));
+            assert_eq!(
+                drawn,
+                0,
+                "{drawn} projections drawn to plan {} bytes read as {:?}, may_ask {may_ask}",
+                bytes.len(),
+                read.format
+            );
+            assert!(plan.asked.is_empty(), "offered {:?}", plan.asked);
+        }
+    }
+}
+
+#[test]
+fn a_request_that_may_not_ask_a_model_draws_nothing_to_plan() {
+    // **Nothing is offered where nobody may be asked.** Working out an
+    // offer draws the rule's floor, once for every failure and every unit
+    // of run identity, and `render` draws it again: a baseline request
+    // over 131,072 bytes of identity paid about 22 seconds of a debug
+    // build's time for each. Each input here would be offered something
+    // were a model allowed.
+    for text in [
+        red_shaped(),
+        identity_heavy(3000, 20),
+        tuned(padded_log, 1500..4000),
+    ] {
+        let bytes = text.as_bytes();
+        let read = parse(bytes);
+        let (plan, drawn) = drawing(|| partition(&read, bytes, SUBJECT, false));
+        assert_eq!(drawn, 0, "{drawn} projections drawn to plan for the rule");
+        assert!(plan.asked.is_empty(), "offered {:?}", plan.asked);
+        assert!(
+            !partition(&read, bytes, SUBJECT, true).asked.is_empty(),
+            "the premise: a model that may be asked is offered something"
+        );
+    }
+}
+
+#[test]
+fn both_arms_print_the_same_part_count_whether_or_not_a_model_may_be_asked() {
+    // **Gate F**: the baseline, which may ask nobody, and the assisted
+    // arm print the same number of parts, and it is the questions the
+    // assisted arm asks. The harness reads it from the baseline to decide
+    // what the assisted request may spend, so a baseline that planned
+    // nothing must still count the questions — from the floor it draws
+    // anyway — and print exactly the rule's projection a model-allowed
+    // request prints when no question is needed.
+    let forty: Vec<(usize, usize)> = (0..40).map(|test| (0, test * 2 + 1)).collect();
+    let fixtures = [
+        red_shaped(),
+        identity_heavy(3000, 20),
+        tuned(padded_log, 1..60),
+        tuned(padded_log, 1500..4000),
+        tuned(graded, 900..1100),
+        cargo_log(1, 80, &forty, 20),
+        cargo_log(1, 3, &[(0, 1)], 2),
+    ];
+    let mut asked = 0;
+    for text in fixtures {
+        let bytes = text.as_bytes();
+        let read = parse(bytes);
+        let baseline_plan = partition(&read, bytes, SUBJECT, false);
+        let assisted_plan = partition(&read, bytes, SUBJECT, true);
+        let Next::Carry(rule) = next(&read, bytes, &baseline_plan, SUBJECT, false) else {
+            panic!("a request that may ask nobody was not carried");
+        };
+        let baseline = render(&read, bytes, &rule, &baseline_plan, SUBJECT);
+        let parts = assisted_plan.asked.len();
+        let count = format!(" in {parts} parts;");
+        assert!(
+            how(&baseline.content).contains(&count),
+            "the baseline says {:?}; the assisted arm asks {parts}",
+            how(&baseline.content)
+        );
+        match next(&read, bytes, &assisted_plan, SUBJECT, true) {
+            Next::Ask => {
+                asked += 1;
+                let assisted = render(
+                    &read,
+                    bytes,
+                    &choose_by_model(&read, &offered(&assisted_plan)),
+                    &assisted_plan,
+                    SUBJECT,
+                );
+                assert!(
+                    how(&assisted.content).contains(&count),
+                    "{}",
+                    how(&assisted.content)
+                );
+            }
+            Next::Carry(choice) => {
+                assert_eq!(choice, rule);
+                assert_eq!(
+                    render(&read, bytes, &choice, &assisted_plan, SUBJECT),
+                    baseline,
+                    "a projection no question was needed for differs by who may be asked"
+                );
+            }
+            Next::Insufficient => panic!("the fixture is over the projection's capacity"),
+        }
+    }
+    assert!(asked >= 3, "the premise: most fixtures ask; {asked} did");
+}
+
+#[test]
+fn a_request_draws_the_rules_floor_once() {
+    // **The floor is drawn once a request**, whichever arm: `partition`
+    // keeps the floor it worked out an offer from, and `render` draws
+    // one only when it was given none. The floor is one drawing for each
+    // failure and each unit of run identity, so drawn twice it is the
+    // pre-existing quadratic cost paid twice.
+    let text = identity_heavy(3000, 20);
+    let bytes = text.as_bytes();
+    let read = parse(bytes);
+    let floored = read
+        .units
+        .iter()
+        .filter(|unit| unit.kind != Kind::Other)
+        .count();
+    let others = read.units.len() - floored;
+    assert!(
+        floored > 4 * (2 * others + 8),
+        "the premise: the floor is most of the drawing"
+    );
+    let (baseline, drawn) = drawing(|| {
+        let plan = partition(&read, bytes, SUBJECT, false);
+        let Next::Carry(rule) = next(&read, bytes, &plan, SUBJECT, false) else {
+            panic!("a request that may ask nobody was not carried");
+        };
+        render(&read, bytes, &rule, &plan, SUBJECT)
+    });
+    assert!(
+        drawn <= floored + others + 8,
+        "the baseline drew {drawn}; the floor is {floored}, and {others} could be offered"
+    );
+    assert!(!baseline.content.is_empty());
+    let (_, drawn) = drawing(|| {
+        let plan = partition(&read, bytes, SUBJECT, true);
+        assert_eq!(next(&read, bytes, &plan, SUBJECT, true), Next::Ask);
+        render(
+            &read,
+            bytes,
+            &choose_by_model(&read, &offered(&plan)),
+            &plan,
+            SUBJECT,
+        )
+    });
+    assert!(
+        drawn <= floored + 2 * others + 8,
+        "the assisted arm drew {drawn}; the floor is {floored}, and {others} could be offered"
+    );
+}
+
+#[test]
+fn a_model_arm_over_the_excerpts_a_projection_holds_is_refused() {
+    // **The refusal holds on excerpts as on bytes.** `render` draws the
+    // model arm on the floor its plan carries, and does not take that
+    // floor on trust: handed one of every other record, thirty excerpts
+    // in a few kilobytes, it refuses what it would draw.
+    let text: String = (0..60).map(|n| format!("{{\"n\":{n}}}\n")).collect();
+    let bytes = text.as_bytes();
+    let read = parse(bytes);
+    assert_eq!(read.units.len(), 60);
+    let plan = partition(&read, bytes, SUBJECT, true);
+    let alternate: Vec<bool> = (0..read.units.len()).map(|at| at % 2 == 0).collect();
+    let handed = Plan {
+        asked: plan.parts.clone(),
+        rule: Some(alternate.clone()),
+        ..plan.clone()
+    };
+    let model = choose_by_model(&read, &[]);
+    let drawn = draw(
+        &read,
+        bytes,
+        &model,
+        &alternate,
+        Some(&alternate),
+        &Frame::of(SUBJECT, &handed),
+    );
+    assert!(
+        drawn.content.len() <= PROJECTION_BYTES && drawn.excerpts > MAX_EXCERPTS,
+        "the premise: {} bytes, {} excerpts",
+        drawn.content.len(),
+        drawn.excerpts
+    );
+    let refused = super::render(&read, bytes, &model, &handed, SUBJECT);
+    assert!(
+        refused.is_none(),
+        "published a model arm of {} excerpts",
+        refused.map_or(0, |rendered| rendered.excerpts)
+    );
+}
+
+#[test]
+fn a_compiler_error_whose_message_is_empty_is_named_by_what_it_renders() {
+    // An empty string names nothing: the header would list `  at bytes
+    // N-N`. The error is named by what it renders, and by its `reason`
+    // where that is empty too.
+    let lines = "{\"reason\":\"compiler-message\",\"message\":{\"message\":\"\",\"level\":\"error\",\
+                 \"rendered\":\"error[E0425]: cannot find value `y`\"}}\n\
+                 {\"reason\":\"compiler-message\",\"message\":{\"message\":\"\",\"level\":\"error\",\
+                 \"rendered\":\"\"}}\n";
+    let bytes = lines.as_bytes();
+    let read = parse(bytes);
+    assert_eq!(read.format, Format::JsonLines);
+    let named: Vec<(&str, Failing)> = read
+        .named
+        .iter()
+        .map(|named| (&lines[named.start..named.end], named.kind))
+        .collect();
+    assert_eq!(
+        named,
+        [
+            ("error[E0425]: cannot find value `y`", Failing::Error),
+            ("compiler-message", Failing::Error)
+        ]
+    );
+    let plan = partition(&read, bytes, SUBJECT, true);
+    let rendered = render(&read, bytes, &choose_by_rule(&read), &plan, SUBJECT);
+    assert!(
+        !rendered.content.contains("\n   at bytes"),
+        "{}",
+        rendered.content
+    );
+}
+
+/// A JSON document of exactly [`INPUT_BYTES`]: thirty passing results
+/// with a note of `7 × shift` bytes each, and a run identity string
+/// making up the rest, which moves where that identity is cut into units
+/// and so how much room the rule's floor leaves.
+fn exactly_input_bytes(shift: usize) -> String {
+    let results: Vec<String> = (0..30)
+        .map(|n| {
+            format!(
+                "    {{\"fixture\": \"core.case-{n}\", \"outcome\": \"pass\", \"note\": \"{}\"}}",
+                "n".repeat(shift * 7)
+            )
+        })
+        .collect();
+    let rest = format!(
+        "{{\n  \"environment\": \"\",\n  \"results\": [\n{}\n  ]\n}}\n",
+        results.join(",\n")
+    );
+    rest.replacen(
+        "\"environment\": \"\"",
+        &format!(
+            "\"environment\": \"{}\"",
+            "v".repeat(INPUT_BYTES - rest.len())
+        ),
+        1,
+    )
+}
+
+#[test]
+fn an_input_of_exactly_the_input_bound_is_within_capacity_and_asked() {
+    // **Too large is past the bound, not at it**, and `partition` decides
+    // it as `next` and the call site do: an artifact of exactly 131,072
+    // bytes within the parts is offered to a model like any other. Run
+    // identity is never cut into parts, so it is what makes up the bytes.
+    let text = (0..80)
+        .map(exactly_input_bytes)
+        .find(|text| {
+            let read = parse(text.as_bytes());
+            !partition(&read, text.as_bytes(), SUBJECT, true)
+                .asked
+                .is_empty()
+        })
+        .expect("a shift that leaves the floor room for a result");
+    let bytes = text.as_bytes();
+    assert_eq!(bytes.len(), INPUT_BYTES);
+    assert!(!too_large(bytes.len()));
+    let read = parse(bytes);
+    let plan = partition(&read, bytes, SUBJECT, true);
+    assert!(plan.parts.len() <= MAX_PARTS, "{}", plan.parts.len());
+    assert_eq!(next(&read, bytes, &plan, SUBJECT, true), Next::Ask);
 }

@@ -749,6 +749,8 @@ pub struct Plan {
     pub asked: Vec<Vec<usize>>,
     /// What each question's preamble says is already carried.
     pub floor: Floor,
+    /// The rule's floor, unit by unit, when [`partition`] worked it out.
+    rule: Option<Vec<bool>>,
 }
 
 /// A group larger than a part: `(first unit, last unit, first part, last
@@ -882,7 +884,7 @@ fn cost(read: &Read, unit: &Unit, bytes: &[u8]) -> usize {
 /// drawn that way. **A unit a model adds never joins the floor's
 /// excerpts**: [`draw`] cuts a run wherever the chooser changes, so each is
 /// priced as an excerpt of its own, frame and all.
-pub fn partition(read: &Read, bytes: &[u8], subject: Subject<'_>) -> Plan {
+pub fn partition(read: &Read, bytes: &[u8], subject: Subject<'_>, _may_ask: bool) -> Plan {
     let (parts, split) = cut(read, bytes);
     let tests = read
         .named
@@ -899,6 +901,7 @@ pub fn partition(read: &Read, bytes: &[u8], subject: Subject<'_>) -> Plan {
             bytes: 0,
             excerpts: 0,
         },
+        rule: None,
     };
     if plan.parts.len() > MAX_PARTS || too_large(read.size) || read.format == Format::Binary {
         return plan;
@@ -1407,6 +1410,13 @@ pub fn render(
     (choice.by != By::Model || drawn.fits()).then_some(drawn)
 }
 
+#[cfg(test)]
+thread_local! {
+    /// How many projections [`draw`] has drawn on this thread: what a
+    /// test reads to see what planning and rendering cost.
+    static DRAWS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 /// Draw a projection: the header, then a ledger that tiles the artifact.
 ///
 /// With `chooser`, the rule's floor, **a run of carried units is cut
@@ -1420,6 +1430,8 @@ fn draw(
     chooser: Option<&[bool]>,
     frame: &Frame<'_>,
 ) -> Rendered {
+    #[cfg(test)]
+    DRAWS.with(|draws| draws.set(draws.get() + 1));
     let mut ledger = String::new();
     let mut omitted = Vec::new();
     let mut excerpts = 0;

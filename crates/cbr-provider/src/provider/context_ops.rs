@@ -2189,11 +2189,11 @@ impl Provider {
             digest: &digest,
             capture: &capture,
         };
-        let plan = projection::partition(&read, &bytes, subject);
         // **Zero is the deterministic path**, as it is for selection and
         // discovery: a request that authorised no investigation gets the
         // rule, from the same binary.
         let serving = self.model.clone().filter(|_| assist.investigation > 0);
+        let plan = projection::partition(&read, &bytes, subject, serving.is_some());
         let choice = match projection::next(&read, &bytes, &plan, subject, serving.is_some()) {
             Next::Insufficient => {
                 unmet(decided, projection::INSUFFICIENT_CAPACITY);
