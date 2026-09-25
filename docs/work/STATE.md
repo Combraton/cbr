@@ -31,13 +31,12 @@ Two observations stand behind it:
 - with the wait forced to 0 s, the failure prints the provider's stderr;
 - a provider that logs its registered checkout is still caught by the test that reads it, now from the file.
 
-**The socket fixture's 10 s is a race in CBR, not load**, and the reviewer withdrew the "re-run it" rule for that fixture at round 59:
+**The socket fixture's idle-poll race is fixed** ([#37](https://github.com/Combraton/cbr/issues/37)):
 
-- An idle session takes the processing lock on every 40 ms poll, in `tick()` and in `drain_subscriptions()`.
-- If that poll contends while the fixture's re-check is paused under the lock, before the runner clears the signals, its signal is deleted. The session is then held inside its own poll and never reads the revoke.
-- Shortening the idle poll to 1 ms made it fail in 76 of 100 runs, against 0 of 100 at the stock 40 ms.
-- A regression test was written and observed red against current code. It is kept outside the repository and is not committed.
-- Its strengthening and the fix were stopped by a safety check on the builder's output, and are the owner's to decide.
+- Idle `tick` and subscription delivery now try the processing lock without waiting or emitting the command-contention signal; a busy poll is skipped so the session remains able to read its next command.
+- Request processing keeps the signalling, blocking lock. A subscription re-check still holds one processing-lock guard across re-authorization and its event read, preserving CORE section 16.5's ordering invariant.
+- The regression test first proves several idle poll intervals stay quiet while the lock is held, then requires a command on that session to signal contention. A second case keeps contending command writers active until an idle subscription receives their event, guarding against starvation.
+- With the fix, `socket.subscription-recheck-race-regression` passed 100 of 100 runs with the poll temporarily shortened to 1 ms and 100 of 100 at the stock 40 ms; before the fix, 76 of 100 and 0 of 100 failed respectively.
 
 ### Constraints for later heads, from the reviewer's round 59
 

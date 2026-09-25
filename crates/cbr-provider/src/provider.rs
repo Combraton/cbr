@@ -305,6 +305,17 @@ fn processing() -> std::sync::MutexGuard<'static, ()> {
     }
 }
 
+/// Take the processing lock for idle maintenance only when it is immediately
+/// available. An idle socket poll must remain able to read a command, and it
+/// must not emit the command-contention signal when another session is busy.
+fn idle_processing() -> Option<std::sync::MutexGuard<'static, ()>> {
+    match PROCESSING.try_lock() {
+        Ok(guard) => Some(guard),
+        Err(std::sync::TryLockError::WouldBlock) => None,
+        Err(std::sync::TryLockError::Poisoned(poisoned)) => Some(poisoned.into_inner()),
+    }
+}
+
 pub struct Provider {
     pub config: Config,
     clock: std::sync::Arc<crate::clock::Clock>,
@@ -2003,9 +2014,11 @@ impl Provider {
     /// the aborted event, so a consumer reads both the same way.
     /// Idle maintenance for a session with no request in hand: mark passed
     /// obligations overdue under the processing lock. Subscription re-checks
-    /// happen in `drain_subscriptions`, which the session calls next.
-    pub fn tick(&mut self) {
-        let _processing = processing();
+    /// happen in `drain_subscriptions_idle`, which the session calls next.
+    pub fn tick_idle(&mut self) {
+        let Some(_processing) = idle_processing() else {
+            return;
+        };
         if let Err(error) = self.tick_effects() {
             eprintln!(
                 "cbr-provider: marking overdue obligations failed: {}",
@@ -2354,6 +2367,22 @@ impl Provider {
     /// are produced again later: **withheld, never skipped** (CORE 16.5).
     pub fn drain_subscriptions(&mut self, room: usize, whole: bool) -> (Vec<Value>, bool) {
         let _processing = processing();
+        self.drain_subscriptions_locked(room, whole)
+    }
+
+    /// Produce notifications during an idle socket poll, or skip this poll if
+    /// a command or another subscription re-check owns the processing lock.
+    /// When acquired, the guard still spans authorization and the event read.
+    pub fn drain_subscriptions_idle(
+        &mut self,
+        room: usize,
+        whole: bool,
+    ) -> Option<(Vec<Value>, bool)> {
+        let _processing = idle_processing()?;
+        Some(self.drain_subscriptions_locked(room, whole))
+    }
+
+    fn drain_subscriptions_locked(&mut self, room: usize, whole: bool) -> (Vec<Value>, bool) {
         let mut frames = Vec::new();
         let mut produced = 0usize;
         let mut withheld = false;
