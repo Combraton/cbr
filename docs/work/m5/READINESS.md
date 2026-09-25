@@ -284,20 +284,20 @@ In the order the owner set: J2, then the loop, then the tools, then the families
 
 **Every pull request after this one**: the test first and observed red, then the fix; mutants observed dying against the whole workspace; the gates of VERIFICATION; and no model called by anything in the suite.
 
-## 10. Live calls: each planned, estimated and capped before it, and each on the owner's word at the time
+## 10. Live calls: each planned, estimated and capped before it
 
-M4's practice stands. No live call happens inside a pull request's work, and none happens without its own step.
+M4's practice stands, with one change since 2026-09-25: **the owner's standing grant**, below, replaces the owner's word at the time and the owner's cap per run. No live call happens inside a pull request's work, and none happens without its own step.
 
 - **An estimate computed before the call**, from the arithmetic tests of §8 rather than chosen by eye. M4's estimate was 1,500,000 against a measured 65,144 and 67,395. The next estimate starts from those measurements.
 - **A hard cap**, enforced by the run ceiling the harness already passes as the cap less what earlier launches spent, and **a stop checked before each run** against that run's computed worst case.
-- **The owner's word at the time**, carried in the reviewer's run instruction, after the reviewer has pinned the manifest and checked every origin public by the API.
+- **The owner's word at the time**, carried in the reviewer's run instruction, after the reviewer has pinned the manifest and checked every origin public by the API. This held through J2's first live run. Since the standing grant, the session that runs the call writes its estimate and ceiling here first, and checks its inputs' origins public itself.
 
 **The runs, as the owner decided them on 2026-09-24:**
 
 1. **J2 live**, once m5a merges, over **CBR's own test output**: logs and JSON produced locally by running CBR's public suite at a pinned commit, sealed whole, with no machine path in them (§3). Nothing third-party.
 2. **The loop against the sealed pilot questions**, once m5h merges, with M4's discovery as the baseline. This is the run that tests limit 1 of §2. **For Knowscroll, the harness ingests its 22 decisions first**, which tests limit 2.
 
-**Caps stay the owner's**, per run, set when each run's estimate exists. Each run's estimate and cap are written into this document before the run. M4's cap was 5,000,000. **Since 2026-09-25 the owner's grant is standing**: MiniMax may be called as much as the work needs, with no approval per run, on `MiniMax-M2.7-highspeed` and `MiniMax-M3` only and on content from public repositories only; each run's estimate and ceiling are written here before it and what it spent after; and every run stays inside ADR 001's account ceilings, 20,000,000 tokens per five hours and 200,000,000 a month, which the owner's other projects share — a run that would approach them stops and goes to the owner.
+**Caps were the owner's**, per run, set when each run's estimate existed, and written into this document before the run; M4's cap was 5,000,000. **Since 2026-09-25 the owner's grant is standing**: MiniMax may be called as much as the work needs, with no approval per run, on `MiniMax-M2.7-highspeed` and `MiniMax-M3` only and on content from public repositories only. Each run's estimate and ceiling are written here before it, and what it spent after. Every run stays inside CBR's envelope in [ADR 001](../../decisions/001-standalone-v0.1-scope-and-stack.md), 20,000,000 tokens per five hours and 200,000,000 a month, which is drawn from the owner's subscription quota, shared with the owner's other tools ([RELEASE-SCOPE](../readiness/RELEASE-SCOPE.md)); a run that would approach the envelope stops and goes to the owner.
 
 ### J2 live: the inputs, the estimate, the stop and the cap, decided 2026-09-25
 
@@ -346,7 +346,7 @@ Run from `main` at `041ad5f`, with its binaries built from a clean tree, the sco
 
 ### J2 live rerun after m5a-3: inputs, estimate and ceiling
 
-**Written before the rerun, decided on 2026-09-26 under the owner's standing grant of 2026-09-25, and run the same day** ([what it spent](#j2-live-rerun-what-it-spent-2026-09-26)) — MiniMax as much as the work needs, with each run's estimate and ceiling written here before it and its spend after, inside ADR 001's account ceilings. **Invocation 1's `--run-ceiling` is 492,204 and invocation 2's is 861,357**, the least the harness's stop admits (below); the rerun as a whole is held to **738,306** by the parts the survey found, and is expected to spend about 47,000. Both are far inside the 20,000,000 a five-hour window allows. **Rubric v1.1**, v1's mechanical changes for the `/2` projection, is committed and pushed in the change that runs the rerun, before its first call, and the rerun is scored under v1 as well.
+**Written before the rerun, decided on 2026-09-26 under the owner's standing grant of 2026-09-25, and run the same day** ([what it spent](#j2-live-rerun-what-it-spent-2026-09-26)) — MiniMax as much as the work needs, with each run's estimate and ceiling written here before it and its spend after, inside CBR's envelope in ADR 001. **Invocation 1's `--run-ceiling` is 492,204 and invocation 2's is 861,357**, the least the harness's stop admits (below); the rerun as a whole is held to **738,306** by the parts the survey found, and is expected to spend about 47,000. Both are far inside the 20,000,000 a five-hour window allows. **Rubric v1.1**, v1's mechanical changes for the `/2` projection, is committed and pushed in the change that runs the rerun, before its first call, and the rerun is scored under v1 as well.
 
 **The inputs and the invocations are as before.** The same three inputs, byte-identical to the digests in the table above, each on `MiniMax-M2.7-highspeed` and `MiniMax-M3`:
 
@@ -388,5 +388,5 @@ Run from `main` at `80cdfbe`, with rubric v1.1 committed and pushed first (`8d08
 - **What starts a gap loop on a question with no unmet item** is m5e's to settle (§6), before m5h is written against it.
 - ~~Whether `orient_repository` and `record_rejected_approach` land in M5.~~ **Settled by the owner on 2026-09-25: both land**, as m5i and m5j.
 - **Whether the ten execution fixtures can run** against the reference executor is m5g's check, not an assumption.
-- **Each live run's cap** is set when its estimate exists: the owner's, under the standing grant above since 2026-09-25.
+- **Each live run's cap** is set when its estimate exists: by the owner until 2026-09-25, and since then by the session that runs it, under the owner's standing grant, before the run.
 - **Nothing in this document is evidence of anything.** The evidence is where it is recorded: m5a's code and its mutants in [STATE](../STATE.md), and J2's live runs in JOURNEYS: [the first](../../verification/JOURNEYS.md#j2-live-2026-09-25-the-mechanism-held-and-the-model-made-the-projection-worse--failed) and [the rerun](../../verification/JOURNEYS.md#j2-live-rerun-2026-09-26-passed--and-the-model-added-nothing).
