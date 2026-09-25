@@ -283,6 +283,44 @@ M4's practice stands. No live call happens inside a pull request's work, and non
 
 **Caps stay the owner's**, per run, set when each run's estimate exists. Each run's estimate and cap are written into this document before the run. M4's cap was 5,000,000.
 
+### J2 live: the inputs, the estimate, the stop and the cap, proposed 2026-09-25
+
+**Not run, and not authorised by being written here.** The owner's word at the time, relayed by the reviewer, starts it.
+
+**How the inputs were produced.** CBR was cloned from GitHub at `9cd388a`, m5a's merge, into a disk image mounted at `/var/tmp/cbr-j2`, so that no path the output could name holds a user, a machine or a volume. `CARGO_HOME` and `TMPDIR` were there too, and that mattered. With the checkout alone moved, cargo's JSON still named the home directory: every dependency's `manifest_path` and `src_path` point into the registry under `CARGO_HOME`, which §3 anticipated as a kind of path but not as that one. `cargo test --workspace --locked` passed, with 644 tests over 40 result lines, and VERIFICATION's seven conformance suites each matched their expectations. Every input passes `j2_run.py`'s machine-path refusal, and nothing in any of them names the owner or the machine. The manifest pinning each digest is kept outside this repository.
+
+**Every input, and what the harness's dry run did with it**, at `9cd388a`, against the labelled fake:
+
+| Input | Bytes | Digest | Read as | Parts | Baseline, no investigation | Asks a model live |
+|---|---:|---|---|---:|---|---|
+| `cargo-test.log`: `cargo test --workspace --locked`, standard output and error | 66,535 | `sha256:b89ad11e5a5ce5975f89b70ca91d14d400fa8c490f971fa5f603f80470898807` | cargo's test output | 2 | satisfied: 24 excerpts of run identity, 25 omissions, **no failure named** | yes |
+| `conformance-core.manifest.json`: the runner's `manifest.json` for the `core` suite | 61,621 | `sha256:06a0f54234b49df6c459cfec6217e8f1b50c6dd5e03cc4ede619ffbd2ed69a35` | JSON | 3 | satisfied: 130 pass and 5 unsupported, **no failure named** | yes |
+| `cargo-test-build.jsonl`: `cargo test --workspace --locked --no-run --message-format json` | 196,225 | `sha256:ada6f236bbc49a2c2d2d7de32d5284e34ffca6615205f9a2baff8ac8f4945d6c` | — | — | **`insufficient_capacity`**: over 131,072 bytes, refused before it is read | no |
+| the other six suites' manifests: `stream`, `composition`, `evidence`, `socket`, `context`, `knowledge` | 5,890 to 11,459 | in the manifest | JSON | 1 | satisfied: everything fits, carried whole | no |
+
+An input the baseline carries whole, or refuses, makes no call in either mode, so its dry run is what a live run would produce. The live runs are therefore the two inputs that ask. In every dry run the ledger tiled the input, the checks named no problem, and the replay gate rebuilt identical sections with no ambiguous question.
+
+**The runs: four**, each input on **MiniMax-M2.7-highspeed** and **MiniMax-M3**, the two models M4 measured live. `MiniMax-M2.7` has never been called live, and nothing here needs it.
+
+**The estimate: 4 × 488,160 = 1,952,640 tokens.** 488,160 is `WORST_CASE_PROJECTION_TOKENS`, a whole projection with every part at every bound and repaired once, which `projection::tests` computes from real request bodies. The dry run gives a tighter figure: 2 parts and 3 parts, so 5 parts a model and 10 calls in all, each part at most 40,680 tokens and repaired once. That is 10 × 122,040 = 1,220,400. Both are worst cases. Nothing has measured a projection's call.
+
+**The stop and the cap, proposed: `--run-ceiling 1952640`, well under 5,000,000.** In `j2_run.py` one number is both:
+
+- **the stop**, checked before each run: a run starts only if the ceiling, less what the runs before it spent, covers that run's worst case of 488,160;
+- **the cap**, passed to each launch as the ceiling less what earlier launches spent, and enforced by the provider's ledger.
+
+At this ceiling all four runs are admitted at their worst case, and nothing beyond them.
+
+**The `--out` must be short.** The harness puts each provider's socket at `<out>/work/<run id>/s/cbr.sock`, and on macOS a Unix socket path must be under 104 bytes. The first survey dry run stopped there, with the provider refusing to bind.
+
+**A decision for the owner: the merged commit's suite is green, so neither input names a failure.** J2 asks which tests failed, and at `9cd388a` the answer in both inputs is none. A live run on them tests excerpt choice and run identity, not whether the model finds a failure. **Proposed as an addition, not included above**: CBR's own suite at `f73415d`, m5a's tests-first commit, now in `main`'s history. There, J2's eighteen tests fail against the code before them, and the dry run named 21 failures: the eighteen tests and cargo's own error lines.
+
+| Input | Bytes | Digest | Parts | Baseline |
+|---|---:|---|---:|---|
+| `cargo-test-f73415d.log`: `cargo test --workspace --locked --no-fail-fast` at `f73415d`, produced the same way | 65,257 | `sha256:05a1090e4ec78780d625c7e28958bed65ab0a4f83566debd9c64e5c583d2a326` | 3 | satisfied: 582 passed, **18 failed**, 21 failures named |
+
+It is anchored at a different commit, so it is its own manifest and its own invocation. That is two more runs, 2 × 488,160 = 976,320, with `--run-ceiling 976320`. With it the whole of J2 live is **2,928,960 at worst**, still well under 5,000,000.
+
 ## What this document does not settle
 
 - **No bound is sized.** Each is a pull-request decision, reviewed at its head.
