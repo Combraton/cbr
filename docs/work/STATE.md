@@ -2,8 +2,8 @@
 
 This is a dated navigation snapshot. Reconcile it with Git, linked issues and current task evidence before acting. Issues own live progress; this file does not grant authority or maintain a second backlog.
 
-- **Updated:** 2026-09-24.
-- **Owner/task:** Claude Code session as implementation lead for standalone CBR. An independent reviewer session reviews this read-only. **M1 to M4 are complete**, with closing records in [m1/CLOSEOUT.md](m1/CLOSEOUT.md), [m3/CLOSEOUT.md](m3/CLOSEOUT.md) and [m4/CLOSEOUT.md](m4/CLOSEOUT.md); issue #21 is closed. **m4h merged** as `b69f698` (#33, pinned to `71e655e`, `merged_at: 2026-09-23T21:11:39Z`): a record's cost accounts for every attempt, with one door for the rule, and the harness reads the evidence without writing it. **M5's readiness document merged** as `c2917f7` (#35, pinned to `d4dd04e`, `merged_at: 2026-09-24T10:27:30Z`), with its tracking issue [#34](https://github.com/Combraton/cbr/issues/34). **The CI-flake pull request merged** as `dfa4f65` (#36, pinned to `2e9ee06`, `merged_at: 2026-09-24T14:40:05Z`). **Active: m5a**, Journey 2, on `m5a/project-large-result` off `dfa4f65`. **No live call in M5 before a stated estimate and cap and the owner's word.** Parent: [issue #1](https://github.com/Combraton/cbr/issues/1).
+- **Updated:** 2026-09-25.
+- **Owner/task:** Claude Code session as implementation lead for standalone CBR. An independent reviewer session reviews this read-only. **M1 to M4 are complete**, with closing records in [m1/CLOSEOUT.md](m1/CLOSEOUT.md), [m3/CLOSEOUT.md](m3/CLOSEOUT.md) and [m4/CLOSEOUT.md](m4/CLOSEOUT.md); issue #21 is closed. **m4h merged** as `b69f698` (#33, pinned to `71e655e`, `merged_at: 2026-09-23T21:11:39Z`): a record's cost accounts for every attempt, with one door for the rule, and the harness reads the evidence without writing it. **M5's readiness document merged** as `c2917f7` (#35, pinned to `d4dd04e`, `merged_at: 2026-09-24T10:27:30Z`), with its tracking issue [#34](https://github.com/Combraton/cbr/issues/34). **The CI-flake pull request merged** as `dfa4f65` (#36, pinned to `2e9ee06`, `merged_at: 2026-09-24T14:40:05Z`). **Active: m5a**, Journey 2, on `m5a/project-large-result` off `dfa4f65`: draft PR #38, in its second round after the reviewer's round 66. **No live call in M5 before a stated estimate and cap and the owner's word.** Parent: [issue #1](https://github.com/Combraton/cbr/issues/1).
 - **Merged:** PR #2 as `d68e9d6`, pinned to `877139f`; PR #4 as `a939446`, pinned to `630011c`; PR #5 (c1) as `8b75129`; PR #6 (c2) as `da1e650`, pinned to `b00ec49`; **PR #7 (c3) as `8ba2594`, pinned to `5b98a9f`, confirmed from `merged: true` and `merged_at: 2026-09-16T15:31:51Z`**. Earlier: PR #6 pinned to `b00ec49`, confirmed from `merged: true` and `merged_at: 2026-09-16T14:26:34Z`**, the draft marked ready first and the head re-read unchanged before merging. Every owner decision, including the ceiling, is in [ADR 001](../decisions/001-standalone-v0.1-scope-and-stack.md). **PR #8 (owner follow-ups) as `f00faaf`, pinned to `40cb30b`, `merged_at: 2026-09-16T16:57:29Z`; PR #9 (c4) as `9a7b8f5`, pinned to `5db9d7c`, `merged_at: 2026-09-16T16:57:53Z`**, in that order, each confirmed from `merged` and `merged_at`. **PR #10 (d) as `96a33f2`, pinned to `a1048e6`, `merged_at: 2026-09-16T18:17:38Z`; then PR #11 (e) as `6c63d91`, pinned to `c2a262d`, `merged_at: 2026-09-16T18:17:56Z`**. PR #11 was stacked on #10's branch, so it was retargeted to `main` after #10 merged and before its own merge; retargeting leaves the head unchanged, and `c2a262d` was re-read before merging. **PR #13 (M1 close-out, README) as `5c667ed`, pinned to `507fc77`, `merged_at: 2026-09-16T18:58:44Z`; then PR #14 (M2) as `39113b2`, pinned to `62cbb99`, `merged_at: 2026-09-16T18:59:00Z`**, #14 retargeted to `main` first. **PR #16 (m3a) as `cbfaebe`, pinned to `1bd9a7a`, confirmed from `merged: true` and `merged_at: 2026-09-19T14:48:17Z`**, the draft marked ready first and the head re-read unchanged; the merge commit's second parent is `1bd9a7a`, so the reviewed head is on `main` unaltered. **PR #17 (m3b) as `c3cdf51`, pinned to `fb67250`, confirmed from `merged: true` and `merged_at: 2026-09-19T15:55:37Z`**, second parent `fb67250`. **PR #18 (m3c) as `2cf6b97`, pinned to `81c5f0e`, confirmed from `merged: true` and `merged_at: 2026-09-20T04:35:37Z`**, second parent `81c5f0e`. **PR #19 (m3d) as `17cc54c`, pinned to `52305b3`, confirmed from `merged: true` and `merged_at: 2026-09-20T07:28:00Z`**, second parent `52305b3`. **PR #20 (m3e) as `c726107`, pinned to `47fd574`**, which closed M3. M4's ten merges, from #22 to #31, are listed with their pins in [m4/CLOSEOUT.md](m4/CLOSEOUT.md#m4-complete), each confirmed the same way and each merge commit's second parent the reviewed head.
 - **Merge rule, 2026-09-16, superseded the same day.** This session ran `gh pr merge` on PR #2 after the owner replied "you can merge PR 2" in-session, having first reported the contradicting claim with evidence and waited. It landed the exact reviewed head `877139f` and is kept. A stricter rule was then recorded, and the owner then **granted merge authority under four conditions**, now in [AGENTS.md](../../AGENTS.md): pin with `--match-head-commit`; the head's CI is green; the reviewer has seen that head; no squash. Confirm from `merged` and `merged_at` afterwards, **never `merge_commit_sha`** — GitHub populates that on an open pull request with the test-merge candidate. Tags and releases remain the owner's alone.
 - **Owner decision, 2026-09-20, recorded at the m3c review: m3d has two pilot repositories**, as an amendment to [ADR 001](../decisions/001-standalone-v0.1-scope-and-stack.md) question 6. Knowscroll-v2 stays the decision-memory pilot; the owner's **brian2 fork** is added as a brownfield pilot, registered read-only, whose journey tests discovery and code flow rather than decision memory, whose oracle the owner writes before the run, and whose dirty working tree makes it the first journey to exercise the dirty path. **brian2 is CeCILL-licensed and this repository is MIT, so none of its bytes, excerpts or packets are committed here** — digests, paths, spans, counts and costs only. It is recorded now and acted on only after m3c is cleared; no other brian2 work belongs in this pull request.
@@ -48,12 +48,12 @@ On `m5a/project-large-result`, off `main` at `dfa4f65`. [m5/READINESS.md](m5/REA
 | `BLOCK_LINES`, lines of plain text in a unit | 20 | 45 lines cut 20, 20, 5 |
 | `PART_BYTES`, candidate text in one part, **escaped as the body carries it** | 32,768 | a log filling its first part; the same log written in control characters, which escape six bytes apiece, needing more than four times the parts |
 | `PART_UNITS`, candidates in one part | 64 | 65 one-line records split 64 and 1 |
-| `MAX_PARTS`, parts in one projection | 4 | a log filling exactly 4 parts is projected; one block more is `insufficient_capacity`, with a model and without |
+| `MAX_PARTS`, parts in one projection | 4 | a log filling exactly 4 parts is projected; one block more is `insufficient_capacity`, with a model and without. End to end at the call site since round 66: 122,400 bytes of plain text fill 4 parts and are projected, and 124,200, which pass the size check, need a fifth and are refused |
 | `INPUT_BYTES`, the largest artifact read at all | 131,072 | `too_large` at the bound and one past it; end to end, a 1 MiB blob, which has no parts to count, is refused before it is read |
 | `PROJECTION_BYTES`, the section's content | 16,384 | forty failures of 25 lines: what is left is less than one more block |
 | `MAX_EXCERPTS`, carried excerpts | 24 | sixty failures between passing tests: exactly 24 carried, and the omissions at most 25 |
 | `NAMED_FAILURES`, `NAME_BYTES` | 16, 160 | twenty failures listed as sixteen and "4 more"; a 486-byte name shown to 160 bytes at the range of what is shown |
-| `CAPTURE_ANCHORS`, `ANCHOR_BYTES`, `LABEL_BYTES` | 8, 128, 96 | ten anchors of 138 bytes, and a JSON key of 96 bytes |
+| `CAPTURE_ANCHORS`, `ANCHOR_BYTES`, `LABEL_BYTES` | 8, 128, 96 | ten anchors of 138 bytes; since round 66, an anchor of 128 control characters, shown as 20 escapes and the marker; and a JSON key of 96 bytes |
 | `JSON_DEPTH` | 64 | 64 levels read as JSON, 65 as lines |
 
 **The arithmetic, computed from real bodies** in `projection::tests`, as `discovery::tests` computes M4's:
@@ -67,6 +67,8 @@ The harness stops against the same figure: `WORST_CASE_PROJECTION_TOKENS` and `M
 ### The mutant table
 
 **Thirty-five mutants, each observed killed against the whole workspace**, run with `--no-fail-fast` in a scratch worktree at the implementation commit, so that every killer is named. Thirty-two died in the first pass. Three survived it, and a fourth died only to the golden digest; each of those four had nothing that stated its rule, and each died, to the test added for it, when run again at `f5aa513`.
+
+**Round 66 added thirteen, each observed killed against the whole workspace at `97920b4`.** Seven are the reviewer's, which survived at `4eb13d4`. Six are mine, on what m5a-2 changed. Every build succeeded, every run gave its `test result` lines, and no keychain test failed in any of them. A1's run printed 42 lines rather than 40, because an assertion message that prints a projection includes the fixture log's own `test result:` lines; as below, the verdict rests on genuine test names.
 
 **Two things about the instrument.** A mutant's run is judged on genuine test names only:
 
@@ -112,12 +114,25 @@ No verdict here rests on either kind.
 | H2: the harness forgets the temporary roots | killed | the same |
 | H3: the harness does not check excerpts against the source | killed | `the_harness_names_every_way_a_projection_can_fail_its_checks` |
 | H4: the harness does not check the packet's omissions | killed | the same |
+| **K1 — the reviewer's, round 66**: at the call site, `Next::Insufficient` carried by the rule, a partial summary | **survived at `4eb13d4`**; killed at `97920b4` | `an_input_inside_the_size_bound_that_needs_more_parts_than_a_projection_has_is_insufficient_capacity`, and the harness's `an_input_over_the_projections_capacity_is_reported_as_such_and_nothing_is_asked` |
+| **K2**: the stored bytes not checked against the digest | **survived at `4eb13d4`**; killed | `stored_bytes_that_no_longer_match_their_digest_are_unavailable_and_never_projected` |
+| **K3**: an excerpt's `\r\n` normalised to `\n` | **survived at `4eb13d4`**; killed | `a_log_with_crlf_line_endings_is_read_as_cargos_and_carried_as_its_own_bytes`, at the excerpt's closing line |
+| **K4**: the purge check removed | **survived at `4eb13d4`**; killed | `a_purged_artifact_is_unavailable_though_its_bytes_are_still_stored` |
+| **K7**: a part's record names no item | **survived at `4eb13d4`**; killed | `a_large_test_log_is_projected_and_every_byte_is_carried_or_declared_omitted`, at "part 0 names another item" |
+| **K8**: a chosen id resolved to its part-local index | **survived at `4eb13d4`**; killed | `what_the_model_chose_is_what_is_carried` |
+| **K10**: the answer ignored, the rule's choice carried under the model's label | **survived at `4eb13d4`**; killed | `what_the_model_chose_is_what_is_carried` |
+| A1: an anchor's newline shown raw | killed | both anchor tests: `a_capture_anchor_stays_on_one_line_whatever_it_holds` and `projection::tests::a_capture_anchor_is_shown_on_one_line_whatever_it_holds` |
+| A2: an anchor's backslash not escaped | killed | `projection::tests::a_capture_anchor_is_shown_on_one_line_whatever_it_holds` |
+| A3: U+2028 and U+2029 not escaped | killed | the same |
+| A4: an anchor cut inside an escape | killed | the same |
+| H5: the harness admits a ceiling above the hard cap | killed | `the_harness_refuses_a_ceiling_above_the_hard_cap_and_admits_the_cap_itself` |
+| H6: the harness refuses the cap itself | killed | the same, at "the cap itself was refused" |
 
 **The lesson again, four times.** Each of the four had a rule stated only in code: a second closed-set check, a clause of the failure vocabulary, a door's third half, and an ordering. m4d and round 50 taught that a rule tested at one door is untested at the next, and here the fix was the same: a test at the rule itself. B3 and G7 each looked like "unreachable" at first. Both were reachable with m4h's technique of rewriting a sealed record in a stopped store, so "this cannot be tested here" was, again, a claim to check.
 
 ### Found, not asked for
 
-- **A third timing flake, in the keychain tests.** `keychain::tests::the_trailing_newline_is_stripped_and_nothing_else_is` and `the_secret_never_prints_itself` failed in the C2 and C2b runs with `the fake tool answered: TimedOut`: a fake `security` script, which prints one line, did not finish inside the 5-second timeout while the probe's whole-workspace runs loaded the machine. It did not happen in the baseline or in any gate run. This is not diagnosed, and it is recorded for the CI-flake record rather than chased here.
+- **A third timing flake, in the keychain tests.** `keychain::tests::the_trailing_newline_is_stripped_and_nothing_else_is` and `the_secret_never_prints_itself` failed in the C2 and C2b runs with `the fake tool answered: TimedOut`: a fake `security` script, which prints one line, did not finish inside the 5-second timeout while the probe's whole-workspace runs loaded the machine. It did not happen in the baseline or in any gate run. **The reviewer saw it too, in 3 of 8 runs, while another session was also testing on the machine.** So it is load, not this change: a 5-second timeout on a fake tool is a timing bound, like the two CI flakes below. This is not diagnosed, and it is recorded for the CI-flake record rather than chased here.
 - **An `evidence_included` item needed no read right before m5a**, which is item 1 above: the item's result told whether an artifact with that digest existed.
 
 ### Found while building, and fixed here
@@ -137,7 +152,9 @@ No verdict here rests on either kind.
 - an input with nothing a model could be offered — all run identity, too large to carry whole — would have been labelled "chosen by the model" with no part asked;
 - a projection that fits whole was carried unit by unit, and could pass through more excerpts than the bound on the way and omit units from something that fits.
 
-### Decisions for the reviewer
+### Decisions for the reviewer, settled at round 66
+
+The reviewer accepted three decisions: the standalone projection artifact is m5c's, and is now in [READINESS's m5c row](m5/READINESS.md#9-the-pull-requests-each-with-its-gate) so it is not lost; `cbr-context-compiler/3` stays; and the rebuild's narrower evidence check, item 2 above, stays.
 
 - **The projection is not sealed as a separate artifact.** It is the content of a section of the sealed packet, and every part's exchange is a sealed record. READINESS §5 says a family's product is sealed as evidence under a reserved source kind, and a standalone `cbr.artifact.projection` with its own readable-set gate is the natural reading of that. Nothing in m5a takes a projection by handle; m5c's tool turn is the first thing that will, so I would build it there. It is the reviewer's to overrule.
 - **`cbr-context-compiler/3`.** An evidence item's section changed meaning, so the compiler string moved. The golden packet differs from `main`'s by that string and nothing else: substituting `/2` back reproduces the old digest exactly.
@@ -150,10 +167,41 @@ No verdict here rests on either kind.
 - **Red on `main`.** `journey_two.rs` (12 tests) and `j2_harness.rs` (6) were run against `main` at `dfa4f65`, in a scratch worktree with only the two test files added. All 18 fail, for their own reasons: the section is `evidence <artifact>`, the oversize input is `satisfied`, the unreadable artifact is `satisfied`, and the harness does not exist. They are committed on their own, at `f73415d`, before the implementation.
 - **Guards whose red is their mutants.** The 33 unit tests in `projection/tests.rs` exercise a module that does not exist on `main`, so their red is their mutants. So are the tests added after the first red run: the oversize blob, the per-record evidence and the harness's checks against dishonest packets, each added because a planned mutant had nothing to kill it; and the four of `f5aa513`, each added because a mutant survived or died only to the golden digest, and each observed killing it.
 - **The two defects of item 4** were each observed red before their fix.
+- **Round 66.** The tests came first, at `40e4c74`, and were run against `4eb13d4`. Three were red, each for its own reason: the anchor test in `projection::tests` and its end-to-end twin, where the reviewer's anchor wrote a second `failures named:` and `read as` line, and the harness admitting a ceiling above the cap. The fix is `97920b4`. The guards for K1, K2, K3, K4, K7, K8 and K10 were green at `4eb13d4`, which is what a guard for correct code is. Their red is the reviewer's mutants, each observed killed in the table above.
+
+### Round 66: the review, and m5a-2
+
+**Not cleared at `4eb13d4`.** The safety step passed, and the gates and all seven suites reproduced. The reviewer's own mutants against the whole workspace found seven survivors, and two defects besides.
+
+**The seven survivors, each now with a test that states its rule.** The killers are in the table above.
+
+- **K1: the part bound at the call site.** `Next::Insufficient` could fall back to the rule. Every end-to-end oversize fixture was over a mebibyte and stopped at the size check, so the part bound was reached only in `projection::tests`, through `next()`. Now 124,200 bytes of plain text, which pass the size check and need a fifth part, end `insufficient_capacity` with a model and without, end to end and in a harness dry run. One block shorter, the same text fills exactly four parts and is projected, so it is the part count that refuses.
+- **K2: the digest check.** An object altered on disk, one byte and the same length, is `evidence_unavailable`.
+- **K3: `\r\n` normalised in an excerpt.** The J2 log with `\r\n` line endings is read as cargo's, its failures named and its excerpts checked against its bytes.
+- **K4: the purge check.** Not equivalent, as the reviewer said. A purge keeps the row `sealed`, and an object that another sealed artifact names is never collected. The same bytes are ingested twice and one of them purged: the purged one is `evidence_unavailable`, and the other is projected.
+- **K7: a part's record naming no item.** Each part record's `item` is now asserted.
+- **K8 and K10: what the model chose not being what is carried.** The fake picks the second unit of every part, which is passing tests. The projection carries exactly those units besides run identity, declares every failure `not_selected`, and is not the rule's projection.
+
+**The two defects:**
+
+- **A capture anchor could forge header lines.** The reviewer sealed an artifact whose anchor id held `\nfailures named: 0\nread as …`, and the header showed those lines before CBR's own. Now each anchor's kind and id are escaped as JSON escapes a string, plus U+2028 and U+2029, and cut to `ANCHOR_BYTES` between escapes. The backslash is escaped too, so two anchors are never shown alike. The golden projection digest is unchanged, because its anchors have nothing to escape, so `cbr-project-large-result/1` stays; it has never been on `main`.
+- **`j2_run.py` had no hard cap.** It now refuses a `--run-ceiling` above m4e's `RUN_CEILING_TOKENS`, imported from `m4e_run.py`, before anything starts, in a dry run as in a live one. The test reads the figure from m4e's harness, and admits the cap itself.
+
+**Nothing else in the header can hold a newline**, which I checked rather than assumed:
+
+- an artifact id is a protocol identifier;
+- a digest is checked at seal;
+- a libtest name lies inside one line;
+- the JSON reader refuses a raw control character in a string, so a JSON label or failure name cannot hold one either.
+
+A name or a label can hold a C1 control or a Unicode separator, which neither of CBR's readers splits on. Both stay the artifact's bytes, because a named failure is checked against the bytes at its range.
+
+**A follow-up, recorded and not for m5a: CBR does not check `evidence/1`'s anchor schema at seal**: strings, a kind of 1 to 64 characters, an id of 1 to 256. The header's escaping makes an anchor harmless to a projection whatever it holds. Checking the schema is the protocol's rule and belongs at the evidence door, in a change of its own.
 
 ### Gates at the head
 
-- `cargo test --workspace --locked`: **636 passed, 0 failed, 1 ignored, over 40 `test result` lines**, at `f5aa513`. The count was 38 lines; `journey_two` and `j2_harness` are the two new binaries.
+- `cargo test --workspace --locked`: **644 passed, 0 failed, 1 ignored, over 40 `test result` lines**, at `97920b4`, which the notes commit changes only in Markdown. That is 636 at `4eb13d4` and eight added in round 66: six in `journey_two`, one in `j2_harness` and one in `projection::tests`. Before m5a the count was 38 lines; `journey_two` and `j2_harness` are the two new binaries.
+- **The seven conformance suites**, run into a scratch directory and never into `conformance/results/`: each matches its committed expectation.
 - `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets -- -D warnings` and `cargo build --workspace --locked`: clean.
 - `scripts/verify_pin.py`, `scripts/check_docs.py` and `git diff --check`: clean.
 - `Cargo.lock`: unchanged.
