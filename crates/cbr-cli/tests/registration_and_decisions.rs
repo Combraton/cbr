@@ -1037,8 +1037,16 @@ fn a_repository_outside_the_grant_contributes_nothing_to_discovery() {
 /// coverage names its producer. Bump `compiler::COMPILER` and this digest
 /// changes; change what the compiler emits and it changes too. Either way the
 /// two are updated in the same commit or this test fails.
+///
+/// **Re-pinned at `cbr-context-compiler/4`**, which keeps packet ids inside
+/// the identifier grammar. Its bytes differ from `/3`'s only in the sixteen
+/// span section and citation ids and the compiler string: writing
+/// `d-span-app:src:alpha.rs-0` back as `d-span-src/alpha.rs-0` (and `dc-`
+/// likewise) and `/4` back as `/3` reproduces `/3`'s digest,
+/// `sha256:c54aa006…8346`, exactly — so nothing was selected, ordered or
+/// dropped differently. The fixture has no anchor section.
 const GOLDEN_PACKET_DIGEST: &str =
-    "sha256:c54aa006ba26ec683a7dbd4590a2a34a35297ddce45d0f848dc34c2da0bf8346";
+    "sha256:52fc69c7af75d681ed522acf72df7813a9ebfb05c55a55b9047ecbbc2197568e";
 
 #[test]
 fn the_packet_a_fixed_fixture_produces_has_not_changed_without_the_compiler_string() {

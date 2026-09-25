@@ -1289,11 +1289,141 @@ pub fn compile_packet(
         content,
         digest,
         revision,
-        artifact: format!("packet.{request}.{revision}"),
+        artifact: crate::ids::packet_artifact(request, revision),
         items,
         state,
         facts,
     }
+}
+
+/// Every identifier-typed member of a packet's published facts, as a JSON
+/// pointer with `*` for each element of an array.
+///
+/// **These are the `context.packet.inspect` result's**, read out of the
+/// vendored schema and its references: every path the schema types as
+/// `core/1`'s `identifier` and that is present when a packet is published.
+/// A test walks the schema and fails if a path it finds is in neither this
+/// list nor [`IDENTIFIERS_NOT_AT_PUBLISH`]. The sealed body's sections and
+/// the citations they carry are checked beside them, because the body is
+/// what a consumer reads and the facts are only a projection of it.
+pub const IDENTIFIER_PATHS: [&str; 30] = [
+    "/request/id",
+    "/job/id",
+    "/provenance/job/id",
+    "/selected/*/evidence/provider",
+    "/selected/*/evidence/artifact/id",
+    "/sections/*/section_id",
+    "/sections/*/item_id",
+    "/sections/*/citations/*",
+    "/sections/*/claim/reference/claim",
+    "/sections/*/claim/reference/provider",
+    "/sections/*/claim/reliance/decision",
+    "/sections/*/claim/applicability/evaluation",
+    "/sections/*/claim/conflicts/*/conflict",
+    "/inclusions/*",
+    "/omissions/*/section_id",
+    "/omissions/*/item_id",
+    "/citations/*/citation_id",
+    "/citations/*/evidence/provider",
+    "/citations/*/evidence/artifact/id",
+    "/items/*/item_id",
+    "/applicability/conditions/*/condition_id",
+    "/applicability/conditions/*/item_id",
+    "/authority/*/item_id",
+    "/authority/*/evidence/provider",
+    "/authority/*/evidence/artifact/id",
+    "/body/sections/*/section_id",
+    "/body/sections/*/item_id",
+    "/body/sections/*/citations/*/citation_id",
+    "/body/sections/*/citations/*/evidence/provider",
+    "/body/sections/*/citations/*/evidence/artifact/id",
+];
+
+/// The identifier-typed paths of the `context.packet.inspect` result that
+/// are not in the facts a packet is published with, each for a stated
+/// reason, so the schema walk can tell a path left out on purpose from one
+/// forgotten.
+///
+/// - `/reference/…` is added once the packet is sealed: its artifact id is
+///   the packet artifact, checked as the second argument of
+///   [`ids_outside_grammar`]; its packet id is the request id, checked as
+///   `/request/id`; and its provider is this provider's own id.
+/// - `/claim_changes`, `/invalidated_items` and `/unverified_items` are
+///   read-time facts (CONTEXT sections 8 and 14), computed at each read from
+///   section ids, item ids and claim references the published facts hold.
+#[cfg(test)]
+pub const IDENTIFIERS_NOT_AT_PUBLISH: [&str; 12] = [
+    "/reference/artifact/artifact/id",
+    "/reference/artifact/provider",
+    "/reference/packet/id",
+    "/claim_changes/*/section_id",
+    "/claim_changes/*/claim/claim",
+    "/claim_changes/*/claim/provider",
+    "/invalidated_items/*/item_id",
+    "/invalidated_items/*/claim/claim",
+    "/invalidated_items/*/claim/provider",
+    "/unverified_items/*/item_id",
+    "/unverified_items/*/claim/claim",
+    "/unverified_items/*/claim/provider",
+];
+
+/// Where a packet about to be published names an id outside the protocol's
+/// identifier grammar, or names one section id or one citation id twice, as
+/// JSON pointers. Empty for a packet that may be published.
+///
+/// **The last door before a packet leaves the tick.** The compiler builds
+/// its ids inside the grammar ([`crate::ids`]); a script can still name any
+/// string at all, and nothing else stands between a malformed id and a
+/// sealed, published packet that every consumer's schema would reject.
+///
+/// Pointers only, never the values: an id is often a repository path, and
+/// what this returns is logged.
+///
+/// It does not check an omission's section id against the sections a
+/// packet holds: the omission `s-x.o1` of item `x` and the section of an
+/// item named `x.o1` share an id, and that is a recorded follow-up rather
+/// than a refusal.
+pub fn ids_outside_grammar(facts: &Value, artifact: &str) -> Vec<String> {
+    fn walk(value: &Value, segments: &[&str], pointer: String, found: &mut Vec<String>) {
+        match segments.split_first() {
+            None => match value {
+                Value::Null => {}
+                Value::String(id) if crate::envelope::is_identifier(id) => {}
+                _ => found.push(pointer),
+            },
+            Some((&"*", rest)) => {
+                for (index, element) in value.as_array().unwrap_or_default().iter().enumerate() {
+                    walk(element, rest, format!("{pointer}/{index}"), found);
+                }
+            }
+            Some((name, rest)) => {
+                if let Some(member) = value.get(name) {
+                    walk(member, rest, format!("{pointer}/{name}"), found);
+                }
+            }
+        }
+    }
+    let mut found = Vec::new();
+    if !crate::envelope::is_identifier(artifact) {
+        found.push("/reference/artifact/artifact/id".to_string());
+    }
+    for path in IDENTIFIER_PATHS {
+        let segments: Vec<&str> = path.split('/').skip(1).collect();
+        walk(facts, &segments, String::new(), &mut found);
+    }
+    // A reader addresses a section and a citation by its id, so one id
+    // naming two of either is a packet whose reader cannot tell which.
+    for (listed, member) in [("sections", "section_id"), ("citations", "citation_id")] {
+        let mut seen = std::collections::BTreeSet::new();
+        for (index, entry) in list(facts, &[listed]).iter().enumerate() {
+            if let Some(id) = entry.get(member).and_then(Value::as_str)
+                && !seen.insert(id)
+            {
+                found.push(format!("/{listed}/{index}/{member}"));
+            }
+        }
+    }
+    found
 }
 
 /// A packet reference (CONTEXT section 2).
@@ -1882,6 +2012,187 @@ mod tests {
                 &["log".into()]
             ),
             "nor one that may read it a job that could not"
+        );
+    }
+
+    // ---- the identifier guard ---------------------------------------------
+
+    /// Put `leaf` at `path` in `target`, creating what is missing: an
+    /// object for a name, and element 0 of an array for `*`.
+    fn insert(target: &mut Value, segments: &[&str], leaf: Value) {
+        let Some((first, rest)) = segments.split_first() else {
+            *target = leaf;
+            return;
+        };
+        if *first == "*" {
+            if !matches!(target, Value::Array(_)) {
+                *target = Value::Array(Vec::new());
+            }
+            let Value::Array(elements) = target else {
+                unreachable!()
+            };
+            if elements.is_empty() {
+                elements.push(Value::Object(Vec::new()));
+            }
+            insert(&mut elements[0], rest, leaf);
+        } else {
+            if !matches!(target, Value::Object(_)) {
+                *target = Value::Object(Vec::new());
+            }
+            if target.get(first).is_none() {
+                set(target, first, Value::Null);
+            }
+            insert(member_mut(target, first).expect("just set"), rest, leaf);
+        }
+    }
+
+    /// Facts with a valid identifier at every path the guard checks.
+    fn full_facts() -> Value {
+        let mut facts = Value::Object(Vec::new());
+        for path in IDENTIFIER_PATHS {
+            let segments: Vec<&str> = path.split('/').skip(1).collect();
+            insert(&mut facts, &segments, string("ok-id.1:~_"));
+        }
+        facts
+    }
+
+    #[test]
+    fn the_guard_names_every_id_outside_the_grammar_by_where_it_is() {
+        let facts = full_facts();
+        assert_eq!(
+            ids_outside_grammar(&facts, "packet.r-1.1"),
+            Vec::<String>::new()
+        );
+        // **One bad value per path**, each reported at exactly its own
+        // pointer, and a value that is not a string at all is as bad.
+        for path in IDENTIFIER_PATHS {
+            let segments: Vec<&str> = path.split('/').skip(1).collect();
+            let pointer = path.replace('*', "0");
+            for bad in [
+                string("s/x"),
+                string(&"a".repeat(129)),
+                string("-lead"),
+                Value::Int(7),
+            ] {
+                let mut broken = facts.clone();
+                insert(&mut broken, &segments, bad.clone());
+                assert_eq!(
+                    ids_outside_grammar(&broken, "packet.r-1.1"),
+                    vec![pointer.clone()],
+                    "{path} holding {bad:?}"
+                );
+            }
+        }
+        assert_eq!(
+            ids_outside_grammar(&facts, &format!("packet.{}.1", "r".repeat(128))),
+            vec!["/reference/artifact/artifact/id".to_string()],
+            "the packet's own artifact id"
+        );
+    }
+
+    #[test]
+    fn the_guard_refuses_one_section_id_or_one_citation_id_named_twice() {
+        let facts = cbr_encoding::parse(
+            br#"{"sections":[{"section_id":"s-a"},{"section_id":"s-b"},{"section_id":"s-a"}],
+                 "citations":[{"citation_id":"c-a"},{"citation_id":"c-a"}]}"#,
+        )
+        .expect("json");
+        assert_eq!(
+            ids_outside_grammar(&facts, "packet.r-1.1"),
+            vec![
+                "/sections/2/section_id".to_string(),
+                "/citations/1/citation_id".to_string()
+            ]
+        );
+    }
+
+    /// Every identifier-typed path in a vendored schema, following `$ref`
+    /// across files, with `*` for an array's elements.
+    fn identifier_paths(file: &std::path::Path) -> std::collections::BTreeSet<String> {
+        fn load(file: &std::path::Path) -> Value {
+            let bytes = std::fs::read(file).unwrap_or_else(|e| panic!("{}: {e}", file.display()));
+            cbr_encoding::parse(&bytes).unwrap_or_else(|e| panic!("{}: {e:?}", file.display()))
+        }
+        fn walk(
+            file: &std::path::Path,
+            node: &Value,
+            pointer: &str,
+            depth: usize,
+            found: &mut std::collections::BTreeSet<String>,
+        ) {
+            assert!(depth < 64, "a reference cycle at {pointer}");
+            if let Some(reference) = node.get("$ref").and_then(Value::as_str) {
+                let (target, fragment) = reference.split_once('#').unwrap_or((reference, ""));
+                let target = if target.is_empty() {
+                    file.to_path_buf()
+                } else {
+                    file.parent().expect("a directory").join(target)
+                };
+                if target.ends_with("core/1/common.schema.json") && fragment == "/$defs/identifier"
+                {
+                    found.insert(pointer.to_string());
+                    return;
+                }
+                let mut resolved = load(&target);
+                for part in fragment.split('/').filter(|part| !part.is_empty()) {
+                    resolved = resolved.get(part).cloned().expect("the reference resolves");
+                }
+                walk(&target, &resolved, pointer, depth + 1, found);
+            }
+            for combinator in ["oneOf", "anyOf", "allOf"] {
+                for option in list(node, &[combinator]) {
+                    walk(file, option, pointer, depth + 1, found);
+                }
+            }
+            if let Some(Value::Object(members)) = node.get("properties") {
+                for (name, member) in members {
+                    walk(file, member, &format!("{pointer}/{name}"), depth + 1, found);
+                }
+            }
+            if let Some(items) = node.get("items") {
+                walk(file, items, &format!("{pointer}/*"), depth + 1, found);
+            }
+        }
+        let mut found = std::collections::BTreeSet::new();
+        walk(file, &load(file), "", 0, &mut found);
+        found
+    }
+
+    #[test]
+    fn the_guard_covers_every_identifier_the_inspect_schema_types() {
+        // **The list is checked against the schema, not against memory.**
+        // Every path the vendored `context.packet.inspect` result types as
+        // an identifier is either checked when a packet is published or
+        // named, with its reason, as not present then.
+        let schema = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(
+            "../../vendor/protocol/v0.1.0/schemas/context/1/context.packet.inspect.result.schema.json",
+        );
+        let typed = identifier_paths(&schema);
+        assert!(
+            typed.len() > 30,
+            "the walk reached the references: {typed:?}"
+        );
+        let accounted: std::collections::BTreeSet<String> = IDENTIFIER_PATHS
+            .iter()
+            .chain(IDENTIFIERS_NOT_AT_PUBLISH.iter())
+            .map(|path| path.to_string())
+            .collect();
+        let missed: Vec<&String> = typed.difference(&accounted).collect();
+        assert!(
+            missed.is_empty(),
+            "identifier paths the guard does not check: {missed:?}"
+        );
+        // And the other way: nothing listed is a path the schema does not
+        // have, except the sealed body, which the inspect result does not
+        // carry.
+        let stale: Vec<&String> = accounted
+            .iter()
+            .filter(|path| !path.starts_with("/body/"))
+            .filter(|path| !typed.contains(*path))
+            .collect();
+        assert!(
+            stale.is_empty(),
+            "listed paths the schema does not type: {stale:?}"
         );
     }
 }

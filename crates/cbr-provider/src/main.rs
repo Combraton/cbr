@@ -22,6 +22,7 @@ mod errors;
 mod evidence;
 mod frames;
 mod grants;
+mod ids;
 mod jsonrpc;
 mod keychain;
 mod knowledge;

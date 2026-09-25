@@ -1145,9 +1145,10 @@ fn a_request_id_of_127_characters_is_published_under_an_artifact_id_inside_the_g
     // keeps the `packet.` prefix a grant's `id_prefix` names, then a
     // digest of the rest and as much of its tail as fits.
     let directory = tempfile::tempdir().expect("temp dir");
-    let mut ctx = ContextProvider::start(
+    let mut ctx = ContextProvider::start_with(
         directory.path(),
         r#"{"format":"combraton-conformance-config/1","provider_id":"context-1","principal":"owner","authority_principals":["owner"],"context":{"compile":true}}"#,
+        &["context.required_before_start", "context.expand"],
     );
     let log = b"running 1 test\ntest tests::holds ... ok\n";
     let digest = seal(&mut ctx, "log-1", log);
