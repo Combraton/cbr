@@ -2202,13 +2202,17 @@ impl Provider {
                     unmet(decided, crate::derivation::UNREADABLE);
                     return Ok(());
                 };
-                if !assist.room_for(plan.parts.len()) {
+                // **The claim is the questions the model is offered**, which
+                // are at most the parts the input fills: a planned part
+                // holding nothing a model could add is not asked, and is not
+                // charged for.
+                if !assist.room_for(plan.asked.len()) {
                     unmet(decided, INVESTIGATION_EXHAUSTED);
                     return Ok(());
                 }
-                let of = plan.parts.len();
+                let of = plan.asked.len();
                 let mut asked = Vec::with_capacity(of);
-                for (index, units) in plan.parts.iter().enumerate() {
+                for (index, units) in plan.asked.iter().enumerate() {
                     let (candidates, labels) =
                         projection::candidates(&read, &bytes, artifact, units);
                     let ids: Vec<String> = candidates
@@ -2278,6 +2282,9 @@ impl Provider {
                     unmet(decided, reason);
                     return Ok(());
                 }
+                // What the model added, **beside every failure the parser
+                // found**: `render` carries the rule's floor first and never
+                // takes any of it away.
                 projection::choose_by_model(&read, &picked)
             }
         };

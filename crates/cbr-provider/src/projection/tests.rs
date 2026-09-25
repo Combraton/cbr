@@ -532,7 +532,7 @@ fn identity_is_never_offered_to_a_model() {
 #[test]
 fn a_group_larger_than_a_part_is_the_one_cut_and_the_model_is_told_it_was_made() {
     // A failure block of about three parts' bytes: the only thing
-    // partitioning has to cut, and the projection says so.
+    // partitioning has to cut.
     let log = cargo_log(1, 2, &[(0, 0)], 1400);
     let read = parse(log.as_bytes());
     let plan = partition(&read, log.as_bytes(), SUBJECT);
@@ -545,14 +545,32 @@ fn a_group_larger_than_a_part_is_the_one_cut_and_the_model_is_told_it_was_made()
         let holds = units.iter().any(|&index| index >= first && index <= last);
         assert_eq!(holds, part >= from && part <= to, "part {part}");
     }
-    let chosen = choose_by_model(&read, &[first]);
-    let rendered = render(&read, log.as_bytes(), &chosen, &plan, SUBJECT);
+    // **A failure's block is never offered**, being the rule's to carry, so
+    // no model saw a piece of it and nothing is unresolved about it.
     assert!(
-        rendered.content.contains(&format!(
-            "one block cut across parts {}-{}",
-            from + 1,
-            to + 1
-        )),
+        offered(&plan)
+            .iter()
+            .all(|&index| index < first || index > last)
+    );
+    let chosen = choose_by_model(&read, &[]);
+    let rendered = render(&read, log.as_bytes(), &chosen, &plan, SUBJECT);
+    assert!(!rendered.content.contains("unresolved: "));
+
+    // Twenty lines of two kilobytes are one block of plain text, larger
+    // than a part: a model is offered it in two questions, and the model
+    // arm says so, numbered by the questions it was asked.
+    let text = format!("{}\n", "y".repeat(2000)).repeat(BLOCK_LINES);
+    let read = parse(text.as_bytes());
+    let plan = partition(&read, text.as_bytes(), SUBJECT);
+    assert_eq!(plan.split.len(), 1, "{:?}", plan.split);
+    assert_eq!(plan.asked.len(), 2, "{:?}", plan.asked);
+    let (first, _, _, _) = plan.split[0];
+    let chosen = choose_by_model(&read, &[first]);
+    let rendered = render(&read, text.as_bytes(), &chosen, &plan, SUBJECT);
+    assert!(
+        rendered
+            .content
+            .contains("one block cut across parts 1-2; each part saw only its own pieces"),
         "{}",
         rendered.content
     );
@@ -560,7 +578,7 @@ fn a_group_larger_than_a_part_is_the_one_cut_and_the_model_is_told_it_was_made()
     // unresolved to say.
     let ruled = render(
         &read,
-        log.as_bytes(),
+        text.as_bytes(),
         &choose_by_rule(&read),
         &plan,
         SUBJECT,
@@ -1074,13 +1092,17 @@ fn the_largest_header_leaves_most_of_a_projection_for_its_ledger() {
         chosen: vec![false; read.units.len()],
     };
     let carried = vec![false; read.units.len()];
+    // **Drawn at the model arm's widest**: its label listing every excerpt
+    // a projection may hold, and every cut group's line.
     let header = draw(
         &read,
         log.as_bytes(),
         &nothing,
         &carried,
-        &Frame::of(subject, &plan),
+        Some(&carried),
+        &Frame::widest(subject, &plan),
     );
+    assert!(header.content.contains(&widest_suffix()));
     assert!(
         header.content.len() < PROJECTION_BYTES / 2,
         "the header alone takes {} of {PROJECTION_BYTES}",
@@ -1096,7 +1118,7 @@ fn the_largest_header_leaves_most_of_a_projection_for_its_ledger() {
 /// rendered and this changes; change [`FORMAT`] and it changes too. Either
 /// way the two move in one commit.
 const GOLDEN_PROJECTION_DIGEST: &str =
-    "sha256:861831dbd4d8144c75c7b822c25ed516a69b7fdf456a10d931202b84ae1c5a44";
+    "sha256:b11ec1bf551011793a789eb7f9c69db952ef034d476b70a69171f0827cb4fc3b";
 
 #[test]
 fn the_projection_a_fixed_fixture_renders_has_not_changed_without_its_format() {
@@ -1602,7 +1624,7 @@ fn only_units_the_rule_does_not_carry_and_that_could_fit_are_offered() {
 /// A failing cargo log whose first failure's block grows by `pad`.
 fn padded_log(pad: usize) -> String {
     let failing = [(0, 1), (0, 3), (0, 5), (0, 7), (0, 9), (0, 11)];
-    cargo_log(2, 60, &failing, 25).replacen(
+    cargo_log(4, 100, &failing, 25).replacen(
         "expected 5 ms\n",
         &format!("expected 5 ms{}\n", "p".repeat(pad)),
         1,
@@ -1803,13 +1825,7 @@ fn the_offer_preamble_is_bounded() {
     // **The model is told what is already carried in counts, never in
     // bytes of the document**, so what it is told is bounded by the widest
     // numbers an input within capacity can have.
-    let widest = Floor {
-        tests: INPUT_BYTES,
-        errors: INPUT_BYTES,
-        bytes: PROJECTION_BYTES,
-        excerpts: MAX_EXCERPTS,
-    };
-    assert_eq!(preamble(&widest).len(), PREAMBLE_BYTES);
+    assert_eq!(preamble(&widest_floor()).len(), PREAMBLE_BYTES);
     for floor in [
         Floor::default(),
         Floor {
@@ -1956,9 +1972,21 @@ fn worst_case(body: &Request) -> u64 {
         .saturating_add(crate::budget::SAFETY_MARGIN_TOKENS)
 }
 
+/// The widest counts a part's preamble can carry: a named failure is at
+/// least one byte of an input within capacity, and the room is at most a
+/// whole projection.
+fn widest_floor() -> Floor {
+    Floor {
+        tests: INPUT_BYTES,
+        errors: INPUT_BYTES,
+        bytes: PROJECTION_BYTES,
+        excerpts: MAX_EXCERPTS,
+    }
+}
+
 /// A part at its bounds: [`PART_UNITS`] candidates whose frames and texts,
 /// escaped, come to [`PART_BYTES`] between them, with the widest ids,
-/// labels, numbers and header a part can have.
+/// labels, numbers, header and preamble a part can have.
 fn at_the_bound() -> (Part, Vec<Candidate>) {
     let label = format!("record {}", "l".repeat(LABEL_BYTES));
     let wide = 999_999;
@@ -1997,15 +2025,15 @@ fn at_the_bound() -> (Part, Vec<Candidate>) {
         number: MAX_PARTS,
         of: MAX_PARTS,
         labels: vec![label; PART_UNITS],
-        floor: Floor::default(),
+        floor: widest_floor(),
     };
     (part, candidates)
 }
 
 /// The figures READINESS publishes, so that a document cannot drift from
 /// the arithmetic it quotes.
-const PUBLISHED_PART: u64 = 40_680;
-const PUBLISHED_PROJECTION: u64 = 488_160;
+const PUBLISHED_PART: u64 = 41_006;
+const PUBLISHED_PROJECTION: u64 = 492_072;
 
 #[test]
 fn a_parts_worst_call_is_computed_from_its_real_body_and_fits_one_request() {
