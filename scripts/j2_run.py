@@ -50,6 +50,7 @@ What it refuses, before anything starts:
   * an output directory inside this repository;
   * `--live` without `--run-ceiling`, or without
     `--permit-model-network`;
+  * a `--run-ceiling` above m4e's hard cap of 5,000,000, in either mode;
   * a model outside the three M4 may name.
 
 And it stops **before** the run whose worst case could cross the ceiling,
@@ -86,6 +87,7 @@ from m4e_run import (  # noqa: E402
     PUBLIC_REPOSITORIES,
     REMEDY,
     REPOSITORY,
+    RUN_CEILING_TOKENS,
     SETTLE_SECONDS,
     Refused,
     ambiguity,
@@ -173,6 +175,15 @@ def check(manifest, out, live, permit, ceiling):
             "--live needs --permit-model-network as well. A live run reads "
             "the owner's credential and opens a socket to a provider, and "
             "having built the harness is not permission to use it."
+        )
+    # **m4e's hard cap is this run's too**, in a dry run as in a live one: a
+    # dry run reads the same flags, and one that admitted what a live run
+    # refuses would say nothing about the live run.
+    if ceiling is not None and ceiling > RUN_CEILING_TOKENS:
+        refuse(
+            f"--run-ceiling {ceiling} is above the hard cap of "
+            f"{RUN_CEILING_TOKENS} that m4e's harness set and J2's shares. "
+            "Raising it is the owner's decision and not this script's."
         )
     out = Path(out).resolve()
     if out == REPOSITORY or REPOSITORY in out.parents:

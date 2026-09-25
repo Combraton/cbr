@@ -135,7 +135,7 @@ pub const PROJECTION_BYTES: usize = 16 * 1024;
 pub const MAX_EXCERPTS: usize = 24;
 
 /// The most capture anchors the header names, and the most bytes of any
-/// one of them it shows.
+/// one of them it shows, counted as shown: escaped, and on one line.
 pub const CAPTURE_ANCHORS: usize = 8;
 pub const ANCHOR_BYTES: usize = 128;
 
@@ -951,17 +951,44 @@ impl<'a> Frame<'a> {
     }
 }
 
-/// A capture anchor's id, cut within [`ANCHOR_BYTES`] and marked, since
-/// it is the descriptor's metadata and not the artifact's bytes.
-fn clip_anchor(id: &str) -> String {
-    if id.len() <= ANCHOR_BYTES {
-        return id.to_string();
+/// A capture anchor's kind or id as the header shows it: **on one line,
+/// whatever it holds**, and cut within [`ANCHOR_BYTES`] and marked.
+///
+/// The header is CBR's account of what it read, and an anchor is the one
+/// thing in it CBR did not write: `evidence/1` lets a producer name any
+/// anchor of 1 to 256 characters, and CBR does not check them at seal. An
+/// anchor holding a newline wrote a `failures named: 0` of its own above
+/// the real count, which a reader takes first. So each character JSON
+/// would escape is escaped as JSON escapes it — the backslash too, so that
+/// two anchors are never shown alike — and so are the two Unicode
+/// separators a line reader may break on. The cut falls between escapes,
+/// never inside one, so the bound holds for what is shown.
+fn one_line(text: &str, bound: usize) -> String {
+    let mut shown = String::new();
+    // The longest prefix that leaves room for the marker.
+    let mut marked = 0;
+    for character in text.chars() {
+        let piece = match character {
+            '\\' => "\\\\".to_string(),
+            '\n' => "\\n".to_string(),
+            '\r' => "\\r".to_string(),
+            '\t' => "\\t".to_string(),
+            other if other.is_control() || matches!(other, '\u{2028}' | '\u{2029}') => {
+                format!("\\u{:04x}", u32::from(other))
+            }
+            other => other.to_string(),
+        };
+        if shown.len() + piece.len() > bound {
+            shown.truncate(marked);
+            shown.push_str("...");
+            return shown;
+        }
+        shown.push_str(&piece);
+        if shown.len() + 3 <= bound {
+            marked = shown.len();
+        }
     }
-    let mut cut = ANCHOR_BYTES - 3;
-    while !id.is_char_boundary(cut) {
-        cut -= 1;
-    }
-    format!("{}...", &id[..cut])
+    shown
 }
 
 /// The projection of `read` given what was chosen, carrying as much of it
@@ -1043,7 +1070,13 @@ fn draw(
         .capture
         .iter()
         .take(CAPTURE_ANCHORS)
-        .map(|(kind, id)| format!("{} {}", clip_anchor(kind), clip_anchor(id)))
+        .map(|(kind, id)| {
+            format!(
+                "{} {}",
+                one_line(kind, ANCHOR_BYTES),
+                one_line(id, ANCHOR_BYTES)
+            )
+        })
         .collect();
     out.push_str(&if anchors.is_empty() {
         "captured with no anchors\n".to_string()
