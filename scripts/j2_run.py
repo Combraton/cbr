@@ -112,7 +112,7 @@ from m4e_run import (  # noqa: E402
 # `projection::tests` computes both, and reads them back from here: the
 # worst a whole projection can cost, every part counted and repaired once,
 # and the most parts one projection asks.
-WORST_CASE_PROJECTION_TOKENS = 492_072
+WORST_CASE_PROJECTION_TOKENS = 492_204
 MAX_PARTS = 4
 
 # The prefix of every part's question, which is how a part's record is told

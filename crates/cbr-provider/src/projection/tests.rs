@@ -2530,8 +2530,8 @@ fn at_the_bound() -> (Part, Vec<Candidate>) {
 
 /// The figures READINESS publishes, so that a document cannot drift from
 /// the arithmetic it quotes.
-const PUBLISHED_PART: u64 = 41_006;
-const PUBLISHED_PROJECTION: u64 = 492_072;
+const PUBLISHED_PART: u64 = 41_017;
+const PUBLISHED_PROJECTION: u64 = 492_204;
 
 #[test]
 fn a_parts_worst_call_is_computed_from_its_real_body_and_fits_one_request() {
