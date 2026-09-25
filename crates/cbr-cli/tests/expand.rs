@@ -107,7 +107,12 @@ fn ingest(fixture: &Fixture, name: &str, bytes: &[u8]) -> (String, String) {
 /// settles. The basis names a repository the provider never registered,
 /// as `journey_two` does, so nothing but the item is prepared.
 fn asked(fixture: &Fixture, request: &str, artifact: &str, digest: &str) -> Value {
-    let want = format!("{ITEM}=evidence:{artifact}@{digest}");
+    asked_for(fixture, request, ITEM, artifact, digest)
+}
+
+/// [`asked`], under an item id of the caller's.
+fn asked_for(fixture: &Fixture, request: &str, item: &str, artifact: &str, digest: &str) -> Value {
+    let want = format!("{item}=evidence:{artifact}@{digest}");
     let submitted = fixture.cbr(&[
         "context",
         request,
@@ -811,5 +816,590 @@ fn a_compiled_citation_names_the_provider_that_compiled_it_and_expands_there() {
     ]);
     succeeded(&expanded);
     assert_eq!(std::fs::read(&out).expect("the expanded bytes"), source);
+    provider.stop();
+}
+
+// ---- compiled ids, which must be identifiers --------------------------------
+//
+// **A packet's section and citation ids are the protocol's identifiers**
+// (`core/1`'s `identifier`, `^[A-Za-z0-9][A-Za-z0-9._:~-]{0,127}$`), which
+// the `context` schemas require and `context.expand` checks a citation id
+// against. A discovered span's ids were built from its repository path, so
+// a compiled packet held ids with `/` in them, and longer than 128 bytes
+// for a long path; its own provider refused to expand them. Every test
+// below compiles a packet over a repository written to break that, and
+// follows every citation the packet gives.
+
+/// Submit a compiled request over the fixture's checkout as `app`, with
+/// no investigation, and poll until it settles. `extra` is the rest of
+/// the `cbr context` arguments: the items, the task, a second repository.
+fn compiled(fixture: &Fixture, request: &str, extra: &[&str]) -> (Value, Value) {
+    let mut arguments = vec![
+        "context",
+        request,
+        "--repo",
+        fixture.checkout.to_str().expect("utf-8"),
+        "--repo-id",
+        "app",
+        "--investigation",
+        "0",
+        "--capacity",
+        "65536",
+    ];
+    arguments.extend_from_slice(extra);
+    let submitted = fixture.cbr(&arguments);
+    assert!(
+        submitted.status.success(),
+        "submit {request}: {}",
+        stderr(&submitted)
+    );
+    let started = Instant::now();
+    loop {
+        let polled = fixture.cbr(&["request", request]);
+        let inspected =
+            cbr_encoding::parse(String::from_utf8_lossy(&polled.stdout).trim().as_bytes())
+                .expect("canonical JSON");
+        if inspected
+            .get("packets")
+            .and_then(Value::as_array)
+            .is_some_and(|packets| !packets.is_empty())
+        {
+            let packet = serving::packet(fixture, request);
+            let sealed = serving::sealed(&packet);
+            return (packet, sealed);
+        }
+        assert!(
+            started.elapsed() < Duration::from_secs(120),
+            "{request} never published: {inspected:?}"
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+/// A blob's bytes from whichever of `repositories` holds it.
+fn blob_in(repositories: &[&Path], blob: &str) -> Vec<u8> {
+    for repository in repositories {
+        let output = Command::new("git")
+            .arg("-C")
+            .arg(repository)
+            .args(["cat-file", "blob", blob])
+            .output()
+            .expect("git runs");
+        if output.status.success() {
+            return output.stdout;
+        }
+    }
+    panic!("blob {blob} is in none of {repositories:?}")
+}
+
+/// **Follow every citation a compiled packet gives**, through `cbr expand`,
+/// and hand back `(citation id, the locator's repository and path)` for
+/// each.
+///
+/// A repository blob, `src.<blob>`, expands whole to `git cat-file blob`,
+/// and the range its section's locator names expands to those bytes of
+/// the blob, which are the excerpt the section shows. Anything else a
+/// compiled packet here cites is an ingested artifact, which expands to
+/// what `cbr fetch` returns.
+fn expand_every_citation(
+    fixture: &Fixture,
+    request: &str,
+    packet: &Value,
+    sealed: &Value,
+    repositories: &[&Path],
+) -> Vec<(String, (String, String))> {
+    let citations = packet
+        .get("citations")
+        .and_then(Value::as_array)
+        .unwrap_or_default()
+        .to_vec();
+    assert!(!citations.is_empty(), "{request} cites nothing: {packet:?}");
+    let sections = sealed
+        .get("sections")
+        .and_then(Value::as_array)
+        .unwrap_or_default()
+        .to_vec();
+    let mut followed = Vec::new();
+    for (n, citation) in citations.iter().enumerate() {
+        let at = |path: &[&str]| {
+            path.iter()
+                .try_fold(citation, |value, name| value.get(name))
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string()
+        };
+        let citation_id = at(&["citation_id"]);
+        let artifact = at(&["evidence", "artifact", "id"]);
+        let out = out_file(fixture, &format!("{request}-{n}.expanded"));
+        succeeded(&fixture.cbr(&[
+            "expand",
+            request,
+            &citation_id,
+            "--out",
+            out.to_str().expect("utf-8"),
+        ]));
+        let bytes = std::fs::read(&out).expect("the expanded bytes");
+        let Some(blob) = artifact.strip_prefix("src.") else {
+            assert_eq!(
+                bytes,
+                fetched(fixture, &artifact, &at(&["evidence", "digest"])),
+                "{citation_id}: expand and fetch disagree about {artifact}"
+            );
+            continue;
+        };
+        assert_eq!(
+            bytes,
+            blob_in(repositories, blob),
+            "{citation_id} does not expand to blob {blob}"
+        );
+        let content = sections
+            .iter()
+            .find(|section| {
+                section
+                    .get("citations")
+                    .and_then(Value::as_array)
+                    .unwrap_or_default()
+                    .iter()
+                    .any(|carried| {
+                        carried.get("citation_id").and_then(Value::as_str)
+                            == Some(citation_id.as_str())
+                    })
+            })
+            .and_then(|section| section.get("content"))
+            .and_then(Value::as_str)
+            .unwrap_or_else(|| panic!("{citation_id} belongs to no section"))
+            .to_string();
+        let place = serving::locator_path(&content)
+            .unwrap_or_else(|| panic!("{citation_id}: no path in {content}"));
+        let (from, to) = serving::locator_range(&content)
+            .unwrap_or_else(|| panic!("{citation_id}: no byte range in {content}"));
+        if to > from {
+            let ranged = fixture.cbr(&[
+                "expand",
+                request,
+                &citation_id,
+                "--offset",
+                &from.to_string(),
+                "--length",
+                &(to - from).to_string(),
+            ]);
+            assert_eq!(
+                succeeded(&ranged).stdout,
+                &bytes[from..to],
+                "{citation_id} at {from}-{to}"
+            );
+            assert_eq!(
+                String::from_utf8_lossy(&ranged.stdout),
+                content.split_once('\n').map_or("", |(_, excerpt)| excerpt),
+                "{citation_id} at {from}-{to} is not the excerpt its section shows"
+            );
+        }
+        followed.push((citation_id, place));
+    }
+    followed
+}
+
+/// Three directories of twenty bytes each, twelve deep, and a file name
+/// that brings the whole path to exactly 300 bytes.
+fn deep_path() -> String {
+    let mut path = String::new();
+    for level in 0..12 {
+        path.push_str(&format!("level-{level:02}-of-twelve/"));
+    }
+    let name = "zanzibar-quokka-";
+    let pad = 300 - path.len() - name.len() - ".md".len();
+    format!("{path}{name}{}.md", "q".repeat(pad))
+}
+
+/// A path with a space and letters outside ASCII, in both of Unicode's
+/// normal forms for the same word, so an id cannot pass by happening to
+/// see one form only.
+const SPACED: &str = "notes with space/\u{e9}t\u{e9} r\u{e9}sum\u{e9}.md";
+const DECOMPOSED: &str = "notes with space/e\u{301}te\u{301} decomposed.md";
+
+#[test]
+fn every_citation_of_a_hostile_repository_expands_to_its_blob() {
+    // **The paths a real repository has**: nested deep enough that the
+    // path alone passes 128 bytes, with spaces, letters outside ASCII in
+    // two normal forms, `..` in a file name, a directory whose name
+    // starts with a dot, and a Python function whose name is not ASCII.
+    let fixture = Fixture::narrow(&["ids:u1"]);
+    let words = "the zanzibar quokka keeps the ledger of the marmoset\n";
+    let deep = deep_path();
+    assert_eq!(deep.len(), 300);
+    for path in [
+        deep.as_str(),
+        SPACED,
+        DECOMPOSED,
+        "odd names/two..dots ~tilde: colon %41 percent.md",
+        ".hidden/zanzibar.md",
+    ] {
+        // The path in the bytes as well, so no two of these files are one
+        // blob: a span whose blob and bytes the packet already holds is
+        // dropped as covered, and this test is about every path.
+        let file = fixture.checkout.join(path);
+        std::fs::create_dir_all(file.parent().expect("a parent")).expect("dirs");
+        std::fs::write(&file, format!("{path}\n{}", words.repeat(3))).expect("writes");
+    }
+    std::fs::write(
+        fixture.checkout.join("gr\u{f6}\u{df}e.py"),
+        "def gr\u{f6}\u{df}e_wert():\n    \"\"\"the zanzibar quokka\"\"\"\n    return 1\n\n\
+         def caller():\n    return gr\u{f6}\u{df}e_wert()\n",
+    )
+    .expect("writes");
+    serving::commit(&fixture.checkout, "hostile paths");
+
+    let provider = start(&fixture);
+    let want = format!("q=source:{deep}");
+    let (packet, sealed) = compiled(
+        &fixture,
+        "hostile",
+        &[
+            "--want",
+            &want,
+            "--selector",
+            "gr\u{f6}\u{df}e_wert",
+            "--task",
+            "where does the zanzibar quokka keep the marmoset ledger",
+        ],
+    );
+    serving::assert_packet_ids(&packet, &sealed);
+    let followed =
+        expand_every_citation(&fixture, "hostile", &packet, &sealed, &[&fixture.checkout]);
+    let paths: Vec<&String> = followed.iter().map(|(_, (_, path))| path).collect();
+    assert!(
+        paths.iter().any(|path| **path == deep),
+        "the 300-byte path the item named was followed: {paths:?}"
+    );
+    assert!(
+        paths
+            .iter()
+            .any(|path| path.contains(' ') && !path.is_ascii()),
+        "a path with a space and letters outside ASCII was followed: {paths:?}"
+    );
+    // **An id that fits is still readable**: the repository, the path with
+    // `/` written `:`, and the start byte, rather than the digest a long
+    // one is shortened to. A rule that shortened everything would satisfy
+    // the grammar and tell a reader nothing.
+    assert!(
+        sealed
+            .get("sections")
+            .and_then(Value::as_array)
+            .unwrap_or_default()
+            .iter()
+            .any(|section| section.get("section_id").and_then(Value::as_str)
+                == Some("d-span-app:.hidden:zanzibar.md-0")),
+        "the span of `.hidden/zanzibar.md` is named as itself: {sealed:?}"
+    );
+    // The anchor has no citation, so it is held by the grammar alone.
+    let anchors: Vec<String> = sealed
+        .get("sections")
+        .and_then(Value::as_array)
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|section| section.get("section_id").and_then(Value::as_str))
+        .filter(|id| id.starts_with("d-anchor-"))
+        .map(str::to_string)
+        .collect();
+    assert!(
+        !anchors.is_empty(),
+        "the function whose name is not ASCII is anchored: {sealed:?}"
+    );
+    provider.stop();
+}
+
+#[test]
+fn a_compiled_source_citation_names_this_provider_and_expands_under_another_id() {
+    // **A source section's citation named `cbr` literally**, where every
+    // other compiled citation names the provider that compiled it; under
+    // any other `provider_id` its own `context.expand` refused it as
+    // another provider's.
+    const ELSEWHERE: &str = "cbr-elsewhere";
+    let fixture = Fixture::narrow(&["ids:u1"]);
+    let provider = fixture.start_configured(&format!(
+        r#""provider_id":"{ELSEWHERE}","context":{{"compile":true}}"#
+    ));
+    let (packet, sealed) = compiled(&fixture, "source", &["--want", "log=source:queue.md"]);
+    serving::assert_packet_ids(&packet, &sealed);
+    let providers: Vec<String> = packet
+        .get("citations")
+        .and_then(Value::as_array)
+        .unwrap_or_default()
+        .iter()
+        .filter(|citation| citation.get("citation_id").and_then(Value::as_str) == Some("c-log"))
+        .filter_map(|citation| {
+            citation
+                .get("evidence")
+                .and_then(|evidence| evidence.get("provider"))
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        })
+        .collect();
+    assert_eq!(providers, [ELSEWHERE], "the source citation's provider");
+    let printed = fixture.cbr(&["expand", "source", "c-log"]);
+    assert_eq!(
+        succeeded(&printed).stdout,
+        std::fs::read(fixture.checkout.join("queue.md")).expect("reads")
+    );
+    provider.stop();
+}
+
+#[test]
+fn the_same_path_at_the_same_byte_in_two_repositories_is_two_sections() {
+    // **A span id named its path and its start byte, and not its
+    // repository**, so the same file name at the same offset in two
+    // repositories of one basis gave two sections one id.
+    let fixture = Fixture::narrow(&["ids:u1"]);
+    for (repository, which) in [(&fixture.checkout, "one"), (&fixture.outside, "other")] {
+        std::fs::write(
+            repository.join("ledger.md"),
+            format!("the marmoset ledger is kept in the {which} repository\n").repeat(3),
+        )
+        .expect("writes");
+        serving::commit(repository, "a ledger");
+    }
+    let provider = start(&fixture);
+    let also = format!("outside={}", fixture.outside.display());
+    let (packet, sealed) = compiled(
+        &fixture,
+        "twice",
+        &[
+            "--also",
+            &also,
+            "--want",
+            "q=source:queue.md",
+            "--task",
+            "where is the marmoset ledger kept",
+        ],
+    );
+    serving::assert_packet_ids(&packet, &sealed);
+    let followed = expand_every_citation(
+        &fixture,
+        "twice",
+        &packet,
+        &sealed,
+        &[&fixture.checkout, &fixture.outside],
+    );
+    let mut ledgers: Vec<&String> = followed
+        .iter()
+        .filter(|(_, (_, path))| path == "ledger.md")
+        .map(|(_, (repository, _))| repository)
+        .collect();
+    ledgers.sort();
+    assert_eq!(
+        ledgers,
+        ["app", "outside"],
+        "both ledgers are in the packet: {followed:?}"
+    );
+    provider.stop();
+}
+
+#[test]
+fn anchors_keep_the_order_of_their_key_not_of_their_rendered_id() {
+    // **The drop order is decided on a structured key.** An anchor's id
+    // now separates its repository from its name with `:`, which sorts
+    // after `.`, where the old `-` sorted before it: `app` and `app.x`
+    // would swap places in a packet if ties were broken on the rendered
+    // id, and under capacity pressure a different anchor would be lost.
+    let fixture = Fixture::narrow(&["ids:u1"]);
+    let second = fixture.directory.path().join("app-x");
+    std::fs::create_dir_all(&second).expect("dir");
+    for repository in [&fixture.checkout, &second] {
+        std::fs::write(
+            repository.join("widget.rs"),
+            "pub fn zorbify_widget() -> u64 {\n    7\n}\n",
+        )
+        .expect("writes");
+    }
+    serving::commit(&fixture.checkout, "a widget");
+    serving::git(&second, &["init", "-q", "-b", "main"]);
+    serving::commit(&second, "a widget");
+    let registration = format!("app.x={}", second.display());
+    let provider = fixture.start_with(&["--register-repository", &registration]);
+    let also = format!("app.x={}", second.display());
+    let (packet, sealed) = compiled(
+        &fixture,
+        "anchors",
+        &[
+            "--also",
+            &also,
+            "--want",
+            "q=source:queue.md",
+            "--selector",
+            "zorbify_widget",
+            "--task",
+            "where is zorbify_widget defined",
+        ],
+    );
+    serving::assert_packet_ids(&packet, &sealed);
+    let anchors: Vec<String> = sealed
+        .get("sections")
+        .and_then(Value::as_array)
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|section| section.get("section_id").and_then(Value::as_str))
+        .filter(|id| id.starts_with("d-anchor-"))
+        .map(str::to_string)
+        .collect();
+    assert_eq!(
+        anchors,
+        [
+            "d-anchor-app:zorbify_widget",
+            "d-anchor-app.x:zorbify_widget"
+        ],
+        "the anchors, in the order of their key"
+    );
+    provider.stop();
+}
+
+// ---- an item id the protocol allows, past what its section id can hold ----
+//
+// An item id is an identifier, so it may be 128 characters, and `s-` and
+// `c-` in front of one of 127 make 129. The compiler shortens those as it
+// shortens a long path; these two follow such an item through a compiled
+// packet to its citation's bytes, once as a source item and once as an
+// evidence item whose projection declares an omission, because the
+// omission's `s-<item>.o<n>` is built at a site of its own.
+
+/// An item id of 127 characters: an identifier, and one that `s-` and `c-`
+/// take past 128.
+fn long_item() -> String {
+    "i".repeat(127)
+}
+
+/// The one sealed section of `item`, and its citation ids.
+fn item_section(sealed: &Value, item: &str) -> (String, Vec<String>) {
+    let sections: Vec<Value> = sealed
+        .get("sections")
+        .and_then(Value::as_array)
+        .unwrap_or_default()
+        .iter()
+        .filter(|section| section.get("item_id").and_then(Value::as_str) == Some(item))
+        .cloned()
+        .collect();
+    assert_eq!(sections.len(), 1, "one section for the item: {sealed:?}");
+    let section = &sections[0];
+    let citations = section
+        .get("citations")
+        .and_then(Value::as_array)
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|citation| citation.get("citation_id").and_then(Value::as_str))
+        .map(str::to_string)
+        .collect();
+    (
+        section
+            .get("section_id")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string(),
+        citations,
+    )
+}
+
+/// Assert a section id and its citation id are the shortened pair of one
+/// item: each inside the grammar, `s-~~` and `c-~~`, with one digest.
+fn assert_shortened_pair(section_id: &str, citation_id: &str) {
+    for (id, prefix) in [(section_id, "s-~~"), (citation_id, "c-~~")] {
+        assert!(
+            serving::is_identifier(id) && id.starts_with(prefix),
+            "{id} ({} bytes) is not a shortened id under {prefix}",
+            id.len()
+        );
+    }
+    assert_eq!(
+        section_id["s-~~".len()..]
+            .get(..32)
+            .expect("a digest of 32 hex digits"),
+        citation_id["c-~~".len()..]
+            .get(..32)
+            .expect("a digest of 32 hex digits"),
+        "a section and its citation digest the same item"
+    );
+}
+
+#[test]
+fn a_source_item_of_127_characters_is_published_and_its_citation_expands() {
+    // **The ids of an item's own section were built raw**, `s-<item>` and
+    // `c-<item>`, and an item of 127 characters made both 129 bytes: the
+    // guard refused the packet on every tick and the request never left
+    // `preparing`. Shortened, the packet is published and the citation
+    // it prints is followed to the file's bytes.
+    let fixture = Fixture::narrow(&["ids:u1"]);
+    let provider = start(&fixture);
+    let item = long_item();
+    let want = format!("{item}=source:queue.md");
+    let (packet, sealed) = compiled(&fixture, "longsource", &["--want", &want]);
+    serving::assert_packet_ids(&packet, &sealed);
+    let (section_id, citations) = item_section(&sealed, &item);
+    assert_eq!(citations.len(), 1, "{sealed:?}");
+    assert_shortened_pair(&section_id, &citations[0]);
+    let printed = fixture.cbr(&["expand", "longsource", &citations[0]]);
+    assert_eq!(
+        succeeded(&printed).stdout,
+        std::fs::read(fixture.checkout.join("queue.md")).expect("reads"),
+        "the long item's citation expands to the file"
+    );
+    provider.stop();
+}
+
+#[test]
+fn an_evidence_item_of_127_characters_declares_its_omission_inside_the_grammar() {
+    // **The same item id at the projection's omission site.** Bytes that
+    // are not text are declared omitted whole, as `s-<item>.o1`: 132 bytes
+    // for this item, shortened to an id that keeps its `.o1`. The packet
+    // is published, the omission names the item, and the section's
+    // citation expands to the ingested bytes.
+    let fixture = Fixture::narrow(&["ids:u1"]);
+    let provider = start(&fixture);
+    let bytes: Vec<u8> = (0..20_000u32).map(|n| (n % 251) as u8 | 0x80).collect();
+    let evidence = ingest(&fixture, "blob.bin", &bytes);
+    let item = long_item();
+    let inspected = asked_for(&fixture, "longevidence", &item, &evidence.0, &evidence.1);
+    assert_ne!(
+        inspected
+            .get("packets")
+            .and_then(Value::as_array)
+            .map_or(0, <[Value]>::len),
+        0,
+        "the long item's packet was published: {inspected:?}"
+    );
+    let packet = serving::packet(&fixture, "longevidence");
+    let sealed = serving::sealed(&packet);
+    serving::assert_packet_ids(&packet, &sealed);
+    let (section_id, citations) = item_section(&sealed, &item);
+    assert_eq!(citations.len(), 1, "{sealed:?}");
+    assert_shortened_pair(&section_id, &citations[0]);
+
+    let omitted: Vec<String> = packet
+        .get("omissions")
+        .and_then(Value::as_array)
+        .unwrap_or_default()
+        .iter()
+        .filter(|omission| omission.get("item_id").and_then(Value::as_str) == Some(&item))
+        .filter_map(|omission| omission.get("section_id").and_then(Value::as_str))
+        .map(str::to_string)
+        .collect();
+    assert_eq!(
+        omitted.len(),
+        1,
+        "one omission, the whole artifact: {packet:?}"
+    );
+    assert!(
+        serving::is_identifier(&omitted[0])
+            && omitted[0].starts_with("s-~~")
+            && omitted[0].ends_with(".o1"),
+        "the omission {} ({} bytes) is not a shortened `s-<item>.o1`",
+        omitted[0],
+        omitted[0].len()
+    );
+
+    let printed = fixture.cbr(&["expand", "longevidence", &citations[0]]);
+    assert_eq!(
+        succeeded(&printed).stdout,
+        bytes,
+        "the long item's citation expands to the ingested bytes"
+    );
+    assert_eq!(bytes, fetched(&fixture, &evidence.0, &evidence.1));
     provider.stop();
 }

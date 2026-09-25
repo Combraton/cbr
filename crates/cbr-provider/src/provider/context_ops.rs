@@ -172,6 +172,19 @@ enum TickError {
     /// point of the work leaving: the tick that asks is the tick that
     /// returns, and every other job on this provider carries on.
     NotReady,
+    /// **A packet about to be published names an id outside the protocol's
+    /// identifier grammar**, leaves out one the schema requires, or names
+    /// one section or citation id twice
+    /// ([`context::ids_outside_grammar`]). Nothing of the job's tick is
+    /// committed and nothing is sealed or sent, and the tick moves on to the
+    /// next job, as it does for `NotSealed`: one bad packet must not stop
+    /// every other job on the provider, which routing it through `Protocol`
+    /// would. `pointers` say where; the values are never kept, because an
+    /// id is often a path and this is logged.
+    IdOutsideGrammar {
+        request: String,
+        pointers: Vec<String>,
+    },
 }
 
 impl From<ProtocolError> for TickError {
@@ -602,7 +615,7 @@ impl Provider {
         // second charge for a question already answered.
         self.release_job(assist.job);
 
-        let mut steps = compiler::steps(&decided);
+        let mut steps = compiler::steps(&decided, &self.config.provider_id);
         // Step 5's refusal, moved to where a compiled request can know it:
         // the sizes exist only once something has been selected.
         let capacity = int(job, &["limits", "output_capacity", "amount"]);
@@ -863,7 +876,11 @@ impl Provider {
             };
             self.seal_source(tick, &selection, &bytes)?;
             decided.discovered.push(compiler::Discovered {
-                id: format!("span-{}-{}", selection.path, selection.start_byte),
+                // The repository is in the id, because the same path at the
+                // same byte in two repositories of one basis is two spans;
+                // the key is the id as it was, so ties sort as they did.
+                id: crate::ids::span(&selection.repository, &selection.path, selection.start_byte),
+                key: format!("span-{}-{}", selection.path, selection.start_byte),
                 rank: compiler::Rank::Span,
                 // Retrieval's own order, kept: under capacity pressure a
                 // span drops by rank, never by path name.
@@ -954,7 +971,10 @@ impl Provider {
                     format!("{name} defined at:\n  {}", where_defined.join("\n  "))
                 };
                 decided.discovered.push(compiler::Discovered {
-                    id: format!("anchor-{}-{name}", frontier.repository),
+                    // A name is whatever the request's words were, in any
+                    // script, so it is encoded; `:` ends the repository.
+                    id: crate::ids::anchor(&frontier.repository, name),
+                    key: format!("anchor-{}-{name}", frontier.repository),
                     rank: compiler::Rank::Anchor,
                     order: 0,
                     claim: None,
@@ -1069,7 +1089,7 @@ impl Provider {
             let shared = question.iter().filter(|term| own.contains(term)).count();
             if !about_this_code && shared == 0 {
                 decided.omitted.push(object(vec![
-                    ("section_id", string(&format!("d-claim-{claim}"))),
+                    ("section_id", string(&crate::ids::claim_section(&claim))),
                     ("reason", string("applicability")),
                 ]));
                 continue;
@@ -1131,7 +1151,8 @@ impl Provider {
                 score,
                 claim.clone(),
                 compiler::Discovered {
-                    id: format!("claim-{claim}"),
+                    id: crate::ids::claim(&claim),
+                    key: crate::ids::claim(&claim),
                     rank,
                     order: usize::MAX - score,
                     claim: Some(at(&inspected, &["reference"]).clone()),
@@ -1195,7 +1216,7 @@ impl Provider {
                 decided.discovered.push(discovered);
             } else {
                 decided.omitted.push(object(vec![
-                    ("section_id", string(&format!("d-claim-{claim}"))),
+                    ("section_id", string(&crate::ids::claim_section(&claim))),
                     ("reason", string("applicability")),
                 ]));
             }
@@ -2271,7 +2292,7 @@ impl Provider {
         for (number, reason) in rendered.omitted {
             decided.omitted.push(object(vec![
                 ("item_id", string(item)),
-                ("section_id", string(&format!("s-{item}.o{number}"))),
+                ("section_id", string(&crate::ids::omission(item, number))),
                 ("reason", string(reason)),
             ]));
         }
@@ -3575,6 +3596,19 @@ impl Provider {
                 // Nothing is written and nothing is logged: this is the
                 // ordinary state of a job waiting for work that is running.
                 Err(TickError::NotReady) => continue,
+                Err(TickError::IdOutsideGrammar { request, pointers }) => {
+                    // **The request stays `preparing`**, and the next tick
+                    // compiles it again and logs it again: the job is not
+                    // saved, so nothing records that it was tried. Whether
+                    // such a job should end instead is an open question in
+                    // STATE. The job, the request and the pointers are all
+                    // that is logged; the ids themselves never are.
+                    eprintln!(
+                        "cbr-provider: context job {job_id}: request {request}: packet not \
+                         published; an id at {} is missing, outside the identifier grammar or repeated",
+                        pointers.join(", ")
+                    );
+                }
                 Err(TickError::Protocol(error)) => return Err(error),
             }
         }
@@ -3819,6 +3853,22 @@ impl Provider {
             None => context::SCRIPT_COMPILER.to_string(),
         };
         let packet = context::compile_packet(request, &record, job, reason, &compiler);
+        // **Checked before the packet leaves the tick**: before a capture
+        // instant is taken, before the evidence peer is sent a byte and
+        // before the packet's own object is written to this store. A
+        // scripted packet refused here leaves nothing behind. A compiled
+        // job has already written the objects of what it sealed this tick
+        // (`seal_source`, `seal_derivation`); a refusal drops the tick's
+        // batch, so no row names them, and they are left for the
+        // start-time collection pass — and written again by each tick that
+        // compiles the job again.
+        let pointers = context::ids_outside_grammar(&packet.facts, &packet.artifact);
+        if !pointers.is_empty() {
+            return Err(TickError::IdOutsideGrammar {
+                request: request.to_string(),
+                pointers,
+            });
+        }
 
         let provider = match PeerConfig::from_value(self.config.context.0.get("evidence_provider"))
         {

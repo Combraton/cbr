@@ -71,7 +71,13 @@ pub fn set_origin(repository: &Path, url: &str) {
     git(repository, &["remote", "add", "origin", url]);
 }
 
-fn git(repository: &Path, arguments: &[&str]) {
+/// Run `git` in `repository` as the fixtures' own author.
+///
+/// **Every write goes through here**, because a commit needs an identity
+/// and a CI runner has none: macOS will guess one from the user and the
+/// host, and Ubuntu's runners refuse. A test that ran `git commit` by
+/// itself passed on the owner's machine and failed on Linux CI.
+pub fn git(repository: &Path, arguments: &[&str]) {
     let output = Command::new("git")
         .arg("-C")
         .arg(repository)
@@ -603,6 +609,14 @@ impl Fixture {
                                                       "digest":"{digest}"}}]}}}}],
                  "derivation":{{"kind":"human","inputs":[]}}}}"#
         );
+        // **`cbr propose` cannot name a claim longer than 114
+        // characters**: its command id is `claim.<claim>.propose`, which is
+        // an identifier too. A claim id may be 128, so a longer one is
+        // proposed over raw frames, as any other client could.
+        if format!("claim.{claim}.propose").len() > 128 {
+            self.propose_raw(claim, &content);
+            return;
+        }
         // `--content` is a path: the claim goes to a file rather than
         // into an argument, where a long one is `File name too long`.
         let file = self.directory.path().join(format!("{claim}.json"));
@@ -613,6 +627,48 @@ impl Fixture {
             "propose: {}",
             String::from_utf8_lossy(&proposed.stderr)
         );
+    }
+
+    /// `knowledge.claim.propose` as the owner, over raw frames, with a
+    /// command id that fits whatever the claim's own length.
+    fn propose_raw(&self, claim: &str, content: &str) {
+        use std::io::{BufRead, BufReader, Write};
+        let stream = UnixStream::connect(&self.socket).expect("connects");
+        let mut reader = BufReader::new(stream.try_clone().expect("clone"));
+        let mut writer = stream;
+        let mut call = |frame: String| {
+            writeln!(writer, "{frame}").expect("writes");
+            let mut line = String::new();
+            reader.read_line(&mut line).expect("reads");
+            assert!(line.contains("\"result\""), "{line}");
+        };
+        call(format!(
+            r#"{{"jsonrpc":"2.0","id":1,"method":"core.authenticate","params":{{"operation":"core.authenticate","message_id":"a","payload":{{"credential":"{CREDENTIAL}"}}}}}}"#
+        ));
+        call(
+            r#"{"jsonrpc":"2.0","id":2,"method":"core.negotiate","params":{"operation":"core.negotiate","message_id":"n","payload":{"caller":{"name":"t","version":"1"},"receive_limits":{"max_frame_bytes":1048576},"profiles":[{"name":"core","majors":[1],"required":true,"required_features":["core.events"],"optional_features":[]},{"name":"knowledge","majors":[1],"required":true,"required_features":[],"optional_features":[]}]}}}"#
+                .to_string(),
+        );
+        let payload = String::from_utf8(cbr_encoding::to_canonical(
+            &cbr_encoding::parse(content.as_bytes()).expect("the claim is canonical JSON"),
+        ))
+        .expect("utf-8");
+        let subject = format!(r#"{{"kind":"knowledge.claim","id":"{claim}"}}"#);
+        let envelope = format!(
+            r#"{{"operation":"knowledge.claim.propose","message_id":"p","command_id":"propose-long-claim","dedupe_generation":1,"subject":{subject},"preconditions":[{{"subject":{subject},"revision":0}}],"requires":[],"payload":{payload}}}"#
+        );
+        let digest = cbr_encoding::command_digest(
+            &cbr_encoding::parse(envelope.as_bytes()).expect("canonical"),
+        )
+        .expect("digest");
+        let envelope = envelope.replacen(
+            r#""payload""#,
+            &format!(r#""command_digest":"{digest}","payload""#),
+            1,
+        );
+        call(format!(
+            r#"{{"jsonrpc":"2.0","id":3,"method":"knowledge.claim.propose","params":{envelope}}}"#
+        ));
     }
 
     /// Accept a proposed claim as **binding**, which is an authority's
@@ -1064,13 +1120,168 @@ pub fn discovered_paths(fixture: &Fixture, request: &str) -> Vec<String> {
             if !id.starts_with("d-span-") {
                 return None;
             }
-            // `d-span-<path>-<byte offset>`. The path is read back out
-            // of the id the compiler built, rather than from a member
-            // these sections do not carry.
-            let rest = id.strip_prefix("d-span-")?;
-            Some(rest.rsplit_once('-')?.0.to_string())
+            // **The path is read from the locator, not from the id.** It
+            // was read back out of `d-span-<path>-<byte offset>`, which is
+            // the id that broke the identifier grammar: a section id now
+            // escapes the path, and past 128 bytes keeps only a digest and
+            // a tail of it. The locator is the sentence a reader is given,
+            // and it names the path as it is.
+            let content = section.get("content").and_then(Value::as_str)?;
+            Some(locator_path(content)?.1)
         })
         .collect()
+}
+
+/// `(repository, path)` out of a section's locator line,
+/// `<repository>:<path> lines <a>-<b> at tree …`. A repository id holds
+/// no `:`, so the first one ends it; the path runs to the last ` lines `
+/// before ` at tree `, so a path holding spaces, or the word `lines`, is
+/// still read whole.
+pub fn locator_path(content: &str) -> Option<(String, String)> {
+    let line = content.lines().next()?;
+    let (place, _) = line.split_once(" at tree ")?;
+    let (named, _) = place.rsplit_once(" lines ")?;
+    let (repository, path) = named.split_once(':')?;
+    Some((repository.to_string(), path.to_string()))
+}
+
+/// The byte range a section's locator says its excerpt is, as
+/// `excerpt is bytes <from>-<to> of the artifact`.
+pub fn locator_range(content: &str) -> Option<(usize, usize)> {
+    let line = content.lines().next()?;
+    let (_, rest) = line.split_once("excerpt is bytes ")?;
+    let (range, _) = rest.split_once(" of the artifact")?;
+    let (from, to) = range.split_once('-')?;
+    Some((from.parse().ok()?, to.parse().ok()?))
+}
+
+/// The protocol's identifier grammar, `^[A-Za-z0-9][A-Za-z0-9._:~-]{0,127}$`
+/// (`core/1/common.schema.json`), which a section id and a citation id
+/// must meet (the `context` schemas). Written out here because the
+/// provider is a binary with no library target, so a test cannot import
+/// the one it checks against — and a copy that agrees with the schema is
+/// what a consumer would write anyway.
+pub fn is_identifier(text: &str) -> bool {
+    let bytes = text.as_bytes();
+    !bytes.is_empty()
+        && bytes.len() <= 128
+        && bytes[0].is_ascii_alphanumeric()
+        && bytes[1..]
+            .iter()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b':' | b'~' | b'-'))
+}
+
+/// Every identifier a packet names where the `context` schemas require
+/// one, as `(where, the id)`: from the `context.packet.inspect` result,
+/// its sections, their citation ids, the inclusions, the omissions and
+/// the citations; and from the sealed body, its sections and the
+/// citations they carry.
+///
+/// An id the schemas require that is absent, `null` or not a string is
+/// recorded as the empty string, which no identifier is, so it fails the
+/// grammar rather than going unseen. An optional one that is absent is
+/// left out.
+pub fn packet_ids(inspected: &Value, sealed: &Value) -> Vec<(String, String)> {
+    let mut found = Vec::new();
+    let mut push = |place: String, value: Option<&Value>, required: bool| match value
+        .and_then(Value::as_str)
+    {
+        Some(id) => found.push((place, id.to_string())),
+        None if required => found.push((place, String::new())),
+        None => {}
+    };
+    let array = |value: &Value, name: &str| -> Vec<Value> {
+        value
+            .get(name)
+            .and_then(Value::as_array)
+            .unwrap_or_default()
+            .to_vec()
+    };
+    for (n, section) in array(inspected, "sections").iter().enumerate() {
+        push(
+            format!("/sections/{n}/section_id"),
+            section.get("section_id"),
+            true,
+        );
+        push(
+            format!("/sections/{n}/item_id"),
+            section.get("item_id"),
+            false,
+        );
+        for (m, citation) in array(section, "citations").iter().enumerate() {
+            push(format!("/sections/{n}/citations/{m}"), Some(citation), true);
+        }
+    }
+    for (n, included) in array(inspected, "inclusions").iter().enumerate() {
+        push(format!("/inclusions/{n}"), Some(included), true);
+    }
+    for (n, omission) in array(inspected, "omissions").iter().enumerate() {
+        push(
+            format!("/omissions/{n}/section_id"),
+            omission.get("section_id"),
+            false,
+        );
+        push(
+            format!("/omissions/{n}/item_id"),
+            omission.get("item_id"),
+            false,
+        );
+    }
+    for (n, citation) in array(inspected, "citations").iter().enumerate() {
+        push(
+            format!("/citations/{n}/citation_id"),
+            citation.get("citation_id"),
+            true,
+        );
+        push(
+            format!("/citations/{n}/evidence/artifact/id"),
+            citation
+                .get("evidence")
+                .and_then(|evidence| evidence.get("artifact"))
+                .and_then(|artifact| artifact.get("id")),
+            true,
+        );
+    }
+    for (n, section) in array(sealed, "sections").iter().enumerate() {
+        push(
+            format!("body /sections/{n}/section_id"),
+            section.get("section_id"),
+            true,
+        );
+        for (m, citation) in array(section, "citations").iter().enumerate() {
+            push(
+                format!("body /sections/{n}/citations/{m}/citation_id"),
+                citation.get("citation_id"),
+                true,
+            );
+        }
+    }
+    found
+}
+
+/// Assert every identifier a packet names is inside the grammar, and
+/// that section ids and citation ids are each unique within it.
+pub fn assert_packet_ids(inspected: &Value, sealed: &Value) {
+    let ids = packet_ids(inspected, sealed);
+    let outside: Vec<&(String, String)> = ids.iter().filter(|(_, id)| !is_identifier(id)).collect();
+    assert!(
+        outside.is_empty(),
+        "ids outside the identifier grammar: {outside:?}"
+    );
+    for (list, kind) in [
+        ("/sections/", "/section_id"),
+        ("/citations/", "/citation_id"),
+    ] {
+        let mut seen: Vec<&String> = ids
+            .iter()
+            .filter(|(place, _)| place.starts_with(list) && place.ends_with(kind))
+            .map(|(_, id)| id)
+            .collect();
+        let all = seen.len();
+        seen.sort();
+        seen.dedup();
+        assert_eq!(seen.len(), all, "a {kind} is repeated: {ids:?}");
+    }
 }
 
 /// Every omission the packet declares, as `(section_id, reason)`.

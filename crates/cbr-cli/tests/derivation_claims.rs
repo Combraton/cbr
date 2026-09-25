@@ -467,6 +467,63 @@ fn a_claim_the_model_did_not_choose_is_left_out_and_one_it_chose_is_carried() {
     }
 }
 
+#[test]
+fn a_long_claims_omission_and_its_section_share_one_id_inside_the_grammar() {
+    // **A claim's section id and the id it is omitted under are one id.**
+    // A claim id may be 128 characters, and `d-claim-` takes eight more,
+    // so both have to be shortened, and a reader matches a claim omitted
+    // from one packet with the section it had in another only if both
+    // are shortened the same way. They were built in three places from
+    // one format string; now they come from one function, and this is
+    // the case where a second, drifting copy would show.
+    let claim = format!("drains-{}", "x".repeat(121));
+    assert_eq!(claim.len(), 128);
+    let mut ids = Vec::new();
+    for (request, chosen) in [("left-out", "ids:d1"), ("carried", "ids:k1")] {
+        let fixture = Fixture::answering(&["choose:c2", "terms:tombstone", chosen]);
+        let running = fixture.start();
+        fixture.propose_checkable_claim(&claim);
+        prepared(&fixture, request, BOTH_STEPS);
+        let id = if request == "carried" {
+            let sealed = serving::sealed(&serving::packet(&fixture, request));
+            sealed
+                .get("sections")
+                .and_then(Value::as_array)
+                .unwrap_or_default()
+                .iter()
+                .find(|section| {
+                    section
+                        .get("content")
+                        .and_then(Value::as_str)
+                        .is_some_and(|content| content.starts_with(&format!("claim {claim} ")))
+                })
+                .and_then(|section| section.get("section_id"))
+                .and_then(Value::as_str)
+                .unwrap_or_else(|| panic!("the chosen claim was not carried: {sealed:?}"))
+                .to_string()
+        } else {
+            let omitted: Vec<String> = packet_omissions(&fixture, request)
+                .into_iter()
+                .filter(|(_, reason)| reason == "applicability")
+                .map(|(section, _)| section)
+                .collect();
+            assert_eq!(omitted.len(), 1, "one claim, omitted once: {omitted:?}");
+            omitted[0].clone()
+        };
+        assert!(
+            serving::is_identifier(&id),
+            "{request}: the claim's id {id} ({} bytes) is outside the grammar",
+            id.len()
+        );
+        ids.push(id);
+        running.stop();
+    }
+    assert_eq!(
+        ids[0], ids[1],
+        "the omission and the section of one claim differ"
+    );
+}
+
 /// Every omission the packet declares, as `(section_id, reason)`.
 fn packet_omissions(fixture: &Fixture, request: &str) -> Vec<(String, String)> {
     let printed = fixture.cbr(&["packet", request]);

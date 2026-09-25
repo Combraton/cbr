@@ -35,6 +35,7 @@
 use cbr_encoding::Value;
 
 use crate::context::{object, set, string};
+use crate::ids;
 
 /// The provenance a compiled packet carries. Distinct from the scripted
 /// compiler by construction, and version-bearing because a change to the
@@ -53,7 +54,18 @@ use crate::context::{object, set, string};
 /// carries its **projection** ([`crate::projection`]), with every omitted
 /// byte declared, and an artifact the job may not read is
 /// `evidence_unavailable`, as one never sealed is.
-pub const COMPILER: &str = "cbr-context-compiler/3";
+///
+/// `cbr-context-compiler/4` since the change that keeps a packet's ids inside
+/// the protocol's identifier grammar ([`crate::ids`]). A discovered span's
+/// section and citation ids named its repository path, `/` and all, and a
+/// long path passed 128 bytes; now a span or anchor id names its repository
+/// and spells the rest inside the grammar, and an id that would pass 128
+/// bytes is shortened to a digest and a tail. And a source section's
+/// citation names this provider rather than `cbr`. Every id that already was
+/// an identifier is unchanged, and nothing is selected, ordered or dropped
+/// differently: the golden packet differs from `/3`'s by its span and anchor
+/// ids and this string, which a substitution back reproduces exactly.
+pub const COMPILER: &str = "cbr-context-compiler/4";
 
 /// The media type a cited source file is sealed under. It is the file's own
 /// bytes, so it is a captured observation of the repository, not a
@@ -406,9 +418,19 @@ pub enum Rank {
 /// `output_capacity` before it drops anything an item required.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Discovered {
-    /// Names the section. Ties within a rank are broken by it, so a packet
-    /// is still reproducible.
+    /// The section's readable id, before a prefix bounds it: the section is
+    /// `d-<id>` and its citation `dc-<id>`, each through [`crate::ids`], so
+    /// both are identifiers whatever the id holds.
     pub id: String,
+    /// What ties within a rank are broken by, so a packet is reproducible.
+    ///
+    /// **Not the rendered id.** It is the readable id as it was before ids
+    /// were kept inside the grammar — `span-<path>-<start>`,
+    /// `anchor-<repository>-<name>`, `claim-<claim>` — so the order sections
+    /// are dropped in did not move when their ids did. The rendered ids sort
+    /// differently: an anchor's `:` sorts after `.` where the old `-` sorted
+    /// before it, so `app` and `app.x` would swap.
+    pub key: String,
     pub rank: Rank,
     /// Position within the rank: retrieval's own order for a span.
     pub order: usize,
@@ -456,7 +478,12 @@ pub struct Decided {
 /// unmet reasons in item order, then `publish`. Two compilations of the same
 /// request therefore produce the same script, byte for byte, which is what
 /// makes the sealed packet reproducible.
-pub fn steps(decided: &Decided) -> Vec<Value> {
+///
+/// `provider_id` is this provider's id, which a source section's citation
+/// names: the provider's own `context.expand` refuses a citation naming any
+/// other, so a citation that named `cbr` literally could be followed only
+/// under a launch that happened to be called that.
+pub fn steps(decided: &Decided, provider_id: &str) -> Vec<Value> {
     let mut steps: Vec<Value> = Vec::new();
 
     let mut sections: Vec<(String, Value)> = Vec::new();
@@ -464,7 +491,7 @@ pub fn steps(decided: &Decided) -> Vec<Value> {
         sections.push((
             format!("{}:source", selection.item),
             object(vec![
-                ("section_id", string(&format!("s-{}", selection.item))),
+                ("section_id", string(&ids::item_section(&selection.item))),
                 ("item_id", string(&selection.item)),
                 ("label", string("source_inspected")),
                 ("content", string(&selection.content())),
@@ -491,11 +518,11 @@ pub fn steps(decided: &Decided) -> Vec<Value> {
                 (
                     "citations",
                     Value::Array(vec![object(vec![
-                        ("citation_id", string(&format!("c-{}", selection.item))),
+                        ("citation_id", string(&ids::item_citation(&selection.item))),
                         (
                             "evidence",
                             object(vec![
-                                ("provider", string("cbr")),
+                                ("provider", string(provider_id)),
                                 (
                                     "artifact",
                                     object(vec![
@@ -524,7 +551,7 @@ pub fn steps(decided: &Decided) -> Vec<Value> {
         sections.push((
             format!("{}:claim", claim.item),
             object(vec![
-                ("section_id", string(&format!("s-{}", claim.item))),
+                ("section_id", string(&ids::item_section(&claim.item))),
                 ("item_id", string(&claim.item)),
                 ("label", string(claim.label())),
                 (
@@ -540,14 +567,14 @@ pub fn steps(decided: &Decided) -> Vec<Value> {
         sections.push((
             format!("{}:evidence", evidence.item),
             object(vec![
-                ("section_id", string(&format!("s-{}", evidence.item))),
+                ("section_id", string(&ids::item_section(&evidence.item))),
                 ("item_id", string(&evidence.item)),
                 ("label", string("observation")),
                 ("content", string(&evidence.summary)),
                 (
                     "citations",
                     Value::Array(vec![object(vec![
-                        ("citation_id", string(&format!("c-{}", evidence.item))),
+                        ("citation_id", string(&ids::item_citation(&evidence.item))),
                         ("evidence", evidence.evidence.clone()),
                     ])]),
                 ),
@@ -558,7 +585,7 @@ pub fn steps(decided: &Decided) -> Vec<Value> {
         sections.push((
             format!("{}:authority", authority.item),
             object(vec![
-                ("section_id", string(&format!("s-{}", authority.item))),
+                ("section_id", string(&ids::item_section(&authority.item))),
                 ("item_id", string(&authority.item)),
                 ("label", string("declared_requirement")),
                 (
@@ -572,7 +599,7 @@ pub fn steps(decided: &Decided) -> Vec<Value> {
                 (
                     "citations",
                     Value::Array(vec![object(vec![
-                        ("citation_id", string(&format!("c-{}", authority.item))),
+                        ("citation_id", string(&ids::item_citation(&authority.item))),
                         ("evidence", authority.evidence.clone()),
                     ])]),
                 ),
@@ -588,11 +615,11 @@ pub fn steps(decided: &Decided) -> Vec<Value> {
     }
     let mut ordered: Vec<&Discovered> = decided.discovered.iter().collect();
     ordered.sort_by(|left, right| {
-        (left.rank, left.order, &left.id).cmp(&(right.rank, right.order, &right.id))
+        (left.rank, left.order, &left.key).cmp(&(right.rank, right.order, &right.key))
     });
     for (position, found) in ordered.into_iter().enumerate() {
         let mut section = object(vec![
-            ("section_id", string(&format!("d-{}", found.id))),
+            ("section_id", string(&ids::discovered_section(&found.id))),
             ("label", string(found.label)),
             ("content", string(&found.content)),
             ("historical", Value::Bool(found.historical)),
@@ -600,7 +627,7 @@ pub fn steps(decided: &Decided) -> Vec<Value> {
                 "citations",
                 Value::Array(match &found.citation {
                     Some(evidence) => vec![object(vec![
-                        ("citation_id", string(&format!("dc-{}", found.id))),
+                        ("citation_id", string(&ids::discovered_citation(&found.id))),
                         ("evidence", evidence.clone()),
                     ])],
                     None => Vec::new(),
@@ -800,11 +827,11 @@ mod tests {
             ..Decided::default()
         };
         assert_eq!(
-            steps(&forwards),
-            steps(&backwards),
+            steps(&forwards, "cbr"),
+            steps(&backwards, "cbr"),
             "the script does not depend on the order things were found in"
         );
-        let names: Vec<String> = steps(&forwards)
+        let names: Vec<String> = steps(&forwards, "cbr")
             .iter()
             .map(|step| crate::context::step(step).0.to_string())
             .collect();
@@ -818,7 +845,7 @@ mod tests {
         // list would be just as independent of the order things were found
         // in, and would still be a different packet.
         let field = |name: &str, field: &str| -> Vec<String> {
-            steps(&forwards)
+            steps(&forwards, "cbr")
                 .iter()
                 .filter(|step| crate::context::step(step).0 == name)
                 .filter_map(|step| {
@@ -837,6 +864,57 @@ mod tests {
             producers[0].ends_with(" a") && producers[1].ends_with(" z"),
             "coverage is in repository order: {producers:?}"
         );
+    }
+
+    /// The sections of a script, in order.
+    fn sections(script: &[Value]) -> Vec<Value> {
+        script
+            .iter()
+            .filter(|step| crate::context::step(step).0 == "section")
+            .map(|step| crate::context::step(step).1.clone())
+            .collect()
+    }
+
+    #[test]
+    fn discovered_sections_are_ordered_by_their_key_and_not_their_rendered_id() {
+        // `app.x` sorts after `app` by key, where the old `-` came before
+        // `.`; rendered, the `:` comes after `.` and the two would swap.
+        let anchor = |repository: &str| Discovered {
+            id: crate::ids::anchor(repository, "drain"),
+            key: format!("anchor-{repository}-drain"),
+            rank: Rank::Anchor,
+            order: 0,
+            label: "inferred",
+            historical: false,
+            content: String::new(),
+            citation: None,
+            claim: None,
+        };
+        let decided = Decided {
+            discovered: vec![anchor("app.x"), anchor("app")],
+            ..Decided::default()
+        };
+        let ids: Vec<String> = sections(&steps(&decided, "cbr"))
+            .iter()
+            .map(|section| crate::context::text(section, &["section_id"]).to_string())
+            .collect();
+        assert_eq!(ids, ["d-anchor-app:drain", "d-anchor-app.x:drain"]);
+    }
+
+    #[test]
+    fn a_source_sections_citation_names_the_provider_it_is_compiled_by() {
+        let decided = Decided {
+            selections: vec![selection("a", "src/one.rs")],
+            ..Decided::default()
+        };
+        let section = &sections(&steps(&decided, "cbr-elsewhere"))[0];
+        let citation = &crate::context::list(section, &["citations"])[0];
+        assert_eq!(
+            crate::context::text(citation, &["evidence", "provider"]),
+            "cbr-elsewhere"
+        );
+        assert_eq!(crate::context::text(citation, &["citation_id"]), "c-a");
+        assert_eq!(crate::context::text(section, &["section_id"]), "s-a");
     }
 
     #[test]

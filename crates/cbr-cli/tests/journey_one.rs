@@ -51,6 +51,10 @@ use std::time::{Duration, Instant};
 
 use cbr_encoding::Value;
 
+/// The identifier grammar and the locator reader the serving fixture
+/// shares. Only those: J1 has its own fixture, over this checkout.
+mod serving;
+
 /// The decision record the question is about.
 const DECISION_PATH: &str = "docs/decisions/001-standalone-v0.1-scope-and-stack.md";
 /// The code that decision is about.
@@ -97,6 +101,18 @@ fn git(repository: &Path, arguments: &[&str]) -> String {
         String::from_utf8_lossy(&output.stderr)
     );
     String::from_utf8_lossy(&output.stdout).trim().to_string()
+}
+
+/// A blob's bytes, as the repository holds them.
+fn git_blob(repository: &Path, blob: &str) -> Vec<u8> {
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(repository)
+        .args(["cat-file", "blob", blob])
+        .output()
+        .expect("git runs");
+    assert!(output.status.success(), "blob {blob} is in the repository");
+    output.stdout
 }
 
 struct Fixture {
@@ -378,7 +394,7 @@ fn j1_a_question_finds_its_own_answer_with_a_cited_packet() {
 
     assert_eq!(
         text(&packet, &["provenance", "compiler"]),
-        "cbr-context-compiler/3",
+        "cbr-context-compiler/4",
         "a compiled packet says which compiler made it: {packet:?}"
     );
 
@@ -438,7 +454,7 @@ fn j1_a_question_finds_its_own_answer_with_a_cited_packet() {
     assert_eq!(coverage.len(), 1, "{coverage:?}");
     assert_eq!(text(&coverage[0], &["frontier"]), tree, "{coverage:?}");
     assert!(
-        text(&coverage[0], &["producer"]).contains("cbr-context-compiler/3"),
+        text(&coverage[0], &["producer"]).contains("cbr-context-compiler/4"),
         "{coverage:?}"
     );
 
@@ -501,6 +517,144 @@ fn j1_a_question_finds_its_own_answer_with_a_cited_packet() {
             "the excerpt of {path} is not bytes {from}-{to} of the artifact it cites"
         );
     }
+
+    // ---- every id an identifier, and every citation expanded ---------
+    //
+    // **A citation is only a citation if a reader can follow it.** The
+    // protocol's identifier grammar (`core/1`'s `identifier`) is what the
+    // `context` schemas require of a section id and a citation id, and
+    // `context.expand` refuses a citation id outside it. The ids of a
+    // discovered span used to carry the repository path, slashes and all,
+    // so a published packet held schema-invalid ids and only a citation of
+    // a file at the repository's root could be expanded. So J1 expands
+    // **every** citation it was given through `cbr expand`, and a packet in
+    // which one of them cannot be read back is a failed J1.
+    serving::assert_packet_ids(&packet, &body);
+    let mut nested = false;
+    let mut ingested = Vec::new();
+    for (expanded, citation) in citations.iter().enumerate() {
+        let citation_id = text(citation, &["citation_id"]);
+        let artifact = text(citation, &["evidence", "artifact", "id"]);
+        let digest = text(citation, &["evidence", "digest"]);
+        let out = fixture
+            .directory
+            .path()
+            .join(format!("expanded-{expanded}.bytes"));
+        let whole = fixture.cbr(&[
+            "expand",
+            "j1",
+            &citation_id,
+            "--out",
+            out.to_str().expect("utf-8"),
+        ]);
+        assert!(
+            whole.status.success(),
+            "citation {citation_id} does not expand: {}",
+            String::from_utf8_lossy(&whole.stderr)
+        );
+        let bytes = std::fs::read(&out).expect("the expanded bytes");
+        if let Some(blob) = artifact.strip_prefix("src.") {
+            // A repository blob: the whole of it is the blob at the tree,
+            // and the range its section's locator names is the excerpt the
+            // section shows.
+            assert_eq!(
+                bytes,
+                git_blob(&repository, blob),
+                "citation {citation_id} expands to something other than blob {blob}"
+            );
+            let section = array(&body, &["sections"])
+                .into_iter()
+                .find(|section| {
+                    array(section, &["citations"])
+                        .iter()
+                        .any(|carried| text(carried, &["citation_id"]) == citation_id)
+                })
+                .unwrap_or_else(|| panic!("citation {citation_id} belongs to no section"));
+            let content = text(&section, &["content"]);
+            let (_, path) = serving::locator_path(&content)
+                .unwrap_or_else(|| panic!("no path in the locator of {citation_id}: {content}"));
+            nested |= path.contains('/');
+            let (from, to) = serving::locator_range(&content)
+                .unwrap_or_else(|| panic!("no byte range in the locator of {citation_id}"));
+            if to > from {
+                let ranged = fixture.cbr(&[
+                    "expand",
+                    "j1",
+                    &citation_id,
+                    "--offset",
+                    &from.to_string(),
+                    "--length",
+                    &(to - from).to_string(),
+                ]);
+                assert!(
+                    ranged.status.success(),
+                    "citation {citation_id} at {from}-{to} does not expand: {}",
+                    String::from_utf8_lossy(&ranged.stderr)
+                );
+                assert_eq!(
+                    ranged.stdout,
+                    &bytes[from..to],
+                    "citation {citation_id} at {from}-{to} is not those bytes of {path}"
+                );
+                let excerpt = content.split_once('\n').map_or("", |(_, excerpt)| excerpt);
+                assert_eq!(
+                    String::from_utf8_lossy(&ranged.stdout),
+                    excerpt,
+                    "citation {citation_id} at {from}-{to} is not the excerpt its section shows"
+                );
+            }
+        } else if artifact.starts_with("ingest.") {
+            // An ingested artifact, which a claim section cites: the bytes
+            // are what `cbr fetch` returns for the same reference.
+            let fetched_to = fixture
+                .directory
+                .path()
+                .join(format!("fetched-{expanded}.bytes"));
+            let fetched = fixture.cbr(&[
+                "fetch",
+                &artifact,
+                "--digest",
+                &digest,
+                "--out",
+                fetched_to.to_str().expect("utf-8"),
+            ]);
+            assert!(fetched.status.success(), "{artifact} fetches");
+            assert_eq!(
+                bytes,
+                std::fs::read(&fetched_to).expect("the fetched bytes"),
+                "citation {citation_id} and `cbr fetch` disagree about {artifact}"
+            );
+            ingested.push(citation_id.clone());
+        } else {
+            // No citation J1 is given is unexpandable by design, so there
+            // is no list of exceptions: a new kind has to be named here
+            // before it can pass.
+            panic!("citation {citation_id} cites {artifact}, a kind J1 does not know");
+        }
+    }
+    // **Both claims were followed to their records**, not only the source:
+    // the accepted decision and the rejected one each cite the artifact the
+    // claim was proposed from, which is the other kind of citation a J1
+    // reader follows. A claim section that cited nothing, or cited
+    // something `cbr fetch` does not return, fails here.
+    for (claim, section) in [
+        ("gix-decision", claim_section),
+        ("git-binary", rejected_section),
+    ] {
+        let cited: Vec<String> = array(section, &["citations"])
+            .iter()
+            .map(|carried| text(carried, &["citation_id"]))
+            .collect();
+        assert!(
+            !cited.is_empty() && cited.iter().all(|id| ingested.contains(id)),
+            "claim {claim} cites {cited:?}; the ingested artifacts followed were {ingested:?}"
+        );
+    }
+    assert!(
+        nested,
+        "no expanded citation is of a file below the repository's root, which is the case \
+         the old ids broke"
+    );
 
     // ---- cost, recorded even with no model ----------------------------
     let blobs = git(&repository, &["ls-tree", "-r", "--name-only", &tree])
@@ -967,19 +1121,24 @@ fn discovery_covers_more_than_one_file_however_loud_a_single_file_is() {
         "--capacity",
         "65536",
     ]));
-    let (packet, _) = wait_for_packet(&fixture, "spread");
+    wait_for_packet(&fixture, "spread");
 
+    // The sealed body, because that is where a section's locator is.
     let mut per_file: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
-    for section in array(&packet, &["sections"]) {
+    for section in array(&packet_body(&fixture, "spread"), &["sections"]) {
         if section.get("item_id").is_some() {
             continue;
         }
-        let id = text(&section, &["section_id"]);
-        let Some(rest) = id.strip_prefix("d-span-") else {
+        if !text(&section, &["section_id"]).starts_with("d-span-") {
+            continue;
+        }
+        // The path is the locator's, not a piece of the id: an id escapes
+        // the path, and past 128 bytes keeps only a digest and a tail.
+        let content = text(&section, &["content"]);
+        let Some((_, path)) = serving::locator_path(&content) else {
             continue;
         };
-        let path = rest.rsplit_once('-').map(|(path, _)| path).unwrap_or(rest);
-        *per_file.entry(path.to_string()).or_default() += 1;
+        *per_file.entry(path).or_default() += 1;
     }
     assert!(
         per_file.contains_key("docs/answer.md"),
