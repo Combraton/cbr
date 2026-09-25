@@ -10,7 +10,7 @@ Built from source with `cargo build --workspace --locked`. There is no release, 
 
 - **`cbr-provider`**, a provider of [Combraton Protocol v0.1.0](https://github.com/Combraton/protocol) serving `core/1`, `evidence/1`, `knowledge/1` and `context/1` over the stream binding, on **stdio and on a Unix socket**. The socket form checks the peer's operating-system user and requires `core.authenticate` with a credential the provider issues, rotates and revokes. Storage is SQLite (WAL, `synchronous=FULL`) plus a content-addressed object store that verifies every object from disk.
 - **Conformance, measured against the pinned release's own fixtures** and gated in CI on Linux and macOS: `stream` 24 of 24; `core` 130 of 135; `socket` 11 of 13; `evidence` 16 of 16; `knowledge` 10 of 10; `context` 11 of 11; `composition` 3 of 14, run as separate CBR instances over their sockets; all 31 encoding vectors. The 18 fixtures CBR does not pass declare the `execution` profile, or in one case `verification`, which CBR never serves, so they are permanently out of reach. `core.effects` and `core.events.backpressure` are implemented and rest on CBR's own tests alone.
-- **`cbr ingest` and `cbr fetch`**, a separate command that uses only the public socket. Fetch checks the bytes against the sealed digest before writing them.
+- **`cbr ingest` and `cbr fetch`**, a separate command that uses only the public socket. Fetch checks the bytes against the sealed digest before writing them. **`cbr expand`** follows a packet's citation back to the artifact it cites, whole or a range of it, and checks a whole one against the cited digest the same way.
 - **Knowledge through `cbr`**: `propose`, `revise`, `decide`, `evaluate`, `inspect`, `history` and `authority bind`. Only the scope's bound authority records reliance, never a grant or a derivation label, and claim revisions are immutable in the database.
 - **Context requests and packets.** A request names checkable items with explicit obligations and three separate limits. Each packet revision is sealed as an exact evidence artifact, in CBR's own store or at a separate evidence provider reached over its public socket. Claims are carried as exact snapshots, and later changes are reported when the packet is read. A production request is **compiled** from a registered repository; a conformance launch can still script one.
 - **Source identity**: git root trees, dirty-snapshot digests and a declared environment fact set that includes build facts, each with a negative control.
@@ -32,6 +32,10 @@ target/debug/cbr-provider --data-dir data --config cbr.json --socket run/cbr.soc
 # Terminal 2: ingest prints the artifact id and sealed digest that fetch needs.
 target/debug/cbr ingest notes.txt --socket run/cbr.sock --credential-file data/credentials/owner
 target/debug/cbr fetch <artifact> --digest <digest> --out copy.txt --socket run/cbr.sock --credential-file data/credentials/owner
+
+# A packet names the artifact a section cites by a citation id; expand reads
+# its bytes back, here the first 4096 of them to standard output.
+target/debug/cbr expand <request> <citation> --length 4096 --socket run/cbr.sock --credential-file data/credentials/owner
 ```
 
 CBR helps agents preserve constraints, reuse useful investigations and recover context across long projects. It can run directly with model providers and evidence producers, without PIO or Combraton. Its models remain fallible; memory must preserve provenance and uncertainty rather than turn summaries into authority.
