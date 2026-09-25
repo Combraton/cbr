@@ -73,13 +73,20 @@ fn item(
             let (artifact, digest) = value
                 .split_once('@')
                 .ok_or("an evidence item is <item-id>=evidence:<artifact>@<digest>")?;
+            // **No provider**, which is the provider being asked (EVIDENCE
+            // section 2): the artifact is one `cbr ingest` sealed over this
+            // same socket, and no answer the protocol gives an authority
+            // principal says what that provider calls itself. It used to
+            // say `cbr` here, and a provider called anything else compiled
+            // a citation its own `context.expand` refused as another
+            // provider's. The packet's citation names the provider by its
+            // own id.
             (
                 object(vec![
                     ("kind", string("evidence_included")),
                     (
                         "evidence",
                         object(vec![
-                            ("provider", string("cbr")),
                             ("artifact", subject("evidence.artifact", artifact)),
                             ("digest", string(digest)),
                         ]),
@@ -439,6 +446,69 @@ pub fn check_whole(bytes: &[u8], offset: u64, size: u64, digest: &str) -> Result
     Ok(())
 }
 
+/// **Check, then hand over.** The bytes are checked first, by
+/// [`check_whole`], and only then written to `out` through a staged file
+/// — with `said` as the one line `stdout` gets — or, with no `out`, given
+/// to `stdout` as they are. A check that fails leaves no file, no staged
+/// file and nothing on `stdout`.
+pub fn deliver(
+    bytes: &[u8],
+    offset: u64,
+    size: u64,
+    digest: &str,
+    out: Option<&Path>,
+    said: &str,
+    stdout: &mut impl Write,
+) -> Result<(), String> {
+    check_whole(bytes, offset, size, digest)?;
+    match out {
+        Some(out) => {
+            let staged = out.with_extension("cbr-partial");
+            std::fs::write(&staged, bytes).map_err(|e| e.to_string())?;
+            std::fs::rename(&staged, out).map_err(|e| e.to_string())?;
+            writeln!(stdout, "{said}").map_err(|e| e.to_string())?;
+        }
+        None => stdout.write_all(bytes).map_err(|e| e.to_string())?,
+    }
+    stdout.flush().map_err(|e| e.to_string())
+}
+
+/// **One `context.expand` answer, as a [`Piece`]**, or why it is not one.
+///
+/// `cited` is the evidence the first answer named, kept here: every later
+/// answer must name the same, or the pieces are of different things. The
+/// excerpt's `length` must be the length of the bytes it carries, and its
+/// `offset` and `size` must be there, since [`assemble`] decides with
+/// them.
+pub fn answer(result: &Value, cited: &mut Option<Value>) -> Result<Piece, String> {
+    let evidence = at(result, &["evidence"]);
+    match cited {
+        None => *cited = Some(evidence),
+        Some(seen) if *seen != evidence => {
+            return Err("the citation named different evidence between two reads".into());
+        }
+        Some(_) => {}
+    }
+    let excerpt = at(result, &["excerpt"]);
+    let number = |name: &str| match excerpt.get(name) {
+        Some(Value::Int(n)) if *n >= 0 => Ok(*n as u64),
+        _ => Err(format!("context.expand returned no {name}")),
+    };
+    let data = excerpt
+        .get("data_base64")
+        .and_then(Value::as_str)
+        .and_then(cbr_encoding::decode_base64)
+        .ok_or("the provider sent no valid base64")?;
+    if data.len() as u64 != number("length")? {
+        return Err("the excerpt's length is not the length of its bytes".into());
+    }
+    Ok(Piece {
+        offset: number("offset")?,
+        data,
+        size: number("size")?,
+    })
+}
+
 /// `cbr expand <request> <citation> [--revision N] [--offset O] [--length L]
 /// [--out FILE]`: the bytes a packet's citation names.
 ///
@@ -463,8 +533,6 @@ pub fn expand(
         Some(revision) => revision,
         None => last_published(&mut session, request)?,
     };
-    // The evidence the citation names, from the first answer. Every later
-    // answer must name the same, or the pieces are of different things.
     let mut cited: Option<Value> = None;
     let (bytes, size) = assemble(offset, length, |from, max_bytes| {
         let result = session.query(
@@ -481,32 +549,7 @@ pub fn expand(
                 ("max_bytes", Value::Int(max_bytes as i64)),
             ]),
         )?;
-        let evidence = at(&result, &["evidence"]);
-        match &cited {
-            None => cited = Some(evidence),
-            Some(seen) if *seen != evidence => {
-                return Err("the citation named different evidence between two reads".into());
-            }
-            Some(_) => {}
-        }
-        let excerpt = at(&result, &["excerpt"]);
-        let number = |name: &str| match excerpt.get(name) {
-            Some(Value::Int(n)) if *n >= 0 => Ok(*n as u64),
-            _ => Err(format!("context.expand returned no {name}")),
-        };
-        let data = excerpt
-            .get("data_base64")
-            .and_then(Value::as_str)
-            .and_then(cbr_encoding::decode_base64)
-            .ok_or("the provider sent no valid base64")?;
-        if data.len() as u64 != number("length")? {
-            return Err("the excerpt's length is not the length of its bytes".into());
-        }
-        Ok(Piece {
-            offset: number("offset")?,
-            data,
-            size: number("size")?,
-        })
+        answer(&result, &mut cited)
     })?;
     let evidence = cited.unwrap_or(Value::Null);
     let text = |path: &[&str]| {
@@ -516,27 +559,20 @@ pub fn expand(
             .ok_or_else(|| format!("the citation names no {}", path.join(".")))
     };
     let (artifact, digest) = (text(&["artifact", "id"])?, text(&["digest"])?);
-    check_whole(&bytes, offset, size, &digest)?;
-    match out {
-        Some(out) => {
-            let staged = out.with_extension("cbr-partial");
-            std::fs::write(&staged, &bytes).map_err(|e| e.to_string())?;
-            std::fs::rename(&staged, out).map_err(|e| e.to_string())?;
-            println!(
-                "wrote {} bytes at offset {offset} of {size}, citation {citation}, \
-                 evidence {artifact} at {digest}",
-                bytes.len()
-            );
-        }
-        None => {
-            let mut stdout = std::io::stdout().lock();
-            stdout
-                .write_all(&bytes)
-                .and_then(|()| stdout.flush())
-                .map_err(|e| e.to_string())?;
-        }
-    }
-    Ok(())
+    let said = format!(
+        "wrote {} bytes at offset {offset} of {size}, citation {citation}, \
+         evidence {artifact} at {digest}",
+        bytes.len()
+    );
+    deliver(
+        &bytes,
+        offset,
+        size,
+        &digest,
+        out,
+        &said,
+        &mut std::io::stdout().lock(),
+    )
 }
 
 #[cfg(test)]
@@ -744,5 +780,118 @@ mod tests {
         // A range has no digest of its own to be checked against.
         assert_eq!(check_whole(&altered[10..], 10, 100, &digest), Ok(()));
         assert_eq!(check_whole(&altered[..90], 0, 100, &digest), Ok(()));
+    }
+
+    /// **Nothing is handed over when the check fails**, whichever way it
+    /// would have gone: no file at `--out`, no staged file beside it, and
+    /// nothing on standard output — neither the line nor the bytes. A
+    /// check that ran after the write or the print would leave one of
+    /// them behind.
+    #[test]
+    fn a_mismatch_hands_over_nothing_and_leaves_no_staged_file() {
+        let source = source();
+        let digest = cbr_encoding::digest_bytes(&source);
+        let mut altered = source.clone();
+        altered[50] ^= 1;
+        let directory = tempfile::tempdir().expect("temp dir");
+        let out = directory.path().join("expanded.bin");
+
+        let mut stdout = Vec::new();
+        let refused = deliver(&altered, 0, 100, &digest, Some(&out), "said", &mut stdout);
+        assert!(
+            refused
+                .as_ref()
+                .is_err_and(|error| error.contains("nothing written")),
+            "{refused:?}"
+        );
+        assert!(!out.exists(), "the file was written");
+        assert!(
+            !out.with_extension("cbr-partial").exists(),
+            "the staged file was left"
+        );
+        assert!(stdout.is_empty(), "{stdout:?}");
+
+        let mut stdout = Vec::new();
+        let refused = deliver(&altered, 0, 100, &digest, None, "said", &mut stdout);
+        assert!(refused.is_err(), "{refused:?}");
+        assert!(stdout.is_empty(), "the bytes were printed");
+    }
+
+    /// The other arm: bytes that match are written through the staged
+    /// file, which is gone afterwards, with the one line; or printed as
+    /// they are, with nothing else.
+    #[test]
+    fn a_match_is_written_through_a_staged_file_or_printed_whole() {
+        let source = source();
+        let digest = cbr_encoding::digest_bytes(&source);
+        let directory = tempfile::tempdir().expect("temp dir");
+        let out = directory.path().join("expanded.bin");
+
+        let mut stdout = Vec::new();
+        deliver(&source, 0, 100, &digest, Some(&out), "said", &mut stdout).expect("delivers");
+        assert_eq!(std::fs::read(&out).expect("the file"), source);
+        assert!(!out.with_extension("cbr-partial").exists());
+        assert_eq!(stdout, b"said\n");
+
+        let mut stdout = Vec::new();
+        deliver(&source, 0, 100, &digest, None, "said", &mut stdout).expect("delivers");
+        assert_eq!(stdout, source);
+    }
+
+    /// A `context.expand` answer over `data`, naming `artifact`, with
+    /// `length` as its excerpt says it.
+    fn answered(artifact: &str, offset: i64, data: &[u8], length: i64) -> Value {
+        let text = format!(
+            r#"{{"citation":"c-log","evidence":{{"artifact":{{"id":"{artifact}","kind":"evidence.artifact"}},"digest":"sha256:{}","provider":"cbr"}},"excerpt":{{"data_base64":"{}","length":{length},"offset":{offset},"size":100}}}}"#,
+            "0".repeat(64),
+            cbr_encoding::encode_base64(data),
+        );
+        cbr_encoding::parse(text.as_bytes()).expect("canonical JSON")
+    }
+
+    #[test]
+    fn an_answer_is_its_excerpts_bytes_where_it_says_they_are() {
+        let mut cited = None;
+        let piece = answer(&answered("a-1", 10, b"abc", 3), &mut cited).expect("an answer");
+        assert_eq!(
+            (piece.offset, piece.data, piece.size),
+            (10, b"abc".to_vec(), 100)
+        );
+        assert_eq!(
+            cited
+                .as_ref()
+                .map(|evidence| at(evidence, &["artifact", "id"])),
+            Some(string("a-1"))
+        );
+        // A second answer naming the same evidence is another piece of it.
+        answer(&answered("a-1", 13, b"de", 2), &mut cited).expect("the same evidence");
+    }
+
+    #[test]
+    fn evidence_that_changes_between_two_reads_is_refused() {
+        let mut cited = None;
+        answer(&answered("a-1", 0, b"abc", 3), &mut cited).expect("the first answer");
+        let refused = answer(&answered("a-2", 3, b"def", 3), &mut cited);
+        assert!(
+            refused
+                .as_ref()
+                .is_err_and(|error| error.contains("different evidence between two reads")),
+            "{:?}",
+            refused.map(|piece| piece.data)
+        );
+    }
+
+    #[test]
+    fn an_excerpt_whose_length_is_not_its_bytes_is_refused() {
+        for length in [2, 4] {
+            let refused = answer(&answered("a-1", 0, b"abc", length), &mut None);
+            assert!(
+                refused
+                    .as_ref()
+                    .is_err_and(|error| error.contains("length is not the length of its bytes")),
+                "length {length}: {:?}",
+                refused.map(|piece| piece.data)
+            );
+        }
     }
 }

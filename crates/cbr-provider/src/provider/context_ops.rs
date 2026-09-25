@@ -2017,7 +2017,18 @@ impl Provider {
                 }
             }
             "evidence_included" => {
-                let reference = at(check, &["evidence"]).clone();
+                let mut reference = at(check, &["evidence"]).clone();
+                // **A reference names the provider holding the artifact, or
+                // none, which is this one** (EVIDENCE section 2). Compiling
+                // reads this store and no other, so another provider's
+                // artifact is not here to read — even when one of the same
+                // id and digest is, since equal bytes never establish equal
+                // provenance or permission — and `context.expand` refuses
+                // such a citation for the same reason. The citation a packet
+                // carries always names its provider, so it names this one.
+                let named = text(&reference, &["provider"]);
+                let here = named.is_empty() || named == self.config.provider_id;
+                set(&mut reference, "provider", string(&self.config.provider_id));
                 let artifact = text(&reference, &["artifact", "id"]).to_string();
                 let sealed = self
                     .store
@@ -2028,7 +2039,7 @@ impl Provider {
                 // projection copies an artifact's bytes into a packet, so
                 // naming one is otherwise a way to read it, and telling the
                 // two apart is a way to learn that it exists.
-                let readable = assist.evidence.contains(&artifact);
+                let readable = here && assist.evidence.contains(&artifact);
                 let descriptor = match &sealed {
                     Some(state) if readable => {
                         let value = parse_record(&state.value)?;
