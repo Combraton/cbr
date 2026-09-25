@@ -386,6 +386,13 @@ fn a_dry_run_projects_a_test_log_checks_it_against_its_bytes_and_rebuilds_it() {
     );
     assert_eq!(int(run, &["part_records"]), parts);
     assert_eq!(int(run, &["tokens"]), parts * 5000, "{run:?}");
+    // **The floor was checked**, not merely unbroken: every excerpt the
+    // baseline carries is counted as carried by the assisted projection.
+    assert_eq!(
+        int(run, &["assisted", "baseline_excerpts_carried"]),
+        int(run, &["baseline", "excerpts"]),
+        "{run:?}"
+    );
 
     // The replay gate: rebuilt from the records, the same sections.
     assert_eq!(

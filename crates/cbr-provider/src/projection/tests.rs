@@ -1432,6 +1432,22 @@ fn records(small: usize, failing: usize, big: usize, pad: usize) -> String {
     text
 }
 
+/// JSON lines as [`records`] makes them, with passing records **of every
+/// size** from about 80 bytes to about a kilobyte in steps of 13: whatever
+/// room the floor leaves, some record is within a frame of it, so an offer
+/// that counted a unit's cost other than by drawing it would be wrong
+/// about one of them.
+fn graded(pad: usize) -> String {
+    let mut text = String::new();
+    for n in 0..70 {
+        text.push_str(&format!(
+            "{{\"name\":\"graded-{n}\",\"outcome\":\"pass\",\"note\":\"{}\"}}\n",
+            "g".repeat(n * 13)
+        ));
+    }
+    text + &records(0, 20, 4, pad)
+}
+
 /// A failing cargo log with room left: three failures, a cargo error, a
 /// blank line and another cargo error — the `\n` between two carried
 /// excerpts that J2's red log had four of — and passing tests enough that
@@ -1463,6 +1479,65 @@ fn answers(plan: &Plan) -> Vec<Vec<usize>> {
     answers
 }
 
+/// A failing log whose failures are each their own excerpt until the run
+/// identity between them joins them into one, **with the last failure
+/// fitting the rule's header by less than the model's label**: the rule
+/// carries every failure only because it carries them before the header
+/// grows, and the finished floor has room enough that a model is asked.
+/// Repacked under the model's header, the floor would lose that failure.
+fn joined_floor() -> String {
+    let build = |pad: usize| {
+        let mut log = String::new();
+        for n in 0..20 {
+            let name = "n".repeat(500 + if n == 0 { pad } else { 0 });
+            log.push_str(&format!(
+                "test tests::{name}_{n} ... FAILED\nrunning 1 test\n"
+            ));
+        }
+        for n in 0..300 {
+            log.push_str(&format!("test tests::passing_{n} ... ok\n"));
+        }
+        log
+    };
+    // The room the rule's header leaves when every failure, and no run
+    // identity yet, is carried: the moment the last failure is accepted.
+    let before_identity = |text: &str| {
+        let read = parse(text.as_bytes());
+        let plan = partition(&read, text.as_bytes(), SUBJECT);
+        let failures: Vec<bool> = read
+            .units
+            .iter()
+            .map(|unit| unit.kind == Kind::Failure)
+            .collect();
+        let drawn = draw(
+            &read,
+            text.as_bytes(),
+            &choose_by_rule(&read),
+            &failures,
+            None,
+            &Frame::of(SUBJECT, &plan),
+        );
+        PROJECTION_BYTES as i64 - drawn.content.len() as i64
+    };
+    let mut pad = 0;
+    for _ in 0..64 {
+        let text = build(pad);
+        let room = before_identity(&text);
+        if (1..60).contains(&room) {
+            let read = parse(text.as_bytes());
+            let plan = partition(&read, text.as_bytes(), SUBJECT);
+            assert_eq!(
+                next(&read, text.as_bytes(), &plan, SUBJECT, true),
+                Next::Ask,
+                "the joined floor is meant to leave room for a question"
+            );
+            return text;
+        }
+        pad = (pad as i64 + room - 30).max(0) as usize;
+    }
+    panic!("no pad puts the last failure within the model's label of the bound");
+}
+
 #[test]
 fn the_model_arm_carries_every_byte_the_rule_carries_whatever_the_model_answers() {
     // **Criterion 1, by construction.** The rule's projection is the floor,
@@ -1472,12 +1547,14 @@ fn the_model_arm_carries_every_byte_the_rule_carries_whatever_the_model_answers(
     // (one whose run identity leaves room, one it fills), a manifest, and
     // one whose rule projection is within 60 bytes of the bound.
     let near = tuned(|pad| records(30, 24, 4, pad), 1..60);
+    let joined = joined_floor();
     let fixtures = [
         red_shaped(),
         cargo_log(8, 60, &[], 0),
         cargo_log(30, 20, &[], 0),
         manifest(120, &[5, 70]),
         near,
+        joined,
     ];
     let mut asked_somewhere = false;
     for text in &fixtures {
@@ -1563,6 +1640,7 @@ fn only_units_the_rule_does_not_carry_and_that_could_fit_are_offered() {
     let fixtures = [
         red_shaped(),
         tuned(|pad| records(40, 20, 10, pad), 500..1000),
+        tuned(graded, 500..1000),
     ];
     let (mut some_offered, mut some_refused, mut joins) = (false, false, false);
     for text in &fixtures {

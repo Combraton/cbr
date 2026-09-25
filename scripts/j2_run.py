@@ -532,8 +532,10 @@ def checked(packet, source, floor=None):
     ]
     if declared != packet_omissions:
         problems.append("the packet's omissions are not the projection's")
+    floor_carried = None
     if floor is not None:
         mine = [(e["start"], e["end"]) for e in read["extents"] if e["carried"]]
+        floor_carried = 0
         for start, end in floor:
             # Joined to its neighbours or not, each baseline excerpt's bytes
             # must lie in what this projection carries.
@@ -543,6 +545,8 @@ def checked(packet, source, floor=None):
                     at = held_end
             if at < end:
                 problems.append(f"the projection drops the baseline's excerpt at {start}-{end}")
+            else:
+                floor_carried += 1
     how = next((line for line in read["header"] if line.startswith("read as ")), "")
     parts = re.search(r" (\d+) parts;", how)
     return {
@@ -556,6 +560,10 @@ def checked(packet, source, floor=None):
         "bytes_omitted": omitted_bytes,
         "unresolved": len(read["unresolved"]),
         "content_bytes": len(section["content"].encode("utf-8")),
+        # How many of the baseline's excerpts this one carries, when it was
+        # checked against them: a report says the floor was checked, and
+        # does not leave it to be inferred from an empty list of problems.
+        "baseline_excerpts_carried": floor_carried,
         "problems": problems,
     }
 

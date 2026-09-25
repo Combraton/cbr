@@ -1279,17 +1279,18 @@ fn a_log_whose_floor_leaves_no_room_asks_no_model_and_spends_nothing() {
     provider.stop();
 }
 
-/// A conformance manifest of `results` results, the third of them
-/// `unsupported` with its reason: shaped as the core suite's is, where an
-/// unsupported fixture is not a failure and the rule has no reason to
-/// carry it.
+/// A conformance manifest of `results` results, the first of them failing
+/// and the third `unsupported` with its reason: shaped as the core suite's
+/// is, where an unsupported fixture is not a failure and the rule has no
+/// reason to carry it. **The failure comes first in the part**, so the
+/// offer and the plan number the unsupported result differently.
 fn core_manifest(results: usize) -> String {
     let entries: Vec<String> = (0..results)
         .map(|at| {
-            let (outcome, reason) = if at == 2 {
-                ("unsupported", "\"core.capabilities is not claimed\"")
-            } else {
-                ("pass", "null")
+            let (outcome, reason) = match at {
+                0 => ("fail", "null"),
+                2 => ("unsupported", "\"core.capabilities is not claimed\""),
+                _ => ("pass", "null"),
             };
             format!(
                 "    {{\n      \"failed_step\": null,\n      \"fixture\": \"core.fixture-number-{at}-holds\",\n      \
@@ -1301,9 +1302,9 @@ fn core_manifest(results: usize) -> String {
         .collect();
     format!(
         "{{\n  \"format\": \"combraton-conformance-result/1\",\n  \"results\": [\n{}\n  ],\n  \
-         \"summary\": {{\n    \"pass\": {},\n    \"unsupported\": 1\n  }}\n}}\n",
+         \"summary\": {{\n    \"fail\": 1,\n    \"pass\": {},\n    \"unsupported\": 1\n  }}\n}}\n",
         entries.join(",\n"),
-        results - 1
+        results - 2
     )
 }
 
@@ -1312,8 +1313,10 @@ fn an_unsupported_record_the_model_adds_is_carried_and_attributed_to_it() {
     // **Where a model has a job the rule cannot do.** An unsupported
     // fixture is not a failure, so the rule does not carry it; a model
     // that names it adds it, the header says the model added it, and the
-    // rule's own excerpts are all still there.
-    let fixture = Fixture::narrow(&["ids:u3"]);
+    // rule's own excerpts, the failing result among them, are all still
+    // there. The failure is not offered, so the unsupported result is the
+    // second id the model is shown, and the third unit its part holds.
+    let fixture = Fixture::narrow(&["ids:u2"]);
     let provider = fixture.start();
     let json = core_manifest(50);
     let (artifact, digest) = ingest(&fixture, "core.manifest.json", json.as_bytes());
@@ -1327,15 +1330,22 @@ fn an_unsupported_record_the_model_adds_is_carried_and_attributed_to_it() {
     let records = part_records(&fixture);
     assert_eq!(records.len(), 1);
     let (_, _, offered, _) = &records[0];
-    let third = offered
+    let second = offered
         .iter()
-        .find(|candidate| candidate.get("id").and_then(Value::as_str) == Some("u3"))
-        .expect("u3 was offered");
-    let range = range_of_path(third.get("path").and_then(Value::as_str).expect("a path"));
+        .find(|candidate| candidate.get("id").and_then(Value::as_str) == Some("u2"))
+        .expect("u2 was offered");
+    let range = range_of_path(second.get("path").and_then(Value::as_str).expect("a path"));
     assert!(
         json[range.0..range.1].contains("\"outcome\": \"unsupported\""),
-        "the fixture's premise: u3 is the unsupported result, and is {:?}",
+        "the fixture's premise: u2 is the unsupported result, and is {:?}",
         &json[range.0..range.1]
+    );
+    let failing = json
+        .find("\"fixture\": \"core.fixture-number-0-holds\"")
+        .expect("the failing result");
+    assert!(
+        matches!(extent_at(&ruled, failing), Extent::Carried { .. }),
+        "the rule carries the failing result"
     );
     assert!(
         !matches!(extent_at(&ruled, range.0), Extent::Carried { .. }),
