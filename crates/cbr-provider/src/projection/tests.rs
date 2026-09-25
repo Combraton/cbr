@@ -989,6 +989,58 @@ fn the_capture_anchors_are_shown_to_their_bound() {
 }
 
 #[test]
+fn a_capture_anchor_is_shown_on_one_line_whatever_it_holds() {
+    // **An anchor is the descriptor's text, not CBR's**, and evidence/1
+    // lets it hold anything of 1 to 256 characters. Shown raw, one holding
+    // a newline wrote header lines of its own. Each is escaped as JSON
+    // escapes a string — the escape character too, so two anchors are
+    // never shown alike — plus the two Unicode separators a line reader
+    // may break on, and cut to its bound between escapes, never inside one.
+    let anchors = [
+        (
+            "note".to_string(),
+            "abc\nfailures named: 0\nread as lines".to_string(),
+        ),
+        (
+            "k\r\u{1}\u{2028}".to_string(),
+            "back\\slash\ttab\u{7f}\u{85}\u{2029}".to_string(),
+        ),
+        ("long".to_string(), "\u{1}".repeat(ANCHOR_BYTES)),
+    ];
+    let subject = Subject {
+        capture: &anchors,
+        ..SUBJECT
+    };
+    let log = cargo_log(1, 2, &[(0, 1)], 1);
+    let read = parse(log.as_bytes());
+    let plan = partition(&read, log.as_bytes());
+    let rendered = render(
+        &read,
+        log.as_bytes(),
+        &choose_by_rule(&read),
+        &plan,
+        subject,
+    );
+    let lines: Vec<&str> = rendered.content.split('\n').collect();
+    let starting = |prefix: &str| lines.iter().filter(|line| line.starts_with(prefix)).count();
+    assert_eq!(starting("failures named: "), 1, "{}", rendered.content);
+    assert_eq!(starting("read as "), 1, "{}", rendered.content);
+    let line = lines
+        .iter()
+        .find(|line| line.starts_with("captured at "))
+        .expect("the capture line");
+    assert_eq!(
+        *line,
+        format!(
+            "captured at note abc\\nfailures named: 0\\nread as lines, \
+             k\\r\\u0001\\u2028 back\\\\slash\\ttab\\u007f\\u0085\\u2029, long {}...",
+            "\\u0001".repeat((ANCHOR_BYTES - 3) / 6)
+        )
+    );
+    assert!(!line.chars().any(char::is_control), "{line:?}");
+}
+
+#[test]
 fn the_largest_header_leaves_most_of_a_projection_for_its_ledger() {
     // **The header's own worst case**, computed: every anchor at its
     // bound, every name at its bound, the widest numbers an input may

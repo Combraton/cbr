@@ -142,10 +142,16 @@ fn report(out: &Path) -> Value {
 /// here: `WORST_CASE_PROJECTION_TOKENS`, which `projection::tests` in turn
 /// holds to the arithmetic.
 fn declared(name: &str) -> u64 {
-    let source = std::fs::read_to_string(script()).expect("the harness");
+    declared_in("j2_run.py", name)
+}
+
+/// The same, from any of the scripts: `RUN_CEILING_TOKENS` is m4e's.
+fn declared_in(script: &str, name: &str) -> u64 {
+    let source = std::fs::read_to_string(root().join("scripts").join(script)).expect("the script");
     let at = source
-        .find(&format!("{name} = "))
-        .unwrap_or_else(|| panic!("the harness no longer declares {name}"));
+        .find(&format!("\n{name} = "))
+        .map(|at| at + 1)
+        .unwrap_or_else(|| panic!("{script} no longer declares {name}"));
     source[at + name.len() + 3..]
         .chars()
         .take_while(|c| c.is_ascii_digit() || *c == '_')
@@ -397,6 +403,9 @@ fn a_dry_run_projects_a_test_log_checks_it_against_its_bytes_and_rebuilds_it() {
 
 #[test]
 fn an_input_over_the_projections_capacity_is_reported_as_such_and_nothing_is_asked() {
+    // **Both of the capacity's bounds**: a log over a mebibyte, which the
+    // size check refuses before reading, and plain text under the size
+    // bound whose units need one part more than a projection may ask.
     let directory = tempfile::tempdir().expect("temp dir");
     let out = directory.path().join("out");
     let log = test_log(60, 400, &[(3, 3)]);
@@ -406,11 +415,18 @@ fn an_input_over_the_projections_capacity_is_reported_as_such_and_nothing_is_ask
     );
     let input = directory.path().join("oversize.log");
     std::fs::write(&input, &log).expect("input");
+    let parts = format!("{}\n", "z".repeat(89)).repeat(20 * 69);
+    assert!(
+        parts.len() <= 131_072,
+        "the fixture is meant to pass the size check, INPUT_BYTES"
+    );
+    let many = directory.path().join("many-parts.log");
+    std::fs::write(&many, &parts).expect("input");
     let written = manifest(
         directory.path(),
         "big",
         &head(),
-        &[("oversize", &input, "")],
+        &[("oversize", &input, ""), ("many-parts", &many, "")],
     );
     let (ok, stdout, stderr) = harness(&[
         "--manifest",
@@ -421,21 +437,74 @@ fn an_input_over_the_projections_capacity_is_reported_as_such_and_nothing_is_ask
     ]);
     assert!(ok, "{stdout}\n{stderr}");
     let report = report(&out);
-    let run = &at(&report, &["runs"]).as_array().expect("runs")[0];
-    assert_eq!(
-        at(run, &["baseline", "item", "result"]).as_str(),
-        Some("unmet")
+    let runs = at(&report, &["runs"]).as_array().expect("runs");
+    assert_eq!(runs.len(), 2, "{report:?}");
+    for run in runs {
+        assert_eq!(
+            at(run, &["baseline", "item", "result"]).as_str(),
+            Some("unmet"),
+            "{run:?}"
+        );
+        assert_eq!(
+            at(run, &["baseline", "item", "reason"]).as_str(),
+            Some("insufficient_capacity"),
+            "{run:?}"
+        );
+        assert_ne!(
+            at(run, &["baseline", "section"]),
+            &Value::Bool(true),
+            "a section was published: {run:?}"
+        );
+        assert!(
+            at(run, &["assisted", "skipped"]).as_str().is_some(),
+            "{run:?}"
+        );
+        assert_eq!(int(run, &["tokens"]), 0);
+        assert_eq!(int(run, &["part_records"]), 0);
+    }
+}
+
+#[test]
+fn the_harness_refuses_a_ceiling_above_the_hard_cap_and_admits_the_cap_itself() {
+    // **m4e's hard cap is J2's too**, and it is read from m4e's harness
+    // rather than typed here. Above it is refused before anything starts,
+    // in a dry run as in a live one; the cap itself is a ceiling a run may
+    // have.
+    let cap = declared_in("m4e_run.py", "RUN_CEILING_TOKENS");
+    let directory = tempfile::tempdir().expect("temp dir");
+    let input = directory.path().join("small.log");
+    std::fs::write(&input, test_log(1, 3, &[])).expect("input");
+    let written = manifest(
+        directory.path(),
+        "capped",
+        &head(),
+        &[("small", &input, "")],
     );
-    assert_eq!(
-        at(run, &["baseline", "item", "reason"]).as_str(),
-        Some("insufficient_capacity")
-    );
+    let run = |ceiling: u64, out: &Path| {
+        harness(&[
+            "--manifest",
+            written.to_str().expect("utf-8"),
+            "--out",
+            out.to_str().expect("utf-8"),
+            "--dry-run",
+            "--run-ceiling",
+            &ceiling.to_string(),
+        ])
+    };
+
+    let above = directory.path().join("above");
+    let (ok, _, stderr) = run(cap + 1, &above);
+    assert!(!ok, "a ceiling above the cap was admitted");
     assert!(
-        at(run, &["assisted", "skipped"]).as_str().is_some(),
-        "{run:?}"
+        stderr.contains(&format!("above the hard cap of {cap}")),
+        "refused for another reason: {stderr}"
     );
-    assert_eq!(int(run, &["tokens"]), 0);
-    assert_eq!(int(run, &["part_records"]), 0);
+    assert!(!above.exists(), "something was started first");
+
+    let at_cap = directory.path().join("at-cap");
+    let (ok, stdout, stderr) = run(cap, &at_cap);
+    assert!(ok, "the cap itself was refused: {stdout}\n{stderr}");
+    assert_eq!(int(&report(&at_cap), &["run_ceiling_tokens"]), cap as i64);
 }
 
 #[test]

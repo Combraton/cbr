@@ -327,8 +327,8 @@ fn item_omissions(packet: &Value) -> Vec<(String, String)> {
 }
 
 /// Every sealed record of a projection's part, as `(selector, answer,
-/// offered)`, fetched through `cbr` as the owner.
-fn part_records(fixture: &Fixture) -> Vec<(String, Value, Vec<Value>)> {
+/// offered, item)`, fetched through `cbr` as the owner.
+fn part_records(fixture: &Fixture) -> Vec<(String, Value, Vec<Value>, String)> {
     let data = fixture.data();
     derivations(&data)
         .into_iter()
@@ -357,6 +357,11 @@ fn part_records(fixture: &Fixture) -> Vec<(String, Value, Vec<Value>)> {
                     .and_then(Value::as_array)
                     .unwrap_or_default()
                     .to_vec(),
+                sealed
+                    .get("item")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string(),
             ))
         })
         .collect()
@@ -723,11 +728,14 @@ fn a_large_test_log_is_projected_and_every_byte_is_carried_or_declared_omitted()
     let records = part_records(&fixture);
     assert_eq!(records.len(), parts, "one record per part: {records:?}");
     let mut offered: Vec<(usize, usize)> = Vec::new();
-    for (number, (selector, answer, shown)) in records.iter().enumerate() {
+    for (number, (selector, answer, shown, item)) in records.iter().enumerate() {
         assert!(
             selector.contains(&artifact) && selector.contains(&digest),
             "{selector}"
         );
+        // **A part is its item's question**, and its record says whose, as
+        // a selection's does; only a discovery step belongs to no item.
+        assert_eq!(item, ITEM, "part {number} names another item");
         assert!(
             answer.get("chose_ids").is_some(),
             "part {number} did not answer with ids: {answer:?}"
@@ -819,6 +827,85 @@ fn an_input_over_the_projections_capacity_is_insufficient_capacity_and_never_a_p
     provider.stop();
 }
 
+/// Plain text in `blocks` blocks of twenty 90-byte lines: each block is
+/// one excerpt unit, and the escaped bytes of the units decide the parts.
+fn blocks_of_lines(blocks: usize) -> String {
+    format!("{}\n", "z".repeat(89)).repeat(20 * blocks)
+}
+
+/// A figure J2's harness declares, read from its source: `MAX_PARTS`,
+/// which `projection::tests` holds to the provider's own constant.
+fn declared_by_the_harness(name: &str) -> usize {
+    let script = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .join("scripts")
+        .join("j2_run.py");
+    let source = std::fs::read_to_string(script).expect("the harness");
+    let at = source
+        .find(&format!("\n{name} = "))
+        .unwrap_or_else(|| panic!("the harness no longer declares {name}"));
+    source[at + name.len() + 4..]
+        .chars()
+        .take_while(char::is_ascii_digit)
+        .collect::<String>()
+        .parse()
+        .expect("a number")
+}
+
+#[test]
+fn an_input_inside_the_size_bound_that_needs_more_parts_than_a_projection_has_is_insufficient_capacity()
+ {
+    // **J2's second control, where the other bound bites**, and at the
+    // call site rather than only in `projection::next`: an input the size
+    // check admits, whose units would need one part more than a projection
+    // may ask. A partial summary here would be the rule's projection of
+    // it, which is exactly what the control forbids — with a model and
+    // without. The same input one block shorter fills the bound itself
+    // and is projected, so it is the part count that refuses.
+    let fixture = Fixture::narrow(&["ids:u1"]);
+    let provider = fixture.start();
+    let max_parts = declared_by_the_harness("MAX_PARTS");
+
+    let at_bound = blocks_of_lines(68);
+    let (artifact, digest) = ingest(&fixture, "at-bound.log", at_bound.as_bytes());
+    let inspected = asked(&fixture, "at-bound", &artifact, &digest, 0);
+    assert_eq!(result(&inspected, ITEM).0, "satisfied", "{inspected:?}");
+    assert_eq!(
+        projection_of(&fixture, "at-bound", at_bound.as_bytes()).parts(),
+        max_parts,
+        "the shorter input is meant to fill exactly the bound"
+    );
+
+    let over = blocks_of_lines(69);
+    assert!(
+        over.len() <= 131_072,
+        "the input is meant to pass the size check, INPUT_BYTES: {}",
+        over.len()
+    );
+    let (artifact, digest) = ingest(&fixture, "over.log", over.as_bytes());
+    for (request, investigation) in [("assisted", max_parts + 1), ("deterministic", 0)] {
+        let inspected = asked(&fixture, request, &artifact, &digest, investigation);
+        assert_eq!(
+            result(&inspected, ITEM),
+            ("unmet".to_string(), "insufficient_capacity".to_string()),
+            "{request}: {inspected:?}"
+        );
+        let packet = sealed_packet(&fixture, request);
+        assert!(
+            projection_section(&packet).is_none(),
+            "{request}: a section was published for an input no projection could hold"
+        );
+        assert!(
+            item_omissions(&packet).is_empty(),
+            "{request}: omissions were declared as if part of it had been projected"
+        );
+    }
+    assert!(part_records(&fixture).is_empty(), "a part was asked");
+    assert!(ledger(&fixture.data()).is_empty(), "a call was charged");
+    provider.stop();
+}
+
 #[test]
 fn a_projection_the_investigation_limit_cannot_cover_is_not_started() {
     // **Its parts are one flow and are claimed together** (READINESS §6).
@@ -871,7 +958,7 @@ fn a_part_that_answers_outside_its_offer_leaves_the_item_unmet_with_that_reason(
     assert!(projection_section(&sealed_packet(&fixture, "refused")).is_none());
     let records = part_records(&fixture);
     assert_eq!(records.len(), parts, "every call made is recorded");
-    for (_, answer, _) in &records {
+    for (_, answer, ..) in &records {
         assert_eq!(
             answer.get("unmet").and_then(Value::as_str),
             Some("model_choice_not_offered"),
@@ -911,6 +998,112 @@ fn with_no_investigation_the_projection_carries_run_identity_and_the_failures() 
     }
     assert!(part_records(&fixture).is_empty());
     assert!(ledger(&fixture.data()).is_empty());
+    provider.stop();
+}
+
+/// The byte range `artifact@start-end` names.
+fn range_of_path(path: &str) -> (usize, usize) {
+    let (_, range) = path.rsplit_once('@').expect("artifact@range");
+    range_of(range)
+}
+
+/// The extent holding byte `at`.
+fn extent_at(read: &Read, at: usize) -> &Extent {
+    read.extents
+        .iter()
+        .find(|extent| {
+            let (start, end) = extent.range();
+            start <= at && at < end
+        })
+        .expect("every byte is in an extent")
+}
+
+#[test]
+fn what_the_model_chose_is_what_is_carried() {
+    // **A projection labelled "chosen by the model" carries what the model
+    // chose**, or the label is a lie. The fake picks the second unit of
+    // every part, which in this log is passing tests, where the rule would
+    // have carried the failures. So the projection carries exactly the
+    // units the records say were chosen, besides run identity; every
+    // failure is left out as unchosen; and the projection is not the
+    // rule's. An answer resolved against the wrong units, or not read at
+    // all, fails one of the three.
+    let fixture = Fixture::narrow(&["ids:u2"]);
+    let provider = fixture.start();
+    let log = large_log();
+    let (artifact, digest) = ingest(&fixture, "large.log", log.as_bytes());
+    asked(&fixture, "baseline", &artifact, &digest, 0);
+    let ruled = projection_of(&fixture, "baseline", log.as_bytes());
+    let parts = ruled.parts();
+
+    let inspected = asked(&fixture, "assisted", &artifact, &digest, parts);
+    assert_eq!(result(&inspected, ITEM).0, "satisfied", "{inspected:?}");
+    let mut chosen: Vec<(usize, usize)> = Vec::new();
+    let records = part_records(&fixture);
+    assert_eq!(records.len(), parts);
+    for (selector, answer, offered, _) in records {
+        let ids: Vec<&str> = answer
+            .get("chose_ids")
+            .and_then(Value::as_array)
+            .unwrap_or_default()
+            .iter()
+            .filter_map(Value::as_str)
+            .collect();
+        assert_eq!(ids, ["u2"], "{selector}");
+        let second = offered
+            .iter()
+            .find(|candidate| candidate.get("id").and_then(Value::as_str) == Some("u2"))
+            .unwrap_or_else(|| panic!("{selector} offered no u2"));
+        chosen.push(range_of_path(
+            second.get("path").and_then(Value::as_str).expect("a path"),
+        ));
+    }
+    chosen.sort_unstable();
+    // The fixture's premise: what the model chose is not a failure.
+    for (start, end) in &chosen {
+        let text = &log[*start..*end];
+        assert!(
+            !text.contains(" ... FAILED") && !text.contains("---- "),
+            "u2 is meant to be passing tests, and is {text:?}"
+        );
+    }
+
+    let read = projection_of(&fixture, "assisted", log.as_bytes());
+    assert!(
+        read.how().contains("chosen by the model"),
+        "{:?}",
+        read.header
+    );
+    let carried: Vec<(usize, usize)> = read
+        .extents
+        .iter()
+        .filter_map(|extent| match extent {
+            Extent::Carried {
+                start, end, kind, ..
+            } if kind != "identity" => Some((*start, *end)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        carried, chosen,
+        "the projection does not carry what the model chose"
+    );
+    for (name, start, _) in &ruled.named {
+        let block = log
+            .find(&format!("---- {name} stdout ----"))
+            .expect("every failure has its block");
+        for at in [*start, block] {
+            assert!(
+                matches!(extent_at(&read, at), Extent::Omitted { reason, .. } if reason == "not_selected"),
+                "the failure {name} at byte {at} was not left out as unchosen: {:?}",
+                extent_at(&read, at)
+            );
+        }
+    }
+    assert_ne!(
+        read.extents, ruled.extents,
+        "the model's projection is the rule's"
+    );
     provider.stop();
 }
 
@@ -1002,6 +1195,291 @@ fn bytes_that_are_not_text_are_declared_omitted_whole() {
         }]
     );
     assert!(part_records(&fixture).is_empty());
+    provider.stop();
+}
+
+#[test]
+fn a_log_with_crlf_line_endings_is_read_as_cargos_and_carried_as_its_own_bytes() {
+    // **A projected value is the source's bytes**, and a carriage return is
+    // one of them. A log written with `\r\n` is still cargo's output — its
+    // failures are named — and every excerpt is checked against the sealed
+    // bytes, so an excerpt with its line endings normalised is a different
+    // length from the range it states and fails the reading.
+    let fixture = Fixture::narrow(&["ids:u1"]);
+    let provider = fixture.start();
+    let log = large_log().replace('\n', "\r\n");
+    let (artifact, digest) = ingest(&fixture, "crlf.log", log.as_bytes());
+    let inspected = asked(&fixture, "crlf", &artifact, &digest, 0);
+    assert_eq!(result(&inspected, ITEM).0, "satisfied", "{inspected:?}");
+    let read = projection_of(&fixture, "crlf", log.as_bytes());
+    assert!(
+        read.how().starts_with("read as libtest:"),
+        "{:?}",
+        read.header
+    );
+    let names: Vec<&str> = read.named.iter().map(|(name, ..)| name.as_str()).collect();
+    assert_eq!(names, LARGE_FAILURES);
+    let carried_returns = read
+        .extents
+        .iter()
+        .filter(|extent| {
+            matches!(extent, Extent::Carried { bytes, .. } if bytes.windows(2).any(|pair| pair == b"\r\n"))
+        })
+        .count();
+    assert!(
+        carried_returns > 0,
+        "no excerpt carried a line ending, so nothing here reached the property"
+    );
+    provider.stop();
+}
+
+/// Seal `bytes` as the owner, over raw frames, **under capture anchors
+/// given here**, and hand back the digest.
+///
+/// `evidence/1` lets a producer name any anchor of 1 to 256 characters.
+/// `cbr ingest` names a checkout's tree and commit and nothing else, and a
+/// verb added to the product so that a test could write any anchor would
+/// be the wrong way round; so this speaks the protocol the way
+/// `purge_as_owner` does.
+fn seal_with_anchors(
+    fixture: &Fixture,
+    artifact: &str,
+    bytes: &[u8],
+    anchors: &[(&str, &str)],
+) -> String {
+    use std::io::{BufRead, BufReader, Write};
+    let text = |value: &str| Value::String(value.to_string());
+    let object = |members: Vec<(&str, Value)>| {
+        Value::Object(
+            members
+                .into_iter()
+                .map(|(name, value)| (name.to_string(), value))
+                .collect(),
+        )
+    };
+    let credential = std::fs::read_to_string(fixture.directory.path().join("credential"))
+        .expect("the owner's credential");
+    let stream = std::os::unix::net::UnixStream::connect(&fixture.socket).expect("connects");
+    let mut reader = BufReader::new(stream.try_clone().expect("clone"));
+    let mut writer = stream;
+    let mut id = 0;
+    let mut call = |method: &str, params: Value| -> Value {
+        id += 1;
+        let frame = object(vec![
+            ("jsonrpc", text("2.0")),
+            ("id", Value::Int(id)),
+            ("method", text(method)),
+            ("params", params),
+        ]);
+        writer
+            .write_all(&cbr_encoding::to_canonical(&frame))
+            .expect("writes");
+        writer.write_all(b"\n").expect("writes");
+        let mut line = String::new();
+        reader.read_line(&mut line).expect("reads");
+        cbr_encoding::parse(line.trim().as_bytes())
+            .expect("canonical JSON")
+            .get("result")
+            .cloned()
+            .unwrap_or_else(|| panic!("{method} refused: {line}"))
+    };
+    call(
+        "core.authenticate",
+        object(vec![
+            ("operation", text("core.authenticate")),
+            ("message_id", text("a")),
+            (
+                "payload",
+                object(vec![("credential", text(credential.trim()))]),
+            ),
+        ]),
+    );
+    let profile = |name: &str, features: &[&str]| {
+        object(vec![
+            ("name", text(name)),
+            ("majors", Value::Array(vec![Value::Int(1)])),
+            ("required", Value::Bool(true)),
+            (
+                "required_features",
+                Value::Array(features.iter().map(|feature| text(feature)).collect()),
+            ),
+            ("optional_features", Value::Array(Vec::new())),
+        ])
+    };
+    let negotiated = call(
+        "core.negotiate",
+        object(vec![
+            ("operation", text("core.negotiate")),
+            ("message_id", text("n")),
+            (
+                "payload",
+                object(vec![
+                    (
+                        "caller",
+                        object(vec![("name", text("t")), ("version", text("1"))]),
+                    ),
+                    (
+                        "receive_limits",
+                        object(vec![("max_frame_bytes", Value::Int(1_048_576))]),
+                    ),
+                    (
+                        "profiles",
+                        Value::Array(vec![
+                            profile("core", &["core.events", "core.grants"]),
+                            profile("evidence", &[]),
+                        ]),
+                    ),
+                ]),
+            ),
+        ]),
+    );
+    let generation = match negotiated
+        .get("dedupe_window")
+        .and_then(|window| window.get("current"))
+    {
+        Some(Value::Int(current)) => *current,
+        _ => 1,
+    };
+    let subject = object(vec![
+        ("kind", text("evidence.artifact")),
+        ("id", text(artifact)),
+    ]);
+    let mut command = |operation: &str, name: &str, revision: i64, payload: Value| {
+        let mut envelope = object(vec![
+            ("operation", text(operation)),
+            ("message_id", text(name)),
+            ("command_id", text(&format!("{artifact}.{name}"))),
+            ("dedupe_generation", Value::Int(generation)),
+            ("subject", subject.clone()),
+            (
+                "preconditions",
+                Value::Array(vec![object(vec![
+                    ("subject", subject.clone()),
+                    ("revision", Value::Int(revision)),
+                ])]),
+            ),
+            ("requires", Value::Array(Vec::new())),
+            ("payload", payload),
+        ]);
+        let digest = cbr_encoding::command_digest(&envelope).expect("a command digest");
+        if let Value::Object(members) = &mut envelope {
+            members.push(("command_digest".to_string(), text(&digest)));
+        }
+        call(operation, envelope)
+    };
+    let digest = cbr_encoding::digest_bytes(bytes);
+    let anchors = anchors
+        .iter()
+        .map(|(kind, id)| object(vec![("kind", text(kind)), ("id", text(id))]))
+        .collect();
+    let prepared = command(
+        "evidence.upload.prepare",
+        "prepare",
+        0,
+        object(vec![
+            ("digest", text(&digest)),
+            ("size", Value::Int(bytes.len() as i64)),
+            ("media_type", text("text/plain")),
+            (
+                "producer",
+                object(vec![("producer_id", text("journey-two"))]),
+            ),
+            (
+                "source",
+                object(vec![("kind", text("file")), ("id", text("anchored.log"))]),
+            ),
+            ("scope", text("local")),
+            (
+                "capture",
+                object(vec![
+                    ("captured_at", text("2026-09-25T00:00:00Z")),
+                    ("anchors", Value::Array(anchors)),
+                ]),
+            ),
+            ("coverage", object(vec![("completeness", text("complete"))])),
+            ("retention_class", text("standard")),
+        ]),
+    );
+    let limit = match prepared
+        .get("outcome")
+        .and_then(|outcome| outcome.get("chunk_limit"))
+    {
+        Some(Value::Int(limit)) if *limit > 0 => *limit as usize,
+        other => panic!("no chunk limit: {other:?}"),
+    };
+    let mut revision = 1;
+    for (index, chunk) in bytes.chunks(limit).enumerate() {
+        command(
+            "evidence.upload.append",
+            &format!("append{index}"),
+            revision,
+            object(vec![
+                ("offset", Value::Int((index * limit) as i64)),
+                ("data_base64", text(&cbr_encoding::encode_base64(chunk))),
+            ]),
+        );
+        revision += 1;
+    }
+    let sealed = command("evidence.seal", "seal", revision, object(Vec::new()));
+    assert_eq!(
+        sealed
+            .get("outcome")
+            .and_then(|outcome| outcome.get("digest"))
+            .and_then(Value::as_str),
+        Some(digest.as_str()),
+        "{sealed:?}"
+    );
+    digest
+}
+
+#[test]
+fn a_capture_anchor_stays_on_one_line_whatever_it_holds() {
+    // **The header is CBR's own account of what it read**, and a capture
+    // anchor is the one thing in it CBR did not write. `evidence/1` lets a
+    // producer name any anchor, and CBR does not check anchors at seal, so
+    // one that held a newline could write header lines of its own — a
+    // `failures named: 0` above the real count, which a reader takes
+    // first. Each anchor is shown on one line, escaped, and the header
+    // holds exactly one of each of CBR's lines.
+    let fixture = Fixture::narrow(&["ids:u1"]);
+    let provider = fixture.start();
+    let log = small_log();
+    let forged = "abc\nfailures named: 0\nread as lines: 1 bytes, 1 lines, 1 units in 0 parts; \
+                  excerpts chosen by nobody: everything fits";
+    let digest = seal_with_anchors(&fixture, "anchored.1", log.as_bytes(), &[("note", forged)]);
+    let inspected = asked(&fixture, "anchored", "anchored.1", &digest, 0);
+    assert_eq!(result(&inspected, ITEM).0, "satisfied", "{inspected:?}");
+    let packet = sealed_packet(&fixture, "anchored");
+    let content = projection_section(&packet)
+        .and_then(|section| {
+            section
+                .get("content")
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        })
+        .expect("a section");
+    let starting = |prefix: &str| {
+        content
+            .split('\n')
+            .filter(|line| line.starts_with(prefix))
+            .count()
+    };
+    assert_eq!(starting("failures named: "), 1, "{content}");
+    assert_eq!(starting("read as "), 1, "{content}");
+
+    let read = projection_of(&fixture, "anchored", log.as_bytes());
+    assert_eq!(read.named_count, 1, "the real count, not the anchor's");
+    assert!(
+        read.how().starts_with("read as libtest:"),
+        "{:?}",
+        read.header
+    );
+    assert!(
+        read.header
+            .contains(&format!("captured at note {}", forged.replace('\n', "\\n"))),
+        "the anchor is not shown escaped on its own line: {:?}",
+        read.header
+    );
     provider.stop();
 }
 
@@ -1105,6 +1583,83 @@ fn evidence_the_submitter_cannot_read_is_unavailable_exactly_as_evidence_that_do
     // The other arm: the same reader, with the artifact in its grant.
     let within = asked_as(&fixture, Some("g-with"), "within", &artifact, &digest, 0);
     assert_eq!(result(&within, ITEM).0, "satisfied", "{within:?}");
+    provider.stop();
+}
+
+#[test]
+fn a_purged_artifact_is_unavailable_though_its_bytes_are_still_stored() {
+    // **A purge is an order to destroy evidence**, and a projection copies
+    // bytes into a packet, so projecting a purged artifact would publish
+    // what somebody asked to be destroyed. A purge's row stays `sealed`,
+    // and its object is kept for as long as another sealed artifact names
+    // the same bytes — so neither the state nor a missing object says it
+    // was purged. The same bytes are ingested twice, one is purged, and
+    // the other, still available, shows the object is there.
+    let fixture = Fixture::narrow(&["ids:u1"]);
+    let provider = fixture.start();
+    let log = small_log();
+    let (purged, digest) = ingest(&fixture, "small.log", log.as_bytes());
+    let (kept, kept_digest) = ingest(&fixture, "small.log", log.as_bytes());
+    assert_ne!(purged, kept);
+    assert_eq!(digest, kept_digest, "one object, named twice");
+    fixture.purge_as_owner(
+        &purged,
+        serving::artifact_revision(&fixture.data(), &purged),
+    );
+
+    let inspected = asked(&fixture, "purged", &purged, &digest, 0);
+    assert_eq!(
+        result(&inspected, ITEM),
+        ("unmet".to_string(), "evidence_unavailable".to_string()),
+        "a purged artifact was projected: {inspected:?}"
+    );
+    let packet = sealed_packet(&fixture, "purged");
+    assert!(projection_section(&packet).is_none(), "{packet:?}");
+    assert!(item_omissions(&packet).is_empty());
+
+    let inspected = asked(&fixture, "kept", &kept, &kept_digest, 0);
+    assert_eq!(
+        result(&inspected, ITEM).0,
+        "satisfied",
+        "the bytes are meant to be still stored: {inspected:?}"
+    );
+    provider.stop();
+}
+
+#[test]
+fn stored_bytes_that_no_longer_match_their_digest_are_unavailable_and_never_projected() {
+    // **A projected value is the source's bytes**, and the source is what
+    // was sealed, not what the store holds now. The object is changed on
+    // disk with the provider stopped, one byte and the same length, as
+    // `fetch` is tested against altered bytes behind honest metadata: the
+    // projection must not carry them as the artifact's.
+    let fixture = Fixture::narrow(&["ids:u1"]);
+    let provider = fixture.start();
+    let log = small_log();
+    let (artifact, digest) = ingest(&fixture, "small.log", log.as_bytes());
+    provider.stop();
+
+    let path = object_path(&fixture.data(), &digest);
+    let mut altered = std::fs::read(&path).expect("the stored object");
+    assert_eq!(altered, log.as_bytes());
+    let at = log.find("FAILED").expect("a failure");
+    altered[at] = b'P';
+    let mut permissions = std::fs::metadata(&path).expect("metadata").permissions();
+    #[allow(clippy::permissions_set_readonly_false)]
+    permissions.set_readonly(false);
+    std::fs::set_permissions(&path, permissions).expect("writable");
+    std::fs::write(&path, &altered).expect("alters the object");
+
+    let provider = fixture.start();
+    let inspected = asked(&fixture, "altered", &artifact, &digest, 0);
+    assert_eq!(
+        result(&inspected, ITEM),
+        ("unmet".to_string(), "evidence_unavailable".to_string()),
+        "bytes that are not the sealed digest were projected: {inspected:?}"
+    );
+    let packet = sealed_packet(&fixture, "altered");
+    assert!(projection_section(&packet).is_none(), "{packet:?}");
+    assert!(item_omissions(&packet).is_empty());
     provider.stop();
 }
 
