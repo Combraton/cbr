@@ -433,7 +433,14 @@ fn json_lines_are_cut_a_record_a_line_and_cargos_verdicts_are_read() {
         Kind::Identity,
         "a finished build is the run's identity"
     );
-    assert!(read.named.is_empty(), "nothing here says what it is called");
+    // **Cargo's error is a cargo error**, named by what it renders; the
+    // failed build says only that the build failed, and is not a second.
+    let named: Vec<(&str, Failing)> = read
+        .named
+        .iter()
+        .map(|named| (&lines[named.start..named.end], named.kind))
+        .collect();
+    assert_eq!(named, [("error[E0308]", Failing::Error)]);
 }
 
 #[test]
@@ -2070,8 +2077,9 @@ fn the_header_counts_failing_tests_and_cargo_errors_apart() {
         + "error: test failed, to rerun pass `-p crate_1 --lib`\n";
     let document = manifest(60, &[3, 40]);
     // **A compiler error in cargo's JSON dialect is a cargo error**, named
-    // by its message where it has one and by its record where it has not,
-    // and the `message` object inside it is not a second one.
+    // by its message where it has one and by its `reason` where it has
+    // not — a string, so on one line wherever the record is — and the
+    // `message` object inside it is not a second one.
     let lines = "{\"name\":\"a\",\"outcome\":\"pass\"}\n{\"name\":\"b\",\"outcome\":\"fail\"}\n\
                  {\"reason\":\"compiler-message\",\"message\":{\"level\":\"error\"}}\n\
                  {\"reason\":\"compiler-message\",\"package_id\":\"x 0.1.0\",\"message\":\
@@ -2101,12 +2109,7 @@ fn the_header_counts_failing_tests_and_cargo_errors_apart() {
                 named.contains(&"cannot find value `y` in this scope"),
                 "{named:?}"
             );
-            assert!(
-                named.contains(
-                    &"{\"reason\":\"compiler-message\",\"message\":{\"level\":\"error\"}}"
-                ),
-                "{named:?}"
-            );
+            assert!(named.contains(&"compiler-message"), "{named:?}");
         }
     }
 }

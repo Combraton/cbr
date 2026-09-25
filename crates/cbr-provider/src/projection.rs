@@ -264,7 +264,9 @@ pub enum Failing {
     /// A test, by its status line, or a JSON record that says it failed
     /// and what it is called.
     Test,
-    /// An error cargo or the compiler reported, by its first line.
+    /// An error cargo or the compiler reported, by its first line; in
+    /// cargo's JSON, a `compiler-message` at level `error`, by what it
+    /// says.
     Error,
 }
 
@@ -680,16 +682,25 @@ impl Cutter<'_> {
             }
         }
         // An object that says it failed is a failure, whatever it was cut
-        // into, and is named when it says what it is.
+        // into, and is named when it says what it is. **A compiler's error
+        // in cargo's JSON is a cargo error**, named by what it says: it has
+        // no name, and was carried while the header counted it as nothing.
         if node.kind == json::Shape::Object && json::failed(self.text.as_bytes(), node) {
             for unit in &mut self.units[before..] {
                 unit.kind = Kind::Failure;
             }
-            if let Some((name_start, name_end)) = json::name(self.text.as_bytes(), node) {
+            let bytes = self.text.as_bytes();
+            if let Some((start, end)) = json::name(bytes, node) {
                 self.named.push(Named {
-                    start: name_start,
-                    end: name_end,
+                    start,
+                    end,
                     kind: Failing::Test,
+                });
+            } else if let Some((start, end)) = json::compiler_error(bytes, node) {
+                self.named.push(Named {
+                    start,
+                    end,
+                    kind: Failing::Error,
                 });
             }
         }
@@ -1954,6 +1965,29 @@ mod json {
             || member_is(bytes, node, "\"success\"", "false")
             || member(bytes, node, "\"message\"")
                 .is_some_and(|message| member_is(bytes, message, "\"level\"", "\"error\""))
+    }
+
+    /// What a compiler's error in cargo's JSON says, when the object is
+    /// one: the raw inner bytes of its `message.message` string, else of
+    /// `message.rendered`, else of its `reason`. Always a string's inner
+    /// bytes, so always on one line, as the header shows it.
+    pub fn compiler_error(bytes: &[u8], node: &Node) -> Option<(usize, usize)> {
+        if !member_is(bytes, node, "\"reason\"", "\"compiler-message\"") {
+            return None;
+        }
+        let inner = |found: &Node| {
+            (found.kind == Shape::String && found.end - found.start > 2)
+                .then_some((found.start + 1, found.end - 1))
+        };
+        let message = member(bytes, node, "\"message\"");
+        ["\"message\"", "\"rendered\""]
+            .iter()
+            .find_map(|key| {
+                message
+                    .and_then(|message| member(bytes, message, key))
+                    .and_then(inner)
+            })
+            .or_else(|| member(bytes, node, "\"reason\"").and_then(inner))
     }
 
     /// What a failing object is called: the raw inner bytes of its
