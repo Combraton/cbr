@@ -13,9 +13,10 @@ opens a socket to anything but the provider.
         --permit-model-network --run-ceiling N
 
 **The live run is not authorised by this file existing.** `--live` needs
-`--permit-model-network`, a `--run-ceiling` the owner set when the run's
-estimate was written into READINESS, and the owner's word at the time,
-which no flag can stand in for.
+`--permit-model-network` and a `--run-ceiling` written into READINESS §10
+with the run's estimate before the run: set by the owner, on the owner's
+word at the time, until 2026-09-25, and since then by the session that
+runs it, under the owner's standing grant. No flag stands in for either.
 
 What it does, per input in the manifest:
 
@@ -186,7 +187,8 @@ def check(manifest, out, live, permit, ceiling):
         refuse(
             f"--run-ceiling {ceiling} is above the hard cap of "
             f"{RUN_CEILING_TOKENS} that m4e's harness set and J2's shares. "
-            "Raising it is the owner's decision and not this script's."
+            "Raising it is a change to this script, with its reason recorded "
+            "in READINESS §10, never a flag."
         )
     out = Path(out).resolve()
     if out == REPOSITORY or REPOSITORY in out.parents:

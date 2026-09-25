@@ -11,9 +11,10 @@ Tracking: [issue #34](https://github.com/Combraton/cbr/issues/34). Scope: [RELEA
 3. **J2's live acceptance runs on CBR's own test output** — §3 and §10.
 4. **Before the loop's live run on the Knowscroll question, the harness ingests Knowscroll's 22 decisions** as the owner ruled them — §2, §9 (m5h) and §10.
 
-**The owner's decision of 2026-09-25:**
+**The owner's decisions of 2026-09-25:**
 
 5. **`orient_repository` and `record_rejected_approach` land in v0.1**, so all five of [RELEASE-SCOPE §2](../readiness/RELEASE-SCOPE.md)'s families are M5's — §5 and §9 (m5i and m5j). The owner answered the question this document had left open, in the session, in these words, which are in that session's transcript and not in this repository: *"yes land orient_repository and record_rejected_approach for v0.1"*. Where the two go in the order is this session's proposal (§9), not part of the decision.
+6. **Live calls under a standing grant**: MiniMax as much as the work needs, with no approval per run, within CBR's envelope — §10. It is in the owner's brief to this session, outside this repository.
 
 ## 1. Scope, and the promise
 
@@ -297,7 +298,7 @@ M4's practice stands, with one change since 2026-09-25: **the owner's standing g
 1. **J2 live**, once m5a merges, over **CBR's own test output**: logs and JSON produced locally by running CBR's public suite at a pinned commit, sealed whole, with no machine path in them (§3). Nothing third-party.
 2. **The loop against the sealed pilot questions**, once m5h merges, with M4's discovery as the baseline. This is the run that tests limit 1 of §2. **For Knowscroll, the harness ingests its 22 decisions first**, which tests limit 2.
 
-**Caps were the owner's**, per run, set when each run's estimate existed, and written into this document before the run; M4's cap was 5,000,000. **Since 2026-09-25 the owner's grant is standing**: MiniMax may be called as much as the work needs, with no approval per run, on `MiniMax-M2.7-highspeed` and `MiniMax-M3` only and on content from public repositories only. Each run's estimate and ceiling are written here before it, and what it spent after. Every run stays inside CBR's envelope in [ADR 001](../../decisions/001-standalone-v0.1-scope-and-stack.md), 20,000,000 tokens per five hours and 200,000,000 a month, which is drawn from the owner's subscription quota, shared with the owner's other tools ([RELEASE-SCOPE](../readiness/RELEASE-SCOPE.md)); a run that would approach the envelope stops and goes to the owner.
+**Caps were the owner's**, per run, set when each run's estimate existed, and written into this document before the run; M4's cap was 5,000,000. **Since 2026-09-25 the owner's grant is standing**: MiniMax may be called as much as the work needs, with no approval per run, on `MiniMax-M2.7-highspeed` and `MiniMax-M3` only and on content from public repositories only. Each run's estimate and ceiling are written here before it, and what it spent after. Raising a harness's hard-coded cap is allowed, with the reason recorded. Every run stays inside CBR's envelope, **20M tokens per 5-hour window and 200M per month** ([STACK §8.1](../readiness/STACK.md) is the single source, per [ADR 001](../../decisions/001-standalone-v0.1-scope-and-stack.md)), which is drawn from the owner's subscription quota, shared with the owner's other tools ([RELEASE-SCOPE](../readiness/RELEASE-SCOPE.md)); a run that would approach the envelope stops and goes to the owner. The grant is in the owner's brief to this session, which is outside this repository, as decision 6 at the top of this document says.
 
 ### J2 live: the inputs, the estimate, the stop and the cap, decided 2026-09-25
 
@@ -346,7 +347,7 @@ Run from `main` at `041ad5f`, with its binaries built from a clean tree, the sco
 
 ### J2 live rerun after m5a-3: inputs, estimate and ceiling
 
-**Written before the rerun, decided on 2026-09-26 under the owner's standing grant of 2026-09-25, and run the same day** ([what it spent](#j2-live-rerun-what-it-spent-2026-09-26)) — MiniMax as much as the work needs, with each run's estimate and ceiling written here before it and its spend after, inside CBR's envelope in ADR 001. **Invocation 1's `--run-ceiling` is 492,204 and invocation 2's is 861,357**, the least the harness's stop admits (below); the rerun as a whole is held to **738,306** by the parts the survey found, and is expected to spend about 47,000. Both are far inside the 20,000,000 a five-hour window allows. **Rubric v1.1**, v1's mechanical changes for the `/2` projection, is committed and pushed in the change that runs the rerun, before its first call, and the rerun is scored under v1 as well.
+**Written before the rerun, decided on 2026-09-26 under the owner's standing grant of 2026-09-25, and run the same day** ([what it spent](#j2-live-rerun-what-it-spent-2026-09-26)) — MiniMax as much as the work needs, with each run's estimate and ceiling written here before it and its spend after, inside CBR's envelope ([STACK §8.1](../readiness/STACK.md)). **Invocation 1's `--run-ceiling` is 492,204 and invocation 2's is 861,357**, the least the harness's stop admits (below); the rerun as a whole is held to **738,306** by the parts the survey found, and is expected to spend about 47,000. Both are far inside the 20,000,000 a five-hour window allows. **Rubric v1.1**, v1's mechanical changes for the `/2` projection, is committed and pushed in the change that runs the rerun, before its first call, and the rerun is scored under v1 as well.
 
 **The inputs and the invocations are as before.** The same three inputs, byte-identical to the digests in the table above, each on `MiniMax-M2.7-highspeed` and `MiniMax-M3`:
 
@@ -372,7 +373,7 @@ Run from `main` at `041ad5f`, with its binaries built from a clean tree, the sco
 
 ### J2 live rerun: what it spent, 2026-09-26
 
-Run from `main` at `80cdfbe`, with rubric v1.1 committed and pushed first (`8d08bef`, pushed at 22:57:14Z). Times are UTC, on 2026-09-25; the date in the heading is the session's, IST.
+Run from `main` at `80cdfbe`, with rubric v1.1 (`13f5911`, `587ddf1`) and these ceilings (`8d08bef`) committed and pushed first, at 22:57:14Z. Times are UTC, on 2026-09-25; the date in the heading is the session's, IST.
 
 | Invocation | Started | Took | `--run-ceiling` | Spent | Runs |
 |---|---|---:|---:|---:|---|
