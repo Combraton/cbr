@@ -27,11 +27,14 @@ What it does, per input in the manifest:
   2. seals the input whole with `cbr ingest`, anchored at the pinned
      commit of this repository;
   3. asks for it with no investigation -- the deterministic baseline,
-     which costs nothing and says how many parts the input fills -- and
-     then with exactly that many questions;
+     which costs nothing and says how many questions the input needs --
+     and then with exactly that many questions; or, when it needs none,
+     with every part a projection may ask, which must then ask nothing;
   4. checks both projections against the input's own bytes: the ledger
      tiles the artifact, every excerpt is the artifact's bytes at its
-     stated range, every omission is in the packet's own list;
+     stated range, every omission is in the packet's own list, and the
+     model-assisted projection carries every byte the baseline carries --
+     a model adds to the rule's projection and never takes from it;
   5. relaunches the same store with `--replay-model` and rebuilds the
      model-assisted projection from its records -- **the replay gate**.
 
@@ -109,7 +112,7 @@ from m4e_run import (  # noqa: E402
 # `projection::tests` computes both, and reads them back from here: the
 # worst a whole projection can cost, every part counted and repaired once,
 # and the most parts one projection asks.
-WORST_CASE_PROJECTION_TOKENS = 488_160
+WORST_CASE_PROJECTION_TOKENS = 492_204
 MAX_PARTS = 4
 
 # The prefix of every part's question, which is how a part's record is told
@@ -463,13 +466,32 @@ PROTOCOL_REASON = {
 }
 
 
-def checked(packet, source):
+def carried_ranges(packet):
+    """The byte ranges a packet's projection carries, or `None` with no
+    section or none this reader can read."""
+    section = next(
+        (s for s in packet.get("sections", []) if s.get("item_id") == ITEM), None
+    )
+    if section is None:
+        return None
+    try:
+        read = read_projection(section["content"])
+    except (ValueError, UnicodeDecodeError):
+        return None
+    return [(e["start"], e["end"]) for e in read["extents"] if e["carried"]]
+
+
+def checked(packet, source, floor=None):
     """What a packet's projection is, and whether it holds.
 
     `problems` is empty exactly when the ledger tiles the source, every
     excerpt is the source's bytes at its range, every named failure is the
-    source's bytes at its range, and the packet's omissions for the item are
-    exactly the ledger's. Anything else is named.
+    source's bytes at its range, the packet's omissions for the item are
+    exactly the ledger's, and -- given `floor`, the byte ranges the
+    baseline carries -- **every byte the baseline carries is carried here
+    too**. A model adds to the rule's projection (`cbr-project-large-
+    result/2`); a model-assisted projection that dropped a byte of it has
+    undone what a parser found. Anything else is named.
     """
     section = next(
         (s for s in packet.get("sections", []) if s.get("item_id") == ITEM), None
@@ -510,6 +532,21 @@ def checked(packet, source):
     ]
     if declared != packet_omissions:
         problems.append("the packet's omissions are not the projection's")
+    floor_carried = None
+    if floor is not None:
+        mine = [(e["start"], e["end"]) for e in read["extents"] if e["carried"]]
+        floor_carried = 0
+        for start, end in floor:
+            # Joined to its neighbours or not, each baseline excerpt's bytes
+            # must lie in what this projection carries.
+            at = start
+            for held_start, held_end in sorted(mine):
+                if held_start <= at < held_end:
+                    at = held_end
+            if at < end:
+                problems.append(f"the projection drops the baseline's excerpt at {start}-{end}")
+            else:
+                floor_carried += 1
     how = next((line for line in read["header"] if line.startswith("read as ")), "")
     parts = re.search(r" (\d+) parts;", how)
     return {
@@ -523,6 +560,10 @@ def checked(packet, source):
         "bytes_omitted": omitted_bytes,
         "unresolved": len(read["unresolved"]),
         "content_bytes": len(section["content"].encode("utf-8")),
+        # How many of the baseline's excerpts this one carries, when it was
+        # checked against them: a report says the floor was checked, and
+        # does not leave it to be inferred from an empty list of problems.
+        "baseline_excerpts_carried": floor_carried,
         "problems": problems,
     }
 
@@ -568,26 +609,35 @@ def one_run(run, given, out, provider, client, live, ceiling, commit):
             refuse(f"{run['id']}: the store sealed {digest}, not the input's digest")
 
         # **The baseline**: no investigation, no call, and the number of
-        # parts the input fills, read from what the projection says.
+        # questions the input needs, read from what the projection says.
         baseline = ask(client, endpoint, credential, "baseline", artifact, digest, commit, 0)
         result["baseline"] = {"item": item_of(baseline)}
         parts = None
+        floor = None
         if packet_digest(baseline):
             printed, packet = sealed_packet(client, endpoint, credential, "baseline")
             (out / f"{run['id']}.baseline.packet.json").write_text(printed)
             result["baseline"].update(checked(packet, source))
             parts = result["baseline"].get("parts")
+            floor = carried_ranges(packet)
         how = result["baseline"].get("how", "")
-        asks = bool(parts) and "chosen by the deterministic rule" in how
+        # **The assisted request is made whenever the rule chose**, even when
+        # the baseline says no question is needed: then it is given every
+        # part a projection may ask, so that nothing but the projection
+        # stops a call, and it must spend nothing. Decided without looking at
+        # the mode, so a live run takes the same path as a dry one.
+        asks = parts is not None and "chosen by the deterministic rule" in how
+        replays = asks and parts > 0
         if asks:
+            investigation = parts if parts > 0 else MAX_PARTS
             assisted = ask(
-                client, endpoint, credential, "assisted", artifact, digest, commit, parts
+                client, endpoint, credential, "assisted", artifact, digest, commit, investigation
             )
-            result["assisted"] = {"item": item_of(assisted), "investigation": parts}
+            result["assisted"] = {"item": item_of(assisted), "investigation": investigation}
             if packet_digest(assisted):
                 printed, packet = sealed_packet(client, endpoint, credential, "assisted")
                 (out / f"{run['id']}.assisted.packet.json").write_text(printed)
-                result["assisted"].update(checked(packet, source))
+                result["assisted"].update(checked(packet, source, floor))
                 assisted_sections = packet.get("sections")
             else:
                 assisted_sections = None
@@ -606,8 +656,14 @@ def one_run(run, given, out, provider, client, live, ceiling, commit):
     result["tokens"] = total
     result["charges"] = [{"kind": kind, "tokens": tokens} for kind, tokens in charges]
     result["part_records"] = len(part_records(data))
+    if asks and parts == 0 and (total or result["part_records"]):
+        # **A run offering nothing asks nothing**: a call made where the
+        # baseline said none was needed is the projection's defect, named.
+        result["assisted"].setdefault("problems", []).append(
+            "the baseline needed no question, and the assisted request made a call"
+        )
 
-    if asks:
+    if replays:
         # **The replay gate**, under the same configuration the live run
         # used, as m4e's is: every part answered from what was retained.
         replay_config, replay_body = configuration(work, shaped, live, dry_answers, replay=True)

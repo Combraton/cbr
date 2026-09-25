@@ -2130,12 +2130,15 @@ impl Provider {
     /// omissions — or a typed reason and no section at all.
     ///
     /// The order is [`crate::projection::next`]'s. What is this call site's
-    /// own is the investigation limit: **the parts are claimed together**,
-    /// as discovery's two steps are, because a projection with a part never
-    /// read would name failures from part of a log as if from all of it.
-    /// And a part that fails ends the item with that part's reason, never a
-    /// fall back to the deterministic rule, which would report a
-    /// model-assisted projection that no model made.
+    /// own is the investigation limit: **the questions a model is offered
+    /// are claimed together**, as discovery's two steps are, because a
+    /// projection with a part never read would name failures from part of a
+    /// log as if from all of it — and they are the offered parts, at most
+    /// the planned ones, so a part with nothing a model could add is neither
+    /// asked nor charged. A part that fails ends the item with that part's
+    /// reason, never a fall back to the deterministic rule, which would
+    /// report a model-assisted projection that no model made. What the model
+    /// answers is added to the rule's floor, and never replaces it.
     #[allow(clippy::too_many_arguments)]
     fn project(
         &self,
@@ -2172,7 +2175,6 @@ impl Provider {
             return Ok(());
         };
         let read = projection::read(&bytes);
-        let plan = projection::partition(&read, &bytes);
         let capture: Vec<(String, String)> = list(descriptor, &["capture", "anchors"])
             .iter()
             .map(|anchor| {
@@ -2191,6 +2193,7 @@ impl Provider {
         // discovery: a request that authorised no investigation gets the
         // rule, from the same binary.
         let serving = self.model.clone().filter(|_| assist.investigation > 0);
+        let plan = projection::partition(&read, &bytes, subject, serving.is_some());
         let choice = match projection::next(&read, &bytes, &plan, subject, serving.is_some()) {
             Next::Insufficient => {
                 unmet(decided, projection::INSUFFICIENT_CAPACITY);
@@ -2202,13 +2205,17 @@ impl Provider {
                     unmet(decided, crate::derivation::UNREADABLE);
                     return Ok(());
                 };
-                if !assist.room_for(plan.parts.len()) {
+                // **The claim is the questions the model is offered**, which
+                // are at most the parts the input fills: a planned part
+                // holding nothing a model could add is not asked, and is not
+                // charged for.
+                if !assist.room_for(plan.asked.len()) {
                     unmet(decided, INVESTIGATION_EXHAUSTED);
                     return Ok(());
                 }
-                let of = plan.parts.len();
+                let of = plan.asked.len();
                 let mut asked = Vec::with_capacity(of);
-                for (index, units) in plan.parts.iter().enumerate() {
+                for (index, units) in plan.asked.iter().enumerate() {
                     let (candidates, labels) =
                         projection::candidates(&read, &bytes, artifact, units);
                     let ids: Vec<String> = candidates
@@ -2231,6 +2238,7 @@ impl Provider {
                         number: index + 1,
                         of,
                         labels,
+                        floor: plan.floor.clone(),
                     };
                     let answer = self.ask_step(
                         &serving,
@@ -2277,10 +2285,19 @@ impl Provider {
                     unmet(decided, reason);
                     return Ok(());
                 }
+                // What the model added, **beside every failure the parser
+                // found**: `render` carries the rule's floor first and never
+                // takes any of it away.
                 projection::choose_by_model(&read, &picked)
             }
         };
-        let rendered = projection::render(&read, &bytes, &choice, &plan, subject);
+        // **A projection over its own bound is never published**: `render`
+        // refuses a model arm that does not fit, which `offer` makes
+        // unreachable, and the item says so rather than carry it.
+        let Some(rendered) = projection::render(&read, &bytes, &choice, &plan, subject) else {
+            unmet(decided, projection::INSUFFICIENT_CAPACITY);
+            return Ok(());
+        };
         decided.evidence.push(compiler::EvidenceSection {
             item: item.to_string(),
             summary: rendered.content,

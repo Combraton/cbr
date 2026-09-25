@@ -51,6 +51,7 @@ Both come from live run 3 ([JOURNEYS](../../verification/JOURNEYS.md#live-run-3-
 - **Values and units are never changed** in a projection ([MEMORY-ENGINE §4](../../spec/MEMORY-ENGINE.md)). A projected number is the source's bytes at a cited range, not the model's restatement of it. This is not hypothetical here: brian2's pilot question is about units being silently dropped.
 - **A summariser is never given more than its own capacity** ([MODEL-RUNTIME §4](../../spec/MODEL-RUNTIME.md)). Input that does not fit is partitioned, each part a bounded call with its own record, or the result is the typed insufficient-capacity outcome of control 2. Partitioning keeps cross-part references as unresolved items rather than losing them.
 - **Every omission is a typed record** with its reason and its extent, carried into the packet the way M3's omissions are.
+- **The model adds to what the parser found, and never removes it** (m5a-3, after J2's live run of 2026-09-25). In m5a a model's choice replaced the rule's, and whatever it did not choose was declared `not_selected`, failure blocks the parser had already named among them. On the failing log, both models' projections scored 55 and 41.25 script points against the rule's 70, because both left out failures the rule carries ([JOURNEYS](../../verification/JOURNEYS.md#j2-live-2026-09-25-the-mechanism-held-and-the-model-made-the-projection-worse--failed)). From `cbr-project-large-result/2` the rule's projection — every failure the parser found, then run identity — is a **floor**, computed first and frozen. A model is asked only what to add to it, and is offered only units that are neither failures nor run identity, that the floor leaves out, and that would fit beside it drawn at the model arm's widest. It is asked nothing when nothing could be added. So for every answer a model can give, the model arm carries every byte the rule's arm carries, and no failure the parser found is ever `not_selected`. The header names the excerpts the model added, and every excerpt is wholly the rule's or wholly the model's. The decision is [ADR 001's question 16](../../decisions/001-standalone-v0.1-scope-and-stack.md).
 
 **Why it comes first, beyond the owner's order.** [MODEL-RUNTIME §3](../../spec/MODEL-RUNTIME.md) has large tool results *"stored with digest/coverage, then projected"*. The tool surface (m5c) therefore needs J2's sealing and projection to exist, and building J2 first means tools are built on it rather than beside it.
 
@@ -254,6 +255,14 @@ These bounds are already known to be needed, before any is sized:
 
 **None is sized here.** Each is sized in the pull request that introduces it, with its arithmetic test beside it.
 
+**J2's, as sized.** `projection::tests` computes each from real request bodies, and pins it:
+
+- **A part's worst call is 41,017 tokens.** That is a part at every bound (`PART_BYTES` of candidates as the body carries them, `PART_UNITS` ids, the widest labels and numbers, and the preamble at its widest), with a task larger than the protocol admits.
+- **A whole projection's worst case is 492,204**: that part, sent three times (counted once and repaired once, as discovery's arithmetic has it) for each of `MAX_PARTS` parts. `j2_run.py`'s `WORST_CASE_PROJECTION_TOKENS` is the same figure, read back across the boundary by a test.
+- **Beside discovery's published flow of 373,188, it is 865,392**, under the per-job ceiling of 1,000,000, asserted by a test.
+
+m5a's figures were 40,680, 488,160 and 861,348. m5a-3 added the preamble, which says in counts what the floor carries and the room it leaves (at most `PREAMBLE_BYTES`, 142), and lengthened the instruction to ask what to add. Those two changes are the difference.
+
 ## 9. The pull requests, each with its gate
 
 In the order the owner set: J2, then the loop, then the tools, then the families that need both. **J2 live failed on 2026-09-25**, so m5a-3 and J2's live rerun come before m5b. **The two families added on 2026-09-25 go after m5e and before m5f**, so that maintenance, whose triggers include completed investigations, can start them. The whole order is m5a, m5a-3 and J2's rerun, m5b, m5c, m5d, m5e, m5i, m5j, m5f and m5h, with m5g at any point. Where m5a-3 and the two families sit is this session's proposal and the owner's to change.
@@ -334,6 +343,32 @@ Run from `main` at `041ad5f`, with its binaries built from a clean tree, the sco
 - **Total 120,067 tokens**: 5.3% of the 2,250,000 held, 4.1% of the 2,928,960 worst case, and 6.1% of the 1,952,640 the dry run's parts allowed. Sixteen calls, none repaired, every one admitted by the local bound alone. Each run's ledger equals the harness's report and the sum of its sealed records' usage.
 - **The estimate was the worst case, and in tokens the worst case was far away.** Every part but each input's last was closed by its bound as designed — the red log's first at `PART_UNITS`, 64 units, and the others at 79.5 to 93% of `PART_BYTES` in raw bytes, and 96.7 to 99.6% as the request body carries them — but the largest request carried 9,808 input tokens and the costliest part 10,348 in all, against the 40,680 a part at every bound can cost: a part's bytes are escaped text, and the bound on tokens is the conservative byte bound.
 - **The run failed its rubric**, and J2 runs again after m5a-3 ([JOURNEYS](../../verification/JOURNEYS.md#j2-live-2026-09-25-the-mechanism-held-and-the-model-made-the-projection-worse--failed)). That rerun's inputs, estimate and ceiling are written here before it runs.
+
+### J2 live rerun after m5a-3: inputs, estimate and ceiling
+
+**Written before the rerun, and not yet decided.** The ceiling is the owner's, and the rubric's mechanical changes are frozen before the rerun, in the change that runs it.
+
+**The inputs and the invocations are as before.** The same three inputs, byte-identical to the digests in the table above, each on `MiniMax-M2.7-highspeed` and `MiniMax-M3`:
+
+- **invocation 1**, pinned to `f73415d`: the red log on both models;
+- **invocation 2**, pinned to `9cd388a`: the green log and the core manifest, each on both models.
+
+**The dry-run survey at m5a-3's head**, against the labelled fake: all nine inputs, and both live manifests. Every run exited 0 with no problem named, every assisted arm carried every baseline excerpt, and the one replay rebuilt identical sections. The masked sha256 is `score_j2.py`'s C0 rule: the section's content with the artifact id after `of evidence` replaced by `[artifact]`.
+
+| Input | Parts asked | A call? | Baseline | Masked baseline sha256 |
+|---|---:|---|---|---|
+| `cargo-test-f73415d.log` (red) | **0** | **no**: the assisted request, given 4 parts, makes no call, and its section is the baseline's byte for byte | 16,350 bytes, 21 excerpts; `failing tests: 18; cargo errors: 3` | `e7d389553f098504be79f6580399d734a9d84a3963a7070f1ad90a15a6ff04f7` |
+| `cargo-test.log` (green) | **0** | **no**, the same way | 8,504 bytes; run identity fills all 24 excerpts | `65666f5efc2c55dec9825f32ed1045473047765181dd8dd1e5e7471b36382a8f` |
+| `conformance-core.manifest.json` | **3** | **yes**: 3 calls a model | 1,917 bytes, 2 excerpts; the fake's answer adds `e2, e3, e4` | `9a6f45883f67f971276d8b93e5d9a87357445c63117cbc64860b45c85e484b8a` |
+| `cargo-test-build.jsonl` | — | no | `insufficient_capacity`, refused before it is read | none: no section |
+| `stream`, `composition`, `evidence`, `socket`, `context`, `knowledge` manifests | 0 | no | everything fits, carried whole | `d48ca00c…cdd`, `e9023416…5ffb0`, `000fd9d9…b65f653`, `44d0b714…db190`, `ae5d24dc…54b8`, `b904920b…99d8` |
+
+- **Red and green make no call, so each is equal to its baseline by construction.** The red log's floor leaves less room than the model's widest label needs: it carries all eighteen failures and cargo's three errors in 16,350 of 16,384 bytes. The green log's run identity takes every excerpt a projection holds. Neither arm spends a token, and neither can be worse or better than its baseline.
+- **Only the core manifest asks: 3 parts a model, so 6 calls.** Its units that could be added include the five `unsupported` results, which the rule does not carry because they are not failures.
+- **The worst case is 6 × 41,017 × 3 = 738,306 tokens**: six parts at every bound, each counted and repaired once. The ceiling is that worst case: nothing else can be spent, because no other run asks a part.
+- **The expected spend is 46,615 to 48,637, about 47,000.** The core runs spent 23,931 and 22,684 at `/1`, 46,615 in all, with three parts each. At `/2` the core manifest is offered every unit of its three planned parts, 59, 58 and 18 (computed from the input at m5a-3's head), so its questions carry the candidates `/1`'s did. Each is at most 337 bytes longer: a part's worst case grew from 40,680 to 41,017 with the preamble and the instruction's new words, and the byte bound counts those as at most 337 tokens, 2,022 over six questions. Red and green, which spent 73,452 between them at `/1`, now spend nothing.
+- **The harness's stop needs more than that as its `--run-ceiling`.** Before each run it requires a whole projection's worst case, 492,204, to be left, whatever the input's parts. So invocation 1 needs at least 492,204, and spends nothing. Invocation 2 needs at least 861,357: `core-m27hs`'s 369,153 worst case, then 492,204 left for `core-m3`. The provider's ledger still holds each launch to what the ceiling leaves, and the parts the survey found hold the whole rerun to 738,306. A stop computed from the input's own parts would remove the gap, and that is a change to the harness, not to this plan.
+- **The hard cap stays 5,000,000.** The `--out` directories are short and under `/var/tmp/cbr-j2`, as before.
 
 ## What this document does not settle
 

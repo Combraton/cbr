@@ -386,6 +386,13 @@ fn a_dry_run_projects_a_test_log_checks_it_against_its_bytes_and_rebuilds_it() {
     );
     assert_eq!(int(run, &["part_records"]), parts);
     assert_eq!(int(run, &["tokens"]), parts * 5000, "{run:?}");
+    // **The floor was checked**, not merely unbroken: every excerpt the
+    // baseline carries is counted as carried by the assisted projection.
+    assert_eq!(
+        int(run, &["assisted", "baseline_excerpts_carried"]),
+        int(run, &["baseline", "excerpts"]),
+        "{run:?}"
+    );
 
     // The replay gate: rebuilt from the records, the same sections.
     assert_eq!(
@@ -462,6 +469,149 @@ fn an_input_over_the_projections_capacity_is_reported_as_such_and_nothing_is_ask
         assert_eq!(int(run, &["tokens"]), 0);
         assert_eq!(int(run, &["part_records"]), 0);
     }
+}
+
+#[test]
+fn a_run_that_offers_nothing_asks_nothing_live_or_dry() {
+    // **A question no answer can change is not asked, and the harness does
+    // not ask it either.** Thirty failures between passing tests fill every
+    // excerpt a projection holds, so the rule's floor leaves a model
+    // nothing it could add and the baseline says so with no parts. The
+    // assisted request is still made — given every part a projection may
+    // ask, so that nothing but the projection stops a call — and it
+    // spends nothing and records nothing. `one_run` decides this without
+    // looking at the mode, so a live run takes the same path.
+    let directory = tempfile::tempdir().expect("temp dir");
+    let out = directory.path().join("out");
+    let failing: Vec<(usize, usize)> = (0..30).map(|test| (0, test * 2 + 1)).collect();
+    let log = test_log(1, 400, &failing);
+    assert!(
+        log.len() > 16 * 1024,
+        "the fixture is meant not to fit whole"
+    );
+    let input = directory.path().join("full.log");
+    std::fs::write(&input, &log).expect("input");
+    let written = manifest(directory.path(), "full", &head(), &[("full", &input, "")]);
+    let (ok, stdout, stderr) = harness(&[
+        "--manifest",
+        written.to_str().expect("utf-8"),
+        "--out",
+        out.to_str().expect("utf-8"),
+        "--dry-run",
+    ]);
+    assert!(ok, "{stdout}\n{stderr}");
+    let report = report(&out);
+    let run = &at(&report, &["runs"]).as_array().expect("runs")[0];
+    assert_eq!(int(run, &["baseline", "parts"]), 0, "{run:?}");
+    assert!(
+        at(run, &["baseline", "how"])
+            .as_str()
+            .is_some_and(|how| how.contains("the deterministic rule")),
+        "{run:?}"
+    );
+    assert_eq!(
+        int(run, &["assisted", "investigation"]),
+        declared("MAX_PARTS") as i64,
+        "{run:?}"
+    );
+    assert_eq!(
+        at(run, &["assisted", "item", "result"]).as_str(),
+        Some("satisfied"),
+        "{run:?}"
+    );
+    assert_eq!(
+        at(run, &["assisted", "problems"]),
+        &Value::Array(Vec::new()),
+        "{run:?}"
+    );
+    assert!(
+        at(run, &["assisted", "how"])
+            .as_str()
+            .is_some_and(|how| !how.contains("the model")),
+        "{run:?}"
+    );
+    assert_eq!(int(run, &["part_records"]), 0, "{run:?}");
+    assert_eq!(int(run, &["tokens"]), 0, "{run:?}");
+    assert!(out.join("full.assisted.packet.json").exists());
+    // **Nothing was answered, so nothing is replayed**: a replay gate run
+    // here would report a rebuild of a question nobody asked.
+    assert!(run.get("replay").is_none(), "{run:?}");
+}
+
+#[test]
+fn the_harness_names_a_model_arm_that_drops_a_baseline_excerpt() {
+    // **The floor, checked by the harness as well as built by the
+    // provider**: a model-assisted projection carries every byte the
+    // baseline carries, whatever else it carries. Given one that dropped a
+    // baseline excerpt, or kept only the start of one, `checked` names it;
+    // given one that carries the baseline's excerpts and more, or joins two
+    // of them, it says nothing.
+    let program = r#"
+import json, sys
+sys.path.insert(0, sys.argv[1])
+import j2_run
+source = b"line one\nline two\nline three\n"
+head = ("projection x\nread as lines: 29 bytes, 3 lines, 3 units in 1 parts; "
+        "excerpts chosen by the model\nfailures named: 0\n")
+def excerpt(number, start, end):
+    return (f"[e{number}] bytes {start}-{end}, lines 1-1, lines\n"
+            + source[start:end].decode() + f"\n[end e{number}]\n")
+def packet(content, omissions):
+    return {"sections": [{"item_id": "log", "content": content}],
+            "omissions": [{"item_id": "log", "section_id": f"s-log.o{n}", "reason": "applicability"}
+                          for n in range(1, omissions + 1)]}
+floor = [(0, 9), (18, 29)]
+cases = {
+    "dropped": packet(head + excerpt(1, 0, 9)
+                      + "[o1] bytes 9-29, lines 2-3, omitted: not_selected\n", 1),
+    "partial": packet(head + excerpt(1, 0, 9)
+                      + "[o1] bytes 9-18, lines 2-2, omitted: not_selected\n"
+                      + excerpt(2, 18, 25)
+                      + "[o2] bytes 25-29, lines 3-3, omitted: not_selected\n", 2),
+    "added": packet(head + excerpt(1, 0, 9) + excerpt(2, 9, 18) + excerpt(3, 18, 29), 0),
+    "joined": packet(head + excerpt(1, 0, 29), 0),
+}
+print(json.dumps({name: j2_run.checked(one, source, floor)["problems"] for name, one in cases.items()}))
+"#;
+    let output = Command::new("python3")
+        .args(["-c", program])
+        .arg(root().join("scripts"))
+        .output()
+        .expect("python3 runs");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let found = cbr_encoding::parse(String::from_utf8_lossy(&output.stdout).trim().as_bytes())
+        .expect("json");
+    let problems = |case: &str| -> Vec<String> {
+        at(&found, &[case])
+            .as_array()
+            .unwrap_or_else(|| panic!("no {case} in {found:?}"))
+            .iter()
+            .filter_map(Value::as_str)
+            .map(str::to_string)
+            .collect()
+    };
+    assert!(
+        problems("dropped")
+            .iter()
+            .any(|problem| problem.contains("drops the baseline's excerpt at 18-29")),
+        "{:?}",
+        problems("dropped")
+    );
+    // **A baseline excerpt carried in part is dropped too**: its first
+    // bytes are here and its tail is not.
+    assert!(
+        problems("partial")
+            .iter()
+            .any(|problem| problem.contains("drops the baseline's excerpt at 18-29")),
+        "{:?}",
+        problems("partial")
+    );
+    assert!(problems("added").is_empty(), "{:?}", problems("added"));
+    assert!(problems("joined").is_empty(), "{:?}", problems("joined"));
 }
 
 #[test]
