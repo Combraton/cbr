@@ -25,6 +25,7 @@
 //! cbr request <request>
 //! cbr cancel <request>
 //! cbr packet <request> [--revision N] [--excerpt SECTION]
+//! cbr expand <request> <citation> [--revision N] [--offset O] [--length L] [--out FILE]
 //! ```
 //!
 //! Every verb except `basis` takes `--socket PATH --credential-file PATH` and
@@ -33,8 +34,12 @@
 //!
 //! `ingest` prints `artifact`, `digest` and `size` lines. `fetch` writes the
 //! bytes only after checking that what it assembled has the digest it asked
-//! for; a mismatch writes nothing and exits nonzero. The knowledge verbs print
-//! the outcome or result as canonical JSON.
+//! for; a mismatch writes nothing and exits nonzero. `expand` reads the bytes
+//! a packet's citation names, the whole artifact or a range of it, and checks
+//! a whole one against the cited digest the same way; with `--out` it prints
+//! one line saying what it wrote, and without it the bytes are the whole of
+//! standard output. The knowledge verbs print the outcome or result as
+//! canonical JSON.
 
 mod context;
 mod evidence;
@@ -56,10 +61,10 @@ pub struct Options {
 }
 
 const USAGE: &str = "usage: cbr ingest|fetch|propose|revise|decide|evaluate|inspect|history|\
-                     authority bind|basis|context|request|cancel|packet …";
+                     authority bind|basis|context|request|cancel|packet|expand …";
 
 /// Options that take a value; everything else starting `--` is refused.
-const VALUED: [&str; 27] = [
+const VALUED: [&str; 29] = [
     "--socket",
     "--authority",
     "--credential-file",
@@ -87,6 +92,8 @@ const VALUED: [&str; 27] = [
     "--deadline",
     "--investigation",
     "--excerpt",
+    "--offset",
+    "--length",
 ];
 
 fn run() -> Result<(), String> {
@@ -177,6 +184,24 @@ fn run() -> Result<(), String> {
                 .transpose()
                 .map_err(|_| "--revision is a number")?,
             value("--excerpt").as_deref(),
+        ),
+        ("expand", [request, citation]) => context::expand(
+            &options,
+            request,
+            citation,
+            revision,
+            value("--offset")
+                .as_deref()
+                .map_or(Ok(0), str::parse)
+                .map_err(|_| "--offset is a number of bytes")?,
+            // An empty range is not a question, so zero is refused here
+            // rather than asked.
+            match value("--length").map(|length| length.parse::<u64>()) {
+                None => None,
+                Some(Ok(length)) if length > 0 => Some(length),
+                Some(_) => return Err("--length is a positive number of bytes".into()),
+            },
+            value("--out").as_deref().map(Path::new),
         ),
         ("fetch", [artifact]) => evidence::fetch(
             &options,
