@@ -297,7 +297,7 @@ M4's practice stands. No live call happens inside a pull request's work, and non
 1. **J2 live**, once m5a merges, over **CBR's own test output**: logs and JSON produced locally by running CBR's public suite at a pinned commit, sealed whole, with no machine path in them (§3). Nothing third-party.
 2. **The loop against the sealed pilot questions**, once m5h merges, with M4's discovery as the baseline. This is the run that tests limit 1 of §2. **For Knowscroll, the harness ingests its 22 decisions first**, which tests limit 2.
 
-**Caps stay the owner's**, per run, set when each run's estimate exists. Each run's estimate and cap are written into this document before the run. M4's cap was 5,000,000.
+**Caps stay the owner's**, per run, set when each run's estimate exists. Each run's estimate and cap are written into this document before the run. M4's cap was 5,000,000. **Since 2026-09-25 the owner's grant is standing**: MiniMax may be called as much as the work needs, with no approval per run, on `MiniMax-M2.7-highspeed` and `MiniMax-M3` only and on content from public repositories only; each run's estimate and ceiling are written here before it and what it spent after; and every run stays inside ADR 001's account ceilings, 20,000,000 tokens per five hours and 200,000,000 a month, which the owner's other projects share — a run that would approach them stops and goes to the owner.
 
 ### J2 live: the inputs, the estimate, the stop and the cap, decided 2026-09-25
 
@@ -372,14 +372,14 @@ Run from `main` at `041ad5f`, with its binaries built from a clean tree, the sco
 
 ### J2 live rerun: what it spent, 2026-09-26
 
-Run from `main` at `80cdfbe`, with rubric v1.1 committed and pushed first (`8d08bef`, 22:57:15Z).
+Run from `main` at `80cdfbe`, with rubric v1.1 committed and pushed first (`8d08bef`, pushed at 22:57:14Z). Times are UTC, on 2026-09-25; the date in the heading is the session's, IST.
 
 | Invocation | Started | Took | `--run-ceiling` | Spent | Runs |
 |---|---|---:|---:|---:|---|
 | 1 | 22:57:23Z | 2 s | 492,204 | **0** | `red-m27hs` 0, `red-m3` 0 |
 | 2 | 22:57:25Z | 18 s | 861,357 | **46,452** | `log-m27hs` 0, `log-m3` 0, `core-m27hs` 23,559, `core-m3` 22,893 |
 
-- **46,452 tokens**, 6 calls, no repair: 6.3% of the 738,306 the parts allowed, and inside the 46,615 to 48,637 estimated. **J2's live runs have spent 166,519 in all.**
+- **46,452 tokens**, 6 calls, no repair: 6.3% of the 738,306 the parts allowed, and 163 below the 46,615 to 48,637 estimated. **J2's live runs have spent 166,519 in all.**
 - **The rerun passed** its rubric, and every run was equal to the rule ([JOURNEYS](../../verification/JOURNEYS.md#j2-live-rerun-2026-09-26-passed--and-the-model-added-nothing)).
 
 ## What this document does not settle
@@ -388,5 +388,5 @@ Run from `main` at `80cdfbe`, with rubric v1.1 committed and pushed first (`8d08
 - **What starts a gap loop on a question with no unmet item** is m5e's to settle (§6), before m5h is written against it.
 - ~~Whether `orient_repository` and `record_rejected_approach` land in M5.~~ **Settled by the owner on 2026-09-25: both land**, as m5i and m5j.
 - **Whether the ten execution fixtures can run** against the reference executor is m5g's check, not an assumption.
-- **Each live run's cap** is the owner's, set when its estimate exists.
-- **Nothing in this document is evidence of anything.** The evidence is where it is recorded: m5a's code and its mutants in [STATE](../STATE.md), and J2's live run in [JOURNEYS](../../verification/JOURNEYS.md#j2-live-2026-09-25-the-mechanism-held-and-the-model-made-the-projection-worse--failed).
+- **Each live run's cap** is set when its estimate exists: the owner's, under the standing grant above since 2026-09-25.
+- **Nothing in this document is evidence of anything.** The evidence is where it is recorded: m5a's code and its mutants in [STATE](../STATE.md), and J2's live runs in JOURNEYS: [the first](../../verification/JOURNEYS.md#j2-live-2026-09-25-the-mechanism-held-and-the-model-made-the-projection-worse--failed) and [the rerun](../../verification/JOURNEYS.md#j2-live-rerun-2026-09-26-passed--and-the-model-added-nothing).

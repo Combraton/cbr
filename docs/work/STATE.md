@@ -11,9 +11,9 @@ This is a dated navigation snapshot. Reconcile it with Git, linked issues and cu
 
 ## This change — J2 live, rerun and recorded: passed
 
-On `m5/j2-rerun`, off `main` at `80cdfbe` (#44, m5a-3). Rubric v1.1 and the rerun's ceilings were committed and pushed first (`8d08bef`, 22:57:15Z); the rerun followed at 22:57:23Z.
+On `m5/j2-rerun`, off `main` at `80cdfbe` (#44, m5a-3). Rubric v1.1 and the rerun's ceilings were committed and pushed first (`8d08bef`, pushed at 22:57:14Z UTC on 2026-09-25, 04:27 IST on the 26th); the rerun followed at 22:57:23Z.
 
-- **Rubric v1.1**, v1's mechanical changes for the `/2` projection only ([v1.1/RUBRIC.md](../verification/j2-live/v1.1/RUBRIC.md)). Its first independent check found that a run asking nothing was judged from the harness's report alone — a usage row written into the store passed — so v1.1 now reads the store too; a second check with sixteen attacks of its own cleared it.
+- **Rubric v1.1**, v1's mechanical changes for the `/2` projection only ([v1.1/RUBRIC.md](../verification/j2-live/v1.1/RUBRIC.md)). Its first independent check found that a run asking nothing was judged from the harness's report alone — a usage row written into the store passed — so v1.1 now reads the store too; a second check with seventeen attacks of its own cleared it.
 - **The rerun: 46,452 tokens**, 6 calls, all on the core manifest; the red and green logs asked nothing and spent nothing ([READINESS §10](m5/READINESS.md#j2-live-rerun-what-it-spent-2026-09-26)). J2's live runs have spent 166,519 in all.
 - **The result: passed.** Every gate on all twelve arms, no run worse than the rule, every run equal to it; the four red arms useful, the others partial; eighteen judge sheets, every pair identical after redaction ([record](../verification/JOURNEYS.md#j2-live-rerun-2026-09-26-passed--and-the-model-added-nothing)).
 - **What it does not show:** that a model selects better than the rule. On the core manifest both models were offered the five unsupported records and chose nothing, for 22,893 and 23,559 tokens. Whether a model's choice is worth asking for in `project_large_result` is an open question.
