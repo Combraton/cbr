@@ -825,6 +825,28 @@ fn an_input_over_the_projections_capacity_is_insufficient_capacity_and_never_a_p
     );
     assert!(projection_section(&sealed_packet(&fixture, "blob")).is_none());
     provider.stop();
+
+    // **And before its bytes are checked against their digest.** Since
+    // m5a-3 `next` refuses a too-large input too, so the outcome alone no
+    // longer shows the size was checked first; the order does. The blob's
+    // stored object, altered on disk, would be `evidence_unavailable` if
+    // it were read, and it is never read.
+    let path = object_path(&fixture.data(), &blob_digest);
+    let mut altered = std::fs::read(&path).expect("the stored object");
+    altered[0] ^= 1;
+    let mut permissions = std::fs::metadata(&path).expect("metadata").permissions();
+    #[allow(clippy::permissions_set_readonly_false)]
+    permissions.set_readonly(false);
+    std::fs::set_permissions(&path, permissions).expect("writable");
+    std::fs::write(&path, &altered).expect("alters the object");
+    let provider = fixture.start();
+    let inspected = asked(&fixture, "altered-blob", &blob_artifact, &blob_digest, 0);
+    assert_eq!(
+        result(&inspected, ITEM),
+        ("unmet".to_string(), "insufficient_capacity".to_string()),
+        "the stored bytes were read before the size was checked: {inspected:?}"
+    );
+    provider.stop();
 }
 
 /// Plain text in `blocks` blocks of twenty 90-byte lines: each block is
