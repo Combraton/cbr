@@ -2670,10 +2670,107 @@ fn the_harness_stops_against_the_same_worst_case_this_module_computes() {
 // ---- what planning and rendering draw ----------------------------------------------
 
 /// What `work` returns, and how many projections it drew on the way.
+///
+/// **The counter is seen to count before it is read.** It is reset, one
+/// projection is drawn, and it must then read exactly one, so a counter
+/// that was never reset or never counts fails here rather than passing
+/// every `drawn == 0` and `drawn <= bound` it is used for.
 fn drawing<T>(work: impl FnOnce() -> T) -> (T, usize) {
-    let before = DRAWS.with(|draws| draws.get());
+    let bytes = b"{\"n\":0}\n";
+    let read = parse(bytes);
+    let plan = partition(&read, bytes, SUBJECT, false);
+    DRAWS.with(|draws| draws.set(0));
+    draw(
+        &read,
+        bytes,
+        &choose_by_rule(&read),
+        &all(&read),
+        None,
+        &Frame::of(SUBJECT, &plan),
+    );
+    assert_eq!(
+        DRAWS.with(|draws| draws.get()),
+        1,
+        "the counter, reset, did not count the one projection drawn"
+    );
     let value = work();
-    (value, DRAWS.with(|draws| draws.get()) - before)
+    (value, DRAWS.with(|draws| draws.get()) - 1)
+}
+
+#[test]
+fn the_draw_counter_counts_exactly_the_projections_drawn() {
+    // **A counter that never counts passes every bound it is read for**:
+    // each is `drawn == 0` or `drawn <= bound`. So what it counts is held
+    // exactly here, on each path that draws — `draw` itself, the rule's
+    // floor, and `render` on a plan that carries its floor — against a
+    // count worked out from the units.
+    let text = cargo_log(3, 4, &[(0, 1), (2, 3)], 2);
+    let bytes = text.as_bytes();
+    let read = parse(bytes);
+    let floored = read
+        .units
+        .iter()
+        .filter(|unit| unit.kind != Kind::Other)
+        .count();
+    let others: Vec<usize> = (0..read.units.len())
+        .filter(|&at| read.units[at].kind == Kind::Other)
+        .collect();
+    assert!(
+        floored >= 4 && others.len() >= 2,
+        "the premise: {floored} units for the floor, {} others",
+        others.len()
+    );
+    let plan = partition(&read, bytes, SUBJECT, false);
+    let frame = Frame::of(SUBJECT, &plan);
+    let (_, drawn) = drawing(|| {
+        draw(
+            &read,
+            bytes,
+            &choose_by_rule(&read),
+            &all(&read),
+            None,
+            &frame,
+        )
+    });
+    assert_eq!(drawn, 1, "one projection drawn");
+    let (rule, drawn) = drawing(|| floor(&read, bytes, &frame));
+    assert_eq!(
+        drawn, floored,
+        "the floor draws once for each unit it tries"
+    );
+    let carrying = Plan {
+        rule: Some(rule),
+        ..plan.clone()
+    };
+    let (_, drawn) = drawing(|| render(&read, bytes, &choose_by_rule(&read), &carrying, SUBJECT));
+    assert_eq!(drawn, 1, "the rule's arm on a plan that carries its floor");
+    let (_, drawn) = drawing(|| {
+        render(
+            &read,
+            bytes,
+            &choose_by_model(&read, &others),
+            &carrying,
+            SUBJECT,
+        )
+    });
+    assert_eq!(
+        drawn,
+        others.len() + 1,
+        "the model arm draws once for each unit it adds, then once more"
+    );
+    let (_, drawn) = drawing(|| {
+        render(
+            &read,
+            bytes,
+            &Choice {
+                by: By::NotText,
+                chosen: vec![false; read.units.len()],
+            },
+            &plan,
+            SUBJECT,
+        )
+    });
+    assert_eq!(drawn, 1, "bytes that are not text");
 }
 
 /// A JSON document whose run identity is an array of `identity` zeros,
@@ -2916,6 +3013,60 @@ fn a_model_arm_over_the_excerpts_a_projection_holds_is_refused() {
         "published a model arm of {} excerpts",
         refused.map_or(0, |rendered| rendered.excerpts)
     );
+}
+
+#[test]
+fn a_model_arm_of_exactly_the_excerpts_a_projection_holds_is_published_and_one_more_is_not() {
+    // **The refusal's bound is the bound itself**: handed a floor of
+    // exactly `MAX_EXCERPTS` separate records, `render` publishes the model
+    // arm; handed one more, it refuses it. The test above hands thirty,
+    // which a bound one too loose refuses as well.
+    let text: String = (0..60).map(|n| format!("{{\"n\":{n}}}\n")).collect();
+    let bytes = text.as_bytes();
+    let read = parse(bytes);
+    assert_eq!(read.units.len(), 60);
+    let plan = partition(&read, bytes, SUBJECT, true);
+    let model = choose_by_model(&read, &[]);
+    for records in [MAX_EXCERPTS, MAX_EXCERPTS + 1] {
+        let handed_floor: Vec<bool> = (0..read.units.len())
+            .map(|at| at % 2 == 0 && at < 2 * records)
+            .collect();
+        let handed = Plan {
+            asked: plan.parts.clone(),
+            rule: Some(handed_floor),
+            ..plan.clone()
+        };
+        let published = super::render(&read, bytes, &model, &handed, SUBJECT);
+        if records == MAX_EXCERPTS {
+            let published = published.expect("a model arm of exactly the bound was refused");
+            assert_eq!(published.excerpts, MAX_EXCERPTS);
+            assert!(published.content.len() <= PROJECTION_BYTES);
+        } else {
+            assert!(
+                published.is_none(),
+                "published a model arm of {} excerpts",
+                published.map_or(0, |rendered| rendered.excerpts)
+            );
+        }
+    }
+}
+
+#[test]
+fn a_compiler_error_whose_message_is_one_byte_is_named_by_it() {
+    // One byte is a name, not an empty string: the error is named by its
+    // message, not by what it renders.
+    let lines = "{\"reason\":\"compiler-message\",\"message\":{\"message\":\"x\",\"level\":\"error\",\
+                 \"rendered\":\"error[E0425]: cannot find value `x`\"}}\n\
+                 {\"reason\":\"build-finished\",\"success\":false}\n";
+    let bytes = lines.as_bytes();
+    let read = parse(bytes);
+    assert_eq!(read.format, Format::JsonLines);
+    let named: Vec<(&str, Failing)> = read
+        .named
+        .iter()
+        .map(|named| (&lines[named.start..named.end], named.kind))
+        .collect();
+    assert_eq!(named, [("x", Failing::Error)]);
 }
 
 #[test]
