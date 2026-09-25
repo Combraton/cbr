@@ -13,7 +13,7 @@ Tracking: [issue #34](https://github.com/Combraton/cbr/issues/34). Scope: [RELEA
 
 **The owner's decision of 2026-09-25:**
 
-5. **`orient_repository` and `record_rejected_approach` land in v0.1**, so all five of [RELEASE-SCOPE §2](../readiness/RELEASE-SCOPE.md)'s families are M5's — §5 and §9 (m5i and m5j).
+5. **`orient_repository` and `record_rejected_approach` land in v0.1**, so all five of [RELEASE-SCOPE §2](../readiness/RELEASE-SCOPE.md)'s families are M5's — §5 and §9 (m5i and m5j). The owner answered the question this document had left open, in the session, in these words: *"yes land orient_repository and record_rejected_approach for v0.1"*. Where the two go in the order is this session's proposal (§9), not part of the decision.
 
 ## 1. Scope, and the promise
 
@@ -256,12 +256,13 @@ These bounds are already known to be needed, before any is sized:
 
 ## 9. The pull requests, each with its gate
 
-In the order the owner set: J2, then the loop, then the tools, then the families that need both. **The two families added on 2026-09-25 go after m5e and before m5f**, so that maintenance, whose triggers include completed investigations, can start them: m5a, m5b, m5c, m5d, m5e, m5i, m5j, m5f and m5h, with m5g at any point. That order is this session's proposal and the owner's to change.
+In the order the owner set: J2, then the loop, then the tools, then the families that need both. **J2 live failed on 2026-09-25**, so m5a-3 and J2's live rerun come before m5b. **The two families added on 2026-09-25 go after m5e and before m5f**, so that maintenance, whose triggers include completed investigations, can start them. The whole order is m5a, m5a-3 and J2's rerun, m5b, m5c, m5d, m5e, m5i, m5j, m5f and m5h, with m5g at any point. Where m5a-3 and the two families sit is this session's proposal and the owner's to change.
 
 | | Scope | Depends on | Gate |
 |---|---|---|---|
 | **m5 readiness** | This document and the M5 tracking issue. Docs only. | — | The reviewer has seen it. **No M5 code before that.** |
 | **m5a** | **J2**: `project_large_result` on M4's direct calls. The whole payload sealed first, deterministic parsing where the format allows, the model for selection, partitioning or a typed insufficient-capacity outcome. And J2's live harness (§3), dry run only. | Readiness; M4's runtime as it is | **J2's two negative controls**, end to end through the public client with a labelled fake. A projected value is the source's bytes at its cited range. The projection's arithmetic as a test. The harness refuses an input carrying a machine path. |
+| **m5a-3** | **J2's fix, after its live run failed** ([JOURNEYS](../../verification/JOURNEYS.md#j2-live-2026-09-25-the-mechanism-held-and-the-model-made-the-projection-worse--failed)): the parser's failures become a floor a model's choice adds to and cannot remove; a model is offered only what could still be carried, and asked nothing when nothing could; the header names the excerpts the model added. Projection format `/2`. | m5a | **By construction, for every answer a model can give, the model arm carries every byte the rule's arm carries**, as a test over answers and fixtures, with a mutant for each way to break it. No failure the parser found is ever `not_selected`. No call when nothing offered could be carried. m5a's mutants re-run. Then J2 live again, under the frozen rubric with only mechanical changes, frozen before the rerun. |
 | **m5b** | **The loop and its checkpoints**, over M4's single step, with a fixed read and no tools. Durable checkpoint and turn records; code-enforced termination; resume from checkpoint; the readable-set gate at every door; replay turn by turn. | M4's runtime. It follows m5a by the owner's order, not because it needs anything m5a builds. | **J4's control**: a kill between model response and commit leaves exactly one revision, and two with deduplication disabled. Termination by code under a scripted model that never says it is done. The loop's worst case computed against the per-job ceiling. **A loop rebuilt offline reproduces its finding.** The readable-set gate on checkpoints and turn records at fetch, inspect, the listing and replay, both arms of each, with a mutant per door. |
 | **m5c** | **The tools** and their aggregate limits: the seven of §4, their argument bounds, `read`'s reach and the controls that replace the closed set, authorisation again at every tool, negative control 5 extended. **And a projection sealed as its own artifact**, the `cbr.artifact.projection` m5a's STATE proposed, under the source kind §5 reserves for derivation output: m5a carries a projection as the content of a packet section, with each part's exchange a sealed record, and a tool turn is the first thing that takes a projection by handle. The reviewer accepted that split at m5a's review. | m5a, because a large tool result is sealed and projected by J2's family; m5b, for the loop that calls them | §4's table: pre-call control, aggregate limits and resource-discovery isolation, each with a fixture that reaches its bound. **An out-of-view path and a nonexistent one give byte-identical results and records.** Every argument bound a typed outcome, never trimmed, with a fixture at each. A repository outside the view appears in no tool result and no request body, asserted over the bytes sent. Replay's recompute-and-match rule over every tool. A sealed projection is served only to a reader who may read the artifact it projects, at every door, both arms of each. |
 | **m5d** | **`distill_investigation`**, with **the ancestry-root obligation** and its mutant. Started only by a principal's submission. | m5b and m5c: it reads what it distils through the tools | `single_lineage` over one captured artifact twice; the mutant reads `multiple_lineages`. A proposed claim is never binding; its claims are `interpretive` and cited; its unresolved-question list names what it did not reach. |
@@ -323,7 +324,7 @@ An input the baseline carries whole, or refuses, makes no call in either mode, s
 
 ### J2 live: what it spent, 2026-09-25
 
-Run from `main` at `041ad5f`, with its binaries built from a clean tree, the scoring rubric committed and pushed first (`84061eb`, 15:39:31Z), and each invocation's ceiling as decided above.
+Run from `main` at `041ad5f`, with its binaries built from a clean tree, the scoring rubric committed first (`84061eb`, 15:39:31Z, pushed 15:39:34Z), and each invocation's ceiling as decided above.
 
 | Invocation | Started | Took | `--run-ceiling` | Spent | Runs |
 |---|---|---:|---:|---:|---|
@@ -331,7 +332,7 @@ Run from `main` at `041ad5f`, with its binaries built from a clean tree, the sco
 | 2 | 15:40:44Z | 49 s | 1,952,640, the lesser of that and 2,250,000 − 36,410 | **83,657** | `log-m27hs` 19,280, `log-m3` 17,762, `core-m27hs` 23,931, `core-m3` 22,684 |
 
 - **Total 120,067 tokens**: 5.3% of the 2,250,000 held, 4.1% of the 2,928,960 worst case, and 6.1% of the 1,952,640 the dry run's parts allowed. Sixteen calls, none repaired, every one admitted by the local bound alone. Each run's ledger equals the harness's report and the sum of its sealed records' usage.
-- **The estimate was the worst case, and the worst case was far away.** No part came near `PART_BYTES`: the largest request carried 9,808 input tokens, against the 40,680 a part at every bound can cost.
+- **The estimate was the worst case, and in tokens the worst case was far away.** Every part but each input's last was packed to 62 to 93% of `PART_BYTES` in raw bytes, by construction, but the largest request carried 9,808 input tokens and the costliest part 10,348 in all, against the 40,680 a part at every bound can cost: a part's bytes are escaped text, and the bound on tokens is the conservative byte bound.
 - **The run failed its rubric**, and J2 runs again after m5a-3 ([JOURNEYS](../../verification/JOURNEYS.md#j2-live-2026-09-25-the-mechanism-held-and-the-model-made-the-projection-worse--failed)). That rerun's inputs, estimate and ceiling are written here before it runs.
 
 ## What this document does not settle
@@ -341,4 +342,4 @@ Run from `main` at `041ad5f`, with its binaries built from a clean tree, the sco
 - ~~Whether `orient_repository` and `record_rejected_approach` land in M5.~~ **Settled by the owner on 2026-09-25: both land**, as m5i and m5j.
 - **Whether the ten execution fixtures can run** against the reference executor is m5g's check, not an assumption.
 - **Each live run's cap** is the owner's, set when its estimate exists.
-- **Nothing here is evidence of anything.** M5 has made no call and has no code.
+- **Nothing in this document is evidence of anything.** The evidence is where it is recorded: m5a's code and its mutants in [STATE](../STATE.md), and J2's live run in [JOURNEYS](../../verification/JOURNEYS.md#j2-live-2026-09-25-the-mechanism-held-and-the-model-made-the-projection-worse--failed).
