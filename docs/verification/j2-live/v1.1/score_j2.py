@@ -362,10 +362,18 @@ def ranges_of_offer(rec):
 
 # ---- gates ---------------------------------------------------------------
 
-def key_f1(key):
-    """The F1 line the answer key implies: failing tests, then cargo's error lines."""
-    tests = key.get("failing_tests", key.get("failed_status_lines", key.get("failure_outcomes", [])))
-    errors = key.get("cargo_errors", key.get("error_lines", []))
+def key_f1(key, kind):
+    """The F1 line the answer key implies: failing tests, then cargo's error lines.
+
+    **Strict**: each kind reads the field its key names, and a missing field is
+    an error rather than a silent 0. A conformance manifest has no cargo
+    errors, so its count is 0 by the format, not by a default.
+    """
+    field = {"red": ("failing_tests", "cargo_errors"),
+             "green": ("failed_status_lines", "error_lines"),
+             "core": ("failure_outcomes", None)}[kind]
+    tests = key[field[0]]
+    errors = key[field[1]] if field[1] else []
     return len(tests), len(errors)
 
 
@@ -381,7 +389,13 @@ def arm_gates(arm, packet_text, rep, kind, key, source, commit, parts_expected, 
         (f"j2_run problems {rep.get('problems')!r}", rep.get("problems") == [])])
     if section is None:
         return g, None, None, notes, None
-    proj = read_projection(section["content"])
+    try:
+        proj = read_projection(section["content"])
+    except (ValueError, UnicodeDecodeError, KeyError, IndexError) as unreadable:
+        # v1.1: a section the declared format cannot read is an INVALID arm,
+        # never a crash of the scorer.
+        g["C_reverified"] = gate(why, "C_reverified", [(f"unreadable: {unreadable}", False)])
+        return g, None, None, notes, None
     ex = proj["extents"]
     # C: independent re-verification against the source bytes
     tiles, bodies, at = True, True, 0
@@ -437,7 +451,7 @@ def arm_gates(arm, packet_text, rep, kind, key, source, commit, parts_expected, 
         ("names listed on a non-red input", kind == "red" or not proj["named"])]
     if RUBRIC == "v1.1":
         f1 = F1_LINE.match(h[-1] if h else "")
-        want = key_f1(key)
+        want = key_f1(key, kind)
         got = (int(f1.group(1)), int(f1.group(2))) if f1 else None
         e_checks += [
             ("F1: no `failing tests: N; cargo errors: M` line before `failures named:`", f1 is not None),
@@ -578,7 +592,17 @@ def run_score(run, out, key_all, inputs_dir, dry, judged):
                     ("Z_no_tokens", f"the run spent {run.get('tokens')!r} tokens, not 0", run.get("tokens") == 0),
                     ("Z_no_replay", "the run has a replay key", "replay" not in run),
                     ("Z_section_equals_baseline", "the assisted section is not the baseline's byte for byte",
-                     baseline_content is not None and _content(pf) == baseline_content)):
+                     baseline_content is not None and _content(pf) == baseline_content),
+                    # **The store, not only the report**: the harness's word that
+                    # nothing was asked is checked against what the provider wrote.
+                    ("Z_store_ledger_empty",
+                     "no store, or the store's ledger holds rows for a run that asked nothing",
+                     store is not None and store.get("ledger") == []),
+                    ("Z_store_no_records",
+                     "no store, or the store holds a sealed part record for a run that asked nothing",
+                     store is not None and store.get("records") == []),
+                    ("Z_no_charges", "the report lists charges for a run that asked nothing",
+                     run.get("charges") == [])):
                 a["gates"][name] = gate(a["why"], name, [(label, ok)])
             if store is not None:
                 sel = selection(v, _records_of(store, run), key, kind)
