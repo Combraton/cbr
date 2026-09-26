@@ -59,8 +59,8 @@ What it refuses, before anything starts:
 
 And it stops **before** the run that could cross 2,250,000 -- the
 estimate plus half -- rather than after the one that did: the worst case
-of a flow is a computed number, so the arithmetic is done before the
-tokens are.
+of a run, its flow and a selection question per want, is a computed
+number, so the arithmetic is done before the tokens are.
 
 The report holds digests, paths, spans, counts and costs. **It holds no
 repository text**, which is the licence rule for the pilots and is
@@ -96,11 +96,42 @@ ESTIMATE_TOKENS = 1_500_000
 STOP_TOKENS = 2_250_000
 RUN_CEILING_TOKENS = 5_000_000
 
-# READINESS section 3: the worst a request's two-step discovery flow can
-# cost, computed by `discovery::tests` against the real constants rather
-# than estimated here. The run stops *before* a run that could cross the
-# stop, not after one that did.
-WORST_CASE_FLOW_TOKENS = 373_188
+# READINESS section 3: the most a request's two-step discovery flow can
+# hold, and the most one item's selection question can, each question its
+# first send and its widest repair (`model::question_worst`), in whichever
+# dialect a launch configures frames the most. Both are
+# computed against the real constants by `discovery::tests` and
+# `selection::tests`, which read them back from here, rather than estimated
+# here. A run asks at most one selection question per want and then the
+# flow, so what one run can cost is `worst_case_of(run)`, and the run stops
+# *before* a run that could cross the stop, not after one that did.
+#
+# They are what admission can reserve on the serving path. What a
+# provider bills past a reservation is settled on top of them, and
+# `model::question_worst` states when that can happen.
+WORST_CASE_FLOW_TOKENS = 518_628
+WORST_CASE_SELECTION_TOKENS = 167_753
+
+
+def worst_case_of(run):
+    """What one run can cost: its flow, and a selection question per want.
+
+    **Every run asks its items first**, at most one selection question for
+    each thing it wants, under the same job and before discovery. A stop
+    that priced the flow alone started runs that their own item questions
+    could carry past it.
+    """
+    return WORST_CASE_FLOW_TOKENS + len(run["wants"]) * WORST_CASE_SELECTION_TOKENS
+
+
+def priced(run):
+    """The words a stop gives for what a run was priced at."""
+    wants = len(run["wants"])
+    questions = "question" if wants == 1 else "questions"
+    return (
+        f"{worst_case_of(run)} worst case of one flow and {wants} "
+        f"selection {questions}"
+    )
 
 # READINESS section 7: the owner's word covers these three and no
 # others, and all three are public.
@@ -966,6 +997,9 @@ def one_run(run, out, provider, client, live, ceiling, checkout):
         # item 2: the ledger counts one store, so a run that was handed
         # the full cap would be the cap all over again.
         "launch_ceiling": ceiling,
+        # What the stop priced this run at before starting it, so a
+        # reader can set the run's spend beside the bound it was held to.
+        "worst_case_tokens": worst_case_of(run),
         "data": str(work / "data"),
     }
     config, config_body = configuration(work, run, live, run.get("dry_answers", []))
@@ -1134,7 +1168,7 @@ def main(argv=None):
 
         print(f"m4e_run: {'LIVE' if options.live else 'dry run'}, "
               f"{len(manifest['runs'])} runs, estimate {ESTIMATE_TOKENS:,} tokens, "
-              f"stop at {STOP_TOKENS:,}, ceiling {options.run_ceiling:,}")
+              f"stop at {options.stop_tokens:,}, ceiling {options.run_ceiling:,}")
 
         report = {
             "mode": "live" if options.live else "dry-run",
@@ -1142,6 +1176,7 @@ def main(argv=None):
             "stop_tokens": options.stop_tokens,
             "run_ceiling_tokens": options.run_ceiling,
             "worst_case_flow_tokens": WORST_CASE_FLOW_TOKENS,
+            "worst_case_selection_tokens": WORST_CASE_SELECTION_TOKENS,
             "remedy_for_an_ambiguous_question": REMEDY,
             "runs": [],
         }
@@ -1154,19 +1189,19 @@ def main(argv=None):
             # a computed number (READINESS section 3), so the arithmetic
             # can be done before the tokens are.
             remaining = options.run_ceiling - spent
-            if spent + WORST_CASE_FLOW_TOKENS > options.stop_tokens:
+            worst = worst_case_of(run)
+            if spent + worst > options.stop_tokens:
                 report["stopped"] = (
                     f"{run['id']} was not started: {spent} spent plus the "
-                    f"{WORST_CASE_FLOW_TOKENS} worst case of one flow would "
-                    f"cross the stop of {options.stop_tokens}"
+                    f"{priced(run)} would cross the stop of {options.stop_tokens}"
                 )
                 print(f"m4e_run: STOPPED. {report['stopped']}", file=sys.stderr)
                 break
-            if remaining < WORST_CASE_FLOW_TOKENS:
+            if remaining < worst:
                 report["stopped"] = (
                     f"{run['id']} was not started: {remaining} left under the "
-                    f"ceiling of {options.run_ceiling} is less than one "
-                    f"flow's {WORST_CASE_FLOW_TOKENS} worst case"
+                    f"ceiling of {options.run_ceiling} is less than the "
+                    f"{priced(run)}"
                 )
                 print(f"m4e_run: STOPPED. {report['stopped']}", file=sys.stderr)
                 break

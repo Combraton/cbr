@@ -209,6 +209,43 @@ pub enum Shape {
     Dominated,
     /// One file the question reaches and one a term does.
     Narrow,
+    /// Two ordinary files the question reaches, and more files than the
+    /// candidate set has room for whose every span is mostly C0 control
+    /// characters, which a request body carries at six bytes each.
+    EscapeDense,
+}
+
+/// How many escape-dense files [`Shape::EscapeDense`] writes: more than
+/// the candidate set can take two spans of, so the set fills with them.
+pub const DENSE_FILES: usize = 12;
+
+/// The word only the escape-dense files hold, so a proposed term reaches
+/// them and nothing else.
+pub const DENSE_TERM: &str = "sluice";
+
+/// One escape-dense file: two spans, each a line the question reaches and
+/// a line of U+0001 long enough that retrieval clips the span at its
+/// 4,096 bytes. `emphasis` repeats [`DENSE_TERM`] so that a term ranks
+/// this file ahead of the others.
+pub fn escape_dense(file: usize, emphasis: usize) -> String {
+    let mut text = String::new();
+    for span in 1..=2 {
+        text.push_str(&format!(
+            "The queue drains on shutdown through {} {file}.{span}.\n",
+            vec![DENSE_TERM; emphasis].join(" ")
+        ));
+        text.push_str(&"\u{1}".repeat(4_090));
+        text.push('\n');
+    }
+    text
+}
+
+/// A directory path whose carried length, escaped as a request body
+/// carries it, is past 1,024 bytes while its raw length stays well inside
+/// what a file system accepts: each component is 100 `x` and 100 U+0001.
+pub fn long_escaped_directory() -> String {
+    let component = format!("{}{}", "x".repeat(100), "\u{1}".repeat(100));
+    format!("nested/{component}/{component}/{component}")
 }
 
 pub struct Fixture {
@@ -268,6 +305,13 @@ impl Fixture {
         Self::build(&[], answers, "when_it_could_admit", Shape::Dominated)
     }
 
+    /// A fixture whose candidate set fills with **spans a request body
+    /// carries at up to six bytes a byte**, for the property that the
+    /// choice is still asked within the published flow.
+    pub fn escape_dense(answers: &[&str]) -> Self {
+        Self::build(&[], answers, "when_it_could_admit", Shape::EscapeDense)
+    }
+
     fn build(barriers_enabled: &[&str], answers: &[&str], counting: &str, shape: Shape) -> Self {
         let directory = tempfile::tempdir().expect("temp dir");
         let sockets = directory.path().join("s");
@@ -286,6 +330,22 @@ impl Fixture {
         if shape == Shape::Narrow {
             std::fs::write(checkout.join("unasked.md"), UNASKED).expect("writes");
             std::fs::write(checkout.join("merger.md"), ONLY_BY_TERM).expect("writes");
+        } else if shape == Shape::EscapeDense {
+            // **Ordinary text beside it**, so a frame that should not
+            // change can be seen not to.
+            std::fs::write(checkout.join("cache.md"), many_candidates()).expect("writes");
+            for file in 1..=DENSE_FILES {
+                std::fs::write(
+                    checkout.join(format!("dense-{file}.md")),
+                    escape_dense(file, 1),
+                )
+                .expect("writes");
+            }
+            // And one whose path is past the carried cap, which the term
+            // ranks first.
+            let nested = checkout.join(long_escaped_directory());
+            std::fs::create_dir_all(&nested).expect("a nested directory");
+            std::fs::write(nested.join("sluice.md"), escape_dense(0, 3)).expect("writes");
         } else {
             // **A second file an item can name**, so a request can need two
             // calls. One item per request never exercises a compile holding
