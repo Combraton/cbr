@@ -145,9 +145,30 @@ pub enum Refusal {
     PerJob,
     /// A launch-configured ceiling for this whole run.
     RunCeiling,
+    /// This store once settled a call above its reservation.
+    // m5-settle tests-first stub: nothing constructs it until the budget
+    // stage puts the stop in admission.
+    #[cfg_attr(not(test), allow(dead_code))]
+    Overrun,
+    /// This store once recorded the local bound being wrong.
+    // m5-settle tests-first stub, as above.
+    #[cfg_attr(not(test), allow(dead_code))]
+    BoundUnsound,
 }
 
 impl Refusal {
+    /// Every refusal, for the tests that must see each one.
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub const ALL: [Refusal; 7] = [
+        Refusal::WindowExhausted,
+        Refusal::MonthExhausted,
+        Refusal::PerRequest,
+        Refusal::PerJob,
+        Refusal::RunCeiling,
+        Refusal::Overrun,
+        Refusal::BoundUnsound,
+    ];
+
     /// Whether a **tighter figure for the same request** could turn this
     /// refusal into an admission.
     ///
@@ -164,7 +185,7 @@ impl Refusal {
             | Refusal::MonthExhausted
             | Refusal::PerJob
             | Refusal::RunCeiling => true,
-            Refusal::PerRequest => false,
+            Refusal::PerRequest | Refusal::Overrun | Refusal::BoundUnsound => false,
         }
     }
 
@@ -177,6 +198,8 @@ impl Refusal {
             Refusal::PerRequest => "request_over_ceiling",
             Refusal::PerJob => "job_over_ceiling",
             Refusal::RunCeiling => "run_over_ceiling",
+            Refusal::Overrun => "reservation_overrun",
+            Refusal::BoundUnsound => "local_bound_unsound",
         }
     }
 }

@@ -757,3 +757,92 @@ print(json.dumps({name: j2_run.checked(one, source)["problems"] for name, one in
         );
     }
 }
+
+/// Run the harness **with the fake's usage raised** for any run whose dry
+/// answers include `overbilled:`, which is how a dry run's store records
+/// an overrun: the fake bills that answer's usage whole.
+fn overbilling_harness(usage: u64, arguments: &[&str]) -> (bool, String, String) {
+    let program = r#"
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location("j2_run", sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+m4e = sys.modules["m4e_run"]
+original = m4e.config_of
+def config_of(run, live, dry_answers, replay=False):
+    body = original(run, live, dry_answers, replay)
+    if "model" in body and any(answer.startswith("overbilled:") for answer in dry_answers):
+        body["model"]["usage"] = int(sys.argv[2])
+    return body
+m4e.config_of = config_of
+sys.exit(module.main(sys.argv[3:]))
+"#;
+    let output = Command::new("python3")
+        .args(["-c", program])
+        .arg(script())
+        .arg(usage.to_string())
+        .args(arguments)
+        .args(["--binaries", binaries().to_str().expect("utf-8")])
+        .output()
+        .expect("python3 runs");
+    (
+        output.status.success(),
+        String::from_utf8_lossy(&output.stdout).to_string(),
+        String::from_utf8_lossy(&output.stderr).to_string(),
+    )
+}
+
+#[test]
+fn no_run_starts_after_a_store_that_recorded_a_stop() {
+    // **J2's twin of m4e's rule.** A store that recorded an overrun admits
+    // nothing again, so the sequence ends there rather than opening a new
+    // store for the next run on the assumption that just failed. The
+    // first run's fake overbills its first part.
+    let directory = tempfile::tempdir().expect("temp dir");
+    let out = directory.path().join("out");
+    let input = directory.path().join("cargo-test.log");
+    std::fs::write(&input, test_log(8, 100, &[(1, 17), (5, 2)])).expect("input");
+    let written = manifest(
+        directory.path(),
+        "stopped",
+        &head(),
+        &[("first", &input, ""), ("second", &input, "")],
+    );
+    let text = std::fs::read_to_string(&written).expect("manifest");
+    let first = text.replacen(
+        r#""dry_answers":["ids:u1"]"#,
+        r#""dry_answers":["overbilled:ids:u1","ids:u1"]"#,
+        1,
+    );
+    assert_ne!(first, text);
+    std::fs::write(&written, first).expect("manifest");
+    let ceiling = declared_in("m4e_run.py", "RUN_CEILING_TOKENS").to_string();
+    let (ok, stdout, stderr) = overbilling_harness(
+        200_000,
+        &[
+            "--manifest",
+            written.to_str().expect("utf-8"),
+            "--out",
+            out.to_str().expect("utf-8"),
+            "--dry-run",
+            "--run-ceiling",
+            &ceiling,
+        ],
+    );
+    assert!(ok, "the dry run failed: {stdout}\n{stderr}");
+    let report = report(&out);
+    let runs = at(&report, &["runs"]).as_array().expect("runs").len();
+    assert_eq!(
+        runs, 1,
+        "the run after `first` was started; a store that records a stop ends the sequence:\n{stderr}\n{report:?}"
+    );
+    let stopped = at(&report, &["stopped"]).as_str().unwrap_or_default();
+    assert!(
+        stopped.contains("first") && stopped.contains("overrun"),
+        "the stop does not name the store and what it recorded: {stopped:?}"
+    );
+    assert!(
+        stderr.contains("STOPPED") && stderr.contains("no further run is started"),
+        "{stderr}"
+    );
+}

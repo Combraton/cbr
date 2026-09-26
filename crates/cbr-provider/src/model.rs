@@ -1070,6 +1070,20 @@ pub const BOUND_UNSOUND: &str = "bound_unsound";
 /// The reason a call reports once the bound is known to be wrong.
 pub const BOUND_UNSOUND_REASON: &str = "local_bound_unsound";
 
+// m5-settle tests-first stubs: named so the tests compile, and written by
+// nothing until the model stage.
+/// The ledger kind recording a completion admitted on a count and billed
+/// input above the count and the margin.
+#[cfg_attr(not(test), allow(dead_code))]
+pub const COUNT_UNSOUND: &str = "count_unsound";
+/// The reason a call reports when its bill passed its reservation.
+#[cfg_attr(not(test), allow(dead_code))]
+pub const OVERRUN_REASON: &str = "reservation_overrun";
+/// The ledger note recording a count-path completion refused because its
+/// count and its reservation would pass the send the local bound refused.
+#[cfg_attr(not(test), allow(dead_code))]
+pub const ATTEMPT_OVER_SEND: &str = "attempt_over_send";
+
 /// A failure after the send, settled by whether the provider said anything
 /// about what it charged.
 fn settlement_for(usage: Option<u64>) -> Settlement {

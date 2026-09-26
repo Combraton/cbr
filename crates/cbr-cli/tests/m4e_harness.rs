@@ -1550,3 +1550,186 @@ fn the_harness_reads_a_store_with_a_log_and_no_shared_memory_from_a_copy() {
         "reading the store changed it: {read:?}"
     );
 }
+
+/// The kinds the ledger counts as spend, read from the ledger's own
+/// source, so the harness is held to the list the provider enforces.
+fn spent_kinds() -> Vec<String> {
+    let source = std::fs::read_to_string(root().join("crates/cbr-provider/src/budget.rs"))
+        .expect("the ledger's source");
+    let at = source
+        .find("const SPENT")
+        .expect("the ledger names what it counts as spend");
+    let open = at + source[at..].find("kind IN (").expect("a list of kinds") + "kind IN (".len();
+    let close = open + source[open..].find(')').expect("the list closes");
+    source[open..close]
+        .split(',')
+        .map(|kind| kind.trim().trim_matches('\'').to_string())
+        .collect()
+}
+
+#[test]
+fn the_harness_counts_what_the_ledger_counts() {
+    // **A run's spend is what its ledger counts as spend, and nothing
+    // else.** A note is a fact about a call — which path admitted it, an
+    // anomaly, a bill above a reservation — and its tokens are not a
+    // second charge: an overrun row carries the bill that the settled row
+    // already counts. So the harness sums the ledger's own list of spend
+    // kinds, and a kind written later is not spend until that list says so.
+    let spent = spent_kinds();
+    assert!(spent.contains(&"usage".to_string()), "{spent:?}");
+    let notes = [
+        "admitted_local",
+        "admitted_count",
+        "anomaly",
+        "divergence",
+        "mismatch",
+        "refusal",
+        "run_over_ceiling",
+        "bound_unsound",
+        "count_unsound",
+        "overrun",
+        "attempt_over_send",
+        "a_kind_written_later",
+    ];
+    let mut rows = Vec::new();
+    let mut expected = 0;
+    for (at, kind) in spent.iter().enumerate() {
+        let tokens = 1 << at;
+        rows.push(format!("[\"{kind}\",{tokens}]"));
+        expected += tokens;
+    }
+    for (at, kind) in notes.iter().enumerate() {
+        rows.push(format!("[\"{kind}\",{}]", 1_000 * (at + 1)));
+    }
+    let program = r#"
+import importlib.util, json, pathlib, sqlite3, sys
+spec = importlib.util.spec_from_file_location("m4e_run", sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+data = pathlib.Path(sys.argv[2])
+data.mkdir(parents=True)
+c = sqlite3.connect(data / "cbr.sqlite")
+c.execute("CREATE TABLE model_ledger (id INTEGER PRIMARY KEY, job TEXT, request TEXT, "
+          "kind TEXT, tokens INTEGER, estimate INTEGER)")
+c.executemany("INSERT INTO model_ledger (job, request, kind, tokens, estimate) "
+              "VALUES ('job', 'r', ?, ?, 0)", json.loads(sys.argv[3]))
+c.commit()
+c.close()
+total, charges = module.spend(data)
+print(json.dumps({"total": total, "kinds": sorted({kind for kind, _ in charges})}))
+"#;
+    let directory = tempfile::tempdir().expect("temp dir");
+    let output = Command::new("python3")
+        .args(["-c", program])
+        .arg(script())
+        .arg(directory.path().join("data"))
+        .arg(format!("[{}]", rows.join(",")))
+        .output()
+        .expect("python3 runs");
+    assert!(
+        output.status.success(),
+        "the harness could not read the store: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let read = cbr_encoding::parse(String::from_utf8_lossy(&output.stdout).trim().as_bytes())
+        .expect("the answer is JSON");
+    assert_eq!(
+        read.get("total"),
+        Some(&Value::Int(expected)),
+        "the harness counts something other than the ledger's spend {spent:?}: {read:?}"
+    );
+}
+
+/// Run the harness **with the fake's usage raised** for any run whose dry
+/// answers include `overbilled:`, which is how a dry run's store records
+/// an overrun: the fake bills that answer's usage whole, and the usage a
+/// dry run configures is below what a question reserves.
+fn overbilling_harness(script: &Path, usage: u64, arguments: &[&str]) -> (bool, String, String) {
+    let program = r#"
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location("harness", sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+m4e = sys.modules.get("m4e_run", module)
+original = m4e.config_of
+def config_of(run, live, dry_answers, replay=False):
+    body = original(run, live, dry_answers, replay)
+    if "model" in body and any(answer.startswith("overbilled:") for answer in dry_answers):
+        body["model"]["usage"] = int(sys.argv[2])
+    return body
+m4e.config_of = config_of
+sys.exit(module.main(sys.argv[3:]))
+"#;
+    let output = Command::new("python3")
+        .args(["-c", program])
+        .arg(script)
+        .arg(usage.to_string())
+        .args(arguments)
+        .args(["--binaries", binaries().to_str().expect("utf-8")])
+        .output()
+        .expect("python3 runs");
+    (
+        output.status.success(),
+        String::from_utf8_lossy(&output.stdout).to_string(),
+        String::from_utf8_lossy(&output.stderr).to_string(),
+    )
+}
+
+#[test]
+fn no_run_starts_after_a_store_that_recorded_a_stop() {
+    // **A store that stopped is the end of the sequence.** The ledger that
+    // recorded an overrun — or an unsound bound, or an unsound count —
+    // admits nothing again, and a harness that opened a new store for the
+    // next run would start on the same assumption that just failed there.
+    // Here the first run's fake overbills its first answer.
+    let fixture = standing_in_for_cbr();
+    let directory = fixture.directory.path();
+    let out = directory.join("out");
+    let model = "MiniMax-M2.7-highspeed";
+    let first = run_of("first", &fixture.checkout, "cbr", model, "").replace(
+        r#""dry_answers":["choose:c2""#,
+        r#""dry_answers":["overbilled:choose:c2""#,
+    );
+    assert!(first.contains("overbilled:"), "{first}");
+    let both = written(
+        directory,
+        "stopped",
+        &[first, run_of("second", &fixture.checkout, "cbr", model, "")],
+    );
+    let (ok, stdout, stderr) = overbilling_harness(
+        &script(),
+        60_000,
+        &[
+            "--manifest",
+            both.to_str().expect("utf-8"),
+            "--out",
+            out.to_str().expect("utf-8"),
+            "--dry-run",
+        ],
+    );
+    assert!(ok, "the dry run failed:\n{stdout}\n{stderr}");
+    let report: Value =
+        cbr_encoding::parse(&std::fs::read(out.join("report.json")).expect("a report"))
+            .expect("JSON");
+    let runs = report
+        .get("runs")
+        .and_then(Value::as_array)
+        .expect("runs")
+        .len();
+    assert_eq!(
+        runs, 1,
+        "the run after `first` was started; a store that records a stop ends the sequence:\n{stderr}\n{report:?}"
+    );
+    let stopped = report
+        .get("stopped")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    assert!(
+        stopped.contains("first") && stopped.contains("overrun"),
+        "the stop does not name the store and what it recorded: {stopped:?}"
+    );
+    assert!(
+        stderr.contains("STOPPED") && stderr.contains("no further run is started"),
+        "{stderr}"
+    );
+}

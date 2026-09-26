@@ -517,3 +517,120 @@ fn a_selection_offers_no_more_candidates_than_its_figure_is_priced_for() {
     );
     provider.stop();
 }
+
+/// Every ledger row, as (job, request, kind, tokens, estimate).
+fn every_row(data: &std::path::Path) -> Vec<(String, String, String, i64, i64)> {
+    let connection = rusqlite::Connection::open(data.join("cbr.sqlite")).expect("opens the store");
+    let mut statement = connection
+        .prepare("SELECT job, request, kind, tokens, estimate FROM model_ledger ORDER BY id")
+        .expect("the ledger table exists");
+    statement
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, i64>(3)?,
+                row.get::<_, i64>(4)?,
+            ))
+        })
+        .expect("queries")
+        .map(|row| row.expect("row"))
+        .collect()
+}
+
+/// What the store counts as spend: the kinds the ledger's `SPENT` names.
+fn spend_of(rows: &[(String, String, String, i64, i64)]) -> i64 {
+    rows.iter()
+        .filter(|row| {
+            matches!(
+                row.2.as_str(),
+                "reservation" | "usage" | "unknown" | "provider_exhausted" | "not_sent"
+            )
+        })
+        .map(|row| row.3)
+        .sum()
+}
+
+#[test]
+fn a_provider_billing_past_its_reservation_stops_the_store_for_good() {
+    // **m5-settle's journey.** A provider bills a call far above what it
+    // reserved. The bill is charged whole and passes the run's ceiling —
+    // once, by that call's excess — and the row saying so names the call.
+    // The call ends on it, and from then on the store admits nothing: not
+    // the next request, which is refused for the stop and not for the
+    // ceiling it now stands past, and not a request after a restart. A
+    // person sees each of these through `cbr`.
+    let fixture = Fixture::answering(&["choose:c1"]);
+    let members = r#""context":{"compile":true},"model":{"dialect":"responses","model":"MiniMax-M2.7-highspeed","answers":["overbilled:choose:c1","choose:c1"],"usage":60000,"counting":"when_it_could_admit"}"#;
+    let ceiling: i64 = 20_000;
+    let launch = ["--model-run-ceiling", "20000"];
+    let provider = fixture.start_configured_with(members, &launch);
+
+    let first = prepared(&fixture, "first", "1");
+    let rows = every_row(&fixture.data());
+    for row in &rows {
+        eprintln!("JOURNEY after the first request: {row:?}");
+    }
+    let spend = spend_of(&rows);
+    eprintln!("JOURNEY the run holds {spend} against its ceiling of {ceiling}");
+    eprintln!("JOURNEY the first item: {:?}", result(&first, "q"));
+    assert_eq!(
+        result(&first, "q"),
+        ("unmet".to_string(), "reservation_overrun".to_string()),
+        "{first:?}"
+    );
+    let billed = rows
+        .iter()
+        .find(|row| row.2 == "usage" && row.3 == 60_000)
+        .unwrap_or_else(|| panic!("the bill was not charged whole: {rows:?}"));
+    assert!(
+        rows.contains(&(
+            billed.0.clone(),
+            billed.1.clone(),
+            "overrun".to_string(),
+            60_000,
+            billed.4
+        )),
+        "no overrun row names the call that passed its reservation: {rows:?}"
+    );
+    assert!(
+        spend > ceiling && spend - ceiling <= 60_000 - billed.4,
+        "the run holds {spend}: not past {ceiling} once, by at most the call's excess"
+    );
+
+    let sent = bodies_sent(&fixture.data()).len();
+    let second = prepared(&fixture, "second", "1");
+    eprintln!("JOURNEY the next request: {:?}", result(&second, "q"));
+    assert_eq!(
+        result(&second, "q"),
+        ("unmet".to_string(), "reservation_overrun".to_string()),
+        "{second:?}"
+    );
+    assert_eq!(
+        bodies_sent(&fixture.data()).len(),
+        sent,
+        "a body was sent after the overrun"
+    );
+    assert_eq!(
+        spend_of(&every_row(&fixture.data())),
+        spend,
+        "something was reserved after the overrun"
+    );
+    provider.stop();
+
+    let provider = fixture.start_configured_with(members, &launch);
+    let third = prepared(&fixture, "third", "1");
+    eprintln!("JOURNEY after a restart: {:?}", result(&third, "q"));
+    assert_eq!(
+        result(&third, "q"),
+        ("unmet".to_string(), "reservation_overrun".to_string()),
+        "{third:?}"
+    );
+    assert_eq!(
+        bodies_sent(&fixture.data()).len(),
+        sent,
+        "a body was sent after a restart"
+    );
+    provider.stop();
+}

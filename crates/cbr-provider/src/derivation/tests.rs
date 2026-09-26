@@ -233,14 +233,14 @@ fn every_reason_the_runtime_can_produce_is_one_a_record_can_carry() {
         "index_unavailable",
         "work_panicked",
         "model_network_not_permitted",
+        // What the call path itself ends a call with.
+        crate::model::BOUND_UNSOUND_REASON,
+        crate::model::OVERRUN_REASON,
+        "model_answer_mismatched",
+        "generation_limit_not_declared",
+        "ledger_unavailable",
     ];
-    for refusal in [
-        Refusal::WindowExhausted,
-        Refusal::MonthExhausted,
-        Refusal::PerRequest,
-        Refusal::PerJob,
-        Refusal::RunCeiling,
-    ] {
+    for refusal in Refusal::ALL {
         produced.push(refusal.reason());
     }
     for settlement in [
@@ -263,12 +263,14 @@ fn every_reason_the_runtime_can_produce_is_one_a_record_can_carry() {
     ] {
         produced.push(unusable.reason());
     }
-    for reason in produced {
-        assert!(
-            REASONS.contains(&reason),
-            "the table lost {reason}, which the runtime produces"
-        );
-    }
+    let missing: Vec<&str> = produced
+        .into_iter()
+        .filter(|reason| !REASONS.contains(reason))
+        .collect();
+    assert!(
+        missing.is_empty(),
+        "the table lacks {missing:?}, which the runtime produces"
+    );
 }
 
 #[test]

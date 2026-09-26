@@ -138,6 +138,9 @@ pub(crate) struct Held {
     /// after that send's own reservation was admitted: every figure here
     /// was within the ceiling when it was admitted.
     pub admitted_at: Vec<u64>,
+    /// Every ledger row afterwards, as [`Ledger::rows`] reads them, for a
+    /// test that asserts a note.
+    pub rows: Vec<(String, String, u64)>,
 }
 
 /// One run of a sweep, and what it was run with.
@@ -260,6 +263,7 @@ fn asked(
         outcome,
         counts: script.counts.get(),
         admitted_at: script.admitted_at.into_inner(),
+        rows: Ledger::new(connection).rows().expect("the ledger reads"),
     }
 }
 
@@ -311,21 +315,6 @@ fn bounds(body: &Request) -> (u64, u64) {
         budget::input_bound(&body.serialize(DIALECT), messages),
         budget::input_bound(&counted, messages),
     )
-}
-
-/// **The most a count can settle above its own reservation**, over `body`
-/// and each of its repairs: the count is reserved at its own body's bound
-/// and settled at no more than the completion's, and the completion body
-/// carries three members the count body does not.
-pub(crate) fn count_overage(body: &Request) -> u64 {
-    std::iter::once(body.clone())
-        .chain(REPAIRABLE.iter().map(|unusable| repaired(body, *unusable)))
-        .map(|body| {
-            let (local, counted) = bounds(&body);
-            local.saturating_sub(counted)
-        })
-        .max()
-        .unwrap_or(0)
 }
 
 /// Every ceiling at which the admission path decides something different
