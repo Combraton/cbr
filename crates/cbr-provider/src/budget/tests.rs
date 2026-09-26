@@ -928,3 +928,136 @@ fn two_admissions_racing_for_the_last_of_a_window_admit_exactly_one() {
         "and the window was never over-committed"
     );
 }
+
+// ---- m5-settle, verification round 3: the ROLLBACK window ----
+
+static WINDOW_WAITING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+static WINDOW_DONE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+static WINDOW_ARMED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+static WINDOW_WORKER: Mutex<Option<std::thread::JoinHandle<String>>> = Mutex::new(None);
+
+/// The worker's busy handler: it says it is waiting on the write lock, and
+/// waits.
+fn window_waits(attempts: i32) -> bool {
+    WINDOW_WAITING.store(true, std::sync::atomic::Ordering::SeqCst);
+    std::thread::sleep(std::time::Duration::from_millis(2));
+    attempts < 5_000
+}
+
+/// The settling connection's PROFILE callback. It fires once a statement
+/// has finished, so for `ROLLBACK` once the write lock is released and
+/// before anything after it in `settle` runs; it holds there until the
+/// waiting worker's admission has ended.
+fn window_after_rollback(event: rusqlite::trace::TraceEvent<'_>) {
+    if let rusqlite::trace::TraceEvent::Profile(statement, _) = event
+        && statement.sql().trim() == "ROLLBACK"
+        && WINDOW_ARMED.load(std::sync::atomic::Ordering::SeqCst)
+    {
+        let started = std::time::Instant::now();
+        while !WINDOW_DONE.load(std::sync::atomic::Ordering::SeqCst)
+            && started.elapsed() < std::time::Duration::from_secs(10)
+        {
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+    }
+}
+
+/// A settlement above its reservation that the store refuses inside its
+/// transaction, while another worker of this process waits on that
+/// transaction's lock to admit. Returns the worker's admission and the rows.
+fn refused_while_an_admission_waits(
+    wal: bool,
+) -> (String, Vec<(String, String, String, u64, u64)>) {
+    WINDOW_WAITING.store(false, std::sync::atomic::Ordering::SeqCst);
+    WINDOW_DONE.store(false, std::sync::atomic::Ordering::SeqCst);
+    WINDOW_ARMED.store(false, std::sync::atomic::Ordering::SeqCst);
+    let directory = tempfile::tempdir().expect("temp dir");
+    let path = directory.path().join("ledger.sqlite");
+    let connection = Connection::open(&path).expect("opens");
+    if wal {
+        connection
+            .execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;")
+            .expect("wal");
+    }
+    Ledger::migrate(&connection).expect("migrates");
+    let ledger = Ledger::new(&connection);
+    let reservation = ledger
+        .admit(T0, "job", "r", 10_000)
+        .expect("admits")
+        .expect("admitted");
+    let worker_path = path.clone();
+    connection
+        .create_scalar_function(
+            "window_hold",
+            0,
+            rusqlite::functions::FunctionFlags::SQLITE_UTF8,
+            move |_| {
+                // Inside the settlement's transaction, so the write lock is
+                // held: another worker starts an admission and waits on it.
+                let path = worker_path.clone();
+                *WINDOW_WORKER.lock().unwrap() = Some(std::thread::spawn(move || {
+                    let beside = Connection::open(&path).expect("opens");
+                    beside.busy_handler(Some(window_waits)).expect("handler");
+                    let admitted = Ledger::new(&beside).admit(T0, "worker", "w", 1);
+                    WINDOW_DONE.store(true, std::sync::atomic::Ordering::SeqCst);
+                    format!("{admitted:?}")
+                }));
+                let started = std::time::Instant::now();
+                while !WINDOW_WAITING.load(std::sync::atomic::Ordering::SeqCst) {
+                    assert!(started.elapsed() < std::time::Duration::from_secs(10));
+                    std::thread::sleep(std::time::Duration::from_millis(1));
+                }
+                Ok(0)
+            },
+        )
+        .expect("function");
+    // The store refuses the settlement inside its transaction (an I/O
+    // error, a full disk, a constraint): the lock was taken, and the
+    // ROLLBACK releases it.
+    connection
+        .execute_batch(
+            "CREATE TEMP TRIGGER refuses BEFORE UPDATE ON model_ledger
+             WHEN OLD.kind = 'reservation' AND NEW.tokens > OLD.estimate
+             BEGIN SELECT window_hold(); SELECT RAISE(ABORT, 'refused'); END;",
+        )
+        .expect("trigger");
+    connection.trace_v2(
+        rusqlite::trace::TraceEventCodes::SQLITE_TRACE_PROFILE,
+        Some(window_after_rollback),
+    );
+    WINDOW_ARMED.store(true, std::sync::atomic::Ordering::SeqCst);
+    let settled = ledger.settle(T0, &reservation, Settlement::Usage(15_000));
+    WINDOW_ARMED.store(false, std::sync::atomic::Ordering::SeqCst);
+    connection.trace_v2(rusqlite::trace::TraceEventCodes::empty(), None);
+    assert!(settled.is_err(), "the settlement landed: {settled:?}");
+    assert!(
+        ledger.keeps(&reservation),
+        "the process did not keep the overrun"
+    );
+    let worker = WINDOW_WORKER
+        .lock()
+        .unwrap()
+        .take()
+        .expect("the worker started")
+        .join()
+        .expect("the worker ends");
+    (worker, attributed(&connection))
+}
+
+#[test]
+fn an_admission_waiting_on_a_refused_settlements_own_lock_is_refused() {
+    // **Round 3's deterministic probe (the checker's).** An overrun the
+    // store refused is kept by the process **before** the ROLLBACK that
+    // releases the settlement's write lock, so an admission already
+    // waiting on that lock reads the process's stop when it is granted
+    // the lock. Kept after the ROLLBACK, there is a window in which the
+    // lock is free and the process holds no stop, and the waiting worker
+    // is admitted after the store refused an overrun.
+    for wal in [true, false] {
+        let (worker, rows) = refused_while_an_admission_waits(wal);
+        assert_eq!(
+            worker, "Ok(Err(Overrun))",
+            "wal={wal}: an admission waiting on the refused settlement's lock was granted: {rows:?}"
+        );
+    }
+}
