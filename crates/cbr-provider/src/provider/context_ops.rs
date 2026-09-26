@@ -4076,6 +4076,7 @@ impl Provider {
     /// capture instants of the packets attempted so far, the failed one
     /// included, so the retry replays what already applied.
     fn seal_packets(&self, job: &Value, tick: &mut Tick) -> Result<(), TickError> {
+        let mut sealed_at_peer = false;
         for outgoing in std::mem::take(&mut tick.outgoing) {
             match outgoing {
                 Outgoing::Peer {
@@ -4101,12 +4102,19 @@ impl Provider {
                             captures: tick.captures.clone(),
                         }));
                     }
+                    sealed_at_peer = true;
                 }
                 Outgoing::Object { digest, content } => {
                     self.store.publish_object(&digest, &content)?;
                     crate::barriers::pause(crate::barriers::PACKET_AFTER_OBJECT_PUBLISHED);
                 }
             }
+        }
+        // After the loop, not after each send: a barrier holds only the
+        // first time it is reached, and a test killing the provider here
+        // needs every packet of the tick sealed.
+        if sealed_at_peer {
+            crate::barriers::pause(crate::barriers::PACKET_AFTER_PEER_SEALED);
         }
         Ok(())
     }
