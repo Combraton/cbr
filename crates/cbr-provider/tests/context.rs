@@ -22,6 +22,13 @@
 //!   even when this store holds one of the same id and digest, and the
 //!   citation of one that named no provider names this one (EVIDENCE
 //!   section 2).
+//! - **A packet the publication guard refuses ends its job**, with the typed
+//!   reason `packet_invalid` (the owner's ruling of 2026-09-26). Every
+//!   subscriber still preparing is `refused` with that reason, in one batch
+//!   built from the stored records and apart from the refused tick; one
+//!   already published under `context.updates` keeps its revision. It holds
+//!   at the deadline, across ticks, across a restart, and across a `SIGKILL`
+//!   before the refusal commits.
 
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::fs::PermissionsExt;
@@ -1040,8 +1047,8 @@ fn a_packet_holding_an_id_outside_the_identifier_grammar_is_never_published() {
     // string at all: `context.script` checks nothing about a section's id.
     // So the packet is checked where it is sealed, before anything leaves
     // the tick — no capture, no object, no artifact, no event — and a job
-    // whose packet fails is logged and passed over, while every other job
-    // on the provider carries on.
+    // whose packet fails ends, its request refused as `packet_invalid`,
+    // while every other job on the provider carries on.
     //
     // The log names **where** each bad id is, as a JSON pointer, and never
     // the id itself: the id is often a path, and a provider's log is the
@@ -1089,7 +1096,10 @@ fn a_packet_holding_an_id_outside_the_identifier_grammar_is_never_published() {
             Some(0),
             "a packet with an id outside the grammar was published: {refused:?}"
         );
-        assert_eq!(text(&refused, &["state"]), "preparing", "{refused:?}");
+        // **Refused, not left preparing** (the owner's ruling of
+        // 2026-09-26): nothing will ever be published for it.
+        assert_eq!(text(&refused, &["state"]), "refused", "{refused:?}");
+        assert_eq!(text(&refused, &["reason"]), "packet_invalid", "{refused:?}");
     }
 
     let data = directory.path().join("context-data");
@@ -1208,8 +1218,8 @@ fn a_scripted_packet_missing_a_required_id_is_never_published() {
     // leave a section's `section_id` out, which the facts then carry as
     // `null`, or a citation's `citation_id`, which they then do not carry
     // at all; the inspect schema requires both. Each is refused at the same
-    // door as an id outside the grammar, and the log names where it is
-    // missing.
+    // door as an id outside the grammar, ends its request the same way,
+    // `refused` as `packet_invalid`, and the log names where it is missing.
     let directory = tempfile::tempdir().expect("temp dir");
     let evidence = r#""evidence":{"provider":"context-1","artifact":{"kind":"evidence.artifact","id":"log-1"},"digest":"sha256:0000000000000000000000000000000000000000000000000000000000000000"}"#;
     let script = |section: &str| format!(r#"[{{"section":{{{section}}}}},{{"publish":{{}}}}]"#);
@@ -1253,6 +1263,16 @@ fn a_scripted_packet_missing_a_required_id_is_never_published() {
                 Some(0),
                 "{request}: a packet missing a required id was published: {refused:?}"
             );
+            assert_eq!(
+                text(&refused, &["state"]),
+                "refused",
+                "{request}: {refused:?}"
+            );
+            assert_eq!(
+                text(&refused, &["reason"]),
+                "packet_invalid",
+                "{request}: {refused:?}"
+            );
         }
     }
 
@@ -1280,5 +1300,680 @@ fn a_scripted_packet_missing_a_required_id_is_never_published() {
             "the log names the missing citation id at {pointer}: {citation}"
         );
     }
+    ctx.kill();
+}
+
+// ---- a packet the guard refuses ends its job -------------------------------
+
+/// A section id outside the identifier grammar, which only a script can
+/// write now. `secret-path` stands for what such an id usually was, a
+/// repository path, and is what the log must never repeat.
+const OUTSIDE_GRAMMAR: &str = "s/x-secret-path";
+
+/// Between building the batch that ends a refused job and committing it.
+/// Named here and in no descriptor, because no fixture waits on it.
+const REFUSED_BEFORE_COMMIT: &str = "context.packet.refused_before_commit";
+
+/// [`ContextProvider::submit`]'s one item as a refusal leaves it: required,
+/// so `unmet`, for the reason the job ended.
+const REFUSED_ITEM: &str = r#"[{"item_id":"i-1","obligation":"required_before_start","reason":"packet_invalid","result":"unmet"}]"#;
+
+/// A scripted section for item `i-1` of [`ContextProvider::submit`]'s
+/// request. The item's check reads the section's source and never its id,
+/// so the section satisfies `i-1` whatever `id` is.
+fn source_section(id: &str) -> String {
+    format!(
+        r#"{{"section":{{"section_id":"{id}","item_id":"i-1","label":"source_inspected","content":"fn main() {{}}","source":{{"repository":"repo-a","path":"src/main.rs","tree":"tree-1"}}}}}}"#
+    )
+}
+
+/// A conformance launch whose `context.script` control holds `scripts`,
+/// with `extra` top-level members, such as a clock, spliced in before it.
+fn scripted(scripts: &str, extra: &str) -> String {
+    format!(
+        r#"{{"format":"combraton-conformance-config/1","provider_id":"context-1","principal":"owner","authority_principals":["owner"]{extra},"context":{{"scripts":{{{scripts}}}}}}}"#
+    )
+}
+
+fn canonical(value: &Value) -> String {
+    String::from_utf8(cbr_encoding::to_canonical(value)).expect("utf-8")
+}
+
+/// Inspect `request` until it leaves `preparing`. Each inspect is a
+/// request, and a tick runs at the start of every one.
+fn settled(ctx: &mut ContextProvider, request: &str) -> Value {
+    let mut last = Value::Null;
+    for _ in 0..50 {
+        last = ctx.inspect(request);
+        if text(&last, &["state"]) != "preparing" {
+            return last;
+        }
+    }
+    panic!("{request} never left preparing within 50 polls: {last:?}");
+}
+
+/// The provider log of the process last started over `directory`: each
+/// start creates the file afresh.
+fn log(directory: &Path) -> String {
+    std::fs::read_to_string(directory.join("context-stderr.log")).expect("the log")
+}
+
+/// How many lines of `log` report a packet of `request`'s refused.
+fn refusals(log: &str, request: &str) -> usize {
+    log.lines()
+        .filter(|line| line.contains(&format!("request {request}:")))
+        .count()
+}
+
+/// One recorded event: its subject as `(kind, id)`, its type, the subject
+/// revision it was recorded at and its payload as canonical JSON.
+#[derive(Debug)]
+struct Recorded {
+    subject: (String, String),
+    event: String,
+    revision: i64,
+    payload: String,
+}
+
+/// Every event the provider has recorded, in stream order.
+fn recorded(ctx: &mut ContextProvider) -> Vec<Recorded> {
+    let read = ctx.call("core.events.read", None, r#"{"from":"start","limit":1000}"#);
+    at(result(&read), &["items"])
+        .as_array()
+        .expect("items")
+        .iter()
+        .filter_map(|item| item.get("event"))
+        .map(|event| Recorded {
+            subject: (
+                text(event, &["subject", "kind"]).to_string(),
+                text(event, &["subject", "id"]).to_string(),
+            ),
+            event: text(event, &["type"]).to_string(),
+            revision: match at(event, &["revision"]) {
+                Value::Int(revision) => *revision,
+                other => panic!("a revision: {other:?}"),
+            },
+            payload: canonical(at(event, &["payload"])),
+        })
+        .collect()
+}
+
+/// One subject's events as `(type, payload)`, in stream order.
+fn of_subject(events: &[Recorded], kind: &str, id: &str) -> Vec<(String, String)> {
+    events
+        .iter()
+        .filter(|e| e.subject.0 == kind && e.subject.1 == id)
+        .map(|e| (e.event.clone(), e.payload.clone()))
+        .collect()
+}
+
+/// A subject's record as the store holds it. No operation serves a job's
+/// record, so this is how a test reads one.
+fn stored(data: &Path, kind: &str, id: &str) -> Value {
+    let connection = rusqlite::Connection::open(data.join("cbr.sqlite")).expect("opens the store");
+    let value: String = connection
+        .query_row(
+            "SELECT value FROM subjects WHERE kind = ?1 AND id = ?2",
+            [kind, id],
+            |row| row.get(0),
+        )
+        .unwrap_or_else(|error| panic!("no {kind} {id}: {error}"));
+    parse(&value)
+}
+
+/// The ids of every evidence artifact the store holds.
+fn artifacts(data: &Path) -> Vec<String> {
+    let connection = rusqlite::Connection::open(data.join("cbr.sqlite")).expect("opens the store");
+    connection
+        .prepare("SELECT id FROM subjects WHERE kind = 'evidence.artifact' ORDER BY id")
+        .expect("prepares")
+        .query_map([], |row| row.get::<_, String>(0))
+        .expect("queries")
+        .collect::<Result<_, _>>()
+        .expect("reads")
+}
+
+/// Nothing of a publication was recorded: no seal and no packet.
+fn assert_nothing_published(events: &[Recorded]) {
+    for event in events {
+        assert!(
+            !matches!(
+                event.event.as_str(),
+                "context.packet.published" | "evidence.artifact.sealed"
+            ),
+            "a refused packet left a publication behind: {events:?}"
+        );
+    }
+}
+
+/// The one-step script every refusal test below starts from: a section
+/// the guard refuses, then `publish`.
+fn refused_script(request: &str) -> String {
+    format!(
+        r#""{request}":[{},{{"publish":{{}}}}]"#,
+        source_section(OUTSIDE_GRAMMAR)
+    )
+}
+
+#[test]
+fn a_packet_the_guard_refuses_ends_its_job_and_refuses_its_request_as_packet_invalid() {
+    // **The owner's ruling of 2026-09-26**: a packet the publication guard
+    // refuses ends its job with the typed reason `packet_invalid`. Before
+    // it, the request stayed `preparing` for ever, compiled again and
+    // logged again at every tick.
+    //
+    // The request ends `refused`. `ready`, `partial` and `unmet` each
+    // name a published revision (CONTEXT section 3), and there is none to
+    // name; `refused` is the one terminal state that needs no packet. That
+    // state is this session's reading within the ruling, which named the
+    // job's ending and its reason.
+    //
+    // The scripted section would satisfy `i-1`, so an item read off the
+    // job's sections would say `satisfied`, and one read as still
+    // preparing `pending`. Nothing was delivered: the required item is
+    // `unmet`, for the reason the job ended.
+    let directory = tempfile::tempdir().expect("temp dir");
+    let mut ctx = ContextProvider::start(directory.path(), &scripted(&refused_script("r-bad"), ""));
+    let submitted = ctx.submit("r-bad", "2030-01-01T01:00:00Z");
+    assert_eq!(text(result(&submitted), &["outcome", "state"]), "preparing");
+
+    let refused = settled(&mut ctx, "r-bad");
+    assert_eq!(text(&refused, &["state"]), "refused", "{refused:?}");
+    assert_eq!(text(&refused, &["reason"]), "packet_invalid", "{refused:?}");
+    assert!(
+        refused.get("needed").is_none(),
+        "an invalid packet is not a capacity that could be raised: {refused:?}"
+    );
+    assert_eq!(
+        at(&refused, &["packets"]).as_array().map(<[_]>::len),
+        Some(0),
+        "{refused:?}"
+    );
+    let job = r#"{"id":"r-bad","kind":"context.job"}"#;
+    assert_eq!(canonical(at(&refused, &["job"])), job);
+    assert_eq!(canonical(at(&refused, &["items"])), REFUSED_ITEM);
+
+    // The request's change, then the job's ending, and nothing published.
+    let events = recorded(&mut ctx);
+    assert_eq!(
+        of_subject(&events, "context.request", "r-bad"),
+        vec![
+            (
+                "context.request.changed".to_string(),
+                format!(r#"{{"job":{job},"state":"preparing"}}"#)
+            ),
+            (
+                "context.request.changed".to_string(),
+                format!(r#"{{"job":{job},"reason":"packet_invalid","state":"refused"}}"#)
+            ),
+        ],
+        "{events:?}"
+    );
+    assert_eq!(
+        of_subject(&events, "context.job", "r-bad"),
+        vec![(
+            "context.job.ended".to_string(),
+            r#"{"reason":"packet_invalid"}"#.to_string()
+        )],
+        "{events:?}"
+    );
+    let position = |wanted: &dyn Fn(&Recorded) -> bool| {
+        events
+            .iter()
+            .position(wanted)
+            .unwrap_or_else(|| panic!("not recorded: {events:?}"))
+    };
+    let preparing = position(&|e| e.payload.contains(r#""state":"preparing""#));
+    let changed = position(&|e| e.payload.contains(r#""state":"refused""#));
+    let ended = position(&|e| e.event == "context.job.ended");
+    assert!(
+        changed < ended,
+        "the request's change comes before the job's ending: {events:?}"
+    );
+    // One change raises the request's revision once, and the inspect
+    // reports the revision the change was recorded at.
+    assert_eq!(
+        events[changed].revision,
+        events[preparing].revision + 1,
+        "{events:?}"
+    );
+    assert_eq!(
+        at(&refused, &["revision"]),
+        &Value::Int(events[changed].revision)
+    );
+    assert_nothing_published(&events);
+
+    // Ended from the job as it was stored, not from the tick that was
+    // refused: nothing that tick advanced was saved.
+    let stored_job = stored(
+        &directory.path().join("context-data"),
+        "context.job",
+        "r-bad",
+    );
+    assert_eq!(text(&stored_job, &["state"]), "ended", "{stored_job:?}");
+    assert_eq!(text(&stored_job, &["reason"]), "packet_invalid");
+    assert_eq!(
+        at(&stored_job, &["cursor"]),
+        &Value::Int(0),
+        "{stored_job:?}"
+    );
+    assert_eq!(
+        at(&stored_job, &["sections"]).as_array().map(<[_]>::len),
+        Some(0),
+        "{stored_job:?}"
+    );
+    ctx.kill();
+}
+
+#[test]
+fn a_refused_request_stays_refused_across_ticks_and_restarts_and_its_job_is_never_compiled_again() {
+    // **Refused is terminal.** Before the ruling the job was compiled
+    // again at every tick, and logged again, because nothing recorded that
+    // it had been tried. Now it has ended, so no tick walks it, and its
+    // one log line is the only one there will be, in this process or the
+    // next.
+    let directory = tempfile::tempdir().expect("temp dir");
+    let config = scripted(&refused_script("r-bad"), "");
+    let mut ctx = ContextProvider::start(directory.path(), &config);
+    ctx.submit("r-bad", "2030-01-01T01:00:00Z");
+    let refused = settled(&mut ctx, "r-bad");
+    assert_eq!(text(&refused, &["state"]), "refused", "{refused:?}");
+    for _ in 0..10 {
+        let again = ctx.inspect("r-bad");
+        assert_eq!(
+            canonical(&again),
+            canonical(&refused),
+            "a later tick changed a refused request"
+        );
+    }
+    let logged = log(directory.path());
+    assert_eq!(refusals(&logged, "r-bad"), 1, "{logged}");
+    let data = directory.path().join("context-data");
+    let objects_before = objects(&data).len();
+    ctx.kill();
+
+    let mut restarted = ContextProvider::start(directory.path(), &config);
+    for _ in 0..5 {
+        let again = restarted.inspect("r-bad");
+        assert_eq!(
+            canonical(&again),
+            canonical(&refused),
+            "the restart changed a refused request"
+        );
+    }
+    let events = recorded(&mut restarted);
+    assert_eq!(
+        events
+            .iter()
+            .filter(|e| e.event == "context.job.ended")
+            .count(),
+        1,
+        "{events:?}"
+    );
+    let logged = log(directory.path());
+    assert_eq!(
+        refusals(&logged, "r-bad"),
+        0,
+        "the restarted provider compiled the ended job again: {logged}"
+    );
+    assert_eq!(objects(&data).len(), objects_before);
+    restarted.kill();
+}
+
+#[test]
+fn every_request_sharing_a_job_the_guard_refuses_is_refused_with_it() {
+    // **The subscribers of one job share its sections, and so its
+    // refusal.** A section dropped from a narrower subscriber's packet
+    // for capacity is still named there, as an omission, and the guard
+    // reads omission ids too: no subscriber's own packet would have been
+    // valid. Every subscriber still preparing ends with the job, whatever
+    // its own deadline, and the job ends once.
+    let directory = tempfile::tempdir().expect("temp dir");
+    let clock = directory.path().join("clock");
+    set_clock(&clock, "2030-01-01T00:00:00Z");
+    let script = format!(
+        r#""r-first":[{{"wait_until":"2030-01-01T00:10:00Z"}},{},{{"publish":{{}}}}]"#,
+        source_section(OUTSIDE_GRAMMAR)
+    );
+    let mut ctx = ContextProvider::start_with(
+        directory.path(),
+        &scripted(
+            &script,
+            &format!(r#","clock":{{"file":"{}"}}"#, clock.display()),
+        ),
+        &["context.required_before_start", "context.shared_jobs"],
+    );
+    let job = r#"{"id":"r-first","kind":"context.job"}"#;
+    for request in ["r-first", "r-second"] {
+        let submitted = ctx.submit(request, "2030-01-01T01:00:00Z");
+        let outcome = at(result(&submitted), &["outcome"]);
+        assert_eq!(text(outcome, &["state"]), "preparing", "{submitted:?}");
+        // The second joins the first's job, which waits for the clock.
+        assert_eq!(canonical(at(outcome, &["job"])), job, "{submitted:?}");
+    }
+
+    set_clock(&clock, "2030-01-01T00:10:00Z");
+    for request in ["r-first", "r-second"] {
+        let refused = settled(&mut ctx, request);
+        assert_eq!(
+            text(&refused, &["state"]),
+            "refused",
+            "{request}: {refused:?}"
+        );
+        assert_eq!(
+            text(&refused, &["reason"]),
+            "packet_invalid",
+            "{request}: {refused:?}"
+        );
+        assert_eq!(canonical(at(&refused, &["job"])), job, "{request}");
+        assert_eq!(
+            canonical(at(&refused, &["items"])),
+            REFUSED_ITEM,
+            "{request}"
+        );
+        assert_eq!(
+            at(&refused, &["packets"]).as_array().map(<[_]>::len),
+            Some(0),
+            "{request}: {refused:?}"
+        );
+    }
+    let events = recorded(&mut ctx);
+    assert_eq!(
+        of_subject(&events, "context.job", "r-first"),
+        vec![(
+            "context.job.ended".to_string(),
+            r#"{"reason":"packet_invalid"}"#.to_string()
+        )],
+        "{events:?}"
+    );
+    assert_nothing_published(&events);
+    ctx.kill();
+}
+
+#[test]
+fn an_update_the_guard_refuses_ends_the_job_and_leaves_the_published_revision_current() {
+    // **A request already delivered keeps what it was delivered.** Under
+    // `context.updates` revision 1 is published and the job carries on
+    // towards revision 2, which the guard refuses. The job ends, and the
+    // request is not refused: it has a packet, and that packet stays
+    // current. The ending shows only on the job, as `context.job.ended`.
+    let directory = tempfile::tempdir().expect("temp dir");
+    let clock = directory.path().join("clock");
+    set_clock(&clock, "2030-01-01T00:00:00Z");
+    let script = format!(
+        r#""r":[{},{{"publish":{{}}}},{{"wait_until":"2030-01-01T00:10:00Z"}},{},{{"publish":{{}}}}]"#,
+        source_section("s-1"),
+        source_section(OUTSIDE_GRAMMAR)
+    );
+    let mut ctx = ContextProvider::start_with(
+        directory.path(),
+        &scripted(
+            &script,
+            &format!(r#","clock":{{"file":"{}"}}"#, clock.display()),
+        ),
+        &["context.required_before_start", "context.updates"],
+    );
+    ctx.submit("r", "2030-01-01T01:00:00Z");
+    let published = (0..50)
+        .find_map(|_| {
+            let inspected = ctx.inspect("r");
+            (at(&inspected, &["packets"]).as_array().map(<[_]>::len) == Some(1))
+                .then_some(inspected)
+        })
+        .expect("revision 1 was never published");
+    assert_eq!(text(&published, &["state"]), "ready", "{published:?}");
+
+    set_clock(&clock, "2030-01-01T00:10:00Z");
+    let events = (0..50)
+        .find_map(|_| {
+            let events = recorded(&mut ctx);
+            events
+                .iter()
+                .any(|e| e.event == "context.job.ended")
+                .then_some(events)
+        })
+        .expect("the job never ended: a refused update left it running");
+    assert_eq!(
+        of_subject(&events, "context.job", "r"),
+        vec![(
+            "context.job.ended".to_string(),
+            r#"{"reason":"packet_invalid"}"#.to_string()
+        )],
+        "{events:?}"
+    );
+    assert!(
+        !events
+            .iter()
+            .any(|e| e.payload.contains(r#""state":"refused""#)),
+        "a request that was delivered a packet was refused: {events:?}"
+    );
+
+    let after = ctx.inspect("r");
+    assert_eq!(text(&after, &["state"]), "ready", "{after:?}");
+    assert!(after.get("reason").is_none(), "{after:?}");
+    assert_eq!(
+        at(&after, &["revision"]),
+        at(&published, &["revision"]),
+        "the request's revision moved"
+    );
+    let packets = at(&after, &["packets"])
+        .as_array()
+        .expect("packets")
+        .to_vec();
+    assert_eq!(packets.len(), 1, "{packets:?}");
+    assert_eq!(at(&packets[0], &["current"]), &Value::Bool(true));
+    assert_eq!(
+        canonical(&after),
+        canonical(&published),
+        "revision 1 is read as it was published"
+    );
+    assert_eq!(
+        artifacts(&directory.path().join("context-data")),
+        ["packet.r.1"],
+        "no artifact for the refused revision"
+    );
+    ctx.kill();
+}
+
+#[test]
+fn a_refusal_commits_nothing_of_the_tick_that_was_refused() {
+    // **The refused tick is dropped whole, and the refusal is built apart
+    // from it.** Here one tick publishes revision 1, a valid packet, then
+    // refuses revision 2. Nothing of that tick commits, not revision 1's
+    // artifact and not its publication, so the request was never
+    // delivered anything and is refused like any other. Revision 1's
+    // object was written before the refusal and no row names it; the
+    // start-time collection pass removes it. Only a script publishes twice
+    // in one tick.
+    let directory = tempfile::tempdir().expect("temp dir");
+    let script = format!(
+        r#""r":[{},{{"publish":{{}}}},{},{{"publish":{{}}}}]"#,
+        source_section("s-1"),
+        source_section(OUTSIDE_GRAMMAR)
+    );
+    let config = scripted(&script, "");
+    let features = ["context.required_before_start", "context.updates"];
+    let mut ctx = ContextProvider::start_with(directory.path(), &config, &features);
+    ctx.submit("r", "2030-01-01T01:00:00Z");
+    let refused = settled(&mut ctx, "r");
+    assert_eq!(text(&refused, &["state"]), "refused", "{refused:?}");
+    assert_eq!(text(&refused, &["reason"]), "packet_invalid", "{refused:?}");
+    assert_eq!(
+        at(&refused, &["packets"]).as_array().map(<[_]>::len),
+        Some(0),
+        "{refused:?}"
+    );
+    let data = directory.path().join("context-data");
+    assert!(
+        artifacts(&data).is_empty(),
+        "an artifact of the refused tick was committed: {:?}",
+        artifacts(&data)
+    );
+    assert_nothing_published(&recorded(&mut ctx));
+    // The premise: revision 1 was sealed in the tick that was refused.
+    assert_eq!(objects(&data).len(), 1, "{:?}", objects(&data));
+    ctx.kill();
+
+    let mut restarted = ContextProvider::start_with(directory.path(), &config, &features);
+    assert_eq!(canonical(&restarted.inspect("r")), canonical(&refused));
+    assert!(
+        objects(&data).is_empty(),
+        "an object no row names survived the restart: {:?}",
+        objects(&data)
+    );
+    restarted.kill();
+}
+
+#[test]
+fn a_request_refused_after_content_was_prepared_reports_no_item_satisfied() {
+    // **What was prepared was never delivered.** The first tick commits a
+    // section that satisfies `i-1`, and while the request is preparing its
+    // inspect says so. The packet that would have carried the section is
+    // refused, so nothing satisfied `i-1` for the consumer: it ends
+    // `unmet`, for the reason the job ended, however far preparation got.
+    let directory = tempfile::tempdir().expect("temp dir");
+    let clock = directory.path().join("clock");
+    set_clock(&clock, "2030-01-01T00:00:00Z");
+    let script = format!(
+        r#""r-bad":[{},{{"wait_until":"2030-01-01T00:10:00Z"}},{},{{"publish":{{}}}}]"#,
+        source_section("s-1"),
+        source_section(OUTSIDE_GRAMMAR)
+    );
+    let mut ctx = ContextProvider::start(
+        directory.path(),
+        &scripted(
+            &script,
+            &format!(r#","clock":{{"file":"{}"}}"#, clock.display()),
+        ),
+    );
+    ctx.submit("r-bad", "2030-01-01T01:00:00Z");
+    let preparing = ctx.inspect("r-bad");
+    assert_eq!(text(&preparing, &["state"]), "preparing", "{preparing:?}");
+    assert_eq!(
+        text(
+            &at(&preparing, &["items"]).as_array().expect("items")[0],
+            &["result"]
+        ),
+        "satisfied",
+        "the premise: what was prepared satisfies i-1: {preparing:?}"
+    );
+
+    set_clock(&clock, "2030-01-01T00:10:00Z");
+    let refused = settled(&mut ctx, "r-bad");
+    assert_eq!(text(&refused, &["state"]), "refused", "{refused:?}");
+    assert_eq!(text(&refused, &["reason"]), "packet_invalid", "{refused:?}");
+    assert_eq!(canonical(at(&refused, &["items"])), REFUSED_ITEM);
+    ctx.kill();
+}
+
+#[test]
+fn a_kill_before_the_refusal_commits_leaves_nothing_and_the_restart_refuses_once() {
+    // **The refusal is one batch, and its log line follows the commit.**
+    // The provider is killed with the batch that ends the job built and
+    // not committed. None of it is visible afterwards: the request is
+    // still preparing, the job still running, and nothing was logged — a
+    // line written first would report a refusal that never happened. The
+    // restart refuses the request, once.
+    let directory = tempfile::tempdir().expect("temp dir");
+    let barriers = directory.path().join("barriers");
+    std::fs::create_dir(&barriers).expect("barrier dir");
+    let config = |enabled: &str| {
+        scripted(
+            &refused_script("r-bad"),
+            &format!(
+                r#","test_barriers":{{"directory":"{}","enabled":[{enabled}]}}"#,
+                barriers.display()
+            ),
+        )
+    };
+
+    let mut ctx = ContextProvider::start(
+        directory.path(),
+        &config(&format!(r#""{REFUSED_BEFORE_COMMIT}""#)),
+    );
+    let submitted = ctx.submit("r-bad", "2030-01-01T01:00:00Z");
+    assert_eq!(text(result(&submitted), &["outcome", "state"]), "preparing");
+    ctx.send("context.request.inspect", None, r#"{"request":"r-bad"}"#);
+    wait_for(
+        &barriers.join(format!("{REFUSED_BEFORE_COMMIT}.reached")),
+        "the refusal's batch reaching its commit",
+    );
+    let mut killed = ctx;
+    killed.child.kill().expect("SIGKILL");
+    killed.child.wait().expect("reaped");
+    assert!(
+        killed.read().is_none(),
+        "killed before the refusal committed, the provider must not have answered"
+    );
+    drop(killed);
+    let logged = log(directory.path());
+    assert_eq!(
+        refusals(&logged, "r-bad"),
+        0,
+        "a refusal was logged before it committed: {logged}"
+    );
+    let data = directory.path().join("context-data");
+    assert_eq!(
+        text(&stored(&data, "context.request", "r-bad"), &["state"]),
+        "preparing"
+    );
+    assert_eq!(
+        text(&stored(&data, "context.job", "r-bad"), &["state"]),
+        "running"
+    );
+
+    let mut restarted = ContextProvider::start(directory.path(), &config(""));
+    let refused = settled(&mut restarted, "r-bad");
+    assert_eq!(text(&refused, &["state"]), "refused", "{refused:?}");
+    assert_eq!(text(&refused, &["reason"]), "packet_invalid", "{refused:?}");
+    let events = recorded(&mut restarted);
+    let count = |wanted: &dyn Fn(&Recorded) -> bool| events.iter().filter(|e| wanted(e)).count();
+    assert_eq!(
+        count(&|e| e.payload.contains(r#""state":"refused""#)),
+        1,
+        "{events:?}"
+    );
+    assert_eq!(count(&|e| e.event == "context.job.ended"), 1, "{events:?}");
+    let logged = log(directory.path());
+    assert_eq!(refusals(&logged, "r-bad"), 1, "{logged}");
+    restarted.kill();
+}
+
+#[test]
+fn a_request_the_guard_refuses_at_its_deadline_ends_refused_too() {
+    // **The deadline goes through the same door.** A request still
+    // preparing at its deadline is published with whatever it has. When
+    // what it has is a section the guard refuses, it ends like any other
+    // refused packet, rather than staying `preparing` past its deadline.
+    // The job's reason is `packet_invalid`, not `deadline_passed`: the
+    // refusal is what ended it.
+    let directory = tempfile::tempdir().expect("temp dir");
+    let mut ctx = ContextProvider::start(
+        directory.path(),
+        &scripted(
+            &format!(r#""r-bad":[{}]"#, source_section(OUTSIDE_GRAMMAR)),
+            r#","clock":{"fixed":"2030-01-01T00:00:00Z"}"#,
+        ),
+    );
+    let submitted = ctx.submit("r-bad", "2030-01-01T00:00:00Z");
+    assert_eq!(text(result(&submitted), &["outcome", "state"]), "preparing");
+    let refused = settled(&mut ctx, "r-bad");
+    assert_eq!(text(&refused, &["state"]), "refused", "{refused:?}");
+    assert_eq!(text(&refused, &["reason"]), "packet_invalid", "{refused:?}");
+    assert_eq!(canonical(at(&refused, &["items"])), REFUSED_ITEM);
+    assert_eq!(
+        at(&refused, &["packets"]).as_array().map(<[_]>::len),
+        Some(0),
+        "{refused:?}"
+    );
+    let events = recorded(&mut ctx);
+    assert_eq!(
+        of_subject(&events, "context.job", "r-bad"),
+        vec![(
+            "context.job.ended".to_string(),
+            r#"{"reason":"packet_invalid"}"#.to_string()
+        )],
+        "{events:?}"
+    );
     ctx.kill();
 }

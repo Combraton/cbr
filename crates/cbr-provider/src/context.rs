@@ -1102,6 +1102,16 @@ pub fn item_results(
         .collect()
 }
 
+/// Item results for a request whose job ended without publishing it, for
+/// `reason`.
+///
+/// **A scaffold with no behaviour yet**, so the test that states what it
+/// must return compiles and fails for its own reason: it returns nothing.
+#[cfg_attr(not(test), allow(dead_code))]
+pub fn refused_items(_record: &Value, _reason: &str) -> Vec<Value> {
+    Vec::new()
+}
+
 /// A request's state from its item results (CONTEXT section 3).
 pub fn state_of(items: &[Value]) -> &'static str {
     if items.iter().any(|i| text(i, &["result"]) == "unmet") {
@@ -1769,6 +1779,62 @@ mod tests {
         assert_eq!(text(&results[1], &["result"]), "degraded");
         let pending = item_results(&record, &job("[]"), false, None);
         assert_eq!(text(&pending[0], &["result"]), "pending");
+    }
+
+    #[test]
+    fn a_request_refused_after_preparing_satisfies_no_item() {
+        // **What a job prepared is not what a consumer was delivered.** A
+        // request whose packet the guard refused was delivered nothing, so
+        // each item is `unmet` if required and `degraded` if advisory, for
+        // the refusal's reason — including an item the job's sections
+        // would have satisfied, and never `pending`, since nothing more
+        // will be prepared.
+        let items = format!(
+            "[{},{},{}]",
+            source_item("req", "required_before_start", "a"),
+            source_item("adv", "advisory", "b"),
+            source_item("met", "required_before_start", "c")
+        );
+        let record = record(&items, 4096);
+        let prepared = job(
+            r#"[{"section_id":"s","item_id":"met","label":"binding","historical":false,"content":"x","source":{"repository":"r","path":"c"}}]"#,
+        );
+        // The premise: read off the job, `met` is satisfied, and the rest
+        // are pending while it prepares.
+        let published = item_results(&record, &prepared, true, None);
+        assert_eq!(text(&published[2], &["result"]), "satisfied");
+        let preparing = item_results(&record, &prepared, false, None);
+        assert_eq!(text(&preparing[0], &["result"]), "pending");
+
+        let refused: Vec<(String, String, String, String)> =
+            refused_items(&record, "packet_invalid")
+                .iter()
+                .map(|item| {
+                    let field = |name: &str| text(item, &[name]).to_string();
+                    (
+                        field("item_id"),
+                        field("obligation"),
+                        field("result"),
+                        field("reason"),
+                    )
+                })
+                .collect();
+        let expected = |id: &str, obligation: &str, result: &str| {
+            (
+                id.to_string(),
+                obligation.to_string(),
+                result.to_string(),
+                "packet_invalid".to_string(),
+            )
+        };
+        assert_eq!(
+            refused,
+            vec![
+                expected("req", "required_before_start", "unmet"),
+                expected("adv", "advisory", "degraded"),
+                expected("met", "required_before_start", "unmet"),
+            ]
+        );
     }
 
     #[test]
