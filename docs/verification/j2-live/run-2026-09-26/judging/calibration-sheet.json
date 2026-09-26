@@ -1,0 +1,26 @@
+{
+ "pair": "P1",
+ "judge": "calib-rerun",
+ "A": {
+  "J1": {
+   "score": 4,
+   "why": "All 18 failing tests are carried by name (bytes 4401-5109 and 8935-10179), and all 18 panic messages with file:line are carried in full (bytes 5121-7021: j2_harness.rs:36:5 'j2_run.py is missing' x5 and :503:5 ModuleNotFoundError; bytes 10191-14827: journey_two.rs:467:46 'a header, then a failures line' x10, plus :1070:5 and :788:9 with their left/right values). The per-target results (7475-7722, 15740-15997) and the final '2 targets failed' summary (65161-65257) are carried too. The one large omission, 21855-65161 (over_projection), holds no failure."
+  },
+  "J2": {
+   "score": 3,
+   "why": "The header says 'failures named: 21' and counts the non-test line 'error: test failed...' (bytes 7574-7638) as a failure. That is minor, and the carried result lines at 7475 (6 failed) and 15740 (12 failed) plus the summary at 65161-65257 correct it to 18 in 2 targets. Nothing else points toward a false conclusion."
+  }
+ },
+ "B": {
+  "J1": {
+   "score": 2,
+   "why": "Most names are identifiable only from the header list (15 of 18 tests; 3 appear only as 'and 5 more' at 9879-9968). None of the 18 assertions or file:line locations is carried, because every panic sits inside o7 (bytes 4594-7475) and o10 (bytes 9133-15740). Only the counts 6 failed (7475-7574) and 12 failed (15740-15840) are shown, so the consumer must fetch to learn what anything asserted."
+  },
+  "J2": {
+   "score": 2,
+   "why": "The ranges holding every failure and assertion (4594-7475 and 9133-15740) are marked 'not_selected' for this task. The final summary is not carried: 25021-65257 is omitted as over_projection. That leaves the header's 21 against the 6+12=18 in the carried result lines unresolved, since the 3 extra could be in the unseen tail. This is a material ambiguity that only fetching resolves."
+  }
+ },
+ "prefer": "A",
+ "prefer_why": "A answers the task outright: all 18 failing names plus their panic messages, file:line and left/right values (bytes 5121-7021 and 10191-14827), with the total confirmed by the carried summary. B carries only passing-result filler and header names, and omits every assertion under a 'not_selected' reason."
+}

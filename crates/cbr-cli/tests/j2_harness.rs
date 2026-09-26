@@ -249,7 +249,7 @@ fn the_harness_refuses_every_run_it_should_before_anything_is_spent() {
     // An output directory inside this repository.
     let inside = root().join("target").join("j2-out");
     assert!(refused(&good, &["--dry-run"], &inside).contains("is inside"));
-    // `--live` without the owner's cap, and without the permit. Neither
+    // `--live` without a cap, and without the permit. Neither
     // passes `--permit-model-network`: the cap is refused first.
     assert!(refused(&good, &["--live"], &out).contains("--live needs --run-ceiling"));
     assert!(

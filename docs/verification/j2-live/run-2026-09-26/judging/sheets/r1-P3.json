@@ -1,0 +1,6 @@
+{"pair": "P3", "judge": "r1",
+  "A": {"J1": {"score": 3, "why": "The consumer correctly concludes that nothing failed, from the carried summary {pass: 130, unsupported: 5} against 135 fixtures at bytes 61051-61621 and the header 'failing tests: 0'. However, the 5 unsupported fixtures and their reason ('participant does not claim execution/1') appear only inside the not_selected range at bytes 711-61051, so they are not shown with their reason."},
+        "J2": {"score": 3, "why": "The carried 'coverage_limits': [] (bytes 0-711) could be read as full coverage. The carried status_note and 'unsupported': 5 (bytes 61051-61621) resolve this, since unsupported outcomes are declared coverage limits, not passes and not failures. Nothing points toward a failure."}},
+  "B": {"J1": {"score": 3, "why": "Byte-identical to A. The carried summary at bytes 61051-61621 (pass 130, unsupported 5 of 135) supports 'nothing failed', but the five unsupported fixtures and their reasons exist only in the omitted range 711-61051."},
+        "J2": {"score": 3, "why": "Byte-identical to A. The empty coverage_limits at bytes 0-711 sits beside 5 unsupported outcomes. The carried status_note and summary at bytes 61051-61621 resolve this minor ambiguity."}},
+  "prefer": "none", "prefer_why": "A.txt and B.txt are byte-identical, so the same content cannot tell them apart."}

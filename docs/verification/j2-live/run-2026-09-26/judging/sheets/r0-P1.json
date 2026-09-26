@@ -1,0 +1,6 @@
+{"pair": "P1", "judge": "r0",
+  "A": {"J1": {"score": 3, "why": "The conclusion 'nothing failed' is right and is supported in carried bytes 61051-61621 (summary pass 130 + unsupported 5 = fixtures 135, no fail key) plus header 'failing tests: 0'; but the 5 unsupported fixtures and their reason ('participant does not claim execution/1', e.g. bytes 23948-24060) sit only inside o1 bytes 711-61051 (not_selected), so the unsupported items are not shown with their reasons."},
+        "J2": {"score": 3, "why": "Minor ambiguity: carried bytes 0-711 show '\"coverage_limits\": []' while the carried summary (bytes 61051-61621) reports 'unsupported: 5' and the status_note says unsupported outcomes are coverage limits; the carried note and summary make clear these are not failures, so the task answer is not misled."}},
+  "B": {"J1": {"score": 3, "why": "Byte-identical to A: the carried summary at bytes 61051-61621 supports 'no failures', but the 5 unsupported fixtures and reasons are only in omitted bytes 711-61051."},
+        "J2": {"score": 3, "why": "Identical to A: the empty coverage_limits in bytes 0-711 against 'unsupported: 5' in bytes 61051-61621 is a small tension, and the carried status_note resolves it."}},
+  "prefer": "none", "prefer_why": "A.txt and B.txt are byte-identical, so they cannot be told apart."}

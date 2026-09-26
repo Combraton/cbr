@@ -1,0 +1,26 @@
+{
+  "pair": "P6",
+  "judge": "r4",
+  "A": {
+    "J1": {
+      "score": 3,
+      "why": "The header 'failing tests: 0' and 25 carried 'test result: ok. ... 0 failed' lines (e.g. bytes 5741-6032 through 23740-23953) support 'nothing failed'. But bytes 23953-66535 (lines 506-1065, holding 15 more result lines, including evaluator_properties') are omitted as over_projection, so that part rests on the header count alone. The one ignored test is carried only as '1 ignored' at 20083-20278; its name and reason sit in omitted 19949-20083."
+    },
+    "J2": {
+      "score": 3,
+      "why": "Nothing points toward a failure: every carried result line reads '0 failed' and the header says 0. The minor ambiguity is the declared but unseen tail at 23953-66535 (evaluator_properties is cut after 'running 6 tests') and the unexplained '1 ignored' at 20083-20278. The header count and the carried 'test result: ok.' line resolve it."
+    }
+  },
+  "B": {
+    "J1": {
+      "score": 3,
+      "why": "Byte-identical to A: carried ok result lines from 5741-6032 to 23740-23953 plus header count 0 support 'nothing failed'. The tail 23953-66535 is omitted (over_projection), and the ignored test's reason is only in omitted 19949-20083."
+    },
+    "J2": {
+      "score": 3,
+      "why": "Same as A: no carried content suggests a failure. The unseen tail at 23953-66535 and the reasonless '1 ignored' at 20083-20278 are minor ambiguities, settled by the header's 'failing tests: 0' and the 'test result: ok.' line."
+    }
+  },
+  "prefer": "none",
+  "prefer_why": "A.txt and B.txt are byte-identical (same 24 excerpts and 25 omissions), so there is nothing to choose between them."
+}

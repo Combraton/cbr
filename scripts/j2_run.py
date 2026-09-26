@@ -13,9 +13,11 @@ opens a socket to anything but the provider.
         --permit-model-network --run-ceiling N
 
 **The live run is not authorised by this file existing.** `--live` needs
-`--permit-model-network`, a `--run-ceiling` the owner set when the run's
-estimate was written into READINESS, and the owner's word at the time,
-which no flag can stand in for.
+`--permit-model-network` and a `--run-ceiling`, and that ceiling must
+already be written into READINESS §10 with the run's estimate: set by the
+owner, on the owner's word at the time, until 2026-09-25, and since then
+by the session that runs it, under the owner's standing grant. The flags
+carry that decision; they do not make it.
 
 What it does, per input in the manifest:
 
@@ -169,9 +171,9 @@ def check(manifest, out, live, permit, ceiling):
     """
     if live and ceiling is None:
         refuse(
-            "--live needs --run-ceiling. Each live run's cap is the owner's, "
-            "set when its estimate is written into READINESS section 10, and "
-            "this script has no default to fall back on."
+            "--live needs --run-ceiling. Each live run's cap is written into "
+            "READINESS section 10 with its estimate before the run, and this "
+            "script has no default to fall back on."
         )
     if live and not permit:
         refuse(
@@ -186,7 +188,9 @@ def check(manifest, out, live, permit, ceiling):
         refuse(
             f"--run-ceiling {ceiling} is above the hard cap of "
             f"{RUN_CEILING_TOKENS} that m4e's harness set and J2's shares. "
-            "Raising it is the owner's decision and not this script's."
+            "Raising it is a change to RUN_CEILING_TOKENS in m4e_run.py, which "
+            "both harnesses read, with its reason recorded in READINESS "
+            "section 10; never a flag."
         )
     out = Path(out).resolve()
     if out == REPOSITORY or REPOSITORY in out.parents:
@@ -702,7 +706,8 @@ def main(argv=None):
         type=int,
         help=(
             "the most the whole run may spend. Required in live mode, where it "
-            "is the owner's cap; a dry run spends only the fake's figures."
+            "is the cap written into READINESS section 10 before the run; a dry "
+            "run spends only the fake's figures."
         ),
     )
     options = parser.parse_args(argv)

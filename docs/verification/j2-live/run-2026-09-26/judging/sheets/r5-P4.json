@@ -1,0 +1,26 @@
+{
+  "pair": "P4",
+  "judge": "r5",
+  "A": {
+    "J1": {
+      "score": 4,
+      "why": "Bytes 4401-5109 and 8935-10179 name all 18 failing tests (6 j2_harness, 12 journey_two); bytes 5121-7021 and 10191-14827 carry every panic with file:line and its message or left/right (e.g. journey_two.rs:1070:5 left (\"satisfied\", \"\") right (\"unmet\", \"evidence_unavailable\")); the omitted ranges hold only name lists and passing targets, and bytes 65161-65257 confirm only these 2 targets failed."
+    },
+    "J2": {
+      "score": 3,
+      "why": "'failures named: 21' lists a non-test line ('error: test failed, to rerun ...' at bytes 7574-7638) among the test names; the header 'failing tests: 18' and the carried result lines at bytes 7475-7739 (6 failed) and 15740-16014 (12 failed) correct it."
+    }
+  },
+  "B": {
+    "J1": {
+      "score": 4,
+      "why": "Byte-identical to A: bytes 4401-5109 and 8935-10179 name all 18 failures, and bytes 5121-7021 and 10191-14827 give each one's file:line and message or left/right values; nothing needed sits in an omission (bytes 65161-65257 name the only 2 failed targets)."
+    },
+    "J2": {
+      "score": 3,
+      "why": "Same as A: the count of 21 includes the cargo error line at bytes 7574-7638, which the header 'failing tests: 18' and the result lines at bytes 7475-7739 and 15740-16014 correct."
+    }
+  },
+  "prefer": "none",
+  "prefer_why": "A and B are byte-identical (same header, same ledger e1-e21/o1-o21), so nothing in them can tell them apart."
+}
