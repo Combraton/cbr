@@ -33,9 +33,13 @@
 //! journeys are where that is measured, against the deterministic runs as
 //! baselines; nothing in this module claims it.
 
+use std::borrow::Cow;
+
 use cbr_encoding::Value;
 
-use crate::wire::request::{Message, Request, Role, Want, generation_for};
+use crate::wire::request::{
+    Message, Request, Role, Want, carried_bytes, carried_within, generation_for,
+};
 
 /// One thing the request may cite, as the model sees it.
 ///
@@ -65,29 +69,48 @@ pub const KIND_CLAIM: &str = "claim";
 
 /// At most this many bytes of a candidate's text, as a request body
 /// carries it.
-// Stub, tests first: declared, and not yet applied by `shown`.
-#[cfg_attr(not(test), allow(dead_code))]
+///
+/// **Twice retrieval's span**, which is capped in raw bytes: text whose
+/// every character a body carries in at most two bytes — quotation
+/// marks, backslashes, newlines, tabs, two-byte UTF-8 — is never cut, and
+/// only text dense in the six-byte escapes of C0 controls is. A test pins
+/// it to `2 × Bounds::default().span_bytes`, so the two cannot drift.
 pub const CANDIDATE_TEXT_BYTES: usize = 2 * 4_096;
 /// At most this many bytes of a candidate's path, as a request body
-/// carries it.
-// Stub, tests first: declared, and not yet applied by `shown`.
-#[cfg_attr(not(test), allow(dead_code))]
+/// carries it. The protocol bounds a path at 1,024 code points, so a path
+/// the protocol admits whose every character a body carries in one byte
+/// is never cut.
 pub const CANDIDATE_PATH_BYTES: usize = 1_024;
-/// What a field cut to its bound ends with.
-// Stub, tests first: declared, and not yet written by `shown`.
-#[cfg_attr(not(test), allow(dead_code))]
+/// What a field cut to its bound ends with. ASCII with nothing to escape,
+/// so a body carries it in as many bytes as it has, and **counted inside
+/// the bound** it marks.
 pub const CUT_MARKER: &str = "[cut]";
 
-/// One candidate, as a request shows it.
-// Stub, tests first: moved from `discovery` unchanged, so it does not
-// cut.
+/// One candidate, as a request shows it: every step that offers a
+/// candidate — discovery's terms and choice, and one item's selection —
+/// frames it here, so the bounds below hold for all of them.
+///
+/// **Within its carried bounds.** A span is capped in raw bytes and a
+/// request body is JSON, which carries a C0 control in six bytes, so a
+/// raw-byte cap does not bound what a body carries and the per-request
+/// arithmetic would price a body smaller than the one sent. So the text
+/// is shown within [`CANDIDATE_TEXT_BYTES`] and the path within
+/// [`CANDIDATE_PATH_BYTES`], each as a body carries it. A field that does
+/// not fit is shown as its longest prefix that fits beside
+/// [`CUT_MARKER`], then the marker, cut on a character; a field that fits
+/// is shown whole, byte for byte as it was before the cut existed.
+///
+/// **What is shown, not what is offered.** The model chooses an id, and
+/// an id names the whole candidate: [`crate::derivation::offered`]
+/// digests the full text rather than what was shown of it, and a chosen
+/// span is cited and published as the repository's bytes.
 pub(crate) fn shown(text: &mut String, candidate: &Candidate) {
+    let path = within(&candidate.path, CANDIDATE_PATH_BYTES);
     let where_it_is = if candidate.kind == KIND_CLAIM {
-        format!("claim {}", candidate.path)
+        format!("claim {path}")
     } else {
         format!(
             "{path} lines {start}-{end}",
-            path = candidate.path,
             start = candidate.start_line,
             end = candidate.end_line
         )
@@ -95,8 +118,18 @@ pub(crate) fn shown(text: &mut String, candidate: &Candidate) {
     text.push_str(&format!(
         "\n[{id}] {where_it_is}\n{body}\n[end {id}]\n",
         id = candidate.id,
-        body = candidate.text,
+        body = within(&candidate.text, CANDIDATE_TEXT_BYTES),
     ));
+}
+
+/// `field` whole when a request body carries it in `bytes`, and otherwise
+/// its longest prefix that fits beside [`CUT_MARKER`], then the marker.
+fn within(field: &str, bytes: usize) -> Cow<'_, str> {
+    if carried_bytes(field) <= bytes {
+        return Cow::Borrowed(field);
+    }
+    let room = bytes.saturating_sub(carried_bytes(CUT_MARKER));
+    Cow::Owned(format!("{}{CUT_MARKER}", carried_within(field, room)))
 }
 
 /// The answer is one small object. [`generation_for`] multiplies it,
@@ -143,14 +176,7 @@ pub fn ask(model: &str, task: &str, selector: &str, candidates: &[Candidate]) ->
     ]);
     let mut text = format!("Question: {task}\nSearch terms: {selector}\n\nCandidates:\n");
     for candidate in candidates {
-        text.push_str(&format!(
-            "\n[{id}] {path} lines {start}-{end}\n{body}\n[end {id}]\n",
-            id = candidate.id,
-            path = candidate.path,
-            start = candidate.start_line,
-            end = candidate.end_line,
-            body = candidate.text,
-        ));
+        shown(&mut text, candidate);
     }
     Request {
         model: model.to_string(),

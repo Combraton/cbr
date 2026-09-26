@@ -301,12 +301,31 @@ pub fn repair_instruction(want: &Want) -> &'static str {
     }
 }
 
+/// How many bytes `text` takes inside a request body, which is JSON: the
+/// escapes are counted, because they are sent. A quotation mark is two,
+/// U+0001 is six, and `é` is its two bytes of UTF-8.
+///
+/// Measured by the serializer that writes the body, so it cannot disagree
+/// with what is sent.
+pub fn carried_bytes(text: &str) -> usize {
+    cbr_encoding::to_canonical(&Value::String(text.to_string())).len() - 2
+}
+
 /// The longest prefix of `text`, on a character boundary, that a request
 /// body carries in at most `bytes` bytes.
-// Stub, tests first: returns the text whole.
-#[cfg_attr(not(test), allow(dead_code))]
+///
+/// **Cut between characters, never inside one**, and so never inside an
+/// escape: JSON escapes one character at a time, so what a prefix carries
+/// is the sum of what its characters carry, and the first character that
+/// would pass the bound is where the prefix ends.
 pub fn carried_within(text: &str, bytes: usize) -> &str {
-    let _ = bytes;
+    let mut used = 0usize;
+    for (at, character) in text.char_indices() {
+        used += carried_bytes(character.encode_utf8(&mut [0u8; 4]));
+        if used > bytes {
+            return &text[..at];
+        }
+    }
     text
 }
 

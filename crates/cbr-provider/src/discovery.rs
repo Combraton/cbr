@@ -83,7 +83,7 @@ pub const MAX_CHOSEN: usize = crate::compiler::DISCOVERED_SPANS + crate::compile
 /// Fewer than the choose step sees, deliberately: the terms step is
 /// asking *where else to look*, which needs a sense of what the ordinary
 /// reading found and not the whole of it. Every byte here is sent, and
-/// the arithmetic is in [READINESS §4](../../docs/work/m4/READINESS.md).
+/// the arithmetic is in [READINESS §3](../../docs/work/m4/READINESS.md).
 pub const SEEN: usize = 6;
 /// The union's own cap: at most this many candidates are offered, spans
 /// and claims together. Every one of them is sent, so this is the

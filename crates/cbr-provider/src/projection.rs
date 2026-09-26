@@ -857,9 +857,11 @@ fn shown(id: &str, read: &Read, unit: &Unit, text: &str) -> String {
 }
 
 /// How many bytes a string takes inside a request body, which is JSON:
-/// the escapes are counted, because they are sent.
+/// the escapes are counted, because they are sent. The wire's own
+/// measure, [`crate::wire::request::carried_bytes`], so a part and a
+/// candidate are bounded by one count.
 pub fn body_bytes(text: &str) -> usize {
-    cbr_encoding::to_canonical(&Value::String(text.to_string())).len() - 2
+    crate::wire::request::carried_bytes(text)
 }
 
 /// What a unit costs a part: its frame and its text, escaped, with the
