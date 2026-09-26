@@ -25,9 +25,12 @@ copy, so the two cannot drift.
 
 **It prints the commit, counts and repository-relative paths, and never
 repository text**, so it may be run over a repository whose text may not
-be copied. A path is printed escaped as a body carries it, so a control
-character in a path is never written raw. **It writes nothing**: it reads
-through `git rev-parse`, `git ls-tree` and `git cat-file` alone.
+be copied. A path is printed escaped as a body carries it, and DEL and the
+C1 controls, which a body carries raw, as JSON's six-byte escapes too, so
+no control character in a path -- C0, DEL or C1 -- is ever written raw.
+`--json` escapes everything outside printable ASCII. **It writes
+nothing**: it reads through `git rev-parse`, `git ls-tree` and
+`git cat-file` alone.
 
 What it does not establish: that a span it counts was ever offered.
 Retrieval ranks spans and a question is shown a handful, so this is an
@@ -87,10 +90,20 @@ def six_byte_escapes(text):
     return any(text.count(character) for character, width in CARRIED.items() if width == 6)
 
 
+# The control characters a request body carries raw, and a terminal can
+# read as commands: DEL, and C1, among them U+009B, a control sequence
+# introducer. JSON escapes C0 and nothing else.
+UNESCAPED_CONTROLS = {chr(0x7F), *(chr(c) for c in range(0x80, 0xA0))}
+
+
 def shown(path):
-    """A path as a body carries it, without the quotes: never raw control
-    characters, and otherwise the path as it is."""
-    return json.dumps(path, ensure_ascii=False)[1:-1]
+    """A path as a body carries it, without the quotes, and with DEL and
+    the C1 controls escaped as well: no control character is ever printed
+    raw, and otherwise the path is as it is."""
+    escaped = json.dumps(path, ensure_ascii=False)[1:-1]
+    return "".join(
+        f"\\u{ord(c):04x}" if c in UNESCAPED_CONTROLS else c for c in escaped
+    )
 
 
 def chunks(data):

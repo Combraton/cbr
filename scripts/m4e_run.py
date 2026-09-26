@@ -98,7 +98,8 @@ RUN_CEILING_TOKENS = 5_000_000
 
 # READINESS section 3: the most a request's two-step discovery flow can
 # hold, and the most one item's selection question can, each question its
-# first send and its widest repair (`model::question_worst`). Both are
+# first send and its widest repair (`model::question_worst`), in whichever
+# dialect a launch configures frames the most. Both are
 # computed against the real constants by `discovery::tests` and
 # `selection::tests`, which read them back from here, rather than estimated
 # here. A run asks at most one selection question per want and then the
@@ -108,8 +109,8 @@ RUN_CEILING_TOKENS = 5_000_000
 # They are what admission can reserve on the serving path. What a
 # provider bills past a reservation is settled on top of them, and
 # `model::question_worst` states when that can happen.
-WORST_CASE_FLOW_TOKENS = 517_492
-WORST_CASE_SELECTION_TOKENS = 167_307
+WORST_CASE_FLOW_TOKENS = 518_628
+WORST_CASE_SELECTION_TOKENS = 167_753
 
 
 def worst_case_of(run):

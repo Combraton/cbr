@@ -751,11 +751,20 @@ pub fn send_worst(body: &wire::request::Request, dialect: Dialect) -> u64 {
 /// bound holds, a completion admitted on a count is billed no more than
 /// the count said, `max_output_tokens` is honoured, and a failed call
 /// reports no more than it reserved. And nothing frees room on the
-/// refusing counter while a count is in flight. If room is freed there,
-/// the completion is admitted on the counter as it now is, and an attempt
-/// can hold up to its count's reservation more: with an honest count, at
-/// most its count's reservation and its send. Every ceiling still holds at
-/// admission.
+/// refusing counter **between the local refusal and the completion's
+/// admission** — while the count is admitted, sent and settled, and after
+/// it. If room is freed anywhere in that window, the completion is
+/// admitted on the counter as it then is, and an attempt can hold more
+/// than the send `W` it counted for. With an honest count, at most the
+/// count body's own bound `Ic`, the most is `W + Ic − (local − Ic)`: the
+/// count settled at `Ic` and a completion reserved at it, which is `W`
+/// less what the count body omits (`local − Ic`, the input bound of the
+/// three members a count body does not carry). A count below the
+/// implausibility floor is not believed, and its attempt holds `W` and
+/// less than the floor beside it, which is less. So a question holds at
+/// most `question_worst` and less than one count's reservation more for
+/// each count it made, and a test pins the maximum. Every ceiling still
+/// holds at admission.
 ///
 /// **Under [`Counting::Always`] nothing derived from the body bounds a
 /// question.** The count comes first and is floored but not capped, so a

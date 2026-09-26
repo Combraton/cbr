@@ -43,38 +43,39 @@ const DIALECT: Dialect = Dialect::Responses;
 /// local refusal and its completion's admission: each place in it the
 /// call path names a boundary at, and the count's flight.
 ///
-/// The window runs on past the last of these — the count is settled and
-/// then the completion admitted, with nothing named between — and a
-/// settlement on another thread can land there too. It is the same
-/// window, and admits the same completion.
+/// The window opens before the first of these, between the local refusal
+/// and the count's admission, and runs on past the last, from the count's
+/// settlement to the completion's admission. Nothing is named there to
+/// stop at, and a settlement on another thread can land in either: it is
+/// the same window, and admits the same completion.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Freed {
     /// The count has been admitted and not yet sent.
-    CountAdmitted,
+    Admitted,
     /// The count is on the wire.
-    CountInFlight,
+    InFlight,
     /// The count has answered and is not yet settled.
-    CountAnswered,
+    Answered,
     /// The count is being settled.
-    CountSettling,
+    Settling,
 }
 
 /// Every place [`Freed`] names, in the order the call path reaches them.
 pub(crate) const WINDOW: [Freed; 4] = [
-    Freed::CountAdmitted,
-    Freed::CountInFlight,
-    Freed::CountAnswered,
-    Freed::CountSettling,
+    Freed::Admitted,
+    Freed::InFlight,
+    Freed::Answered,
+    Freed::Settling,
 ];
 
 impl Freed {
     /// The boundary the call path names at this place, when it names one.
     fn boundary(self) -> Option<&'static str> {
         match self {
-            Freed::CountAdmitted => Some(COUNT_AFTER_RESERVATION),
-            Freed::CountInFlight => None,
-            Freed::CountAnswered => Some(COUNT_AFTER_SEND),
-            Freed::CountSettling => Some(COUNT_DURING_RECONCILIATION),
+            Freed::Admitted => Some(COUNT_AFTER_RESERVATION),
+            Freed::InFlight => None,
+            Freed::Answered => Some(COUNT_AFTER_SEND),
+            Freed::Settling => Some(COUNT_DURING_RECONCILIATION),
         }
     }
 }
@@ -182,7 +183,7 @@ impl Transport for Script<'_> {
         let answer = match call {
             Call::Count => {
                 self.counts.set(self.counts.get() + 1);
-                if self.free_at == Freed::CountInFlight {
+                if self.free_at == Freed::InFlight {
                     self.free();
                 }
                 Answer::Counted(self.count.answer(body))
@@ -221,7 +222,7 @@ fn asked(
     count: CountAnswer,
     freed: Option<(Reservation, Freed)>,
 ) -> Held {
-    let free_at = freed.as_ref().map_or(Freed::CountInFlight, |(_, at)| *at);
+    let free_at = freed.as_ref().map_or(Freed::InFlight, |(_, at)| *at);
     let script = Script {
         connection,
         completion,

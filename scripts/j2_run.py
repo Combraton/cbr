@@ -116,9 +116,9 @@ from m4e_run import (  # noqa: E402
 # this harness stops against, and it is not the figure that module
 # computes: it was computed when every part was priced as three sends,
 # counted and repaired once. A whole projection's serving worst case, each
-# part its first send and its widest repair (`model::question_worst`), is
-# 336,424, and the test holds this bound at or above it. Tightening it is
-# the owner's call at the next J2 run.
+# part its first send and its widest repair (`model::question_worst`) in the
+# dialect that frames the most, is 341,216, and the test holds this bound
+# at or above it. Tightening it is the owner's call at the next J2 run.
 WORST_CASE_PROJECTION_TOKENS = 492_204
 MAX_PARTS = 4
 

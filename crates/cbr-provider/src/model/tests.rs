@@ -2544,7 +2544,7 @@ fn an_attempt_admitted_on_a_count_after_room_was_freed_holds_at_most_its_counts_
         ceiling,
         ceiling - first + 1,
         CountAnswer::Share(1, 1),
-        Freed::CountInFlight,
+        Freed::InFlight,
     );
     let worst = question_worst(&body, dialect);
     assert_eq!(
