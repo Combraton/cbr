@@ -8,8 +8,14 @@
 //!   capture instant of the first attempt is kept (CONTEXT section 12).
 //! - **A packet is never published before its local seal commits.** The
 //!   provider is killed after the packet's object is published and before the
-//!   batch that names it commits; after restart there is exactly one
-//!   publication and its bytes are served (STORAGE section 2).
+//!   batch that names it commits, when the object is on disk and the request
+//!   is still `preparing` with no artifact row; after restart there is
+//!   exactly one publication and its bytes are served (STORAGE section 2).
+//! - **Every packet a tick publishes leaves it, whichever step published
+//!   it**: at a job's ending, at the deadline alone, and both of two in one
+//!   tick, each served by its digest. A tick whose second send to an
+//!   evidence peer fails keeps both packets' capture instants, and both
+//!   replay once the peer is back and the clock has moved.
 //! - **A request nothing prepares is published unmet at its deadline**, never
 //!   left preparing and never satisfied.
 //! - **A correction after publication is a read-time fact.** The published
@@ -28,9 +34,10 @@
 //!   built from the stored records and apart from the refused tick; one
 //!   already published under `context.updates` keeps its revision. It holds
 //!   at the deadline, across ticks, across a restart, and across a `SIGKILL`
-//!   before the refusal commits. No packet of the refused tick is sealed
-//!   anywhere, a valid one included: not in this store, and not at an
-//!   evidence peer.
+//!   before the refusal commits, and for a subscriber still preparing listed
+//!   after one already published at its own deadline. No packet of the
+//!   refused tick is sealed anywhere, a valid one included: not in this
+//!   store, and not at an evidence peer.
 
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::fs::PermissionsExt;
@@ -141,6 +148,15 @@ impl ContextProvider {
         core_features: &[&str],
         features: &[&str],
     ) -> Self {
+        let mut provider = Self::launch(directory, config, core_features, features);
+        result(&provider.read().expect("a response"));
+        provider
+    }
+
+    /// [`Self::start_negotiating`] up to sending `core.negotiate`, whose
+    /// answer the caller reads. A tick runs at the start of every request,
+    /// that one included, so a test can hold the tick a restart runs.
+    fn launch(directory: &Path, config: &str, core_features: &[&str], features: &[&str]) -> Self {
         let path = directory.join("context-config.json");
         std::fs::write(&path, config).expect("config");
         let mut child = Command::new(binary())
@@ -161,7 +177,7 @@ impl ContextProvider {
             reader,
             next: 1,
         };
-        let negotiated = provider.call(
+        provider.send(
             "core.negotiate",
             None,
             &format!(
@@ -169,7 +185,6 @@ impl ContextProvider {
                 context_profiles(core_features, features)
             ),
         );
-        result(&negotiated);
         provider
     }
 
@@ -527,6 +542,28 @@ fn a_packet_is_never_published_before_its_local_seal_commits() {
     wait_for(
         &barriers.join(format!("{barrier}.reached")),
         "the packet object's publication",
+    );
+    // At the barrier the object is on disk and nothing names it yet: the
+    // request is still `preparing` in the store and no artifact row exists.
+    // An object written only once its batch had committed would find the
+    // request `ready` here, and its artifact sealed.
+    let data = directory.path().join("context-data");
+    assert_eq!(
+        objects(&data).len(),
+        1,
+        "the packet's object is on disk at the barrier: {:?}",
+        objects(&data)
+    );
+    let held = stored(&data, "context.request", "r-1");
+    assert_eq!(
+        text(&held, &["state"]),
+        "preparing",
+        "the batch naming the object committed before the object was written: {held:?}"
+    );
+    assert!(
+        artifacts(&data).is_empty(),
+        "an artifact row names the object before its batch commits: {:?}",
+        artifacts(&data)
     );
     let mut killed = ctx;
     killed.child.kill().expect("SIGKILL");
@@ -3159,39 +3196,25 @@ struct EvidencePeer {
     /// The `context` configuration member naming this peer, with its
     /// leading comma, for [`scripted_beside`].
     member: String,
+    directory: PathBuf,
+    clock: PathBuf,
 }
 
 impl EvidencePeer {
     fn start(directory: &Path, clock: &Path) -> Self {
+        Self::start_holding(directory, clock, &[])
+    }
+
+    /// [`Self::start`], with the peer's own test barriers `enabled`. Each
+    /// holds the peer the first time it is reached, until the test writes
+    /// `<name>.release` in [`Self::barriers`].
+    fn start_holding(directory: &Path, clock: &Path, enabled: &[&str]) -> Self {
         let sockets = directory.join("s");
         std::fs::create_dir(&sockets).expect("socket dir");
         std::fs::set_permissions(&sockets, std::fs::Permissions::from_mode(0o700)).expect("0700");
         let socket = sockets.join("evd.sock");
-        let owner = format!("ccred1.owner.{}", "A".repeat(43));
-        let service = format!("ccred1.ctx-service.{}", "B".repeat(43));
-        let config = directory.join("evd.json");
-        std::fs::write(
-            &config,
-            format!(
-                r#"{{"format":"combraton-conformance-config/1","provider_id":"evidence-1","principal":"owner","authority_principals":["owner"],"clock":{{"file":"{}"}},"credentials":[{{"credential":"{owner}"}},{{"credential":"{service}"}}]}}"#,
-                clock.display()
-            ),
-        )
-        .expect("evd config");
-        let child = Command::new(binary())
-            .arg("--data-dir")
-            .arg(directory.join("evd-data"))
-            .arg("--config")
-            .arg(&config)
-            .arg("--socket")
-            .arg(&socket)
-            // A socket provider serves until its standard input closes.
-            .stdin(Stdio::piped())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
-            .expect("evidence provider starts");
-        let mut owner = Socket::connect(&socket, &owner);
+        let child = Self::spawn(directory, clock, enabled);
+        let mut owner = Socket::connect(&socket, &Self::owner_credential());
         result(&owner.call(
             "core.grant.issue",
             Some(("issue-g-pub", ("core.grant", "g-pub"), 0)),
@@ -3199,14 +3222,89 @@ impl EvidencePeer {
             None,
         ));
         let member = format!(
-            r#","evidence_provider":{{"provider_id":"evidence-1","socket":"{}","credential":"{service}","grant":"g-pub"}}"#,
-            socket.display()
+            r#","evidence_provider":{{"provider_id":"evidence-1","socket":"{}","credential":"{}","grant":"g-pub"}}"#,
+            socket.display(),
+            Self::service_credential()
         );
         Self {
             child,
             owner,
             member,
+            directory: directory.to_path_buf(),
+            clock: clock.to_path_buf(),
         }
+    }
+
+    fn owner_credential() -> String {
+        format!("ccred1.owner.{}", "A".repeat(43))
+    }
+
+    fn service_credential() -> String {
+        format!("ccred1.ctx-service.{}", "B".repeat(43))
+    }
+
+    /// Where the peer's barriers mark and wait: apart from the context
+    /// provider's own.
+    fn barriers(&self) -> PathBuf {
+        self.directory.join("peer-barriers")
+    }
+
+    /// The peer's process over `directory`'s store and socket, with
+    /// `enabled` barriers, if any.
+    fn spawn(directory: &Path, clock: &Path, enabled: &[&str]) -> Child {
+        let barriers = if enabled.is_empty() {
+            String::new()
+        } else {
+            let held = directory.join("peer-barriers");
+            std::fs::create_dir_all(&held).expect("barrier dir");
+            let names: Vec<String> = enabled.iter().map(|name| format!(r#""{name}""#)).collect();
+            format!(
+                r#","test_barriers":{{"directory":"{}","enabled":[{}]}}"#,
+                held.display(),
+                names.join(",")
+            )
+        };
+        let config = directory.join("evd.json");
+        std::fs::write(
+            &config,
+            format!(
+                r#"{{"format":"combraton-conformance-config/1","provider_id":"evidence-1","principal":"owner","authority_principals":["owner"],"clock":{{"file":"{}"}},"credentials":[{{"credential":"{}"}},{{"credential":"{}"}}]{barriers}}}"#,
+                clock.display(),
+                Self::owner_credential(),
+                Self::service_credential()
+            ),
+        )
+        .expect("evd config");
+        Command::new(binary())
+            .arg("--data-dir")
+            .arg(directory.join("evd-data"))
+            .arg("--config")
+            .arg(&config)
+            .arg("--socket")
+            .arg(directory.join("s").join("evd.sock"))
+            // A socket provider serves until its standard input closes.
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("evidence provider starts")
+    }
+
+    /// Kill the peer, as a crash would: whatever it was holding at a
+    /// barrier is never committed, and a send in flight to it fails.
+    fn crash(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
+
+    /// Kill the peer, if it is still running, and start it again over the
+    /// same store, socket, credentials and grant, with `enabled` barriers.
+    fn restart(&mut self, enabled: &[&str]) {
+        self.crash();
+        let socket = self.directory.join("s").join("evd.sock");
+        let _ = std::fs::remove_file(&socket);
+        self.child = Self::spawn(&self.directory, &self.clock, enabled);
+        self.owner = Socket::connect(&socket, &Self::owner_credential());
     }
 
     /// `evidence.inspect` of the artifact `id` at the peer, whole.
@@ -3502,6 +3600,41 @@ fn assert_both_refused_and_nothing_sealed(ctx: &mut ContextProvider, directory: 
     assert_nothing_published(&recorded(ctx));
 }
 
+/// [`narrow_and_wide`]'s two requests with `last` in place of the script's
+/// `publish`, and the clock moved to `now`, twice: under this provider's
+/// own seal, and beside an [`EvidencePeer`]. Each time both are refused and
+/// nothing of the tick is sealed: not in this store, and under the peer
+/// nothing is sent there either.
+fn assert_the_tick_seals_nothing_here_or_at_a_peer(last: &str, now: &str) {
+    for beside_a_peer in [false, true] {
+        let directory = tempfile::tempdir().expect("temp dir");
+        let clock = directory.path().join("clock");
+        set_clock(&clock, "2030-01-01T00:00:00Z");
+        let mut peer = beside_a_peer.then(|| EvidencePeer::start(directory.path(), &clock));
+        let member = peer
+            .as_ref()
+            .map_or_else(String::new, |peer| peer.member.clone());
+        let (mut ctx, _, clock) = narrow_and_wide_ending(
+            directory.path(),
+            &[("r-narrow", 64), ("r-wide", 4096)],
+            &member,
+            last,
+        );
+        set_clock(&clock, now);
+        assert_both_refused_and_nothing_sealed(&mut ctx, directory.path());
+        if let Some(peer) = peer.as_mut() {
+            let logged = log(directory.path());
+            assert!(
+                !logged.contains("not sealed at the evidence provider"),
+                "a send to the peer was attempted: {logged}"
+            );
+            peer.assert_never_sent("packet.r-narrow.1");
+            peer.assert_never_sent("packet.r-wide.1");
+        }
+        ctx.kill();
+    }
+}
+
 #[test]
 fn a_narrower_subscribers_valid_packet_is_not_sealed_when_the_jobs_ending_refuses_the_wider_one() {
     // **A job's ending publishes too, and is guarded whole.** T19's shape
@@ -3509,17 +3642,12 @@ fn a_narrower_subscribers_valid_packet_is_not_sealed_when_the_jobs_ending_refuse
     // its `publish`, as a compiled job whose mandatory content cannot fit
     // does: `finish` publishes every subscriber, `r-narrow`'s valid packet
     // first and then `r-wide`'s, which the guard refuses. Nothing of the
-    // tick is sealed.
-    let directory = tempfile::tempdir().expect("temp dir");
-    let (mut ctx, _, clock) = narrow_and_wide_ending(
-        directory.path(),
-        &[("r-narrow", 64), ("r-wide", 4096)],
-        "",
+    // tick is sealed, in this store or, beside an evidence peer, at the
+    // peer.
+    assert_the_tick_seals_nothing_here_or_at_a_peer(
         r#"{"end":"budget_insufficient"}"#,
+        "2030-01-01T00:10:00Z",
     );
-    set_clock(&clock, "2030-01-01T00:10:00Z");
-    assert_both_refused_and_nothing_sealed(&mut ctx, directory.path());
-    ctx.kill();
 }
 
 #[test]
@@ -3528,15 +3656,356 @@ fn a_narrower_subscribers_valid_packet_is_not_sealed_when_the_deadline_refuses_t
     // with the script stalling in place of its `publish`, and the clock
     // moved to both requests' deadline: the deadline publishes each
     // preparing request, `r-narrow`'s valid packet first and then
-    // `r-wide`'s, which the guard refuses. Nothing of the tick is sealed.
-    let directory = tempfile::tempdir().expect("temp dir");
-    let (mut ctx, _, clock) = narrow_and_wide_ending(
-        directory.path(),
-        &[("r-narrow", 64), ("r-wide", 4096)],
-        "",
-        r#"{"stall":{}}"#,
+    // `r-wide`'s, which the guard refuses. Nothing of the tick is sealed,
+    // in this store or, beside an evidence peer, at the peer.
+    assert_the_tick_seals_nothing_here_or_at_a_peer(r#"{"stall":{}}"#, "2030-01-01T01:00:00Z");
+}
+
+// ---- the cases the fourth verification reached -----------------------------
+
+/// Inspect `request` until it is published, and fetch its one revision from
+/// this provider by the digest its reference names: the bytes served must
+/// be there, not empty, and digest to it. A revision whose artifact row
+/// committed without its object is not served. Returns the inspect.
+fn assert_its_one_revision_is_served(ctx: &mut ContextProvider, request: &str) -> Value {
+    let published = settled(ctx, request);
+    let packets = at(&published, &["packets"])
+        .as_array()
+        .expect("packets")
+        .to_vec();
+    assert_eq!(packets.len(), 1, "{request}: {published:?}");
+    let reference = at(&packets[0], &["reference", "artifact"]);
+    assert_eq!(
+        text(reference, &["provider"]),
+        "context-1",
+        "{request}: sealed in this store: {published:?}"
     );
-    set_clock(&clock, "2030-01-01T01:00:00Z");
-    assert_both_refused_and_nothing_sealed(&mut ctx, directory.path());
+    let digest = text(reference, &["digest"]);
+    let artifact = text(reference, &["artifact", "id"]);
+    let fetched = ctx.call(
+        "evidence.fetch",
+        None,
+        &format!(
+            r#"{{"artifact":{{"kind":"evidence.artifact","id":"{artifact}"}},"digest":"{digest}"}}"#
+        ),
+    );
+    let served = fetched
+        .get("result")
+        .unwrap_or_else(|| panic!("{request}: its published revision is not served: {fetched:?}"));
+    let bytes = cbr_encoding::decode_base64(text(served, &["data_base64"])).expect("base64");
+    assert!(!bytes.is_empty(), "{request}: served empty");
+    assert_eq!(cbr_encoding::digest_bytes(&bytes), digest, "{request}");
+    published
+}
+
+#[test]
+fn a_packet_published_at_its_jobs_ending_is_served_by_its_digest() {
+    // **A job's ending lets its packets leave too.** The script prepares
+    // `s-1` and ends the job, so `finish` publishes the request in the tick
+    // that ends it: its object is written before that tick's batch commits,
+    // as a `publish` step's is, and the revision is served.
+    let directory = tempfile::tempdir().expect("temp dir");
+    let script = format!(
+        r#""r-1":[{},{{"end":"investigation_budget_exhausted"}}]"#,
+        source_section("s-1")
+    );
+    let mut ctx = ContextProvider::start(directory.path(), &scripted(&script, ""));
+    ctx.submit("r-1", "2030-01-01T01:00:00Z");
+    assert_its_one_revision_is_served(&mut ctx, "r-1");
+    let job = stored(&directory.path().join("context-data"), "context.job", "r-1");
+    assert_eq!(text(&job, &["state"]), "ended", "{job:?}");
+    ctx.kill();
+}
+
+#[test]
+fn a_packet_the_deadline_alone_publishes_is_served_by_its_digest() {
+    // **A tick that changes nothing of its job but publishes still lets
+    // its packet leave.** The first tick commits `s-1` and stalls; at the
+    // deadline the next tick publishes the request and leaves the job's
+    // record as it was. The revision is served.
+    let directory = tempfile::tempdir().expect("temp dir");
+    let clock = directory.path().join("clock");
+    set_clock(&clock, "2030-01-01T00:00:00Z");
+    let script = format!(r#""r-1":[{},{{"stall":{{}}}}]"#, source_section("s-1"));
+    let mut ctx = ContextProvider::start(
+        directory.path(),
+        &scripted(
+            &script,
+            &format!(r#","clock":{{"file":"{}"}}"#, clock.display()),
+        ),
+    );
+    ctx.submit("r-1", "2030-01-01T00:10:00Z");
+    let preparing = ctx.inspect("r-1");
+    assert_eq!(text(&preparing, &["state"]), "preparing", "{preparing:?}");
+    let data = directory.path().join("context-data");
+    let before = canonical(&stored(&data, "context.job", "r-1"));
+    set_clock(&clock, "2030-01-01T00:10:00Z");
+    assert_its_one_revision_is_served(&mut ctx, "r-1");
+    assert_eq!(
+        canonical(&stored(&data, "context.job", "r-1")),
+        before,
+        "the premise: the tick at the deadline changed the job's record"
+    );
+    ctx.kill();
+}
+
+#[test]
+fn both_packets_one_tick_publishes_are_served_by_their_digests() {
+    // **Every packet of a tick leaves it, not only the first.** Two
+    // requests share job `r-first`, whose one `publish` at 00:10 publishes
+    // both in one tick: both revisions are served.
+    let directory = tempfile::tempdir().expect("temp dir");
+    let clock = directory.path().join("clock");
+    set_clock(&clock, "2030-01-01T00:00:00Z");
+    let script = format!(
+        r#""r-first":[{{"wait_until":"2030-01-01T00:10:00Z"}},{},{{"publish":{{}}}}]"#,
+        source_section("s-1")
+    );
+    let mut ctx = ContextProvider::start_with(
+        directory.path(),
+        &scripted(
+            &script,
+            &format!(r#","clock":{{"file":"{}"}}"#, clock.display()),
+        ),
+        &["context.required_before_start", "context.shared_jobs"],
+    );
+    for request in ["r-first", "r-second"] {
+        let submitted = ctx.submit(request, "2030-01-01T01:00:00Z");
+        let outcome = at(result(&submitted), &["outcome"]);
+        assert_eq!(
+            canonical(at(outcome, &["job"])),
+            SHARED_JOB,
+            "{submitted:?}"
+        );
+    }
+    set_clock(&clock, "2030-01-01T00:10:00Z");
+    assert_its_one_revision_is_served(&mut ctx, "r-first");
+    assert_its_one_revision_is_served(&mut ctx, "r-second");
+    ctx.kill();
+}
+
+#[test]
+fn a_tick_whose_second_peer_send_fails_keeps_both_capture_instants_and_both_replay_after_the_clock_moves()
+ {
+    // **A peer that does not seal fails the tick, keeping the capture
+    // instants of every packet attempted, the failed one included**, so
+    // the retry replays what already applied. Two requests share job
+    // `r-first`, whose `publish` at 00:10 sends both packets to the peer
+    // in one tick, `r-first`'s first.
+    //
+    // 1. The peer holds `r-first`'s seal after its object is written, and
+    //    CBR is killed there; the seal then completes. So the peer holds
+    //    `packet.r-first.1` sealed, and CBR has kept nothing of the tick.
+    // 2. The peer is started again, holding the first append it commits,
+    //    and CBR again, at the same instant: its tick replays `r-first`'s
+    //    three steps whole, which the peer answers from what it recorded,
+    //    and sends `r-second`'s, whose append the peer holds. The peer is
+    //    killed there. The tick fails on `r-second`, with `r-first`'s send
+    //    in the same tick sealed, and both capture instants are kept.
+    // 3. The peer is back and the clock has moved: both requests are
+    //    published, each sealed at the peer with the first attempt's
+    //    instant. Had `r-first`'s been dropped, its retry would describe it
+    //    at 00:15 and meet `idempotency_conflict` there for ever.
+    let directory = tempfile::tempdir().expect("temp dir");
+    let clock = directory.path().join("clock");
+    set_clock(&clock, "2030-01-01T00:00:00Z");
+    let seal = "evidence.seal.after_object_published";
+    let append = "evidence.append.before_commit";
+    let mut peer = EvidencePeer::start_holding(directory.path(), &clock, &[seal]);
+    let script = format!(
+        r#""r-first":[{{"wait_until":"2030-01-01T00:10:00Z"}},{},{{"publish":{{}}}}]"#,
+        source_section("s-1")
+    );
+    let config = scripted_beside(
+        &script,
+        &format!(r#","clock":{{"file":"{}"}}"#, clock.display()),
+        &peer.member,
+    );
+    let features = ["context.required_before_start", "context.shared_jobs"];
+    let mut ctx = ContextProvider::start_with(directory.path(), &config, &features);
+    for request in ["r-first", "r-second"] {
+        let submitted = ctx.submit(request, "2030-01-01T01:00:00Z");
+        let outcome = at(result(&submitted), &["outcome"]);
+        assert_eq!(
+            canonical(at(outcome, &["job"])),
+            SHARED_JOB,
+            "{submitted:?}"
+        );
+    }
+    let at_ten = "2030-01-01T00:10:00Z";
+    let data = directory.path().join("context-data");
+
+    // 1.
+    set_clock(&clock, at_ten);
+    ctx.send("context.request.inspect", None, r#"{"request":"r-first"}"#);
+    wait_for(
+        &peer.barriers().join(format!("{seal}.reached")),
+        "r-first's seal at the peer",
+    );
+    ctx.kill();
+    std::fs::write(peer.barriers().join(format!("{seal}.release")), b"").expect("release");
+    let first = loop {
+        let inspected = peer.inspect("packet.r-first.1");
+        if text(result(&inspected), &["state"]) == "sealed" {
+            break result(&inspected).clone();
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    };
+    assert_eq!(
+        text(&first, &["descriptor", "capture", "captured_at"]),
+        at_ten
+    );
+    let job = stored(&data, "context.job", "r-first");
+    assert!(
+        job.get("captures").is_none(),
+        "the premise: CBR kept nothing of the killed tick: {job:?}"
+    );
+
+    // 2.
+    peer.restart(&[append]);
+    let mut ctx = ContextProvider::launch(directory.path(), &config, &["core.events"], &features);
+    wait_for(
+        &peer.barriers().join(format!("{append}.reached")),
+        "r-second's append at the peer",
+    );
+    peer.crash();
+    result(
+        &ctx.read()
+            .expect("the negotiation, answered after its tick"),
+    );
+    let logged = log(directory.path());
+    assert!(
+        logged.contains("packet packet.r-second.1 not sealed at the evidence provider"),
+        "{logged}"
+    );
+    assert!(
+        !logged.contains("packet packet.r-first.1 not sealed"),
+        "the premise: r-first's send in this tick was sealed: {logged}"
+    );
+    let job = stored(&data, "context.job", "r-first");
+    assert_eq!(
+        canonical(at(&job, &["captures"])),
+        format!(r#"{{"packet.r-first.1":"{at_ten}","packet.r-second.1":"{at_ten}"}}"#),
+        "the failed tick kept both capture instants: {job:?}"
+    );
+    for request in ["r-first", "r-second"] {
+        let preparing = ctx.inspect(request);
+        assert_eq!(
+            text(&preparing, &["state"]),
+            "preparing",
+            "{request}: {preparing:?}"
+        );
+    }
+
+    // 3.
+    peer.restart(&[]);
+    set_clock(&clock, "2030-01-01T00:15:00Z");
+    for request in ["r-first", "r-second"] {
+        let published = settled(&mut ctx, request);
+        assert_eq!(
+            text(&published, &["state"]),
+            "ready",
+            "{request}: {published:?}"
+        );
+        let packets = at(&published, &["packets"])
+            .as_array()
+            .expect("packets")
+            .to_vec();
+        assert_eq!(packets.len(), 1, "{request}: {published:?}");
+        let sealed = result(&peer.inspect(&format!("packet.{request}.1"))).clone();
+        assert_eq!(text(&sealed, &["state"]), "sealed", "{request}: {sealed:?}");
+        assert_eq!(
+            text(&sealed, &["descriptor", "digest"]),
+            text(&packets[0], &["reference", "artifact", "digest"]),
+            "{request}"
+        );
+        assert_eq!(
+            text(&sealed, &["descriptor", "capture", "captured_at"]),
+            at_ten,
+            "{request}: sealed with the first attempt's instant"
+        );
+    }
+    assert_eq!(
+        text(&first, &["descriptor", "digest"]),
+        text(
+            result(&peer.inspect("packet.r-first.1")),
+            &["descriptor", "digest"]
+        ),
+        "r-first's packet is the one sealed in the killed tick"
+    );
+    ctx.kill();
+}
+
+#[test]
+fn a_subscriber_published_at_its_own_deadline_does_not_stop_the_ending_for_one_still_preparing() {
+    // **The ending passes over a subscriber already published, to the
+    // ones after it.** `r-early` and `r-late` share job `r-early`. At
+    // 00:05, `r-early`'s own deadline, it alone is published, with `s-1`,
+    // and the job runs on for `r-late`. At 00:10 the guard refuses the
+    // job's packet and the job ends: `r-late`, listed after the published
+    // `r-early`, is refused as `packet_invalid`, and `r-early` reads
+    // exactly what it read before.
+    let directory = tempfile::tempdir().expect("temp dir");
+    let clock = directory.path().join("clock");
+    set_clock(&clock, "2030-01-01T00:00:00Z");
+    let script = format!(
+        r#""r-early":[{},{{"wait_until":"2030-01-01T00:10:00Z"}},{},{{"publish":{{}}}}]"#,
+        source_section("s-1"),
+        source_section(OUTSIDE_GRAMMAR)
+    );
+    let mut ctx = ContextProvider::start_with(
+        directory.path(),
+        &scripted(
+            &script,
+            &format!(r#","clock":{{"file":"{}"}}"#, clock.display()),
+        ),
+        &["context.required_before_start", "context.shared_jobs"],
+    );
+    let job = r#"{"id":"r-early","kind":"context.job"}"#;
+    for (request, deadline) in [
+        ("r-early", "2030-01-01T00:05:00Z"),
+        ("r-late", "2030-01-01T01:00:00Z"),
+    ] {
+        let submitted = ctx.submit(request, deadline);
+        let outcome = at(result(&submitted), &["outcome"]);
+        assert_eq!(canonical(at(outcome, &["job"])), job, "{submitted:?}");
+    }
+    set_clock(&clock, "2030-01-01T00:05:00Z");
+    let early = settled(&mut ctx, "r-early");
+    assert_eq!(text(&early, &["state"]), "ready", "{early:?}");
+    assert_eq!(
+        at(&early, &["packets"]).as_array().map(<[_]>::len),
+        Some(1),
+        "{early:?}"
+    );
+    let late = ctx.inspect("r-late");
+    assert_eq!(
+        text(&late, &["state"]),
+        "preparing",
+        "the premise: the job runs on for r-late: {late:?}"
+    );
+
+    set_clock(&clock, "2030-01-01T00:10:00Z");
+    let late = settled(&mut ctx, "r-late");
+    assert_eq!(text(&late, &["state"]), "refused", "{late:?}");
+    assert_eq!(text(&late, &["reason"]), "packet_invalid", "{late:?}");
+    assert_eq!(canonical(at(&late, &["job"])), job, "{late:?}");
+    let after = ctx.inspect("r-early");
+    assert_eq!(
+        canonical(&after),
+        canonical(&early),
+        "r-early changed when the job ended"
+    );
+    let stored_job = stored(
+        &directory.path().join("context-data"),
+        "context.job",
+        "r-early",
+    );
+    assert_eq!(text(&stored_job, &["state"]), "ended", "{stored_job:?}");
+    assert_eq!(
+        text(&stored_job, &["reason"]),
+        "packet_invalid",
+        "{stored_job:?}"
+    );
     ctx.kill();
 }
