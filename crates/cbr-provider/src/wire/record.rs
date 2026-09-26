@@ -18,9 +18,9 @@ use rusqlite::{Connection, params};
 
 use super::Dialect;
 use super::redact::{Redacted, redact};
-use super::response::{self, Unusable};
+use super::response;
 use crate::budget::{Ledger, LedgerError, Reservation, Settlement};
-use crate::model::{Call, Exchange, Transport};
+use crate::model::{Answer, Call, Exchange, Transport};
 
 pub fn migrate(connection: &Connection) -> Result<(), rusqlite::Error> {
     connection.execute_batch(
@@ -39,7 +39,9 @@ pub fn migrate(connection: &Connection) -> Result<(), rusqlite::Error> {
     )?;
     // **The ledger row the call was sent under** (m5-settle), so a start
     // can reconcile a reservation a killed process left against what came
-    // back. Added to a store written before it; its old rows name none.
+    // back. Added to a store written before it; its old rows name none,
+    // and nor does an answer read as the provider's quota being gone
+    // (`Recording::send_for`).
     let named: i64 = connection.query_row(
         "SELECT COUNT(*) FROM pragma_table_info('model_calls') WHERE name = 'reservation'",
         [],
@@ -98,9 +100,18 @@ impl Transport for Recording<'_> {
     /// The call path's send: the record names the reservation it was sent
     /// under, **before the answer reaches the call path**, so what came
     /// back is in the store before anything is settled on it.
+    ///
+    /// **Except an answer the transport read as the provider's quota being
+    /// gone** (verification round 2): the call path settles that to
+    /// nothing whatever usage its body reports, and the record cannot say
+    /// so, since it keeps the body and not a 429's status. Naming no
+    /// reservation, it is nothing a start reconciles, and a killed call's
+    /// reservation stands at its estimate.
     fn send_for(&self, reservation: &Reservation, call: Call, body: &[u8]) -> Exchange {
         let exchange = self.inner.send_for(reservation, call, body);
-        self.write(Some(reservation.id), call, body, &exchange);
+        let named =
+            (!matches!(exchange.answer, Answer::ProviderExhausted)).then_some(reservation.id);
+        self.write(named, call, body, &exchange);
         exchange
     }
 }
@@ -154,9 +165,9 @@ pub fn record(
 /// reports — the transport's own reading, [`response::accounting`] — is
 /// above the estimate, it is settled to that usage, which writes its
 /// `overrun`. A usage within the reservation is left at its estimate,
-/// which over-counts, as the crash matrix has it; so is a response saying
-/// the provider's quota is gone, which settles to nothing. The status is
-/// not recorded, so a response is judged by the usage it reports.
+/// which over-counts, as the crash matrix has it. An answer the transport
+/// read as the provider's quota being gone names no reservation, so it is
+/// not read here at all ([`Recording`]'s `send_for`).
 ///
 /// **Nothing is reconciled for a call killed before its answer was
 /// written**, on the wire or before this boundary's own write landed: its
@@ -185,14 +196,11 @@ pub fn reconcile(connection: &Connection) -> Result<usize, LedgerError> {
         let Some(dialect) = Dialect::parse(&dialect) else {
             continue;
         };
-        let (usage, failure) = response::accounting(dialect, &received);
+        let (usage, _) = response::accounting(dialect, &received);
         let estimate = estimate.max(0) as u64;
         let Some(bill) = usage.filter(|usage| *usage > estimate) else {
             continue;
         };
-        if failure == Some(Unusable::ProviderExhausted) {
-            continue;
-        }
         ledger.settle(&at, &Reservation { id, estimate }, Settlement::Usage(bill))?;
         settled += 1;
     }
