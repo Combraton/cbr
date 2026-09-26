@@ -391,7 +391,10 @@ fn provider_exhaustion_is_a_different_outcome_from_an_exhausted_envelope() {
 
 /// Every row as (job, request, kind, tokens, estimate): what `rows` leaves
 /// out is who a row is about, which is what m5-settle's rows must name.
-fn attributed(connection: &Connection) -> Vec<(String, String, String, u64, u64)> {
+/// One ledger row: job, request, kind, tokens, estimate.
+type Attributed = (String, String, String, u64, u64);
+
+fn attributed(connection: &Connection) -> Vec<Attributed> {
     let mut statement = connection
         .prepare("SELECT job, request, kind, tokens, estimate FROM model_ledger ORDER BY id")
         .expect("the ledger table exists");
@@ -965,9 +968,7 @@ fn window_after_rollback(event: rusqlite::trace::TraceEvent<'_>) {
 /// A settlement above its reservation that the store refuses inside its
 /// transaction, while another worker of this process waits on that
 /// transaction's lock to admit. Returns the worker's admission and the rows.
-fn refused_while_an_admission_waits(
-    wal: bool,
-) -> (String, Vec<(String, String, String, u64, u64)>) {
+fn refused_while_an_admission_waits(wal: bool) -> (String, Vec<Attributed>) {
     WINDOW_WAITING.store(false, std::sync::atomic::Ordering::SeqCst);
     WINDOW_DONE.store(false, std::sync::atomic::Ordering::SeqCst);
     WINDOW_ARMED.store(false, std::sync::atomic::Ordering::SeqCst);
