@@ -100,15 +100,18 @@ fn envelope(
     )
 }
 
-/// Core with events, evidence, and context with `features`.
-fn context_profiles(features: &[&str]) -> String {
-    let features = features
-        .iter()
-        .map(|f| format!(r#""{f}""#))
-        .collect::<Vec<_>>()
-        .join(",");
+/// Core with `core_features`, evidence, and context with `features`.
+fn context_profiles(core_features: &[&str], features: &[&str]) -> String {
+    let quoted = |names: &[&str]| {
+        names
+            .iter()
+            .map(|f| format!(r#""{f}""#))
+            .collect::<Vec<_>>()
+            .join(",")
+    };
+    let (core_features, features) = (quoted(core_features), quoted(features));
     format!(
-        r#"[{{"name":"core","majors":[1],"required":true,"required_features":["core.events"],"optional_features":[]}},{{"name":"context","majors":[1],"required":true,"required_features":[{features}],"optional_features":[]}},{{"name":"evidence","majors":[1],"required":true,"required_features":[],"optional_features":[]}}]"#
+        r#"[{{"name":"core","majors":[1],"required":true,"required_features":[{core_features}],"optional_features":[]}},{{"name":"context","majors":[1],"required":true,"required_features":[{features}],"optional_features":[]}},{{"name":"evidence","majors":[1],"required":true,"required_features":[],"optional_features":[]}}]"#
     )
 }
 
@@ -125,6 +128,17 @@ impl ContextProvider {
     }
 
     fn start_with(directory: &Path, config: &str, features: &[&str]) -> Self {
+        Self::start_negotiating(directory, config, &["core.events"], features)
+    }
+
+    /// [`Self::start_with`], negotiating `core` with `core_features`:
+    /// `core.grants` for a test that reads under a grant.
+    fn start_negotiating(
+        directory: &Path,
+        config: &str,
+        core_features: &[&str],
+        features: &[&str],
+    ) -> Self {
         let path = directory.join("context-config.json");
         std::fs::write(&path, config).expect("config");
         let mut child = Command::new(binary())
@@ -150,7 +164,7 @@ impl ContextProvider {
             None,
             &format!(
                 r#"{{"caller":{{"name":"context-tests","version":"1"}},"receive_limits":{{"max_frame_bytes":1048576}},"profiles":{}}}"#,
-                context_profiles(features)
+                context_profiles(core_features, features)
             ),
         );
         result(&negotiated);
@@ -158,9 +172,20 @@ impl ContextProvider {
     }
 
     fn send(&mut self, operation: &str, command: Option<(&str, (&str, &str), i64)>, payload: &str) {
+        self.send_under(operation, command, payload, None);
+    }
+
+    /// [`Self::send`] under `grant`, one this session's principal holds.
+    fn send_under(
+        &mut self,
+        operation: &str,
+        command: Option<(&str, (&str, &str), i64)>,
+        payload: &str,
+        grant: Option<&str>,
+    ) {
         let id = self.next;
         self.next += 1;
-        let params = envelope(operation, command, payload, None, id);
+        let params = envelope(operation, command, payload, grant, id);
         let stdin = self.child.stdin.as_mut().expect("stdin");
         writeln!(
             stdin,
@@ -183,6 +208,12 @@ impl ContextProvider {
         payload: &str,
     ) -> Value {
         self.send(operation, command, payload);
+        self.read().expect("a response")
+    }
+
+    /// A query under `grant`, one this session's principal holds.
+    fn query_under(&mut self, grant: &str, operation: &str, payload: &str) -> Value {
+        self.send_under(operation, None, payload, Some(grant));
         self.read().expect("a response")
     }
 
@@ -1368,19 +1399,26 @@ fn refusals(log: &str, request: &str) -> usize {
 }
 
 /// One recorded event: its subject as `(kind, id)`, its type, the subject
-/// revision it was recorded at and its payload as canonical JSON.
+/// revision and the instant it was recorded at, and its payload as
+/// canonical JSON.
 #[derive(Debug)]
 struct Recorded {
     subject: (String, String),
     event: String,
     revision: i64,
+    recorded_at: String,
     payload: String,
 }
 
 /// Every event the provider has recorded, in stream order.
 fn recorded(ctx: &mut ContextProvider) -> Vec<Recorded> {
     let read = ctx.call("core.events.read", None, r#"{"from":"start","limit":1000}"#);
-    at(result(&read), &["items"])
+    events_of(&read)
+}
+
+/// The events of a `core.events.read` response, in stream order.
+fn events_of(read: &Value) -> Vec<Recorded> {
+    at(result(read), &["items"])
         .as_array()
         .expect("items")
         .iter()
@@ -1395,6 +1433,7 @@ fn recorded(ctx: &mut ContextProvider) -> Vec<Recorded> {
                 Value::Int(revision) => *revision,
                 other => panic!("a revision: {other:?}"),
             },
+            recorded_at: text(event, &["recorded_at"]).to_string(),
             payload: canonical(at(event, &["payload"])),
         })
         .collect()
@@ -2416,6 +2455,205 @@ fn the_log_line_of_a_refused_packet_says_its_job_has_ended_and_names_no_id() {
     assert!(
         !logged.contains("secret-path"),
         "the log repeats the id itself: {logged}"
+    );
+    ctx.kill();
+}
+
+// ---- the cases the second verification's mutants reached --------------------
+
+/// An item of a request [`ContextProvider::submit_with`] builds, required
+/// before the transition `merge`. Nothing satisfies it.
+fn transition_item(item: &str) -> String {
+    format!(
+        r#"{{"item_id":"{item}","selector":{{"kind":"path","value":"src/{item}.rs"}},"obligation":"required_before_transition","transition":"merge","reliance":"evidence","selected_by":"owner","check":{{"kind":"source_included","repository":"repo-a","path":"src/{item}.rs"}}}}"#
+    )
+}
+
+#[test]
+fn a_refused_request_reads_each_of_its_items_ended_in_the_order_it_submitted_them() {
+    // **Every item ends, each by its obligation.** Both required
+    // obligations are required: `i-1`, before start, and `t-1`, before a
+    // transition, each end `unmet`. The advisory `opt` ends `degraded`,
+    // and the inspect serves it beside the other two. Each ends for the
+    // reason the job ended, and they are read in the order the request
+    // named them. That order is also the ids' alphabetical order, so this
+    // tells it from its reverse and not from a sort.
+    let directory = tempfile::tempdir().expect("temp dir");
+    let mut ctx = ContextProvider::start_with(
+        directory.path(),
+        &scripted(&refused_script("r-mixed"), ""),
+        &[
+            "context.required_before_start",
+            "context.advisory",
+            "context.required_before_transition",
+        ],
+    );
+    let submitted = ctx.submit_with(
+        "r-mixed",
+        &format!(
+            "{SOURCE_ITEM},{},{}",
+            unsatisfiable("opt", "advisory"),
+            transition_item("t-1")
+        ),
+        "proceed_with_gap",
+        "2030-01-01T01:00:00Z",
+    );
+    assert_eq!(
+        text(result(&submitted), &["outcome", "state"]),
+        "preparing",
+        "{submitted:?}"
+    );
+    let refused = settled(&mut ctx, "r-mixed");
+    assert_eq!(text(&refused, &["state"]), "refused", "{refused:?}");
+    assert_eq!(text(&refused, &["reason"]), "packet_invalid", "{refused:?}");
+    assert_eq!(
+        canonical(at(&refused, &["items"])),
+        concat!(
+            r#"[{"item_id":"i-1","obligation":"required_before_start","reason":"packet_invalid","result":"unmet"},"#,
+            r#"{"item_id":"opt","obligation":"advisory","reason":"packet_invalid","result":"degraded"},"#,
+            r#"{"item_id":"t-1","obligation":"required_before_transition","reason":"packet_invalid","result":"unmet"}]"#
+        ),
+        "{refused:?}"
+    );
+    ctx.kill();
+}
+
+#[test]
+fn a_refusal_is_recorded_at_the_provider_clock_of_the_tick_that_refused() {
+    // **The ending is recorded when it happened.** The request is
+    // submitted at 00:00, and its job waits for 00:10 before preparing the
+    // section the guard refuses. Its submission is recorded at 00:00; its
+    // refusal and the job's ending, built apart from the refused tick, are
+    // both recorded at 00:10, the provider clock's instant when the guard
+    // refused.
+    let directory = tempfile::tempdir().expect("temp dir");
+    let clock = directory.path().join("clock");
+    set_clock(&clock, "2030-01-01T00:00:00Z");
+    let script = format!(
+        r#""r-bad":[{{"wait_until":"2030-01-01T00:10:00Z"}},{},{{"publish":{{}}}}]"#,
+        source_section(OUTSIDE_GRAMMAR)
+    );
+    let mut ctx = ContextProvider::start(
+        directory.path(),
+        &scripted(
+            &script,
+            &format!(r#","clock":{{"file":"{}"}}"#, clock.display()),
+        ),
+    );
+    ctx.submit("r-bad", "2030-01-01T01:00:00Z");
+    let preparing = ctx.inspect("r-bad");
+    assert_eq!(text(&preparing, &["state"]), "preparing", "{preparing:?}");
+
+    set_clock(&clock, "2030-01-01T00:10:00Z");
+    let refused = settled(&mut ctx, "r-bad");
+    assert_eq!(text(&refused, &["state"]), "refused", "{refused:?}");
+    let events = recorded(&mut ctx);
+    let instants: Vec<(&str, &str, &str)> = events
+        .iter()
+        .filter(|e| e.subject.1 == "r-bad")
+        .map(|e| (e.event.as_str(), e.payload.as_str(), e.recorded_at.as_str()))
+        .collect();
+    let job = r#"{"id":"r-bad","kind":"context.job"}"#;
+    let preparing = format!(r#"{{"job":{job},"state":"preparing"}}"#);
+    let refusal = format!(r#"{{"job":{job},"reason":"packet_invalid","state":"refused"}}"#);
+    assert_eq!(
+        instants,
+        vec![
+            (
+                "context.request.changed",
+                preparing.as_str(),
+                "2030-01-01T00:00:00Z"
+            ),
+            (
+                "context.request.changed",
+                refusal.as_str(),
+                "2030-01-01T00:10:00Z"
+            ),
+            (
+                "context.job.ended",
+                r#"{"reason":"packet_invalid"}"#,
+                "2030-01-01T00:10:00Z"
+            ),
+        ],
+        "{events:?}"
+    );
+    ctx.kill();
+}
+
+#[test]
+fn an_ended_job_is_still_seen_through_a_subscriber_it_is_not_named_after() {
+    // **An ended job keeps its subscribers**, and they are what makes it
+    // readable: a job is visible to a reader of any of its requests
+    // (CONTEXT section 10). Job `r-first` is shared with `r-second`, and
+    // the guard refuses its packet. A reader whose grant covers
+    // `r-second` alone reads the events: it is shown nothing of
+    // `r-first`, the request, and it is shown the ending of `r-first`, the
+    // job, which it can read only because the ended job still names
+    // `r-second`.
+    let directory = tempfile::tempdir().expect("temp dir");
+    let clock = directory.path().join("clock");
+    set_clock(&clock, "2030-01-01T00:00:00Z");
+    let script = format!(
+        r#""r-first":[{{"wait_until":"2030-01-01T00:10:00Z"}},{},{{"publish":{{}}}}]"#,
+        source_section(OUTSIDE_GRAMMAR)
+    );
+    let mut ctx = ContextProvider::start_negotiating(
+        directory.path(),
+        &scripted(
+            &script,
+            &format!(r#","clock":{{"file":"{}"}}"#, clock.display()),
+        ),
+        &["core.events", "core.grants"],
+        &["context.required_before_start", "context.shared_jobs"],
+    );
+    for request in ["r-first", "r-second"] {
+        let submitted = ctx.submit(request, "2030-01-01T01:00:00Z");
+        assert_eq!(
+            canonical(at(result(&submitted), &["outcome", "job"])),
+            SHARED_JOB,
+            "the premise: {request} is prepared by job r-first: {submitted:?}"
+        );
+    }
+    result(&ctx.call(
+        "core.grant.issue",
+        Some(("issue-g-second", ("core.grant", "g-second"), 0)),
+        r#"{"holder":"owner","audience":"context-1","rights":["core.events.read","context.read"],"resources":[{"kind":"context.request","id":"r-second"}],"delegation":{"allowed":false,"max_depth":0}}"#,
+    ));
+
+    set_clock(&clock, "2030-01-01T00:10:00Z");
+    for request in ["r-first", "r-second"] {
+        let refused = settled(&mut ctx, request);
+        assert_eq!(
+            text(&refused, &["state"]),
+            "refused",
+            "{request}: {refused:?}"
+        );
+    }
+    let read = ctx.query_under(
+        "g-second",
+        "core.events.read",
+        r#"{"from":"start","limit":1000}"#,
+    );
+    let seen = events_of(&read);
+    assert!(
+        of_subject(&seen, "context.request", "r-first").is_empty(),
+        "the premise: the grant covers r-second alone: {seen:?}"
+    );
+    assert_eq!(
+        of_subject(&seen, "context.request", "r-second")
+            .last()
+            .expect("an event")
+            .1,
+        refused_in_shared_job(),
+        "{seen:?}"
+    );
+    assert_eq!(
+        of_subject(&seen, "context.job", "r-first"),
+        vec![(
+            "context.job.ended".to_string(),
+            r#"{"reason":"packet_invalid"}"#.to_string()
+        )],
+        "a reader of r-second no longer sees the job it subscribed to: {seen:?}"
     );
     ctx.kill();
 }
