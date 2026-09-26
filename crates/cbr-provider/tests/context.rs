@@ -1977,3 +1977,62 @@ fn a_request_the_guard_refuses_at_its_deadline_ends_refused_too() {
     );
     ctx.kill();
 }
+
+#[test]
+fn a_refusal_holds_back_no_other_job_the_same_tick_walks() {
+    // **One bad packet must not stop every other job on the provider**,
+    // which is why the guard's failure is not routed through `Protocol`.
+    // The guard test above held that while a refused job came back at
+    // every tick; now the job ends at its first refusal, and there that
+    // comes before the valid request's job exists. Here both jobs wait
+    // for the same instant, the refused one first in the order the tick
+    // walks them, and the valid one publishes in that same tick: the one
+    // request after the clock moves, and so the one tick at the new
+    // instant, already sees its packet.
+    let directory = tempfile::tempdir().expect("temp dir");
+    let clock = directory.path().join("clock");
+    set_clock(&clock, "2030-01-01T00:00:00Z");
+    let wait = r#"{"wait_until":"2030-01-01T00:10:00Z"}"#;
+    let scripts = format!(
+        r#""r-bad":[{wait},{},{{"publish":{{}}}}],"r-good":[{wait},{},{{"publish":{{}}}}]"#,
+        source_section(OUTSIDE_GRAMMAR),
+        source_section("s-1"),
+    );
+    let mut ctx = ContextProvider::start(
+        directory.path(),
+        &scripted(
+            &scripts,
+            &format!(r#","clock":{{"file":"{}"}}"#, clock.display()),
+        ),
+    );
+    for request in ["r-bad", "r-good"] {
+        let submitted = ctx.submit(request, "2030-01-01T01:00:00Z");
+        assert_eq!(
+            text(result(&submitted), &["outcome", "state"]),
+            "preparing",
+            "{submitted:?}"
+        );
+    }
+
+    set_clock(&clock, "2030-01-01T00:10:00Z");
+    let good = ctx.inspect("r-good");
+    assert_eq!(
+        text(&good, &["state"]),
+        "ready",
+        "the refusal held back the job the tick walked after it: {good:?}"
+    );
+    assert_eq!(
+        at(&good, &["packets"]).as_array().map(<[_]>::len),
+        Some(1),
+        "{good:?}"
+    );
+    let bad = ctx.inspect("r-bad");
+    assert_eq!(text(&bad, &["state"]), "refused", "{bad:?}");
+    assert_eq!(text(&bad, &["reason"]), "packet_invalid", "{bad:?}");
+    let logged = log(directory.path());
+    assert!(
+        !logged.contains("context preparation failed"),
+        "the refusal stopped the tick: {logged}"
+    );
+    ctx.kill();
+}
