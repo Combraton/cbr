@@ -1700,8 +1700,9 @@ fn every_request_sharing_a_job_the_guard_refuses_is_refused_with_it() {
     // builds every id inside the identifier grammar (`crate::ids`), so in
     // production the guard fires only on a defect, or on a scripted test
     // control; ending the whole job fails closed. A subscriber's valid
-    // packet sealed in that tick is dropped with the tick and never
-    // served (the narrower subscriber's test says what is left of it).
+    // packet in that tick is never sealed, served or sent to an evidence
+    // peer: the guard sees every packet the tick would publish before any
+    // of them leaves it (the narrower subscriber's tests).
     // One whose deadline is later than the one that brought the packet on
     // is refused too:
     // `a_subscriber_with_a_later_deadline_is_refused_with_the_job_an_earlier_deadline_ended`.
