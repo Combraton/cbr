@@ -109,6 +109,8 @@ from m4e_run import (  # noqa: E402
     refuse_unless_public,
     spend,
     stop,
+    stopped_after,
+    stops,
 )
 
 # `projection::tests` reads both back from here. `MAX_PARTS` is the most
@@ -664,6 +666,7 @@ def one_run(run, given, out, provider, client, live, ceiling, commit):
     total, charges = spend(data)
     result["tokens"] = total
     result["charges"] = [{"kind": kind, "tokens": tokens} for kind, tokens in charges]
+    result["stops"] = stops(data)
     result["part_records"] = len(part_records(data))
     if asks and parts == 0 and (total or result["part_records"]):
         # **A run offering nothing asks nothing**: a call made where the
@@ -771,6 +774,10 @@ def main(argv=None):
                 f"baseline {result['baseline']['item']['result']}, "
                 f"assisted {result['assisted'].get('item', {}).get('result', 'skipped')}"
             )
+            if stopped_after(run["id"], result):
+                report["stopped"] = stopped_after(run["id"], result)
+                print(f"j2_run: STOPPED. {report['stopped']}", file=sys.stderr)
+                break
         report["tokens"] = spent
         (out / "report.json").write_text(json.dumps(report, indent=2, sort_keys=True))
         print(f"j2_run: {spent:,} tokens over {len(report['runs'])} runs; report {out / 'report.json'}")

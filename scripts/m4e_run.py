@@ -858,19 +858,52 @@ def evidence(data):
         connection.close()
 
 
+# **The kinds the ledger counts as spend**: `Ledger::SPENT` in
+# crates/cbr-provider/src/budget.rs, which
+# `m4e_harness::the_harness_counts_what_the_ledger_counts` holds this to.
+SPENT_KINDS = ("reservation", "usage", "unknown", "provider_exhausted", "not_sent")
+
+# **The rows after which a store admits nothing again** (`bound_unsound`,
+# `overrun`) or makes no serving count again (`count_unsound`). A run whose
+# store recorded one ends the sequence: the next run's new store would start
+# on the assumption that just failed (m5-settle).
+STOP_KINDS = ("bound_unsound", "count_unsound", "overrun")
+
+
 def spend(data):
     """Every charge in the ledger, and their total.
 
-    `admitted_*` rows are notes about which path admitted a call, not
-    charges, and are not counted -- counting them would double every
-    call's cost.
+    Only the ledger's own spend kinds. Every other row is a note about a
+    call -- which path admitted it, an anomaly, a bill above a
+    reservation -- and its tokens are not a second charge: an `overrun`
+    row carries the bill its settled row already counts.
     """
     with evidence(data) as connection:
         rows = connection.execute(
             "SELECT kind, tokens FROM model_ledger ORDER BY id"
         ).fetchall()
-    charges = [(kind, tokens) for kind, tokens in rows if not kind.startswith("admitted_")]
+    charges = [(kind, tokens) for kind, tokens in rows if kind in SPENT_KINDS]
     return sum(tokens for _, tokens in charges), charges
+
+
+def stops(data):
+    """The stop kinds a store recorded, sorted; empty when it recorded none."""
+    with evidence(data) as connection:
+        rows = connection.execute(
+            "SELECT DISTINCT kind FROM model_ledger WHERE kind IN (?, ?, ?) ORDER BY kind",
+            STOP_KINDS,
+        ).fetchall()
+    return [kind for (kind,) in rows]
+
+
+def stopped_after(run_id, result):
+    """The report's `stopped` line when `result`'s store recorded a stop."""
+    if not result.get("stops"):
+        return None
+    return (
+        f"{run_id} recorded {', '.join(result['stops'])}: its store admits "
+        "nothing again, and no further run is started"
+    )
 
 
 def object_path(data, digest):
@@ -1036,6 +1069,7 @@ def one_run(run, out, provider, client, live, ceiling, checkout):
     total, charges = spend(data)
     result["tokens"] = total
     result["charges"] = [{"kind": kind, "tokens": tokens} for kind, tokens in charges]
+    result["stops"] = stops(data)
     result["records"] = len(records(data))
     found = discovery_records(data)
     result["discovery_records"] = len(found)
@@ -1228,6 +1262,10 @@ def main(argv=None):
                 f"replay {'identical' if result.get('replay', {}).get('sections_identical') else 'DIFFERS'}, "
                 f"{len(result.get('replay', {}).get('ambiguous', []))} ambiguous"
             )
+            if stopped_after(run["id"], result):
+                report["stopped"] = stopped_after(run["id"], result)
+                print(f"m4e_run: STOPPED. {report['stopped']}", file=sys.stderr)
+                break
         report["tokens"] = spent
         report["ambiguous_questions"] = sum(
             len(run.get("replay", {}).get("ambiguous", [])) for run in report["runs"]
