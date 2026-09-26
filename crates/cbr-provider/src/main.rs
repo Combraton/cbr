@@ -240,6 +240,9 @@ fn run() -> Result<(), String> {
         let permit = wire::net::permit().ok_or("--calibrate needs --permit-model-network")?;
         let store = store::Store::open(&data_dir)
             .map_err(|error| format!("opening the store at {}: {error}", data_dir.display()))?;
+        // Before anything is admitted, as a serving start does (m5-settle).
+        wire::record::reconcile(store.connection())
+            .map_err(|error| format!("reconciling the ledger: {error}"))?;
         let transport = wire::http::Http::new(
             permit,
             runtime.dialect,

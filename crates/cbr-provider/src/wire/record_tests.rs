@@ -122,6 +122,7 @@ fn the_store_only_accepts_bytes_that_went_through_the_boundary() {
         crate::model::Call::Completion,
         Dialect::OpenAi,
         "MiniMax-M2.7",
+        None,
         &redact(b"sent", None),
         &redact(br#"{"api_key":"INLINECANARY"}"#, None),
     )
