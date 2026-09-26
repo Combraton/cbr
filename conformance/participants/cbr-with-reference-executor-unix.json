@@ -1,0 +1,82 @@
+{
+  "format": "combraton-conformance-participant/1",
+  "name": "cbr-with-reference-executor-unix",
+  "version": "0.1.0",
+  "description": "REFERENCE EXECUTOR. A composition of two implementations for the composition suite only: CBR's provider as every evidence, context and knowledge participant, and the protocol's own reference provider, built from the verified release extraction, as every participant configured with the launch configuration's `executor` member. The pinned runner starts every participant from one descriptor, so the launch argv is scripts/reference_executor_launch.py, which chooses the binary per participant. CBR never serves execution/1: the execution/1 profile, the execution.* features and the executor.script control below are the reference executor's, and a result from this descriptor is never real-adapter or PIO evidence. The other claims are CBR's, as in cbr-provider-unix.json. Run with --repo pointing at vendor/protocol/v0.1.0. Build first: cargo build --workspace, then scripts/build_runner.py --reference-executor.",
+  "role": "provider",
+  "binding": "unix",
+  "claims": {
+    "profiles": [
+      {
+        "name": "core",
+        "major": 1
+      },
+      {
+        "name": "core-test",
+        "major": 1
+      },
+      {
+        "name": "evidence",
+        "major": 1
+      },
+      {
+        "name": "knowledge",
+        "major": 1
+      },
+      {
+        "name": "context",
+        "major": 1
+      },
+      {
+        "name": "execution",
+        "major": 1
+      }
+    ],
+    "features": [
+      "core.events",
+      "core.grants",
+      "core.capabilities",
+      "core.events.backpressure",
+      "core.effects",
+      "evidence.manifests",
+      "evidence.retention_control",
+      "evidence.work_binding",
+      "context.advisory",
+      "context.required_before_start",
+      "context.required_before_transition",
+      "context.shared_jobs",
+      "context.updates",
+      "context.expand",
+      "context.claims",
+      "execution.context",
+      "execution.context_revalidation",
+      "execution.claim_revalidation",
+      "execution.evidence_outputs"
+    ],
+    "test_controls": [
+      "clock.file",
+      "evidence.store",
+      "knowledge.store",
+      "context.script",
+      "executor.script"
+    ]
+  },
+  "launch": {
+    "argv": [
+      "{repo}/../../../scripts/reference_executor_launch.py",
+      "--data-dir",
+      "{data_dir}",
+      "--config",
+      "{config_file}",
+      "--socket",
+      "{socket_path}"
+    ]
+  },
+  "mutants": {
+    "argv": [
+      "--mutant",
+      "{mutant}"
+    ],
+    "names": []
+  }
+}
