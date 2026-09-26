@@ -3775,9 +3775,10 @@ fn a_start_settles_no_reservation_its_record_does_not_bill_above() {
     // overrun, and a start does not settle it: the reservation stands at
     // its estimate, which over-counts, as the crash matrix has always
     // said. Nor does a start settle a call killed before it sent, which
-    // recorded nothing, or one whose response said the provider's quota
-    // was gone, which the call path settles to nothing whatever usage the
-    // body reports.
+    // recorded nothing, or one the transport read as the provider's quota
+    // being gone, which the call path settles to nothing whatever usage
+    // the body reports: a body saying so, or a 429's, whose status the
+    // record does not keep (round 2, probe B).
     let body = padded_body(64, 4_000);
     let send = crate::budget::reservation(&body, 1, 64);
     let raw = responses_completion_billing(1, send - 1);
@@ -3787,10 +3788,24 @@ fn a_start_settles_no_reservation_its_record_does_not_bill_above() {
         send + 1
     )
     .into_bytes();
+    let refused = format!(
+        "{{\"usage\":{{\"input_tokens\":1,\"output_tokens\":{send},\"total_tokens\":{}}}}}",
+        send + 1
+    )
+    .into_bytes();
+    assert_eq!(
+        crate::wire::http::answer_for(Call::Completion, Dialect::Responses, 429, &refused),
+        Answer::ProviderExhausted,
+        "the transport's reading of a 429 carrying that body"
+    );
     for (barrier, answer) in [
         (
             COMPLETION_DURING_RECONCILIATION,
             (Answer::ProviderExhausted, exhausted),
+        ),
+        (
+            COMPLETION_DURING_RECONCILIATION,
+            (Answer::ProviderExhausted, refused),
         ),
         (
             COMPLETION_DURING_RECONCILIATION,
@@ -3996,6 +4011,304 @@ fn a_bill_equal_to_its_reservation_is_not_an_overrun() {
         assert!(
             !rows.iter().any(|row| row.2 == "overrun"),
             "{which}: an overrun at a bill equal to its reservation: {rows:?}"
+        );
+    }
+}
+
+// --- m5-settle, verification round 2 -------------------------------------
+
+/// Set by [`waits_on_the_lock`] once a connection it answers for has found
+/// the store's write lock held, so a test knows an admission is already
+/// waiting on it.
+static WAITING_ON_THE_LOCK: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+/// A busy handler that says it is waiting, and waits for about ten seconds.
+fn waits_on_the_lock(attempts: i32) -> bool {
+    WAITING_ON_THE_LOCK.store(true, std::sync::atomic::Ordering::SeqCst);
+    std::thread::sleep(std::time::Duration::from_millis(5));
+    attempts < 2_000
+}
+
+#[test]
+fn an_admission_already_waiting_on_the_lock_is_refused_once_the_process_keeps_an_overrun() {
+    // **Round 2's race (probe C).** The process's stop is read inside the
+    // admission's own transaction, after `BEGIN IMMEDIATE`, as the store's
+    // stops are. Read before it, an admission that was already waiting on
+    // the lock while the call's settlement was refused would be granted a
+    // reservation once the lock came free, after the process had kept the
+    // overrun.
+    let directory = tempfile::tempdir().expect("temp dir");
+    let path = directory.path().join("ledger.sqlite");
+    let connection = impatient(&path);
+    Ledger::migrate(&connection).expect("migrates");
+    let other = impatient(&path);
+    let body = padded_body(64, 4_000);
+    let send = crate::budget::reservation(&body, 1, 64);
+    let bill = send + 1_000;
+    let transport = Recorder::new(vec![Answer::Completed {
+        body: responses_completion_billing(1, bill - 1),
+        usage: Some(bill),
+    }]);
+    let runtime = Runtime {
+        ledger: Ledger::new(&connection),
+        transport: &transport,
+    };
+    let waiting = std::cell::RefCell::new(None);
+    let ended = runtime.call(
+        T0,
+        &asked_with(&body, 64),
+        &|name| {
+            if name != COMPLETION_AFTER_SEND {
+                return;
+            }
+            // Another writer holds the lock past the call's busy timeout,
+            // and another worker of this process is already waiting on it
+            // to admit, before the call's settlement is refused.
+            other.execute_batch("BEGIN IMMEDIATE").expect("locks");
+            let path = path.clone();
+            *waiting.borrow_mut() = Some(std::thread::spawn(move || {
+                let beside = Connection::open(&path).expect("opens");
+                beside
+                    .busy_handler(Some(waits_on_the_lock))
+                    .expect("a busy handler");
+                Ledger::new(&beside)
+                    .admit(T0, "worker", "w", 1)
+                    .map_err(|error| error.to_string())
+            }));
+            let started = std::time::Instant::now();
+            while !WAITING_ON_THE_LOCK.load(std::sync::atomic::Ordering::SeqCst) {
+                assert!(
+                    started.elapsed() < std::time::Duration::from_secs(30),
+                    "the worker never waited on the lock"
+                );
+                std::thread::sleep(std::time::Duration::from_millis(1));
+            }
+        },
+        &Charges::default(),
+    );
+    assert_eq!(ended.reason(), Some(OVERRUN_REASON), "{ended:?}");
+    assert!(
+        !attributed(&connection).iter().any(|row| row.2 == "overrun"),
+        "the settlement landed, so this is not the case under test"
+    );
+    other.execute_batch("COMMIT").expect("commits");
+    let worker = waiting
+        .borrow_mut()
+        .take()
+        .expect("the worker started")
+        .join()
+        .expect("the worker ends");
+    assert_eq!(
+        worker,
+        Ok(Err(Refusal::Overrun)),
+        "an admission waiting on the lock was granted after the process kept the overrun: {:?}",
+        attributed(&connection)
+    );
+}
+
+#[test]
+fn an_overrun_the_process_kept_and_never_wrote_is_written_by_the_next_start() {
+    // **What the harnesses' reconcile step rests on (probe A).** The store
+    // refused the settlement and took the record, and the process ended
+    // with no later admission to write what it kept: the reservation
+    // stands at its estimate and there is no stop. A start reconciles it
+    // against the record, which charges the bill and writes the
+    // `overrun`, so a harness that runs one after killing a launch reads
+    // the stop before it starts another run.
+    let directory = tempfile::tempdir().expect("temp dir");
+    let path = directory.path().join("cbr.sqlite");
+    let body = padded_body(64, 4_000);
+    let send = crate::budget::reservation(&body, 1, 64);
+    let bill = send + 1_000;
+    {
+        let connection = impatient(&path);
+        Ledger::migrate(&connection).expect("migrates");
+        crate::wire::record::migrate(&connection).expect("migrates");
+        let other = impatient(&path);
+        let raw = responses_completion_billing(1, bill - 1);
+        let recorder = Recorder::answering_with_bytes(vec![(
+            Answer::Completed {
+                body: raw.clone(),
+                usage: Some(bill),
+            },
+            raw,
+        )]);
+        let recording = crate::wire::record::Recording {
+            inner: &recorder,
+            store: &connection,
+            now: T0,
+            job: "job",
+            request: "r",
+            model: "MiniMax-M3",
+            dialect: Dialect::Responses,
+            scrubber: None,
+        };
+        let runtime = Runtime {
+            ledger: Ledger::new(&connection),
+            transport: &recording,
+        };
+        // Another writer takes the lock after the record landed and before
+        // the settlement: the settlement is refused, the record is not.
+        let ended = runtime.call(
+            T0,
+            &asked_with(&body, 64),
+            &|name| {
+                if name == COMPLETION_AFTER_SEND {
+                    other.execute_batch("BEGIN IMMEDIATE").expect("locks");
+                }
+            },
+            &Charges::default(),
+        );
+        other.execute_batch("COMMIT").expect("commits");
+        assert_eq!(ended.reason(), Some(OVERRUN_REASON), "{ended:?}");
+    }
+    let connection = Connection::open(&path).expect("opens again");
+    let left = attributed(&connection);
+    assert!(
+        left.contains(&row("job", "r", "reservation", send, send))
+            && !left.iter().any(|row| row.2 == "overrun"),
+        "not the state the process leaves: {left:?}"
+    );
+    crate::wire::record::reconcile(&connection).expect("a start reconciles");
+    let rows = attributed(&connection);
+    assert!(
+        rows.contains(&row("job", "r", "usage", bill, send))
+            && rows.contains(&row("job", "r", "overrun", bill, send)),
+        "the start did not write the overrun the process kept: {rows:?}"
+    );
+}
+
+#[test]
+fn a_start_reads_every_standing_reservation_past_one_it_leaves() {
+    // **Round 2's test gap N2.** A start reads every reservation still
+    // standing against its record. One it leaves at its estimate — a bill
+    // within it, or an answer the transport read as the provider's quota
+    // being gone, whatever usage its body reports — does not end the
+    // reading: a later one billed above its reservation is still charged
+    // and writes its `overrun`.
+    let directory = tempfile::tempdir().expect("temp dir");
+    let path = directory.path().join("cbr.sqlite");
+    let connection = Connection::open(&path).expect("opens");
+    Ledger::migrate(&connection).expect("migrates");
+    crate::wire::record::migrate(&connection).expect("migrates");
+    let body = padded_body(64, 4_000);
+    let send = crate::budget::reservation(&body, 1, 64);
+    let within = responses_completion_billing(1, send - 1);
+    let above = responses_completion_billing(1, send + 999);
+    let calls = [
+        (
+            "within",
+            Answer::Completed {
+                body: within.clone(),
+                usage: Some(send),
+            },
+            within,
+        ),
+        ("exhausted", Answer::ProviderExhausted, above.clone()),
+        (
+            "above",
+            Answer::Completed {
+                body: above.clone(),
+                usage: Some(send + 1_000),
+            },
+            above,
+        ),
+    ];
+    let ledger = Ledger::new(&connection);
+    for (request, answer, raw) in calls {
+        let reservation = ledger
+            .admit(T0, "job", request, send)
+            .expect("admits")
+            .expect("admitted");
+        let recorder = Recorder::answering_with_bytes(vec![(answer, raw)]);
+        let recording = crate::wire::record::Recording {
+            inner: &recorder,
+            store: &connection,
+            now: T0,
+            job: "job",
+            request,
+            model: "MiniMax-M3",
+            dialect: Dialect::Responses,
+            scrubber: None,
+        };
+        // Sent and recorded, and the process killed before it settled.
+        let _ = recording.send_for(&reservation, Call::Completion, &body);
+    }
+    assert_eq!(
+        crate::wire::record::reconcile(&connection).expect("a start reconciles"),
+        1,
+        "{:?}",
+        attributed(&connection)
+    );
+    assert_eq!(
+        attributed(&connection),
+        vec![
+            row("job", "within", "reservation", send, send),
+            row("job", "exhausted", "reservation", send, send),
+            row("job", "above", "usage", send + 1_000, send),
+            row("job", "above", "overrun", send + 1_000, send),
+        ]
+    );
+}
+
+#[test]
+fn a_settlement_the_store_refused_that_was_no_overrun_is_charged_the_estimate() {
+    // **Round 2's test gaps N6 and N1, at the call path.** A settlement
+    // the store did not take leaves its reservation at its estimate; only
+    // a bill above the reservation is kept by the process to be written
+    // later. So a call whose refused settlement was no overrun is charged
+    // the estimate, which is what the ledger holds for it, and not the
+    // figure it would have settled to; and the store is not stopped, so it
+    // admits again once the lock is free.
+    let body = padded_body(64, 4_000);
+    let send = crate::budget::reservation(&body, 1, 64);
+    let cases = [
+        (
+            "a bill within its reservation",
+            Answer::Completed {
+                body: responses_completion_billing(1, send / 2 - 1),
+                usage: Some(send / 2),
+            },
+        ),
+        ("the provider's quota gone", Answer::ProviderExhausted),
+    ];
+    for (which, answer) in cases {
+        let directory = tempfile::tempdir().expect("temp dir");
+        let path = directory.path().join("ledger.sqlite");
+        let connection = impatient(&path);
+        Ledger::migrate(&connection).expect("migrates");
+        let other = impatient(&path);
+        let transport = LockedWhileSending {
+            other: &other,
+            answer: std::cell::RefCell::new(Some(answer)),
+        };
+        let runtime = Runtime {
+            ledger: Ledger::new(&connection),
+            transport: &transport,
+        };
+        let charges = Charges::default();
+        let ended = runtime.call(T0, &asked_with(&body, 64), &no_barrier, &charges);
+        other
+            .execute_batch("COMMIT")
+            .expect("the other writer commits");
+        let rows = attributed(&connection);
+        assert!(
+            rows.contains(&row("job", "r", "reservation", send, send)),
+            "{which}: the settlement landed, so this is not the case under test: {rows:?}"
+        );
+        assert_eq!(
+            charges.attempted().tokens,
+            Some(send),
+            "{which}: the call's charge and what the ledger holds disagree: {ended:?}"
+        );
+        assert!(
+            Ledger::new(&connection)
+                .admit(T0, "another", "next", 1)
+                .expect("admits")
+                .is_ok(),
+            "{which}: a refused settlement that was no overrun stopped the store: {:?}",
+            attributed(&connection)
         );
     }
 }

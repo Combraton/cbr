@@ -758,10 +758,42 @@ print(json.dumps({name: j2_run.checked(one, source)["problems"] for name, one in
     }
 }
 
+/// The store refusing an overrun's settlement while a live launch runs,
+/// and taking writes again once the launch is killed, as
+/// `m4e_harness.rs` has it: the overrun is then in the killed process's
+/// memory alone, and its record is in the store.
+const STORE_REFUSES_AN_OVERRUN: &str = r#"
+import pathlib, sqlite3
+REFUSES = (
+    "CREATE TRIGGER IF NOT EXISTS refuses_an_overrun BEFORE UPDATE ON model_ledger "
+    "WHEN OLD.kind = 'reservation' AND NEW.tokens > OLD.estimate "
+    "BEGIN SELECT RAISE(ABORT, 'the store refuses this settlement'); END"
+)
+def alter(child, statement):
+    arguments = list(child.args)
+    store = pathlib.Path(arguments[arguments.index("--data-dir") + 1]) / "cbr.sqlite"
+    connection = sqlite3.connect(store, timeout=30)
+    connection.execute(statement)
+    connection.commit()
+    connection.close()
+launched, stopped = module.launch, module.stop
+def launch(*arguments):
+    child, endpoint = launched(*arguments)
+    if "--replay-model" not in arguments[-1]:
+        alter(child, REFUSES)
+    return child, endpoint
+def stop(child):
+    stopped(child)
+    alter(child, "DROP TRIGGER IF EXISTS refuses_an_overrun")
+module.launch, module.stop = launch, stop
+"#;
+
 /// Run the harness **with the fake's usage raised** for any run whose dry
 /// answers include `overbilled:`, which is how a dry run's store records
-/// an overrun: the fake bills that answer's usage whole.
-fn overbilling_harness(usage: u64, arguments: &[&str]) -> (bool, String, String) {
+/// an overrun: the fake bills that answer's usage whole. With `refusing`,
+/// the store refuses that overrun's settlement while the launch runs
+/// ([`STORE_REFUSES_AN_OVERRUN`]).
+fn overbilling_harness(usage: u64, refusing: bool, arguments: &[&str]) -> (bool, String, String) {
     let program = r#"
 import importlib.util, sys
 spec = importlib.util.spec_from_file_location("j2_run", sys.argv[1])
@@ -775,12 +807,19 @@ def config_of(run, live, dry_answers, replay=False):
         body["model"]["usage"] = int(sys.argv[2])
     return body
 m4e.config_of = config_of
-sys.exit(module.main(sys.argv[3:]))
+if sys.argv[3]:
+    exec(sys.argv[3])
+sys.exit(module.main(sys.argv[4:]))
 "#;
     let output = Command::new("python3")
         .args(["-c", program])
         .arg(script())
         .arg(usage.to_string())
+        .arg(if refusing {
+            STORE_REFUSES_AN_OVERRUN
+        } else {
+            ""
+        })
         .args(arguments)
         .args(["--binaries", binaries().to_str().expect("utf-8")])
         .output()
@@ -819,6 +858,7 @@ fn no_run_starts_after_a_store_that_recorded_a_stop() {
     let ceiling = declared_in("m4e_run.py", "RUN_CEILING_TOKENS").to_string();
     let (ok, stdout, stderr) = overbilling_harness(
         200_000,
+        false,
         &[
             "--manifest",
             written.to_str().expect("utf-8"),
@@ -844,5 +884,68 @@ fn no_run_starts_after_a_store_that_recorded_a_stop() {
     assert!(
         stderr.contains("STOPPED") && stderr.contains("no further run is started"),
         "{stderr}"
+    );
+}
+
+#[test]
+fn an_overrun_only_the_killed_launch_knew_of_still_ends_the_sequence() {
+    // **J2's twin of m4e's (round 2, probe A).** The store refused the
+    // first part's overrun and took its record, so when the launch is
+    // killed only the dead process knew of it. The harness reconciles the
+    // store as a start would before it reads it, so it reads the stop and
+    // the bill and starts no further run.
+    let directory = tempfile::tempdir().expect("temp dir");
+    let out = directory.path().join("out");
+    let input = directory.path().join("cargo-test.log");
+    std::fs::write(&input, test_log(8, 100, &[(1, 17), (5, 2)])).expect("input");
+    let written = manifest(
+        directory.path(),
+        "kept",
+        &head(),
+        &[("first", &input, ""), ("second", &input, "")],
+    );
+    let text = std::fs::read_to_string(&written).expect("manifest");
+    let first = text.replacen(
+        r#""dry_answers":["ids:u1"]"#,
+        r#""dry_answers":["overbilled:ids:u1","ids:u1"]"#,
+        1,
+    );
+    assert_ne!(first, text);
+    std::fs::write(&written, first).expect("manifest");
+    let ceiling = declared_in("m4e_run.py", "RUN_CEILING_TOKENS").to_string();
+    let (ok, stdout, stderr) = overbilling_harness(
+        200_000,
+        true,
+        &[
+            "--manifest",
+            written.to_str().expect("utf-8"),
+            "--out",
+            out.to_str().expect("utf-8"),
+            "--dry-run",
+            "--run-ceiling",
+            &ceiling,
+        ],
+    );
+    assert!(ok, "the dry run failed: {stdout}\n{stderr}");
+    let report = report(&out);
+    let runs = at(&report, &["runs"]).as_array().expect("runs");
+    assert_eq!(
+        runs.len(),
+        1,
+        "the run after `first` was started on a store whose overrun only the killed launch knew of:\n{stderr}\n{report:?}"
+    );
+    let charged = at(&runs[0], &["charges"])
+        .as_array()
+        .expect("charges")
+        .iter()
+        .any(|charge| {
+            at(charge, &["kind"]).as_str() == Some("usage")
+                && at(charge, &["tokens"]) == &Value::Int(200_000)
+        });
+    assert!(charged, "the bill is not in what the run spent: {report:?}");
+    let stopped = at(&report, &["stopped"]).as_str().unwrap_or_default();
+    assert!(
+        stopped.contains("first") && stopped.contains("overrun"),
+        "the stop does not name the store and what it recorded: {stopped:?}"
     );
 }

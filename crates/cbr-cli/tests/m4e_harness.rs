@@ -1692,11 +1692,49 @@ print(json.dumps({"stops": stops, "line": module.stopped_after("first", {"stops"
     }
 }
 
+/// The store refusing an overrun's settlement while a live launch runs,
+/// as a writer holding its lock past the busy timeout would, and taking
+/// writes again once the launch is killed: the overrun is then in the
+/// killed process's memory alone, and its record is in the store. Python,
+/// run by [`overbilling_harness`] when asked.
+const STORE_REFUSES_AN_OVERRUN: &str = r#"
+import pathlib, sqlite3
+REFUSES = (
+    "CREATE TRIGGER IF NOT EXISTS refuses_an_overrun BEFORE UPDATE ON model_ledger "
+    "WHEN OLD.kind = 'reservation' AND NEW.tokens > OLD.estimate "
+    "BEGIN SELECT RAISE(ABORT, 'the store refuses this settlement'); END"
+)
+def alter(child, statement):
+    arguments = list(child.args)
+    store = pathlib.Path(arguments[arguments.index("--data-dir") + 1]) / "cbr.sqlite"
+    connection = sqlite3.connect(store, timeout=30)
+    connection.execute(statement)
+    connection.commit()
+    connection.close()
+launched, stopped = module.launch, module.stop
+def launch(*arguments):
+    child, endpoint = launched(*arguments)
+    if "--replay-model" not in arguments[-1]:
+        alter(child, REFUSES)
+    return child, endpoint
+def stop(child):
+    stopped(child)
+    alter(child, "DROP TRIGGER IF EXISTS refuses_an_overrun")
+module.launch, module.stop = launch, stop
+"#;
+
 /// Run the harness **with the fake's usage raised** for any run whose dry
 /// answers include `overbilled:`, which is how a dry run's store records
 /// an overrun: the fake bills that answer's usage whole, and the usage a
-/// dry run configures is below what a question reserves.
-fn overbilling_harness(script: &Path, usage: u64, arguments: &[&str]) -> (bool, String, String) {
+/// dry run configures is below what a question reserves. With `refusing`,
+/// the store refuses that overrun's settlement while the launch runs
+/// ([`STORE_REFUSES_AN_OVERRUN`]).
+fn overbilling_harness(
+    script: &Path,
+    usage: u64,
+    refusing: bool,
+    arguments: &[&str],
+) -> (bool, String, String) {
     let program = r#"
 import importlib.util, sys
 spec = importlib.util.spec_from_file_location("harness", sys.argv[1])
@@ -1710,12 +1748,19 @@ def config_of(run, live, dry_answers, replay=False):
         body["model"]["usage"] = int(sys.argv[2])
     return body
 m4e.config_of = config_of
-sys.exit(module.main(sys.argv[3:]))
+if sys.argv[3]:
+    exec(sys.argv[3])
+sys.exit(module.main(sys.argv[4:]))
 "#;
     let output = Command::new("python3")
         .args(["-c", program])
         .arg(script)
         .arg(usage.to_string())
+        .arg(if refusing {
+            STORE_REFUSES_AN_OVERRUN
+        } else {
+            ""
+        })
         .args(arguments)
         .args(["--binaries", binaries().to_str().expect("utf-8")])
         .output()
@@ -1751,6 +1796,7 @@ fn no_run_starts_after_a_store_that_recorded_a_stop() {
     let (ok, stdout, stderr) = overbilling_harness(
         &script(),
         60_000,
+        false,
         &[
             "--manifest",
             both.to_str().expect("utf-8"),
@@ -1783,5 +1829,104 @@ fn no_run_starts_after_a_store_that_recorded_a_stop() {
     assert!(
         stderr.contains("STOPPED") && stderr.contains("no further run is started"),
         "{stderr}"
+    );
+}
+
+#[test]
+fn an_overrun_only_the_killed_launch_knew_of_still_ends_the_sequence() {
+    // **Round 2's harness window (probe A).** The store refused the
+    // overrun's settlement and took its record, so when the launch is
+    // killed the overrun is in no row: only the dead process knew of it.
+    // Every run opens a new store, so no later start would reconcile this
+    // one. The harness runs that start itself after each launch and before
+    // it reads the store, so it reads the stop and the bill, and starts no
+    // further run.
+    let fixture = standing_in_for_cbr();
+    let directory = fixture.directory.path();
+    let out = directory.join("out");
+    let model = "MiniMax-M2.7-highspeed";
+    let first = run_of("first", &fixture.checkout, "cbr", model, "").replace(
+        r#""dry_answers":["choose:c2""#,
+        r#""dry_answers":["overbilled:choose:c2""#,
+    );
+    let both = written(
+        directory,
+        "kept",
+        &[first, run_of("second", &fixture.checkout, "cbr", model, "")],
+    );
+    let (ok, stdout, stderr) = overbilling_harness(
+        &script(),
+        60_000,
+        true,
+        &[
+            "--manifest",
+            both.to_str().expect("utf-8"),
+            "--out",
+            out.to_str().expect("utf-8"),
+            "--dry-run",
+        ],
+    );
+    assert!(ok, "the dry run failed:\n{stdout}\n{stderr}");
+    let report: Value =
+        cbr_encoding::parse(&std::fs::read(out.join("report.json")).expect("a report"))
+            .expect("JSON");
+    let runs = report.get("runs").and_then(Value::as_array).expect("runs");
+    assert_eq!(
+        runs.len(),
+        1,
+        "the run after `first` was started on a store whose overrun only the killed launch knew of:\n{stderr}\n{report:?}"
+    );
+    let charged = runs[0]
+        .get("charges")
+        .and_then(Value::as_array)
+        .expect("charges")
+        .iter()
+        .any(|charge| {
+            charge.get("kind").and_then(Value::as_str) == Some("usage")
+                && charge.get("tokens") == Some(&Value::Int(60_000))
+        });
+    assert!(charged, "the bill is not in what the run spent: {report:?}");
+    let stopped = report
+        .get("stopped")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    assert!(
+        stopped.contains("first") && stopped.contains("overrun"),
+        "the stop does not name the store and what it recorded: {stopped:?}"
+    );
+}
+
+#[test]
+fn the_harness_goes_no_further_when_a_store_cannot_be_reconciled() {
+    // What the harness reads after a launch is only what was spent once a
+    // start has reconciled the store, so a reconciliation that fails is a
+    // refusal to go on, not a store read as it stands.
+    let directory = tempfile::tempdir().expect("temp dir");
+    let data = directory.path().join("data");
+    std::fs::write(&data, b"a file where the data directory should be").expect("file");
+    let program = r#"
+import importlib.util, pathlib, sys
+spec = importlib.util.spec_from_file_location("m4e_run", sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+try:
+    module.reconciled(pathlib.Path(sys.argv[2]) / "cbr-provider", pathlib.Path(sys.argv[3]))
+except module.Refused as refused:
+    print(f"refused: {refused}")
+else:
+    print("went on")
+"#;
+    let output = Command::new("python3")
+        .args(["-c", program])
+        .arg(script())
+        .arg(binaries())
+        .arg(&data)
+        .output()
+        .expect("python3 runs");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        output.status.success() && stdout.starts_with("refused: ") && stdout.contains("reconcile"),
+        "{stdout}\n{}",
+        String::from_utf8_lossy(&output.stderr)
     );
 }

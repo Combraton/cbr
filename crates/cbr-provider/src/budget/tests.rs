@@ -785,6 +785,64 @@ fn a_store_that_cannot_take_an_overrun_is_stopped_in_this_process_and_reports_it
     );
 }
 
+#[test]
+fn a_refused_settlement_within_its_reservation_is_no_stop() {
+    // **Round 2's test gap N1.** Only a bill above its reservation is kept
+    // by the process when the store refuses its settlement. One within it,
+    // or equal to it, leaves the reservation standing at its estimate,
+    // which over-counts, and stops nothing: the store admits again, on any
+    // connection, once it takes writes.
+    for tokens in [9_999, 10_000] {
+        let directory = tempfile::tempdir().expect("temp dir");
+        let path = directory.path().join("ledger.sqlite");
+        let connection = Connection::open(&path).expect("opens");
+        Ledger::migrate(&connection).expect("migrates");
+        let ledger = Ledger::new(&connection);
+        let reservation = ledger
+            .admit(T0, "job", "r", 10_000)
+            .expect("admits")
+            .expect("admitted");
+        connection
+            .execute_batch(
+                "CREATE TRIGGER no_settlement BEFORE UPDATE ON model_ledger
+                 BEGIN SELECT RAISE(ABORT, 'no settlement'); END;",
+            )
+            .expect("trigger");
+        assert!(
+            ledger
+                .settle(T0, &reservation, Settlement::Usage(tokens))
+                .is_err(),
+            "{tokens}: the settlement landed"
+        );
+        assert!(
+            !ledger.keeps(&reservation),
+            "{tokens}: the process kept a bill that was no overrun"
+        );
+        connection
+            .execute_batch("DROP TRIGGER no_settlement")
+            .expect("drops");
+        let beside = Connection::open(&path).expect("opens beside");
+        assert!(
+            Ledger::new(&beside)
+                .admit(T0, "another", "next", 1)
+                .expect("admits")
+                .is_ok(),
+            "{tokens}: a refused settlement within its reservation stopped the store"
+        );
+        let rows = attributed(&connection);
+        assert!(
+            rows.contains(&(
+                "job".to_string(),
+                "r".to_string(),
+                "reservation".to_string(),
+                10_000,
+                10_000
+            )) && !rows.iter().any(|row| row.2 == "overrun"),
+            "{tokens}: {rows:?}"
+        );
+    }
+}
+
 // m4a's `the_crate_has_no_network_dependency_in_its_tree` moved to
 // `wire::net::tests` when m4b gave the crate one, and became two tests
 // there: the four crates that do not need a network client still have
