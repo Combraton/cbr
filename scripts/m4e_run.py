@@ -13,8 +13,11 @@ end against the fake transport and never opens a socket.
     python3 scripts/m4e_run.py --ambiguity DATA_DIR
 
 **The live run is not authorised by this file existing.** `--live` needs
-`--permit-model-network` typed as well, and the owner's word at the
-time, which no flag can stand in for.
+`--permit-model-network` typed as well, and a run planned in READINESS
+before it: on the owner's word at the time, as each of M4's was, and
+since 2026-09-25 under the owner's standing grant, with its estimate and
+ceiling written into m5 READINESS section 10 first. The flag carries that
+decision; it does not make it.
 
 What it does, per run in the manifest:
 
