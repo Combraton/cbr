@@ -23,6 +23,11 @@ pub const RECHECK_AFTER_AUTHORIZATION: &str = "subscription.recheck.after_author
 /// A context tick published a packet's object and has not yet committed the
 /// batch that names it (CONTEXT section 5, STORAGE section 2).
 pub const PACKET_AFTER_OBJECT_PUBLISHED: &str = "context.packet.after_object_published";
+/// A context tick's packet was refused by the publication guard, and the
+/// batch that ends its job has been built and not yet committed. Declared in
+/// no descriptor: no fixture reaches the guard, and CBR's own tests wait on
+/// it.
+pub const PACKET_REFUSED_BEFORE_COMMIT: &str = "context.packet.refused_before_commit";
 /// A request found the processing lock held by someone else.
 pub const LOCK_CONTENDED: &str = "processing.lock.contended";
 /// An idle session reserved FIFO progress while processing was busy. This is
