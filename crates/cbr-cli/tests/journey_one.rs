@@ -1130,21 +1130,26 @@ fn a_required_item_its_capacity_cannot_hold_is_refused_with_the_size_it_needs_th
         .sum();
     assert!(needed > 1, "{roomy:?}");
 
+    // A request's inspect once it has left `preparing`, published or not.
+    let settled = |request: &str| {
+        let started = Instant::now();
+        loop {
+            let inspected = ok(&fixture.cbr(&["request", request]));
+            if text(&inspected, &["state"]) != "preparing" {
+                return inspected;
+            }
+            assert!(
+                started.elapsed() < PACKET_WAIT,
+                "{inspected:?}\nprovider stderr:\n{}",
+                fixture.logged()
+            );
+            std::thread::sleep(Duration::from_millis(50));
+        }
+    };
+
     let submitted = submit("tight", needed - 1);
     assert_eq!(text(&submitted, &["outcome", "state"]), "preparing");
-    let started = Instant::now();
-    let inspected = loop {
-        let inspected = ok(&fixture.cbr(&["request", "tight"]));
-        if text(&inspected, &["state"]) != "preparing" {
-            break inspected;
-        }
-        assert!(
-            started.elapsed() < PACKET_WAIT,
-            "{inspected:?}\nprovider stderr:\n{}",
-            fixture.logged()
-        );
-        std::thread::sleep(Duration::from_millis(50));
-    };
+    let inspected = settled("tight");
     assert_eq!(text(&inspected, &["state"]), "refused", "{inspected:?}");
     assert_eq!(text(&inspected, &["reason"]), "budget_insufficient");
     assert_eq!(
@@ -1166,7 +1171,8 @@ fn a_required_item_its_capacity_cannot_hold_is_refused_with_the_size_it_needs_th
 
     // At exactly the size it needs, it fits.
     submit("exact", needed);
-    let (exact, _) = wait_for_packet(&fixture, "exact");
+    let exact = settled("exact");
+    assert_eq!(array(&exact, &["packets"]).len(), 1, "{exact:?}");
     assert_eq!(
         text(&array(&exact, &["items"])[0], &["result"]),
         "satisfied",

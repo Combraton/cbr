@@ -43,7 +43,8 @@
 //!   and no packet is sealed for it (CONTEXT section 3). In a shared job
 //!   each subscriber is decided by its own capacity; a request never joins
 //!   a job whose mandatory content it cannot hold; and cancelling the last
-//!   subscriber a refusal left ends the job.
+//!   subscriber a refusal left ends the job, where one published under
+//!   `context.updates` keeps it running.
 
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::fs::PermissionsExt;
@@ -4305,6 +4306,11 @@ fn a_compiled_request_whose_required_content_cannot_fit_is_refused_with_the_size
         r#"{"packet":"r-tight","revision":1}"#,
     );
     assert!(inspected.get("result").is_none(), "{inspected:?}");
+    // The job's own record ends with it: one left `running` would be
+    // compiled again at the next tick, and a compile can ask a model.
+    let job = stored(&data, "context.job", "r-tight");
+    assert_eq!(text(&job, &["state"]), "ended", "{job:?}");
+    assert_eq!(text(&job, &["reason"]), "budget_insufficient", "{job:?}");
 
     // At exactly the size it needs, the same request fits, and only the
     // advisory item is left out.
@@ -4373,6 +4379,21 @@ fn in_a_shared_compiled_job_only_the_subscriber_whose_capacity_cannot_hold_the_r
             "{wide}: {published:?}"
         );
         let events = recorded(&mut ctx);
+        // The refusal names the job the narrow subscriber shares, not a
+        // job named after it.
+        assert_eq!(
+            of_subject(&events, "context.request", narrow),
+            vec![
+                (
+                    "context.request.changed".to_string(),
+                    r#"{"job":{"id":"r-a","kind":"context.job"},"state":"preparing"}"#.to_string()
+                ),
+                (
+                    "context.request.changed".to_string(),
+                    r#"{"job":{"id":"r-a","kind":"context.job"},"reason":"budget_insufficient","state":"refused"}"#.to_string()
+                ),
+            ]
+        );
         assert!(
             of_subject(&events, "context.job", "r-a").is_empty(),
             "the job ended while a subscriber still needed it: {events:?}"
@@ -4485,6 +4506,67 @@ fn cancelling_the_last_subscriber_a_refusal_left_ends_the_job() {
             "context.job.ended".to_string(),
             r#"{"reason":"no_subscribers"}"#.to_string()
         )]
+    );
+    ctx.kill();
+}
+
+#[test]
+fn cancelling_one_subscriber_leaves_the_job_running_for_one_published_under_updates() {
+    // Cancel counts out only a refused subscriber: one published under
+    // `context.updates` still needs the job, for its later revisions
+    // (CONTEXT section 8). `r-early` is published at its own deadline,
+    // 00:05, and `r-late`, still preparing, is then cancelled.
+    let directory = tempfile::tempdir().expect("temp dir");
+    let clock = directory.path().join("clock");
+    set_clock(&clock, "2030-01-01T00:00:00Z");
+    let script = format!(r#""r-early":[{},{{"stall":{{}}}}]"#, source_section("s-1"));
+    let mut ctx = ContextProvider::start_with(
+        directory.path(),
+        &scripted(
+            &script,
+            &format!(r#","clock":{{"file":"{}"}}"#, clock.display()),
+        ),
+        &[
+            "context.required_before_start",
+            "context.shared_jobs",
+            "context.updates",
+        ],
+    );
+    for (request, deadline) in [("r-early", "2030-01-01T00:05:00Z"), ("r-late", LATE)] {
+        let submitted = ctx.submit(request, deadline);
+        assert_eq!(
+            canonical(at(result(&submitted), &["outcome", "job"])),
+            r#"{"id":"r-early","kind":"context.job"}"#,
+            "{submitted:?}"
+        );
+    }
+    set_clock(&clock, "2030-01-01T00:05:00Z");
+    let early = settled(&mut ctx, "r-early");
+    assert_eq!(text(&early, &["state"]), "ready", "the premise: {early:?}");
+    let late = ctx.inspect("r-late");
+    assert_eq!(
+        text(&late, &["state"]),
+        "preparing",
+        "the premise: {late:?}"
+    );
+    let revision = match at(&late, &["revision"]) {
+        Value::Int(revision) => *revision,
+        other => panic!("a revision: {other:?}"),
+    };
+    let cancelled = ctx.call(
+        "context.request.cancel",
+        Some(("cancel-r-late", ("context.request", "r-late"), revision)),
+        "{}",
+    );
+    assert_eq!(
+        at(result(&cancelled), &["outcome", "job_continues"]),
+        &Value::Bool(true),
+        "r-early, under updates, still needs the job: {cancelled:?}"
+    );
+    let events = recorded(&mut ctx);
+    assert!(
+        of_subject(&events, "context.job", "r-early").is_empty(),
+        "{events:?}"
     );
     ctx.kill();
 }
