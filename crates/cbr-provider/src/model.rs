@@ -80,6 +80,15 @@ pub struct Exchange {
 /// The one thing that could open a socket.
 pub trait Transport {
     fn send(&self, call: Call, body: &[u8]) -> Exchange;
+
+    /// [`Self::send`], for the reservation the call was admitted under.
+    /// The call path sends this way, so the recording boundary can write
+    /// the reservation beside the exchange and a start can reconcile one
+    /// a killed process left (m5-settle, `wire::record::reconcile`).
+    fn send_for(&self, reservation: &Reservation, call: Call, body: &[u8]) -> Exchange {
+        let _ = reservation;
+        self.send(call, body)
+    }
 }
 
 /// The fake a **unit test** scripts: it records the exact bytes it was
@@ -306,7 +315,10 @@ impl<'a> Runtime<'a> {
                 .note(now, job, request, ADMITTED_COUNT, 0, wanted);
             charges.admission.set(Some(ADMITTED_COUNT));
             barrier(COMPLETION_AFTER_RESERVATION);
-            let answer = self.transport.send(Call::Completion, body).answer;
+            let answer = self
+                .transport
+                .send_for(&reservation, Call::Completion, body)
+                .answer;
             barrier(COMPLETION_AFTER_SEND);
             // The count is the measurement here, so a bill above it is the
             // calibration's finding and closes nothing: no `admitted_on`.
@@ -399,7 +411,10 @@ impl<'a> Runtime<'a> {
             .note(now, job, request, admission, 0, reservation.estimate);
         charges.admission.set(Some(admission));
         barrier(COMPLETION_AFTER_RESERVATION);
-        let answer = self.transport.send(Call::Completion, body).answer;
+        let answer = self
+            .transport
+            .send_for(&reservation, Call::Completion, body)
+            .answer;
         barrier(COMPLETION_AFTER_SEND);
         self.settle_completion(
             now,
@@ -480,7 +495,10 @@ impl<'a> Runtime<'a> {
                 Err(_) => return Err(Ended::Unmet("ledger_unavailable")),
             };
         barrier(COUNT_AFTER_RESERVATION);
-        let counted = self.transport.send(Call::Count, count_body).answer;
+        let counted = self
+            .transport
+            .send_for(&counting, Call::Count, count_body)
+            .answer;
         barrier(COUNT_AFTER_SEND);
         let counted = match counted {
             Answer::Counted(tokens) => {
@@ -731,8 +749,12 @@ impl<'a> Runtime<'a> {
         };
         match self.ledger.settle(now, reservation, settlement) {
             Ok(()) => holds,
-            // A settlement that did not land leaves the reservation, which
-            // counts at its estimate.
+            // A bill above the reservation that the store did not take is
+            // kept by the ledger and written at the next admission the
+            // store takes, so the ledger holds the bill (m5-settle).
+            Err(_) if self.ledger.keeps(reservation) => holds,
+            // Any other settlement that did not land leaves the
+            // reservation, which counts at its estimate.
             Err(_) => reservation.estimate,
         }
     }
