@@ -3658,13 +3658,14 @@ impl Provider {
     /// Built from the job and its requests **as stored**, never from the
     /// tick that was refused: that tick's sections, cursor, captures and
     /// any revision it published are dropped with its batch, so nothing of
-    /// the refused packet is kept anywhere. Every subscriber still
-    /// `preparing` is `refused` with the reason, its items ended by
-    /// [`context::refused_items`]; a subscriber already published (under
-    /// `context.updates`) keeps its state and its current revision, and
-    /// learns of the ending from `context.job.ended`. The requests'
-    /// changes come first and the job's ending last, the order `finish`
-    /// already gives them. An ended job never leaves a subscriber
+    /// the refused tick is committed. A section an earlier tick committed
+    /// stays in the ended job's stored record, which no operation serves.
+    /// Every subscriber still `preparing` is `refused` with the reason, its
+    /// items ended by [`context::refused_items`]; a subscriber already
+    /// published (under `context.updates`) keeps its state and its current
+    /// revision, and learns of the ending from `context.job.ended`. The
+    /// requests' changes come first and the job's ending last, the order
+    /// `finish` already gives them. An ended job never leaves a subscriber
     /// `preparing`: the next tick skips it.
     fn end_refused_job(&mut self, job_id: &str) -> Result<bool, ProtocolError> {
         let Some((_, mut job)) = self.context_record(JOB, job_id)? else {
