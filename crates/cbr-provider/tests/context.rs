@@ -39,12 +39,14 @@
 //!   refused tick is sealed anywhere, a valid one included: not in this
 //!   store, and not at an evidence peer.
 //! - **A compiled request whose mandatory content cannot fit is refused**,
-//!   `budget_insufficient`, with `needed` the size its required items need,
-//!   and no packet is sealed for it (CONTEXT section 3). In a shared job
-//!   each subscriber is decided by its own capacity; a request never joins
-//!   a job whose mandatory content it cannot hold; and cancelling the last
-//!   subscriber a refusal left ends the job, where one published under
-//!   `context.updates` keeps it running.
+//!   `budget_insufficient`, with `needed` the size its required items need
+//!   together, and no packet is sealed for it (CONTEXT section 3), even
+//!   when the compile finishes past its deadline. In a shared job each
+//!   subscriber is decided by its own capacity, and a refused one holds
+//!   back no sibling's publish; a request never joins a job whose
+//!   mandatory content it cannot hold, before or after the job compiles;
+//!   and cancelling the last subscriber a refusal left ends the job, where
+//!   one published under `context.updates` keeps it running.
 
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::fs::PermissionsExt;
@@ -4151,9 +4153,15 @@ fn compiling(directory: &Path, scripts: &str, features: &[&str]) -> (ContextProv
 }
 
 /// An evidence item for artifact `artifact` of `digest` at this provider.
+/// One required before a transition names `merge` as its transition.
 fn evidence_item(item_id: &str, artifact: &str, digest: &str, obligation: &str) -> String {
+    let transition = if obligation == "required_before_transition" {
+        r#","transition":"merge""#
+    } else {
+        ""
+    };
     format!(
-        r#"{{"item_id":"{item_id}","selector":{{"kind":"evidence","value":"{artifact}"}},"obligation":"{obligation}","reliance":"evidence","selected_by":"owner","check":{{"kind":"evidence_included","evidence":{{"provider":"context-1","artifact":{{"kind":"evidence.artifact","id":"{artifact}"}},"digest":"{digest}"}}}}}}"#
+        r#"{{"item_id":"{item_id}","selector":{{"kind":"evidence","value":"{artifact}"}},"obligation":"{obligation}"{transition},"reliance":"evidence","selected_by":"owner","check":{{"kind":"evidence_included","evidence":{{"provider":"context-1","artifact":{{"kind":"evidence.artifact","id":"{artifact}"}},"digest":"{digest}"}}}}}}"#
     )
 }
 
@@ -4567,6 +4575,235 @@ fn cancelling_one_subscriber_leaves_the_job_running_for_one_published_under_upda
     assert!(
         of_subject(&events, "context.job", "r-early").is_empty(),
         "{events:?}"
+    );
+    ctx.kill();
+}
+
+#[test]
+fn a_compiled_request_needs_room_for_all_its_required_items_together() {
+    // CONTEXT section 3's mandatory items are every required item, before
+    // a start or before a transition, and `needed` is the size they take
+    // together. A capacity that holds the larger alone, or one byte less
+    // than the two, is refused with their sum; the sum itself fits, and
+    // only the advisory item is left out.
+    let directory = tempfile::tempdir().expect("temp dir");
+    let (mut ctx, _) = compiling(
+        directory.path(),
+        "",
+        &[
+            "context.required_before_start",
+            "context.required_before_transition",
+            "context.advisory",
+        ],
+    );
+    let log = seal(&mut ctx, "log-1", LOG);
+    let second = seal(
+        &mut ctx,
+        "log-2",
+        b"a second required artifact, of another size than the first\n",
+    );
+    let note = seal(
+        &mut ctx,
+        "note-1",
+        b"a note nobody required, which fills the advisory item\n",
+    );
+    let items = format!(
+        "{},{},{}",
+        evidence_item("log", "log-1", &log, "required_before_start"),
+        evidence_item("log2", "log-2", &second, "required_before_transition"),
+        evidence_item("note", "note-1", &note, "advisory")
+    );
+    ctx.submit_within("r-roomy", &items, "proceed_with_gap", LATE, 4096);
+    let roomy = settled(&mut ctx, "r-roomy");
+    assert_eq!(text(&roomy, &["state"]), "ready", "{roomy:?}");
+    let first = item_bytes(&mut ctx, "r-roomy", "log");
+    let second = item_bytes(&mut ctx, "r-roomy", "log2");
+    assert!(
+        first > 1 && second > 1 && first != second,
+        "the premise: {first} {second}"
+    );
+    let sum = first + second;
+    for (request, capacity, state) in [
+        ("r-larger", first.max(second), "refused"),
+        ("r-short", sum - 1, "refused"),
+        ("r-sum", sum, "partial"),
+    ] {
+        ctx.submit_within(request, &items, "proceed_with_gap", LATE, capacity);
+        let got = settled(&mut ctx, request);
+        assert_eq!(text(&got, &["state"]), state, "{request}: {got:?}");
+        if state == "refused" {
+            assert_eq!(text(&got, &["reason"]), "budget_insufficient", "{got:?}");
+            assert_eq!(
+                canonical(at(&got, &["needed"])),
+                format!(r#"{{"amount":{sum},"units":"bytes"}}"#),
+                "{request}: the two required items' size together"
+            );
+        }
+    }
+    ctx.kill();
+}
+
+#[test]
+fn a_request_never_joins_a_compiled_job_whose_required_content_its_capacity_cannot_hold() {
+    // The join guard once the job has compiled. The job's script is then
+    // the compiled steps, their sections included, and they are what
+    // prepares a joiner, which is never compiled for (CONTEXT section 12).
+    // `r-first` compiles at once, and its publish waits, under
+    // `wait_until_deadline`, on an advisory item nothing satisfies, so the
+    // job is still open to join. One byte short of the required content,
+    // `r-short` starts a job of its own, which refuses it; at the size,
+    // `r-exact` joins.
+    let needed = size_of_the_compiled_log();
+    let directory = tempfile::tempdir().expect("temp dir");
+    let (mut ctx, _) = compiling(
+        directory.path(),
+        "",
+        &[
+            "context.required_before_start",
+            "context.advisory",
+            "context.shared_jobs",
+        ],
+    );
+    let digest = seal(&mut ctx, "log-1", LOG);
+    let items = format!(
+        "{},{}",
+        evidence_item("log", "log-1", &digest, "required_before_start"),
+        unsatisfiable("opt", "advisory")
+    );
+    ctx.submit_within("r-first", &items, "wait_until_deadline", LATE, 4096);
+    let waiting = ctx.inspect("r-first");
+    assert_eq!(
+        text(&waiting, &["state"]),
+        "preparing",
+        "the premise: {waiting:?}"
+    );
+    let data = directory.path().join("context-data");
+    let job = stored(&data, "context.job", "r-first");
+    let script = at(&job, &["script"]).as_array().expect("a script");
+    let cursor = match at(&job, &["cursor"]) {
+        Value::Int(cursor) => usize::try_from(*cursor).expect("a cursor"),
+        other => panic!("a cursor: {other:?}"),
+    };
+    assert!(
+        script.iter().all(|step| step.get("compile").is_none())
+            && script
+                .get(cursor)
+                .and_then(|step| step.get("publish"))
+                .is_some(),
+        "the premise, compiled and waiting at its publish: {job:?}"
+    );
+    for (request, capacity, job) in [
+        ("r-short", needed - 1, "r-short"),
+        ("r-exact", needed, "r-first"),
+    ] {
+        let submitted = ctx.submit_within(request, &items, "wait_until_deadline", LATE, capacity);
+        assert_eq!(
+            canonical(at(result(&submitted), &["outcome", "job"])),
+            format!(r#"{{"id":"{job}","kind":"context.job"}}"#),
+            "{request}: {submitted:?}"
+        );
+    }
+    let refused = settled(&mut ctx, "r-short");
+    assert_eq!(text(&refused, &["state"]), "refused", "{refused:?}");
+    assert_eq!(text(&refused, &["reason"]), "budget_insufficient");
+    assert_eq!(
+        canonical(at(&refused, &["needed"])),
+        format!(r#"{{"amount":{needed},"units":"bytes"}}"#)
+    );
+    ctx.kill();
+}
+
+#[test]
+fn a_compile_that_finishes_after_the_deadline_still_refuses_what_cannot_fit() {
+    // The refusal is decided by size, and time does not change it: a
+    // compile that finishes past the request's deadline, as a model's
+    // answer can, still refuses a request whose required content cannot
+    // fit, rather than leaving it to the deadline, which would publish it
+    // `unmet`. The scripted `wait_until` holds the compile until 00:10,
+    // past the deadline at 00:05, and the clock moves there with no tick
+    // between.
+    let needed = size_of_the_compiled_log();
+    let directory = tempfile::tempdir().expect("temp dir");
+    let (mut ctx, clock) = compiling(
+        directory.path(),
+        r#""r-slow":[{"wait_until":"2030-01-01T00:10:00Z"},{"compile":{}}]"#,
+        &["context.required_before_start", "context.advisory"],
+    );
+    let items = log_and_note(&mut ctx);
+    let submitted = ctx.submit_within(
+        "r-slow",
+        &items,
+        "proceed_with_gap",
+        "2030-01-01T00:05:00Z",
+        needed - 1,
+    );
+    assert_eq!(
+        text(result(&submitted), &["outcome", "state"]),
+        "preparing",
+        "{submitted:?}"
+    );
+    set_clock(&clock, "2030-01-01T00:10:00Z");
+    let slow = settled(&mut ctx, "r-slow");
+    assert_eq!(text(&slow, &["state"]), "refused", "{slow:?}");
+    assert_eq!(text(&slow, &["reason"]), "budget_insufficient", "{slow:?}");
+    assert_eq!(
+        canonical(at(&slow, &["needed"])),
+        format!(r#"{{"amount":{needed},"units":"bytes"}}"#)
+    );
+    assert_eq!(canonical(at(&slow, &["packets"])), "[]", "{slow:?}");
+    ctx.kill();
+}
+
+#[test]
+fn a_refused_subscriber_waiting_for_its_deadline_never_holds_back_a_sibling_that_proceeds_with_its_gap()
+ {
+    // A publish waits while a subscriber under `wait_until_deadline` has
+    // an advisory item unsatisfied (CONTEXT section 12), but a refused
+    // subscriber is past waiting for anything. `r-narrow` is refused under
+    // `wait_until_deadline` with an advisory item nothing satisfies; its
+    // sibling `r-wide`, under `proceed_with_gap`, is published straight
+    // away, long before `r-narrow`'s deadline.
+    let needed = size_of_the_compiled_log();
+    let directory = tempfile::tempdir().expect("temp dir");
+    let (mut ctx, clock) = compiling(
+        directory.path(),
+        r#""r-wide":[{"wait_until":"2030-01-01T00:10:00Z"},{"compile":{}}]"#,
+        &[
+            "context.required_before_start",
+            "context.advisory",
+            "context.shared_jobs",
+        ],
+    );
+    let digest = seal(&mut ctx, "log-1", LOG);
+    let items = format!(
+        "{},{}",
+        evidence_item("log", "log-1", &digest, "required_before_start"),
+        unsatisfiable("opt", "advisory")
+    );
+    for (request, fallback, capacity) in [
+        ("r-wide", "proceed_with_gap", 4096),
+        ("r-narrow", "wait_until_deadline", needed - 1),
+    ] {
+        let submitted = ctx.submit_within(request, &items, fallback, LATE, capacity);
+        assert_eq!(
+            canonical(at(result(&submitted), &["outcome", "job"])),
+            r#"{"id":"r-wide","kind":"context.job"}"#,
+            "{submitted:?}"
+        );
+    }
+    set_clock(&clock, "2030-01-01T00:10:00Z");
+    let refused = ctx.inspect("r-narrow");
+    assert_eq!(text(&refused, &["state"]), "refused", "{refused:?}");
+    let wide = ctx.inspect("r-wide");
+    assert_ne!(
+        text(&wide, &["state"]),
+        "preparing",
+        "the refused subscriber held back its sibling's publish: {wide:?}"
+    );
+    assert_eq!(
+        at(&wide, &["packets"]).as_array().map(<[_]>::len),
+        Some(1),
+        "{wide:?}"
     );
     ctx.kill();
 }
