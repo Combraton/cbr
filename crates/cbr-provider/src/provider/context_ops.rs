@@ -640,14 +640,9 @@ impl Provider {
         // second charge for a question already answered.
         self.release_job(assist.job);
 
-        let mut steps = compiler::steps(&decided, &self.config.provider_id);
-        // Step 5's refusal, moved to where a compiled request can know it:
-        // the sizes exist only once something has been selected.
-        let capacity = int(job, &["limits", "output_capacity", "amount"]);
-        if context::mandatory_size(&steps, list(job, &["items"])) > capacity {
-            steps = vec![object(vec![("end", string("budget_insufficient"))])];
-        }
-        Ok(steps)
+        // Step 5's refusal is not decided here: it is each subscriber's, by
+        // its own capacity, and `advance` makes it once these steps exist.
+        Ok(compiler::steps(&decided, &self.config.provider_id))
     }
 
     /// The words a request is about: its task, and every selector.
@@ -3824,6 +3819,18 @@ impl Provider {
                 "stall" => break,
                 "compile" => {
                     let compiled = self.compile(job, tick)?;
+                    // Step 5's refusal, where a compiled request can know
+                    // it: the sizes exist only once something has been
+                    // selected (CONTEXT section 3). Each subscriber is
+                    // decided by its own capacity, and the job ends only
+                    // when the refusal leaves none preparing.
+                    let needed = context::mandatory_size(&compiled, list(job, &["items"]));
+                    let (refused, preparing) = self.refuse_what_cannot_fit(job, tick, needed)?;
+                    if refused && !preparing {
+                        set(job, "state", string("ended"));
+                        set(job, "reason", string(context::BUDGET_INSUFFICIENT));
+                        return Ok(Some(context::BUDGET_INSUFFICIENT.into()));
+                    }
                     // The marker is replaced by what compiling decided, so
                     // everything after this is the same path a script takes.
                     let mut script: Vec<Value> = list(job, &["script"]).to_vec();
@@ -3928,6 +3935,45 @@ impl Provider {
             }
         }
         Ok(None)
+    }
+
+    /// **Refuse, as `budget_insufficient`, each subscriber still
+    /// `preparing` whose own output capacity cannot hold `needed`**, the
+    /// size the job's compiled steps give its required items. Nothing is
+    /// published for one: `refused` is not a state that publishes (CONTEXT
+    /// section 5). A refused subscriber stays in the job's `requests`, for
+    /// the events of its job (section 10). Returns whether it refused any,
+    /// and whether any is still `preparing`.
+    fn refuse_what_cannot_fit(
+        &self,
+        job: &Value,
+        tick: &mut Tick,
+        needed: i64,
+    ) -> Result<(bool, bool), TickError> {
+        let (mut refused, mut preparing) = (false, false);
+        for request in subscribers(job) {
+            let Some((_, record)) = self.tick_record(tick, REQUEST, &request)? else {
+                continue;
+            };
+            if text(&record, &["state"]) != "preparing" {
+                continue;
+            }
+            if needed <= int(&record, &["limits", "output_capacity", "amount"]) {
+                preparing = true;
+                continue;
+            }
+            let job_subject = subject(JOB, text(&record, &["job"]));
+            self.refuse_request(
+                tick,
+                &request,
+                record,
+                &job_subject,
+                context::BUDGET_INSUFFICIENT,
+                Some(needed),
+            )?;
+            refused = true;
+        }
+        Ok((refused, preparing))
     }
 
     fn finish(&self, job: &mut Value, tick: &mut Tick, reason: &str) -> Result<(), TickError> {

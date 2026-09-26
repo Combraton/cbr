@@ -3649,14 +3649,14 @@ fn assert_the_tick_seals_nothing_here_or_at_a_peer(last: &str, now: &str) {
 #[test]
 fn a_narrower_subscribers_valid_packet_is_not_sealed_when_the_jobs_ending_refuses_the_wider_one() {
     // **A job's ending publishes too, and is guarded whole.** T19's shape
-    // with the script ending the job, `budget_insufficient`, in place of
-    // its `publish`, as a compiled job whose mandatory content cannot fit
+    // with the script ending the job, `investigation_budget_exhausted`, in
+    // place of its `publish`, as a job whose investigation budget runs out
     // does: `finish` publishes every subscriber, `r-narrow`'s valid packet
     // first and then `r-wide`'s, which the guard refuses. Nothing of the
     // tick is sealed, in this store or, beside an evidence peer, at the
     // peer.
     assert_the_tick_seals_nothing_here_or_at_a_peer(
-        r#"{"end":"budget_insufficient"}"#,
+        r#"{"end":"investigation_budget_exhausted"}"#,
         "2030-01-01T00:10:00Z",
     );
 }
