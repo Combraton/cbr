@@ -39,7 +39,7 @@ die() {
 
 refuse() {
     printf 'debug_launch: %s\n' "$1" >&2
-    printf 'debug_launch: this launch never calls a model. See VERIFICATION rule 4 (docs/VERIFICATION.md): a launch that reads a credential or opens a socket to a provider is the owner'"'"'s to run deliberately, and a refusal worth checking is worth a test.\n' >&2
+    printf 'debug_launch: this launch never calls a model. See VERIFICATION rule 4 (docs/VERIFICATION.md): a launch that reads a credential or opens a socket to a provider is an authorised run, planned before it, and a refusal worth checking is worth a test.\n' >&2
     exit 1
 }
 
