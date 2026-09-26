@@ -1726,13 +1726,13 @@ module.launch, module.stop = launch, stop
 /// Run the harness **with the fake's usage raised** for any run whose dry
 /// answers include `overbilled:`, which is how a dry run's store records
 /// an overrun: the fake bills that answer's usage whole, and the usage a
-/// dry run configures is below what a question reserves. With `refusing`,
-/// the store refuses that overrun's settlement while the launch runs
-/// ([`STORE_REFUSES_AN_OVERRUN`]).
+/// dry run configures is below what a question reserves. `hook` is Python
+/// run against the loaded harness first, such as
+/// [`STORE_REFUSES_AN_OVERRUN`], or empty.
 fn overbilling_harness(
     script: &Path,
     usage: u64,
-    refusing: bool,
+    hook: &str,
     arguments: &[&str],
 ) -> (bool, String, String) {
     let program = r#"
@@ -1756,11 +1756,7 @@ sys.exit(module.main(sys.argv[4:]))
         .args(["-c", program])
         .arg(script)
         .arg(usage.to_string())
-        .arg(if refusing {
-            STORE_REFUSES_AN_OVERRUN
-        } else {
-            ""
-        })
+        .arg(hook)
         .args(arguments)
         .args(["--binaries", binaries().to_str().expect("utf-8")])
         .output()
@@ -1796,7 +1792,7 @@ fn no_run_starts_after_a_store_that_recorded_a_stop() {
     let (ok, stdout, stderr) = overbilling_harness(
         &script(),
         60_000,
-        false,
+        "",
         &[
             "--manifest",
             both.to_str().expect("utf-8"),
@@ -1857,7 +1853,7 @@ fn an_overrun_only_the_killed_launch_knew_of_still_ends_the_sequence() {
     let (ok, stdout, stderr) = overbilling_harness(
         &script(),
         60_000,
-        true,
+        STORE_REFUSES_AN_OVERRUN,
         &[
             "--manifest",
             both.to_str().expect("utf-8"),
@@ -1893,6 +1889,65 @@ fn an_overrun_only_the_killed_launch_knew_of_still_ends_the_sequence() {
     assert!(
         stopped.contains("first") && stopped.contains("overrun"),
         "the stop does not name the store and what it recorded: {stopped:?}"
+    );
+}
+
+#[test]
+fn the_harness_goes_no_further_when_reconciling_a_store_fails() {
+    // **Round 3's test gap C4.** The store opens and its lock is taken, and
+    // reconciling it is what fails: the store still refuses the overrun's
+    // settlement after the launch is killed. `--reconcile-ledger` exits
+    // non-zero for that, and the harness then starts no further run; one
+    // that exited 0 would have the harness read a store with no stop and
+    // start the next run.
+    let fixture = standing_in_for_cbr();
+    let directory = fixture.directory.path();
+    let out = directory.join("out");
+    let model = "MiniMax-M2.7-highspeed";
+    let first = run_of("first", &fixture.checkout, "cbr", model, "").replace(
+        r#""dry_answers":["choose:c2""#,
+        r#""dry_answers":["overbilled:choose:c2""#,
+    );
+    let both = written(
+        directory,
+        "unreconciled",
+        &[first, run_of("second", &fixture.checkout, "cbr", model, "")],
+    );
+    // The refusal outlives the launch: the stop hook no longer drops it.
+    let hook = format!("{STORE_REFUSES_AN_OVERRUN}\nmodule.stop = stopped\n");
+    let (ok, stdout, stderr) = overbilling_harness(
+        &script(),
+        60_000,
+        &hook,
+        &[
+            "--manifest",
+            both.to_str().expect("utf-8"),
+            "--out",
+            out.to_str().expect("utf-8"),
+            "--dry-run",
+        ],
+    );
+    assert!(
+        !ok && stderr.contains("could not be reconciled")
+            && stderr.contains("reconciling the ledger"),
+        "the harness went on past a store it could not reconcile:\n{stdout}\n{stderr}"
+    );
+    assert!(
+        !out.join("work").join("second").exists(),
+        "the run after `first` was started:\n{stderr}"
+    );
+    // And the provider's own exit, directly.
+    let data = out.join("work").join("first").join("data");
+    let reconciled = Command::new(binaries().join("cbr-provider"))
+        .arg("--data-dir")
+        .arg(&data)
+        .arg("--reconcile-ledger")
+        .output()
+        .expect("cbr-provider runs");
+    assert!(
+        !reconciled.status.success(),
+        "--reconcile-ledger exited 0 on a store that refused its reconciliation: {}",
+        String::from_utf8_lossy(&reconciled.stderr)
     );
 }
 

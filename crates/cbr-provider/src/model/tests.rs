@@ -4253,6 +4253,72 @@ fn a_start_reads_every_standing_reservation_past_one_it_leaves() {
 }
 
 #[test]
+fn a_start_settles_every_standing_reservation_billed_above_it() {
+    // **Round 3's test gap C1.** Two reservations standing at once, each
+    // recorded with a bill above it, and the process killed before it
+    // settled either. A start settles both, each with its `overrun`: one
+    // that stopped after the first it settled would leave the second
+    // counted at its estimate, below what the provider billed.
+    let directory = tempfile::tempdir().expect("temp dir");
+    let path = directory.path().join("cbr.sqlite");
+    let connection = Connection::open(&path).expect("opens");
+    Ledger::migrate(&connection).expect("migrates");
+    crate::wire::record::migrate(&connection).expect("migrates");
+    let body = padded_body(64, 4_000);
+    let send = crate::budget::reservation(&body, 1, 64);
+    let above = responses_completion_billing(1, send + 999);
+    let ledger = Ledger::new(&connection);
+    // Both admitted before either is sent: a store stopped by the first's
+    // overrun would admit nothing after it.
+    let reservations: Vec<_> = ["first", "second"]
+        .into_iter()
+        .map(|request| {
+            let reservation = ledger
+                .admit(T0, "job", request, send)
+                .expect("admits")
+                .expect("admitted");
+            (request, reservation)
+        })
+        .collect();
+    for (request, reservation) in &reservations {
+        let recorder = Recorder::answering_with_bytes(vec![(
+            Answer::Completed {
+                body: above.clone(),
+                usage: Some(send + 1_000),
+            },
+            above.clone(),
+        )]);
+        let recording = crate::wire::record::Recording {
+            inner: &recorder,
+            store: &connection,
+            now: T0,
+            job: "job",
+            request,
+            model: "MiniMax-M3",
+            dialect: Dialect::Responses,
+            scrubber: None,
+        };
+        // Sent and recorded, and the process killed before it settled.
+        let _ = recording.send_for(reservation, Call::Completion, &body);
+    }
+    assert_eq!(
+        crate::wire::record::reconcile(&connection).expect("a start reconciles"),
+        2,
+        "{:?}",
+        attributed(&connection)
+    );
+    assert_eq!(
+        attributed(&connection),
+        vec![
+            row("job", "first", "usage", send + 1_000, send),
+            row("job", "second", "usage", send + 1_000, send),
+            row("job", "first", "overrun", send + 1_000, send),
+            row("job", "second", "overrun", send + 1_000, send),
+        ]
+    );
+}
+
+#[test]
 fn a_settlement_the_store_refused_that_was_no_overrun_is_charged_the_estimate() {
     // **Round 2's test gaps N6 and N1, at the call path.** A settlement
     // the store did not take leaves its reservation at its estimate; only
