@@ -490,6 +490,30 @@ fn a_dry_run_drives_every_stage_and_reports_what_it_found() {
         report.get("run_ceiling_tokens"),
         Some(&Value::Int(5_000_000))
     );
+    // **And so is what the stop priced a run at**: the flow and the
+    // selection question the harness names, and this run's worst case,
+    // its flow and one selection question for its one want. A report
+    // that stated a figure the stop did not use would tell its reader
+    // about a bound nobody applied.
+    let (flow, selection) = (
+        harness_figure("WORST_CASE_FLOW_TOKENS"),
+        harness_figure("WORST_CASE_SELECTION_TOKENS"),
+    );
+    assert_eq!(
+        report.get("worst_case_flow_tokens"),
+        Some(&Value::Int(flow)),
+        "the report does not state the flow the stop priced"
+    );
+    assert_eq!(
+        report.get("worst_case_selection_tokens"),
+        Some(&Value::Int(selection)),
+        "the report does not state the selection question the stop priced"
+    );
+    assert_eq!(
+        run.get("worst_case_tokens"),
+        Some(&Value::Int(flow + selection)),
+        "the run does not say it was priced at its flow and one selection question: {run:?}"
+    );
 
     // The packet is written where the reviewer can read it, and it is
     // not in this repository.
