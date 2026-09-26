@@ -638,14 +638,9 @@ impl Provider {
         // second charge for a question already answered.
         self.release_job(assist.job);
 
-        let mut steps = compiler::steps(&decided, &self.config.provider_id);
-        // Step 5's refusal, moved to where a compiled request can know it:
-        // the sizes exist only once something has been selected.
-        let capacity = int(job, &["limits", "output_capacity", "amount"]);
-        if context::mandatory_size(&steps, list(job, &["items"])) > capacity {
-            steps = vec![object(vec![("end", string("budget_insufficient"))])];
-        }
-        Ok(steps)
+        // Step 5's refusal is not decided here: it is each subscriber's, by
+        // its own capacity, and `advance` makes it once these steps exist.
+        Ok(compiler::steps(&decided, &self.config.provider_id))
     }
 
     /// The words a request is about: its task, and every selector.
@@ -3151,25 +3146,22 @@ impl Provider {
         // before any job exists (CONTEXT section 3).
         let needed = context::mandatory_size(&script, list(payload, &["items"]));
         if needed > int(payload, &["limits", "output_capacity", "amount"]) {
-            let needed = object(vec![
-                ("units", string("bytes")),
-                ("amount", Value::Int(needed)),
-            ]);
+            let needed = context::needed_bytes(needed);
             set(&mut record, "state", string("refused"));
-            set(&mut record, "reason", string("budget_insufficient"));
+            set(&mut record, "reason", string(context::BUDGET_INSUFFICIENT));
             set(&mut record, "needed", needed.clone());
             let changed = event(
                 "context.request.changed",
                 object(vec![
                     ("state", string("refused")),
-                    ("reason", string("budget_insufficient")),
+                    ("reason", string(context::BUDGET_INSUFFICIENT)),
                 ]),
                 &command.caused_by,
             );
             let outcome = object(vec![
                 ("request", request_subject),
                 ("state", string("refused")),
-                ("reason", string("budget_insufficient")),
+                ("reason", string(context::BUDGET_INSUFFICIENT)),
                 ("needed", needed),
             ]);
             return self.commit_context(
@@ -3193,7 +3185,15 @@ impl Provider {
         if self.selected_feature("context.shared_jobs") {
             for (job_id, _, value) in self.store.subjects_in_recorded_order(JOB)? {
                 let mut job = parse_record(&value)?;
-                if context::may_join(&job, &principal, payload, &view, &claims, &evidence) {
+                // The job's script is what prepares a joined request (CONTEXT
+                // section 12), so its mandatory size is what this request's
+                // capacity must hold. Joining is a MAY (section 4): one that
+                // cannot hold it starts a job of its own, which decides for
+                // itself.
+                let fits =
+                    context::mandatory_size(list(&job, &["script"]), list(payload, &["items"]))
+                        <= int(payload, &["limits", "output_capacity", "amount"]);
+                if fits && context::may_join(&job, &principal, payload, &view, &claims, &evidence) {
                     context::push(&mut job, "requests", string(&id));
                     joined = Some((job_id, job));
                     break;
@@ -3308,7 +3308,17 @@ impl Provider {
             .filter(|r| r.as_str() != Some(request_key.id.as_str()))
             .cloned()
             .collect();
-        let job_continues = !others.is_empty();
+        // "The job continues while any other request still needs it"
+        // (CONTEXT section 4), and a subscriber refused while its job went
+        // on needs nothing more from it.
+        let mut job_continues = false;
+        for other in others.iter().filter_map(Value::as_str) {
+            if let Some((_, other)) = self.context_record(REQUEST, other)?
+                && text(&other, &["state"]) != "refused"
+            {
+                job_continues = true;
+            }
+        }
         set(&mut job, "requests", Value::Array(others));
         let ended = if job_continues {
             None
@@ -3714,28 +3724,20 @@ impl Provider {
         };
         let job_subject = subject(JOB, job_id);
         for request in subscribers(&job) {
-            let Some((_, mut record)) = self.context_record(REQUEST, &request)? else {
+            let Some((_, record)) = self.context_record(REQUEST, &request)? else {
                 continue;
             };
             if text(&record, &["state"]) != "preparing" {
                 continue;
             }
-            let ended_items = context::refused_items(&record, context::PACKET_INVALID);
-            set(&mut record, "state", string("refused"));
-            set(&mut record, "reason", string(context::PACKET_INVALID));
-            set(&mut record, "ended_items", Value::Array(ended_items));
-            let request_key = key(REQUEST, &request);
-            let revision = self.tick_save(&mut tick, &request_key, &record)?;
-            tick.batch.event(
-                &request_key,
-                revision,
-                "context.request.changed",
-                object(vec![
-                    ("state", string("refused")),
-                    ("job", job_subject.clone()),
-                    ("reason", string(context::PACKET_INVALID)),
-                ]),
-            );
+            self.refuse_request(
+                &mut tick,
+                &request,
+                record,
+                &job_subject,
+                context::PACKET_INVALID,
+                None,
+            )?;
         }
         set(&mut job, "state", string("ended"));
         set(&mut job, "reason", string(context::PACKET_INVALID));
@@ -3754,6 +3756,40 @@ impl Provider {
         // commit is a job still running.
         self.release_job(job_id);
         Ok(true)
+    }
+
+    /// Refuse one request in `tick`, for `reason`: `refused`, its items
+    /// ended by [`context::refused_items`], `needed` when the reason has
+    /// one, one revision, and `context.request.changed` naming its job.
+    fn refuse_request(
+        &self,
+        tick: &mut Tick,
+        request: &str,
+        mut record: Value,
+        job_subject: &Value,
+        reason: &str,
+        needed: Option<i64>,
+    ) -> Result<(), ProtocolError> {
+        let ended_items = context::refused_items(&record, reason);
+        set(&mut record, "state", string("refused"));
+        set(&mut record, "reason", string(reason));
+        if let Some(needed) = needed {
+            set(&mut record, "needed", context::needed_bytes(needed));
+        }
+        set(&mut record, "ended_items", Value::Array(ended_items));
+        let request_key = key(REQUEST, request);
+        let revision = self.tick_save(tick, &request_key, &record)?;
+        tick.batch.event(
+            &request_key,
+            revision,
+            "context.request.changed",
+            object(vec![
+                ("state", string("refused")),
+                ("job", job_subject.clone()),
+                ("reason", string(reason)),
+            ]),
+        );
+        Ok(())
     }
 
     /// **Keep the capture instant of every packet the tick is about to send
@@ -3840,6 +3876,18 @@ impl Provider {
                 "stall" => break,
                 "compile" => {
                     let compiled = self.compile(job, tick)?;
+                    // Step 5's refusal, where a compiled request can know
+                    // it: the sizes exist only once something has been
+                    // selected (CONTEXT section 3). Each subscriber is
+                    // decided by its own capacity, and the job ends only
+                    // when the refusal leaves none preparing.
+                    let needed = context::mandatory_size(&compiled, list(job, &["items"]));
+                    let (refused, preparing) = self.refuse_what_cannot_fit(job, tick, needed)?;
+                    if refused && !preparing {
+                        set(job, "state", string("ended"));
+                        set(job, "reason", string(context::BUDGET_INSUFFICIENT));
+                        return Ok(Some(context::BUDGET_INSUFFICIENT.into()));
+                    }
                     // The marker is replaced by what compiling decided, so
                     // everything after this is the same path a script takes.
                     let mut script: Vec<Value> = list(job, &["script"]).to_vec();
@@ -3944,6 +3992,45 @@ impl Provider {
             }
         }
         Ok(None)
+    }
+
+    /// **Refuse, as `budget_insufficient`, each subscriber still
+    /// `preparing` whose own output capacity cannot hold `needed`**, the
+    /// size the job's compiled steps give its required items. Nothing is
+    /// published for one: `refused` is not a state that publishes (CONTEXT
+    /// section 5). A refused subscriber stays in the job's `requests`, for
+    /// the events of its job (section 10). Returns whether it refused any,
+    /// and whether any is still `preparing`.
+    fn refuse_what_cannot_fit(
+        &self,
+        job: &Value,
+        tick: &mut Tick,
+        needed: i64,
+    ) -> Result<(bool, bool), TickError> {
+        let (mut refused, mut preparing) = (false, false);
+        for request in subscribers(job) {
+            let Some((_, record)) = self.tick_record(tick, REQUEST, &request)? else {
+                continue;
+            };
+            if text(&record, &["state"]) != "preparing" {
+                continue;
+            }
+            if needed <= int(&record, &["limits", "output_capacity", "amount"]) {
+                preparing = true;
+                continue;
+            }
+            let job_subject = subject(JOB, text(&record, &["job"]));
+            self.refuse_request(
+                tick,
+                &request,
+                record,
+                &job_subject,
+                context::BUDGET_INSUFFICIENT,
+                Some(needed),
+            )?;
+            refused = true;
+        }
+        Ok((refused, preparing))
     }
 
     fn finish(&self, job: &mut Value, tick: &mut Tick, reason: &str) -> Result<(), TickError> {

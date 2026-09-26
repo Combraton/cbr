@@ -809,6 +809,19 @@ pub const DIGEST_MISMATCH: &str = "claim_digest_mismatch";
 /// one for an item, and section 4 reports a job's ending with its reason in
 /// `context.job.ended`.
 pub const PACKET_INVALID: &str = "packet_invalid";
+/// Why a request whose mandatory items cannot fit its output capacity is
+/// refused, and why a job ends when a compile refuses every subscriber it
+/// has (CONTEXT section 3).
+pub const BUDGET_INSUFFICIENT: &str = "budget_insufficient";
+
+/// A refusal's `needed: { units: "bytes", amount }`, the size the mandatory
+/// items need (CONTEXT section 3).
+pub fn needed_bytes(amount: i64) -> Value {
+    object(vec![
+        ("units", string("bytes")),
+        ("amount", Value::Int(amount)),
+    ])
+}
 
 /// The section snapshot of a claim from a `knowledge.claim.inspect` result,
 /// after recomputing the record's digest (CONTEXT section 14). The second

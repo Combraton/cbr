@@ -1065,6 +1065,125 @@ fn an_excerpt_is_what_the_output_capacity_counts() {
 }
 
 #[test]
+fn a_required_item_its_capacity_cannot_hold_is_refused_with_the_size_it_needs_through_cbr() {
+    // CONTEXT section 3: a request whose mandatory items cannot fit its
+    // output capacity ends `refused`, `budget_insufficient`, with `needed`
+    // the size they need. A compiled request knows that size only once it
+    // is compiled, so it is refused after `preparing`, and no packet is
+    // published for it.
+    let fixture = Fixture::new();
+    let repository = fixture.directory.path().join("small");
+    std::fs::create_dir_all(&repository).expect("repository");
+    std::fs::write(
+        repository.join("README.md"),
+        "a repository whose readme is the one required item\n",
+    )
+    .expect("writes");
+    for arguments in [
+        vec!["init", "-q", "-b", "main"],
+        vec!["add", "."],
+        vec![
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@invalid",
+            "-c",
+            "commit.gpgsign=false",
+            "commit",
+            "-q",
+            "-m",
+            "one",
+        ],
+    ] {
+        git(&repository, &arguments);
+    }
+    let mut provider = fixture.start(&[format!("small={}", repository.display())]);
+    let submit = |request: &str, capacity: i64| {
+        ok(&fixture.cbr(&[
+            "context",
+            request,
+            "--repo",
+            repository.to_str().expect("utf-8"),
+            "--repo-id",
+            "small",
+            "--want",
+            "readme=source:README.md",
+            "--obligation",
+            "required_before_start",
+            "--capacity",
+            &capacity.to_string(),
+        ]))
+    };
+    let canonical =
+        |value: &Value| String::from_utf8(cbr_encoding::to_canonical(value)).expect("utf-8");
+
+    // The size the required item takes, from the same request with room.
+    submit("roomy", 65536);
+    let (roomy, _) = wait_for_packet(&fixture, "roomy");
+    let needed: i64 = array(&roomy, &["sections"])
+        .iter()
+        .filter(|section| text(section, &["item_id"]) == "readme")
+        .map(|section| match at(section, &["length"]) {
+            Value::Int(length) => length,
+            other => panic!("a length: {other:?}"),
+        })
+        .sum();
+    assert!(needed > 1, "{roomy:?}");
+
+    // A request's inspect once it has left `preparing`, published or not.
+    let settled = |request: &str| {
+        let started = Instant::now();
+        loop {
+            let inspected = ok(&fixture.cbr(&["request", request]));
+            if text(&inspected, &["state"]) != "preparing" {
+                return inspected;
+            }
+            assert!(
+                started.elapsed() < PACKET_WAIT,
+                "{inspected:?}\nprovider stderr:\n{}",
+                fixture.logged()
+            );
+            std::thread::sleep(Duration::from_millis(50));
+        }
+    };
+
+    let submitted = submit("tight", needed - 1);
+    assert_eq!(text(&submitted, &["outcome", "state"]), "preparing");
+    let inspected = settled("tight");
+    assert_eq!(text(&inspected, &["state"]), "refused", "{inspected:?}");
+    assert_eq!(text(&inspected, &["reason"]), "budget_insufficient");
+    assert_eq!(
+        canonical(&at(&inspected, &["needed"])),
+        format!(r#"{{"amount":{needed},"units":"bytes"}}"#)
+    );
+    assert_eq!(canonical(&at(&inspected, &["packets"])), "[]");
+    assert_eq!(
+        canonical(&at(&inspected, &["items"])),
+        r#"[{"item_id":"readme","obligation":"required_before_start","reason":"budget_insufficient","result":"unmet"}]"#
+    );
+    let packet = fixture.cbr(&["packet", "tight"]);
+    assert!(!packet.status.success());
+    assert!(
+        String::from_utf8_lossy(&packet.stderr).contains("tight has published no packet"),
+        "{}",
+        String::from_utf8_lossy(&packet.stderr)
+    );
+
+    // At exactly the size it needs, it fits.
+    submit("exact", needed);
+    let exact = settled("exact");
+    assert_eq!(array(&exact, &["packets"]).len(), 1, "{exact:?}");
+    assert_eq!(
+        text(&array(&exact, &["items"])[0], &["result"]),
+        "satisfied",
+        "{exact:?}"
+    );
+
+    provider.kill().expect("kills");
+    provider.wait().expect("reaps");
+}
+
+#[test]
 fn discovery_covers_more_than_one_file_however_loud_a_single_file_is() {
     // Ranking by score alone lets one file take the whole budget: eight
     // spans from one file have covered less ground than eight spans from
