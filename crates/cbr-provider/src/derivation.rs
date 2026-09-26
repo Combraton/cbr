@@ -79,11 +79,14 @@ pub const PRODUCER: &str = "cbr-model-runtime/2";
 /// quietly become unreadable.
 pub const REASONS: &[&str] = &[
     "budget_exhausted",
+    "generation_limit_not_declared",
     "model_answer_ambiguous",
     "index_unavailable",
     "job_over_ceiling",
+    "ledger_unavailable",
     "local_bound_unsound",
     "model_answer_malformed",
+    "model_answer_mismatched",
     "model_answer_over_bound",
     "model_answer_not_structured",
     "model_answer_truncated",
