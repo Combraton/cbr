@@ -3185,7 +3185,15 @@ impl Provider {
         if self.selected_feature("context.shared_jobs") {
             for (job_id, _, value) in self.store.subjects_in_recorded_order(JOB)? {
                 let mut job = parse_record(&value)?;
-                if context::may_join(&job, &principal, payload, &view, &claims, &evidence) {
+                // The job's script is what prepares a joined request (CONTEXT
+                // section 12), so its mandatory size is what this request's
+                // capacity must hold. Joining is a MAY (section 4): one that
+                // cannot hold it starts a job of its own, which decides for
+                // itself.
+                let fits =
+                    context::mandatory_size(list(&job, &["script"]), list(payload, &["items"]))
+                        <= int(payload, &["limits", "output_capacity", "amount"]);
+                if fits && context::may_join(&job, &principal, payload, &view, &claims, &evidence) {
                     context::push(&mut job, "requests", string(&id));
                     joined = Some((job_id, job));
                     break;
