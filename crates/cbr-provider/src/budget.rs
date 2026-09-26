@@ -294,6 +294,29 @@ impl From<rusqlite::Error> for LedgerError {
     }
 }
 
+/// A settlement the store did not take, and whether this process kept it
+/// ([`UNWRITTEN`]). A caller charges a kept one its bill, which is what the
+/// ledger will hold, and any other its reservation's estimate. Read from
+/// the settlement itself rather than from [`UNWRITTEN`] afterwards, where
+/// another worker's admission may already have written it and removed it.
+#[derive(Debug)]
+pub struct Unsettled {
+    pub error: LedgerError,
+    pub kept: bool,
+}
+
+impl From<Unsettled> for LedgerError {
+    fn from(unsettled: Unsettled) -> Self {
+        unsettled.error
+    }
+}
+
+impl std::fmt::Display for Unsettled {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.error.fmt(formatter)
+    }
+}
+
 impl std::fmt::Display for LedgerError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -644,31 +667,48 @@ impl<'a> Ledger<'a> {
     ///
     /// A bill above the reservation that the store does not take is kept
     /// by this process ([`UNWRITTEN`]): the store admits nothing again here,
-    /// and the next admission it takes writes it.
+    /// and the next admission it takes writes it. The error says whether
+    /// it was kept ([`Unsettled`]).
     pub fn settle(
         &self,
         now: &str,
         reservation: &Reservation,
         settlement: Settlement,
-    ) -> Result<(), LedgerError> {
-        let settled = self.settle_once(now, reservation, settlement);
-        if settled.is_err()
-            && let Settlement::Usage(tokens) = settlement
-            && tokens > reservation.estimate
-            && let Some(file) = store_file(self.connection)
+    ) -> Result<(), Unsettled> {
+        self.settle_once(now, reservation, settlement)
+    }
+
+    /// Keep a settlement the store did not take, when it is a bill above
+    /// its reservation on a store with a file, once per reservation.
+    /// Returns whether it is kept.
+    fn keep(&self, now: &str, reservation: &Reservation, settlement: Settlement) -> bool {
+        let Settlement::Usage(tokens) = settlement else {
+            return false;
+        };
+        if tokens <= reservation.estimate {
+            return false;
+        }
+        let Some(file) = store_file(self.connection) else {
+            return false;
+        };
+        let mut kept = unwritten();
+        let kept = kept.entry(file).or_default();
+        if !kept
+            .iter()
+            .any(|kept| kept.reservation.id == reservation.id)
         {
-            unwritten().entry(file).or_default().push(Unwritten {
+            kept.push(Unwritten {
                 now: now.to_string(),
                 reservation: reservation.clone(),
                 tokens,
             });
         }
-        settled
+        true
     }
 
     /// Whether this process kept a settlement of `reservation` that the
-    /// store did not take, to write at the next admission it takes. Its
-    /// charge is then the bill, which is what the ledger will hold.
+    /// store did not take, to write at the next admission it takes.
+    #[cfg(test)]
     pub fn keeps(&self, reservation: &Reservation) -> bool {
         store_file(self.connection).is_some_and(|file| {
             unwritten().get(&file).is_some_and(|kept| {
@@ -683,18 +723,29 @@ impl<'a> Ledger<'a> {
         now: &str,
         reservation: &Reservation,
         settlement: Settlement,
-    ) -> Result<(), LedgerError> {
-        let seconds = epoch_seconds(now).ok_or_else(|| LedgerError::Instant(now.to_string()))?;
-        self.connection.execute_batch("BEGIN IMMEDIATE")?;
-        let settled = self
-            .settle_locked(now, seconds, reservation, settlement)
-            .and_then(|()| Ok(self.connection.execute_batch("COMMIT")?));
-        if settled.is_err() {
-            // Nothing of a settlement lands unless all of it does; the
-            // reservation then stands at its estimate.
-            let _ = self.connection.execute_batch("ROLLBACK");
-        }
-        settled
+    ) -> Result<(), Unsettled> {
+        let unsettled = |error: LedgerError| Unsettled {
+            kept: self.keep(now, reservation, settlement),
+            error,
+        };
+        let seconds =
+            epoch_seconds(now).ok_or_else(|| unsettled(LedgerError::Instant(now.to_string())))?;
+        self.connection
+            .execute_batch("BEGIN IMMEDIATE")
+            .map_err(|error| unsettled(error.into()))?;
+        self.settle_locked(now, seconds, reservation, settlement)
+            .and_then(|()| Ok(self.connection.execute_batch("COMMIT")?))
+            .map_err(|error| {
+                // **Kept before the ROLLBACK**, while this transaction still
+                // holds the write lock (m5-settle, verification round 3):
+                // kept after it, an admission already waiting on the lock
+                // would be granted it while the process held no stop.
+                let unsettled = unsettled(error);
+                // Nothing of a settlement lands unless all of it does; the
+                // reservation then stands at its estimate.
+                let _ = self.connection.execute_batch("ROLLBACK");
+                unsettled
+            })
     }
 
     fn settle_locked(

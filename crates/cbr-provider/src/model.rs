@@ -752,7 +752,9 @@ impl<'a> Runtime<'a> {
             // A bill above the reservation that the store did not take is
             // kept by the ledger and written at the next admission the
             // store takes, so the ledger holds the bill (m5-settle).
-            Err(_) if self.ledger.keeps(reservation) => holds,
+            // Read from the settlement, not from the ledger afterwards: by
+            // then another worker's admission may have written it.
+            Err(unsettled) if unsettled.kept => holds,
             // Any other settlement that did not land leaves the
             // reservation, which counts at its estimate.
             Err(_) => reservation.estimate,
