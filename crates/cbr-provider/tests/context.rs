@@ -4576,3 +4576,213 @@ fn a_seal_that_timed_out_before_the_deadline_is_published_after_it_as_composed_b
     );
     ctx.kill();
 }
+
+/// Inspect `request` until it has `revisions` published revisions, its
+/// failure carrying the provider log's last line.
+fn revised(ctx: &mut ContextProvider, directory: &Path, request: &str, revisions: usize) -> Value {
+    for _ in 0..50 {
+        let last = ctx.inspect(request);
+        if at(&last, &["packets"]).as_array().map(<[_]>::len) == Some(revisions) {
+            return last;
+        }
+    }
+    panic!(
+        "{request} never had {revisions} revisions within 50 polls; the log's last line: {:?}",
+        log(directory).lines().last()
+    );
+}
+
+#[test]
+fn a_kill_after_the_peer_seals_a_later_revision_publishes_it_once_the_clock_has_moved() {
+    // **Every revision's instant is kept, not only a job's first.** `r`,
+    // under `context.updates`, is published at 00:00, its revision 1
+    // sealed at the peer. At 00:10 its revision 2 is sealed at the peer,
+    // and CBR is killed before that tick commits; the restart is at 00:15.
+    // Revision 2's instant was kept before its send, beside revision 1's,
+    // so the retry replays it.
+    let directory = tempfile::tempdir().expect("temp dir");
+    let clock = directory.path().join("clock");
+    set_clock(&clock, "2030-01-01T00:00:00Z");
+    let barriers = directory.path().join("barriers");
+    std::fs::create_dir(&barriers).expect("barrier dir");
+    let mut peer = EvidencePeer::start(directory.path(), &clock);
+    let script = format!(
+        r#""r":[{},{{"publish":{{}}}},{{"wait_until":"2030-01-01T00:10:00Z"}},{},{{"publish":{{}}}}]"#,
+        source_section("s-1"),
+        source_section("s-2")
+    );
+    let features = ["context.required_before_start", "context.updates"];
+    let mut ctx = ContextProvider::start_with(
+        directory.path(),
+        &beside_holding(&script, &clock, &barriers, false, &peer),
+        &features,
+    );
+    ctx.submit("r", "2030-01-01T01:00:00Z");
+    revised(&mut ctx, directory.path(), "r", 1);
+    ctx.kill();
+
+    // The restart's first tick, at 00:10, sends revision 2 and holds.
+    set_clock(&clock, "2030-01-01T00:10:00Z");
+    let ctx = ContextProvider::launch(
+        directory.path(),
+        &beside_holding(&script, &clock, &barriers, true, &peer),
+        &["core.events"],
+        &features,
+    );
+    wait_for(
+        &barriers.join(format!("{AFTER_PEER_SEALED}.reached")),
+        "revision 2's seal at the peer",
+    );
+    ctx.kill();
+    let (captured, digest) = sealed_at_peer(&mut peer, "packet.r.2");
+    assert_eq!(captured, "2030-01-01T00:10:00Z", "the premise");
+
+    set_clock(&clock, "2030-01-01T00:15:00Z");
+    let mut ctx = ContextProvider::start_with(
+        directory.path(),
+        &beside_holding(&script, &clock, &barriers, false, &peer),
+        &features,
+    );
+    let published = revised(&mut ctx, directory.path(), "r", 2);
+    let packets = at(&published, &["packets"]).as_array().expect("packets");
+    assert_eq!(
+        text(&packets[1], &["reference", "artifact", "digest"]),
+        digest,
+        "the peer's seal: {published:?}"
+    );
+    let job = stored(&directory.path().join("context-data"), "context.job", "r");
+    assert_eq!(
+        canonical(at(&job, &["captures"])),
+        r#"{"packet.r.1":"2030-01-01T00:00:00Z","packet.r.2":"2030-01-01T00:10:00Z"}"#,
+        "{job:?}"
+    );
+    ctx.kill();
+}
+
+#[test]
+fn a_later_revision_first_composed_past_the_deadline_reads_deadline_passed() {
+    // **The deadline is judged at a kept instant only for the revision it
+    // was kept for.** `r`, under `context.updates`, is published at 00:00,
+    // `i-2` `unmet` for `unavailable`, and revision 1's instant is kept. Its
+    // revision 2 is first composed at 01:30, past the 01:00 deadline, with
+    // no instant kept for it: `i-2` reads `deadline_passed`. Judged at
+    // revision 1's instant, it would read `unavailable` again.
+    let directory = tempfile::tempdir().expect("temp dir");
+    let clock = directory.path().join("clock");
+    set_clock(&clock, "2030-01-01T00:00:00Z");
+    let mut peer = EvidencePeer::start(directory.path(), &clock);
+    let script = format!(
+        r#""r":[{},{{"publish":{{}}}},{{"wait_until":"2030-01-01T01:30:00Z"}},{},{{"publish":{{}}}}]"#,
+        source_section("s-1"),
+        source_section("s-2")
+    );
+    let config = scripted_beside(
+        &script,
+        &format!(r#","clock":{{"file":"{}"}}"#, clock.display()),
+        &peer.member,
+    );
+    let features = ["context.required_before_start", "context.updates"];
+    let mut ctx = ContextProvider::start_with(directory.path(), &config, &features);
+    ctx.submit_with(
+        "r",
+        &one_unmet_item(),
+        "proceed_with_gap",
+        "2030-01-01T01:00:00Z",
+    );
+    let first = revised(&mut ctx, directory.path(), "r", 1);
+    assert_eq!(
+        item_of(&first, "i-2"),
+        ("unmet".to_string(), "unavailable".to_string()),
+        "the premise: {first:?}"
+    );
+
+    set_clock(&clock, "2030-01-01T01:30:00Z");
+    let second = revised(&mut ctx, directory.path(), "r", 2);
+    assert_eq!(
+        item_of(&second, "i-2"),
+        ("unmet".to_string(), "deadline_passed".to_string()),
+        "{second:?}"
+    );
+    let packets = at(&second, &["packets"]).as_array().expect("packets");
+    assert_eq!(
+        sealed_at_peer(&mut peer, "packet.r.2").1,
+        text(&packets[1], &["reference", "artifact", "digest"]),
+    );
+    ctx.kill();
+}
+
+#[test]
+fn a_scripted_publication_at_the_deadline_instant_reads_deadline_passed() {
+    // The boundary `publish_one` judges: a `publish` step that runs at the
+    // deadline instant itself is past it, so `i-2` reads
+    // `deadline_passed`, as the deadline's own publication would.
+    let directory = tempfile::tempdir().expect("temp dir");
+    let clock = directory.path().join("clock");
+    set_clock(&clock, "2030-01-01T00:00:00Z");
+    let script = format!(
+        r#""r-1":[{},{{"wait_until":"2030-01-01T01:00:00Z"}},{{"publish":{{}}}}]"#,
+        source_section("s-1")
+    );
+    let mut ctx = ContextProvider::start(
+        directory.path(),
+        &scripted(
+            &script,
+            &format!(r#","clock":{{"file":"{}"}}"#, clock.display()),
+        ),
+    );
+    ctx.submit_with(
+        "r-1",
+        &one_unmet_item(),
+        "proceed_with_gap",
+        "2030-01-01T01:00:00Z",
+    );
+    set_clock(&clock, "2030-01-01T01:00:00Z");
+    let published = settled_logged(&mut ctx, directory.path(), "r-1");
+    assert_eq!(text(&published, &["state"]), "unmet", "{published:?}");
+    assert_eq!(
+        item_of(&published, "i-2"),
+        ("unmet".to_string(), "deadline_passed".to_string()),
+        "{published:?}"
+    );
+    ctx.kill();
+}
+
+#[test]
+fn a_job_that_ends_for_its_own_reason_after_the_deadline_keeps_that_reason() {
+    // **An explicit reason wins over the deadline.** The first tick after
+    // the 00:30 deadline is at 01:00, and there the script ends the job as
+    // `investigation_budget_exhausted`: `i-2` reads that reason, not
+    // `deadline_passed`.
+    let directory = tempfile::tempdir().expect("temp dir");
+    let clock = directory.path().join("clock");
+    set_clock(&clock, "2030-01-01T00:00:00Z");
+    let script = format!(
+        r#""r-1":[{{"wait_until":"2030-01-01T01:00:00Z"}},{},{{"end":"investigation_budget_exhausted"}}]"#,
+        source_section("s-1")
+    );
+    let mut ctx = ContextProvider::start(
+        directory.path(),
+        &scripted(
+            &script,
+            &format!(r#","clock":{{"file":"{}"}}"#, clock.display()),
+        ),
+    );
+    ctx.submit_with(
+        "r-1",
+        &one_unmet_item(),
+        "proceed_with_gap",
+        "2030-01-01T00:30:00Z",
+    );
+    set_clock(&clock, "2030-01-01T01:00:00Z");
+    let published = settled_logged(&mut ctx, directory.path(), "r-1");
+    assert_eq!(text(&published, &["state"]), "unmet", "{published:?}");
+    assert_eq!(
+        item_of(&published, "i-2"),
+        (
+            "unmet".to_string(),
+            "investigation_budget_exhausted".to_string()
+        ),
+        "{published:?}"
+    );
+    ctx.kill();
+}
