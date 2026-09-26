@@ -16,6 +16,21 @@ Tracking: [issue #34](https://github.com/Combraton/cbr/issues/34). Scope: [RELEA
 5. **`orient_repository` and `record_rejected_approach` land in v0.1**, so all five of [RELEASE-SCOPE §2](../readiness/RELEASE-SCOPE.md)'s families are M5's — §5 and §9 (m5i and m5j). The owner answered the question this document had left open, in the session, in these words, which are in that session's transcript and not in this repository: *"yes land orient_repository and record_rejected_approach for v0.1"*. Where the two go in the order is this session's proposal (§9), not part of the decision.
 6. **Live calls under a standing grant**: MiniMax as much as the work needs, with no approval per run, within CBR's envelope — §10. It is in the owner's brief to this session, outside this repository.
 
+**The owner's decisions of 2026-09-26.** This session put twelve questions, and the owner answered them in the session in one reply, which is in that session's transcript and not in this repository: *"1. yes lets do 2. yes lets do with recommendation 3. yes 4. yes lets do and close 5-9 sound good , 10-12 I agree with your recommendation"*. Each item below is a recommendation that reply accepted, in this session's wording; nothing in it beyond the quotes is the owner's own words.
+
+7. **A packet the publication guard refuses ends its job with the typed reason `packet_invalid`** — [STATE](../STATE.md) (*This change — packet_invalid*) and [VERIFICATION](../../VERIFICATION.md#the-deterministic-packet-compiler-and-what-a-packet-is-compiled-from). Answered in the session as question 12, which read *"#43's leftover question: a packet the id guard refuses should end its job with a typed `packet_invalid`. I recommend yes."*, by *"10-12 I agree with your recommendation"*. That the request ends `refused` is this session's reading within that ruling, not part of the owner's words.
+8. **A loop is started by the `cbr/loop` extension, listed in `requires`** (m5b's decision A), so a provider that does not understand it refuses the request. Answered in the session.
+9. **J4's control is worded** "with the commit's durable identity removed, two findings; with deduplication removed, a typed conflict and no section" (m5b's decision B). Answered in the session.
+10. **CBR's own internal commit commands are admitted within the job's resolved view and readable evidence, with no grant minted** (m5b's decision D). Answered in the session.
+11. **m5-settle is done before m5h's live run.** Answered in the session.
+12. **The candidate caps are 8,192 carried bytes of text and 1,024 of path** (m5-arith). Answered in the session.
+13. **m5-arith goes before m5b.** Answered in the session.
+14. **The reference-executor composition run gets no known-failure expectation file** (§7). Answered in the session.
+15. **The `ckp.`, `lfd.` and `lch.` id prefixes are reserved for CBR's own principal.** Answered in the session.
+16. **The per-job ceiling is kept for v0.1.** Answered in the session.
+17. **CBR's context-initiated investigation executions (CTX-18, CTX-19) go after m5e** — §7 and §9. Answered in the session.
+18. **The protocol runner issue is filed**, as [Combraton/protocol#18](https://github.com/Combraton/protocol/issues/18). Answered in the session.
+
 ## 1. Scope, and the promise
 
 | M5 delivers | M5 does not |
@@ -289,7 +304,7 @@ m5a's figures were 40,680, 488,160 and 861,348. m5a-3 added the preamble, which 
 
 ## 9. The pull requests, each with its gate
 
-In the order the owner set: J2, then the loop, then the tools, then the families that need both. **J2 live failed on 2026-09-25**, so m5a-3 and J2's live rerun come before m5b. **The two families added on 2026-09-25 go after m5e and before m5f**, so that maintenance, whose triggers include completed investigations, can start them. The whole order is m5a, m5a-3 and J2's rerun, m5b, m5c, m5d, m5e, m5i, m5j, m5f and m5h, with m5g at any point. Where m5a-3 and the two families sit is this session's proposal and the owner's to change.
+In the order the owner set: J2, then the loop, then the tools, then the families that need both. **J2 live failed on 2026-09-25**, so m5a-3 and J2's live rerun come before m5b. **The two families added on 2026-09-25 go after m5e and before m5f**, so that maintenance, whose triggers include completed investigations, can start them. **CBR's context-initiated investigation executions (CTX-18, CTX-19, §7) go after m5e**, by the owner's decision of 2026-09-26 (item 17). The whole order is m5a, m5a-3 and J2's rerun, m5b, m5c, m5d, m5e, CTX-18/19, m5i, m5j, m5f and m5h, with m5g at any point. Where m5a-3 and the two families sit is this session's proposal and the owner's to change.
 
 | | Scope | Depends on | Gate |
 |---|---|---|---|
