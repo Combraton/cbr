@@ -3308,7 +3308,17 @@ impl Provider {
             .filter(|r| r.as_str() != Some(request_key.id.as_str()))
             .cloned()
             .collect();
-        let job_continues = !others.is_empty();
+        // "The job continues while any other request still needs it"
+        // (CONTEXT section 4), and a subscriber refused while its job went
+        // on needs nothing more from it.
+        let mut job_continues = false;
+        for other in others.iter().filter_map(Value::as_str) {
+            if let Some((_, other)) = self.context_record(REQUEST, other)?
+                && text(&other, &["state"]) != "refused"
+            {
+                job_continues = true;
+            }
+        }
         set(&mut job, "requests", Value::Array(others));
         let ended = if job_continues {
             None
