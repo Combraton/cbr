@@ -29,7 +29,7 @@ Tracking: [issue #34](https://github.com/Combraton/cbr/issues/34). Scope: [RELEA
 15. **The `ckp.`, `lfd.` and `lch.` id prefixes are reserved for CBR's own principal.** Answered in the session.
 16. **The per-job ceiling is kept for v0.1.** Answered in the session.
 17. **CBR's context-initiated investigation executions (CTX-18, CTX-19) go after m5e** — §7 and §9. Answered in the session.
-18. **The protocol runner issue is filed**, as [Combraton/protocol#18](https://github.com/Combraton/protocol/issues/18). The question as the owner saw it, question 11 of the session's list, carried no explicit recommendation, and the owner's reply to it was *"10-12 I agree with your recommendation"*. An earlier message in the session had recommended filing it. **That the reply meant filing it is this session's reading**, and on that reading the issue was filed. The session put it two later times in [STATE](../STATE.md), neither with an explicit recommendation, one of them naming the filing decision the owner's call; **the reading above stays the session's.**
+18. **The protocol runner issue is filed**, as [Combraton/protocol#18](https://github.com/Combraton/protocol/issues/18). The question as the owner saw it, question 11 of the session's list, carried no explicit recommendation, and the owner's reply to it was *"10-12 I agree with your recommendation"*. An earlier message in the session had recommended filing it. **That the reply meant filing it is this session's reading**, and on that reading the issue was filed. After that recommendation, the session's report on #45's merge called filing it the owner's call, and question 11 itself carried no recommendation; **the reading above stays the session's.**
 
 ## 1. Scope, and the promise
 
