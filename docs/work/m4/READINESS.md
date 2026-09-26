@@ -124,21 +124,46 @@ Neither one loops. A retry loop against a shared quota is a denial of service ag
 
 **Added at m4e, and computed rather than estimated.** Every bound on the two discovery requests is a constant — at most 6 candidates shown to the terms step, at most 20 to the choice, each candidate at most one span of retrieval's own `span_bytes` — so the largest request either step can make is a number, and `discovery::tests` computes it against the ceiling it has to fit under. A document cannot notice when a constant moves; that test can.
 
-| | Worst case, tokens | Against |
-|---|---:|---|
-| One item's selection | 39,612 | per-request 250,000 |
-| Discovery's terms step | 32,943 | per-request 250,000 |
-| Discovery's choice step | 91,453 | per-request 250,000 |
-| **The whole two-step flow**, each step counted with its one permitted repair and its count call | **373,188** | per-job 1,000,000 |
-| **Six such flows**, which is the six runs §9 names | **2,239,128** | m4e's run ceiling 5,000,000 |
+**That paragraph is true since m5-arith (2026-09-26), and was not quite true before it.** A span is capped in raw bytes, and a request body is JSON, which carries a quotation mark in two bytes and a C0 control in six. So a candidate could be carried in up to six times its span, and twenty spans of control characters made a choice the per-request ceiling refused outright. Since m5-arith a candidate's text is shown within 8,192 carried bytes and its path within 1,024, cut with a marker past either ([§5](#what-a-candidate-shows-a-model-and-where-it-is-cut)), so the largest request each step can make is a number again.
 
-**The figures above moved at m4f**, because both discovery steps now ask for room to reason: the live run measured `MiniMax-M2.7-highspeed` spending 277 to 512 output tokens thinking before it wrote anything, and truncating two of its three flows at the 512-token floor both steps had been sitting on. `budget::DISCOVERY_MIN_OUTPUT_TOKENS` is 2,048, and a test computes all four figures above from the real bodies and fails when the table drifts from them. **Selection's bound stays at `budget::MIN_OUTPUT_TOKENS`, and that is decided rather than open.** Nothing measured truncated there; raising a bound against no measurement is the estimating these constants exist to stop. The reviewer ruled on it at round 47, and it is recorded here as settled so that a later reader does not reopen it for want of a sentence.
+| | One send, tokens | One question, tokens | Against |
+|---|---:|---:|---|
+| One item's selection | 83,397 | 167,307 | per-request 250,000 for a send |
+| Discovery's terms step | 63,485 | 129,018 | per-request 250,000 for a send |
+| Discovery's choice step | 193,213 | 388,474 | per-request 250,000 for a send |
+| **The whole two-step flow**, each step's first send and its widest repair | | **517,492** | per-job 1,000,000 |
+| **Six such flows**, which is the six runs §9 names | | **3,104,952** | m4e's run ceiling 5,000,000 |
+
+**How each figure is computed.** A send is what admission reserves for it on the local bound, `model::send_worst`: the body's bytes as serialized, 8 per message the provider frames (the instruction among them), the generation the body binds, and the margin of 1,024. A question is its first send and its widest repair, `model::question_worst`: a truncation repair doubles the generation, and any other repair adds CBR's repair sentence as one more message; each step here takes the wider of the two. The bodies are the widest each step can build: the longest name in `wire::MODELS` (`MiniMax-M2.7-highspeed`, 12 bytes longer than `MiniMax-M3`), a task of 4,096 bytes where the protocol admits 256 code points of at most six carried bytes, every candidate's text at the 8,192-byte cut and its path at 1,024, seven-digit line numbers, and every term at its bound. `discovery::tests` and `selection::tests` compute each figure through those two functions and pin it, and `scripts/m4e_run.py` reads the flow and the selection question from the same tests.
+
+**Changed at m5-arith, 2026-09-26** ([ADR 001 question 17](../../decisions/001-standalone-v0.1-scope-and-stack.md), proposed). Until then the table read 39,612, 32,943, 91,453, **373,188** and 2,239,128. Those priced every step as three copies of one send — a count, the send and a repair — on a candidate's raw bytes, `MiniMax-M3`'s name and one message fewer than the provider frames; selection's 39,612 was in no test. Three copies of a send overstate a question: a count is made only where the send itself did not fit (below). The raw bytes understated one: a body carries escaping text in more. The live runs were far from both, as §9 records.
+
+**The figures above moved at m4f**, because both discovery steps now ask for room to reason: the live run measured `MiniMax-M2.7-highspeed` spending 277 to 512 output tokens thinking before it wrote anything, and truncating two of its three flows at the 512-token floor both steps had been sitting on. `budget::DISCOVERY_MIN_OUTPUT_TOKENS` is 2,048, and a test computes every figure above from the real bodies and fails when the table drifts from them. **Selection's bound stays at `budget::MIN_OUTPUT_TOKENS`, and that is decided rather than open.** Nothing measured truncated there; raising a bound against no measurement is the estimating these constants exist to stop. The reviewer ruled on it at round 47, and it is recorded here as settled so that a later reader does not reopen it for want of a sentence.
 
 **Six, because §9 names six runs**: J1 revisited and both sealed pilot questions, each against two models. An earlier draft of this table said five, which was a number chosen to show the ceiling was not close rather than the number the plan runs.
 
 **The run ceiling is per store, so the harness subtracts.** `Ledger::run_spend` sums the ledger it was opened over, and every run of §9 opens a new data directory; a ceiling handed to each launch unreduced is therefore the cap *once per run* rather than once. [`scripts/m4e_run.py`](../../../scripts/m4e_run.py) passes `--model-run-ceiling` to every launch as the cap **less what the launches before it spent**, so the 5,000,000 bounds the run and not the launch. Without that, six runs bounded only by the per-job ceiling of 1,000,000 could reach 6,000,000, and the stop below is checked before each run rather than after it for the same reason.
 
-**The flow is two questions per request — not per item, and not per discovered section.** That is the property the arithmetic rests on: discovery does not scale with what it finds, so a packet carrying eight discovered spans costs what a packet carrying one costs. Each question may be repaired once ([`model::REPAIRS`]) and counted once, so three sends apiece is the worst any step can do.
+**The flow is two questions per request — not per item, and not per discovered section.** That is the property the arithmetic rests on: discovery does not scale with what it finds, so a packet carrying eight discovered spans costs what a packet carrying one costs.
+
+**What one question can hold on the serving path**, as m5-arith states it. A question is at most two attempts, its send and one repair ([`model::REPAIRS`]), and each attempt is at most two sends, a count and a completion, so four sends in all. It holds less than four sends' reservations, because of when a count is made. The local bound admits first. A count is made only after the local bound is refused on the job, the window, the month or the run — a counter a tighter figure could satisfy — and never after a per-request refusal (`model::SERVING_COUNTING`, which both serving launches name and a source test holds them to). The count and the completion admitted on it are then both admitted on the counter that refused the send, so together they hold less than the send would have. So a question holds at most **its first send and its widest repair**, which is what the table prices. `model::tests::no_serving_question_holds_more_than_question_worst` measures that on the real call path, over a grid of ceilings around each body's reservations, rather than arguing it.
+
+**What that assumes**, in the words of `model::question_worst`'s own documentation:
+
+> **What it assumes.** Bills are within their reservations: the byte bound holds, a completion admitted on a count is billed no more than the count said, `max_output_tokens` is honoured, and a failed call reports no more than it reserved. And nothing frees room on the refusing counter while a count is in flight. If room is freed there, the completion is admitted on the counter as it now is, and an attempt can hold up to its count's reservation more: with an honest count, at most its count's reservation and its send. Every ceiling still holds at admission.
+
+**The freed-room exception is real and pinned.** `Runtime::call` admits the count and then the completion in two separate admissions, and nothing ties the second to the room that refused the send. So when another job's reservation settles while the count is in flight, the completion is admitted on the room that settlement freed. `model::tests::an_attempt_admitted_on_a_count_after_room_was_freed_holds_at_most_its_counts_reservation_more` builds exactly that and asserts that the question holds its first send, its count's reservation and its repair, and that every admission was within its ceiling. Closing it is a change to admission, which M5 promised not to make ([m5 READINESS §1](../m5/READINESS.md#1-scope-and-the-promise)); it is proposed as m5-settle for the owner.
+
+**Under `Counting::Always` no bound is derived from the body.** The count comes first and its figure is floored but not capped, so a count above the local bound reserves above it. Only the calibration counts that way, and the source test above holds serving to `SERVING_COUNTING`.
+
+**Settlement can pass a ceiling; admission cannot.** Every ceiling holds at admission. A call then settles at what the provider billed, which can exceed what was reserved, and the excess lands on counters that were checked before it existed. Four routes, each asserted with its overage and a `divergence` row by `model::tests::settlement_passes_a_ceiling_only_by_what_an_admitted_call_was_billed_over_its_reservation`, and each leaving the next admission on that counter refused:
+
+1. a completion admitted on a count is billed above the count;
+2. the input is billed above the byte bound, which also records `bound_unsound` and stops every later call though the charge stands, or the output above `max_output_tokens`;
+3. a count settles at the provider's figure capped at the completion body's input bound, which is above what the count reserved by the three members the count body leaves out — 66 tokens on the published bodies;
+4. a failed call reports usage above its reservation.
+
+None is recorded in a live run. m4e's run 3 records every call admitted on the local bound alone, no count call and every charge within its local estimate ([JOURNEYS](../../verification/JOURNEYS.md#live-run-3-2026-09-23-both-pilots-and-j1-again-after-m4f-and-m4g)); J2's first live run records every call admitted on the local bound alone ([m5 READINESS §10](../m5/READINESS.md#j2-live-what-it-spent-2026-09-25)); and no live record names a count outside the calibration, which counts by design. So the figures in this section bound what admission can reserve, not what a bill can charge.
 
 **The investigation limit counts both of them**, and every other question too. At m4c the number gated: a model was asked for every item of any request whose budget was above zero, so it said *whether* and not *how much*. m4e adds two questions per request, and a limit that counted some kinds of call and not others would be two meanings for one number. So:
 
@@ -274,6 +299,39 @@ Two gaps, recorded rather than described as covered.
 
 A term the model proposes **still has to occur in the repository**. This makes CBR look in places its own reading of the task did not suggest; it does not make CBR find something that is not written down, and it cannot answer a question whose answer is absent from the text. If brian2's question fails again after this, that is the answer it deserves rather than a bug in the step.
 
+### What a candidate shows a model, and where it is cut
+
+**Added at m5-arith, 2026-09-26, as a proposal** ([ADR 001 question 17](../../decisions/001-standalone-v0.1-scope-and-stack.md), status proposed: the reviewer or the owner accepts it or not). It changes a context budget, so AGENTS.md asks for the comparison and the failure cases below.
+
+**The rule.** Every step that offers a candidate — one item's selection, and discovery's terms and choice — frames it through one function, `selection::shown`. It shows the candidate's text within `CANDIDATE_TEXT_BYTES`, **8,192**, and its path within `CANDIDATE_PATH_BYTES`, **1,024**, each measured as a request body carries it. A field past its bound is shown as its longest prefix that fits beside the marker `[cut]`, then the marker. The cut falls between characters (`wire::request::carried_within`), so it never splits an escape. A field within its bound is shown whole, byte for byte as before.
+
+**Why those two numbers.** A span is capped at retrieval's `span_bytes`, 4,096 raw bytes, and 8,192 is twice that, pinned to it by a test. So a span is cut only when a body carries it in more than twice its raw bytes. Text whose every character is carried in at most two bytes — quotation marks, backslashes, newlines, tabs, two-byte UTF-8 — never is, with one exception: a clip inside a character leaves a replacement character, carried in three bytes, which can tip a span of nothing but two-byte characters over by a byte. Text dense in the other C0 controls, each carried in six bytes, is what the cut is for. The protocol bounds a selection path at 1,024 code points, so a path the protocol admits, whose every character a body carries in one byte, is never cut. **Discovery's paths come from the repository tree**, which nothing but the file system bounds, and a path of control characters there is cut like text.
+
+**What it changes, and what it does not.** Only what the model is shown. The model answers with an id, and the id names the whole candidate: `derivation::offered` digests the full text rather than what was shown of it, a chosen span is cited and published as the repository's bytes, and replay reads the same records. So packets, citations, derivation records and replay are unchanged.
+
+**The comparison, made with no model call.** It surveys the trees the live runs used, plus what those runs sent.
+
+| Survey | Covered | Result |
+|---|---|---|
+| `scripts/escape_scan.py`, at the commits m4e's manifests pinned for J1 and after | cbr at `a6dc450` (12,110 spans), `9ee22d0` (12,169), `2f8c666` (13,830) and `651c86e` (14,149) | Widest span 5,150 carried bytes; **none past 8,192**; no span holds a six-byte escape; longest path 135 carried bytes, none past 1,024. Past 4,096: 38, 38, 53 and 66 spans. |
+| The same tree scan, by the planning agents with an equivalent scanner, counts only | brian2 at `4960df7` (7,467 spans) and Knowscroll at `3e8991e` (2,191), the pilot trees | None past 8,192 or 1,024. 4 of Knowscroll's spans past 4,096. |
+| Every 4,096-byte window, by the planning agents | the same repositories | The widest in each carried in 5,346, 4,972 and 4,646 bytes |
+| The bodies m4e's runs 1 to 3 sent, by the planning agents, counts only, no sealed question printed | 31 discovery bodies, 409 candidates | Largest candidate 3,526 carried bytes; longest path 83 |
+
+**No span or path of any surveyed tree is cut at 8,192 and 1,024**: 35,657 spans across cbr at two commits, brian2 and Knowscroll, as the planning agents counted them. The scanner of this change reproduces their cbr figures exactly. **The unified frame is byte-identical to the one it replaced** for every text that fits: a differential compared the two over 272,525 windows of 4,096 bytes of the working tree, and every window of every tracked file was identical; the 843 that differed were all in three untracked Python bytecode files (in the stage's scratch, not committed). Every fake-model journey and the m4e and J2 dry runs pass unchanged.
+
+**The failure cases, in both directions:**
+
+1. **A span dense in C0 controls is shown cut, with the marker.** The model sees less of it, and its id still resolves to the whole span. `crates/cbr-cli/tests/model_discovery.rs`'s `an_escape_dense_repository_is_asked_its_choice_within_the_published_flow` holds it end to end: at `651c86e` that fixture's choice was refused at 402,821 tokens, over the per-request 250,000, and the packet declared the choice unavailable. Now it is asked, at 142,541 of the 193,213 the table allows; 16 of its 20 candidates are shown cut, 2 of them at the path, the ordinary frames are byte-identical, and every cited span carries its full bytes.
+2. **A path past 1,024 carried bytes is shown cut.** Ids stay distinct, because an id is CBR's `d1` or `c1`, never the path.
+3. **In the other direction**, an escape-dense repository whose choice the ceiling used to refuse is now asked, so more calls are made, within the per-request and per-job ceilings.
+4. **`CANDIDATE_TEXT_BYTES` follows `span_bytes`.** A test pins the one to twice the other, so a wider span cannot leave the cut behind.
+5. **A text that ends in `[cut]` looks cut when it is not.** The model answers with an id, so nothing follows from it.
+
+**Rejected alternatives.** A cut at 4,096 text bytes and 256 path bytes would give smaller figures — about 264,564 for the flow, derived by the planning agents and computed by no test — but would cut 38 to 66 of cbr's spans at the commits scanned and 4 of Knowscroll's, all of them ordinary text. No cut at all leaves the arithmetic uncomputable, since a body carries a span in up to six times its bytes, and leaves escape-dense repositories unanswerable at the per-request ceiling, as failure case 1 shows.
+
+**What `escape_scan.py` does not establish** is in [VERIFICATION](../../VERIFICATION.md#the-model-runtime): it counts spans a tree can offer, not spans any question was shown.
+
 ## 6. Recording and replay
 
 **Built in m4d. This section is now what exists**, with the two places the design moved marked as such.
@@ -404,7 +462,9 @@ Stated now, before any call, so that the number is a limit rather than a descrip
 
 **It is enforced by `--model-run-ceiling`, given to each launch as the cap less what the launches before it spent.** An earlier draft of this section said the per-job ceiling enforced it. That was wrong, and the way it was wrong is worth keeping: `Ledger::run_spend` sums the store it was opened over, each of the six runs opens a new one, so the per-job 1,000,000 of §3 bounds *a run* and six of them bound 6,000,000. The cap is a property of the whole, so the number passed to each launch has to be a property of the whole too.
 
-**Exceeding the estimate by more than half stops the run and is reported.** At 2,250,000 tokens the run halts and what was spent and on what is reported before anything continues. The stop is checked **before a run, against what that run could cost** — `spent + 373,188`, the computed worst case of one flow — rather than after a run that had already crossed it. The worst the whole can then reach is that stop less one flow, plus the per-job ceiling of the run that was started under it: **2,876,812 tokens**, under the cap with room the ledger does not depend on.
+**Exceeding the estimate by more than half stops the run and is reported.** At 2,250,000 tokens the run halts and what was spent and on what is reported before anything continues. The stop is checked **before a run, against what that run could cost** — `spent` plus the run's own price, its flow and one selection question per want, 517,492 + wants × 167,307 (§3) — rather than after a run that had already crossed it. The worst the whole can then reach is that stop less the least a run is priced at, one want's 684,799, plus the per-job ceiling of the run that was started under it: **2,565,201 tokens**, under the cap with room the ledger does not depend on. It does not count what settlement can add over a reservation (§3), and nor does the figure below.
+
+**Changed at m5-arith, 2026-09-26.** Until then the stop priced a run at one flow, `spent + 373,188`, and no selection question, though every run asks at least one; the whole was then **2,876,812 tokens**, the stop less 373,188 plus the per-job ceiling. That is still the bound on the three recorded runs, which that stop admitted, and they spent 141,012 against it. A run's price is the harness's stop and not a bound on one job: three wants price a run at 1,019,413, above the per-job ceiling, which is what bounds the job.
 
 These are estimates, and the first thing m4e produces is the measurement that replaces them.
 

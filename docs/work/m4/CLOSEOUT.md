@@ -77,6 +77,8 @@ Five sessions called a model, each on the owner's word at the time and each run 
 
 **In all: 169,089 tokens charged**, of which the three m4e runs spent 141,012. That is under the 5,000,000 cap even taken together, against an estimate of 1,500,000 made before any call. Every m4e launch was given the cap less what the launches before it spent, and the stop was checked before each run against that run's computed worst case.
 
+*Correction, 2026-09-26 (m5-arith).* That worst case was one discovery flow, 373,188, and left out the selection questions every run asks first. From m5-arith the stop prices a run at its flow and one selection question per want, 517,492 + wants × 167,307 ([READINESS §9](READINESS.md#the-first-live-run-has-a-cap-before-it-starts)). The runs above stay bounded by what that stop admitted, 2,876,812 in all, and spent 141,012 of it.
+
 **Only the Responses dialect has answered a live completion.** Chat-completions reached the provider once, in calibration run 1's refused count, and the Anthropic dialect never has. `MiniMax-M2.7`, the third granted model, has never been called live.
 
 ## What the scores say, and what they do not
