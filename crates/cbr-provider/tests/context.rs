@@ -1505,9 +1505,10 @@ fn a_packet_the_guard_refuses_ends_its_job_and_refuses_its_request_as_packet_inv
     //
     // The request ends `refused`. `ready`, `partial` and `unmet` each
     // name a published revision (CONTEXT section 3), and there is none to
-    // name; `refused` is the one terminal state that needs no packet. That
-    // state is this session's reading within the ruling, which named the
-    // job's ending and its reason.
+    // name; `refused` is the one terminal state the provider can choose
+    // that needs no packet (`cancelled` is the caller's). That state is
+    // this session's reading within the ruling, which named the job's
+    // ending and its reason.
     //
     // The scripted section would satisfy `i-1`, so an item read off the
     // job's sections would say `satisfied`, and one read as still
