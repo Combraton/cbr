@@ -18,7 +18,7 @@
 #
 # It therefore reads no credential of the owner's, opens no socket to any
 # provider, and spends nothing. A launch that needs to do any of those is
-# the owner's to run deliberately, and is not this.
+# an authorised run, planned before it, and is not this.
 #
 # Usage:  sh scripts/debug_launch.sh [--register-repository <id>=<path>]...
 #

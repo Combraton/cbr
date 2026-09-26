@@ -328,8 +328,8 @@ def check(manifest, out, live, permit, ceiling, stop):
     if stop > STOP_TOKENS:
         refuse(
             f"--stop-tokens {stop} is above the {STOP_TOKENS} of READINESS "
-            "section 9, which is the estimate plus half. Like the ceiling it "
-            "can be lowered and not raised."
+            "section 9, which is the estimate plus half. Like the ceiling, a "
+            "flag can lower it and not raise it."
         )
     out = Path(out).resolve()
     if out == REPOSITORY or REPOSITORY in out.parents:
@@ -1095,8 +1095,8 @@ def main(argv=None):
         type=int,
         default=STOP_TOKENS,
         help=(
-            "lower the stop of READINESS section 9. Like the ceiling it can "
-            "only be lowered, and it is what the next run's worst case is "
+            "lower the stop of READINESS section 9. Like the ceiling, a flag "
+            "can only lower it, and it is what the next run's worst case is "
             "checked against before that run is started."
         ),
     )

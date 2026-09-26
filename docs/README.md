@@ -9,7 +9,7 @@ Read [repository scope](../README.md), then [memory spec](spec/SPEC.md), [memory
 - [Current state](work/STATE.md) — the dated session snapshot: the active stage, its measured results and mutants.
 - [Decision records](decisions/README.md) — accepted internal choices and supersessions.
 - [Task work](work/README.md) — durable plans and handoffs.
-- [ADR 001](decisions/001-standalone-v0.1-scope-and-stack.md) — the accepted scope, stack and evaluation posture for standalone v0.1, and the owner's decisions that amend it. Other owner decisions are recorded where they act: the milestone moves of 2026-09-23 in [RELEASE-SCOPE §4](work/readiness/RELEASE-SCOPE.md) and the [M4 close-out](work/m4/CLOSEOUT.md), and M5's at the top of [m5 READINESS](work/m5/READINESS.md).
+- [ADR 001](decisions/001-standalone-v0.1-scope-and-stack.md) — the accepted scope, stack and evaluation posture for standalone v0.1, and the owner's decisions that amend it. Other owner decisions are recorded where they act; M5's are listed at the top of [m5 READINESS](work/m5/READINESS.md).
 - [Implementation readiness](work/readiness/TALK.md) — the discussion ADR 001 settled, with its [protocol pin](work/readiness/PROTOCOL-PIN.md), [release scope and milestones](work/readiness/RELEASE-SCOPE.md) and [stack evidence](work/readiness/STACK.md).
 - [Journey verification](verification/JOURNEYS.md) — the journey acceptance matrix and evidence records: J9, J1 and J8 run with no model, J1 again with a model at M4, J6's two labelled pilots, and J2 — simulated, then live: failed on 2026-09-25, and passed on its rerun of 2026-09-26.
 - [Shared baseline](https://github.com/Combraton/combraton/blob/main/docs/architecture/BASELINE.md) — product ownership and invariants.
