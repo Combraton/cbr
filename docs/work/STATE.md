@@ -97,6 +97,8 @@ Two agents that wrote none of this verified it at `279a8fb`. Their mutants V1, V
 
 `main` moved again, to `817ebdb` (#50, m5-settle's merge of the budget/ledger/model/recording/scripts work, second parent `4013b07`), bringing #50 in on top of the earlier #48/#49 merge already recorded above. See *Earlier — m5-settle* below for what it changed. Docs-only conflicts (this file's top section and `docs/VERIFICATION.md`'s count row); no code file conflicted.
 
+**Gates at `9c1c1b8`, the merge**, with only these docs edited after it: `check_docs.py`, `verify_pin.py`, `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets --locked -- -D warnings`, `cargo build --workspace --locked` all clean; `git diff --check origin/main...HEAD` clean; no machine path; `git merge-tree --write-tree origin/main HEAD` clean. `cargo test --workspace --locked --no-fail-fast`, through `wslot`: **874 tests over 44 result lines, 873 passed, one ignored (the stall harness), none failed** — no flake fired this run; 20 in `cbr-encoding`, 7 in `cbr-identity`, 40 in `cbr-memory`, 599 in `cbr-provider`, 207 in `cbr-cli`.
+
 ## Earlier — m5-settle: no attempt reserves more than its send, and a bill above its reservation stops the store
 
 On `m5-settle/close`, off m5-arith's head `6d5cb4d`. **Approved by the owner on 2026-09-26** (*"4. yes lets do and close"*), amending [m5 READINESS §1](m5/READINESS.md#1-scope-and-the-promise) for admission and settlement only. **No model has been called.** The plan is a judge's synthesis of two planning agents' plans, in the session's scratch outside this repository.
