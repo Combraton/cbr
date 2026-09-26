@@ -9,7 +9,43 @@ This is a dated navigation snapshot. Reconcile it with Git, linked issues and cu
 - **Owner decision, 2026-09-20, recorded at the m3c review: m3d has two pilot repositories**, as an amendment to [ADR 001](../decisions/001-standalone-v0.1-scope-and-stack.md) question 6. Knowscroll-v2 stays the decision-memory pilot; the owner's **brian2 fork** is added as a brownfield pilot, registered read-only, whose journey tests discovery and code flow rather than decision memory, whose oracle the owner writes before the run, and whose dirty working tree makes it the first journey to exercise the dirty path. **brian2 is CeCILL-licensed and this repository is MIT, so none of its bytes, excerpts or packets are committed here** — digests, paths, spans, counts and costs only. It is recorded now and acted on only after m3c is cleared; no other brian2 work belongs in this pull request.
 - **Inspected revisions:** protocol `v0.1.0` = `cbf8e4df9df2ca8a9b50264df6acace6e4c3a0fc`; combraton `9af69ce`; pio `e65b7c0`; benchmarks `c8d5878`.
 
-## This change — m5-arith: one worst-case convention, and the candidate cut
+## This change — m5-settle: no attempt reserves more than its send, and a bill above its reservation stops the store
+
+On `m5-settle/close`, off m5-arith's head `6d5cb4d`. **Approved by the owner on 2026-09-26** (*"4. yes lets do and close"*), amending [m5 READINESS §1](m5/READINESS.md#1-scope-and-the-promise) for admission and settlement only. **No model has been called.** The plan is a judge's synthesis of two planning agents' plans, in the session's scratch outside this repository.
+
+**What changed** ([ADR 001](../decisions/001-standalone-v0.1-scope-and-stack.md) question 15 amended, question 18 new):
+
+- **Route 3 and freed room, closed.** A count reserves the completion body's input bound, where its settlement is capped. A completion admitted on a count is refused, and the local refusal stands, when the count's charge and its own reservation would pass the send the local bound refused; an `attempt_over_send` note records the sum. Under `Counting::Always` the believed count is capped at the local bound.
+- **Routes 1, 2 and 4, caught, not prevented.** A bill above its reservation is charged whole, and the same transaction writes an `overrun` row naming its job and request. The call ends `reservation_overrun`, and `Ledger::admit` then refuses everything, before every ceiling. It reads `bound_unsound` the same way, which covers the `Counting::Always` path. A serving completion billed input above its count and the margin of 1,024 writes `count_unsound`, and the store makes no serving count again.
+- `derivation::REASONS` gains `local_bound_unsound` and `reservation_overrun`, and, in their own commit, three reasons the call path already produced: `model_answer_mismatched`, `generation_limit_not_declared` and `ledger_unavailable`.
+- The `model.fake` transport bills within the limits its request declared, and `overbilled:<answer>` is the one way a fixture overruns. No cli test needed changing.
+- `m4e_run.spend()` sums only `Ledger::SPENT`'s kinds, where it summed every row but `admitted_*`. Both harnesses start no further run after a store that recorded a stop.
+
+**Commits:** `289079f` tests first; `8d700eb` budget; `6c499fc` model; `57c1a3d` the pre-existing reasons; `7b38363` the fake; `5247cd3` the scripts; then the docs.
+
+**What remains** (question 18): a store can pass a ceiling once, by what the calls in flight when the first overrun settles bill above their reservations — at most `work::CONCURRENCY` (2) pool units, plus any unit detached at its deadline and still running. Route 1's excess is at most `local − floor − 1,024` a call, 165,527 at most on the published bodies; routes 2 and 4 have no bound CBR can derive. A settlement lands at its own instant, so a call whose flight crosses a month boundary or lasts past five hours can charge a counter its admission never checked.
+
+**The plan's three questions for the owner, answered status quo by this session, and the owner's to overturn:** the counters hold the bill; the serving count path is kept; an operator clears a stop with a new data directory.
+
+**Evidence at the head:**
+
+- **Tests first**: 22 tests red at `6d5cb4d` with stubs, each for its own reason; `calibration::a_completion_the_envelope_refused_is_still_a_stop` and `a_failure_after_the_send_keeps_the_estimate…` were rewritten green, because the Always cap changes their counts.
+- **The journey**, `cargo test -p cbr-cli --locked --test model_selection a_provider_billing_past_its_reservation -- --nocapture`: the first request's ledger row `usage` 60,000 against a reservation of 12,071, an `overrun` row naming `first`, the run holding 60,000 against its ceiling of 20,000; the first item, the next request and a request after a restart each `unmet reservation_overrun`.
+- **The sweeps**: each body's maximum still equals `question_worst` (2,812, 14,786, 129,018, 388,474, 167,307, 84,106), and with room freed, 896 and 952 runs hold at most 2,812 and 14,786.
+- **Mutants**: the plan's 29 and two more (the settlement committing after an error; `Refusal::Overrun` admitting on a tighter figure), each applied alone in a private archive copy: 31 of 31 killed, each by a test that passed at the baseline. The known load flakes fired and were not counted: keychain `TimedOut` in seven runs, and `a_consumer_returning_within_the_notice_budget_receives_the_ending_notice` in one.
+- **Whole workspace**: WORKSPACE_LINE
+- **Gates**: `check_docs.py` 0 errors; `verify_pin.py` ok; `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets --locked -- -D warnings` and `cargo build --workspace --locked` clean; `git diff --check` clean; no machine path. The seven standard suites each matched their expectation: stream 24 pass; core 130 and 5 unsupported; socket 11 and 2; evidence 16; knowledge 10; context 11; composition 3 and 11 unsupported.
+
+**Superseded below.** The m5-arith section's "What the figure assumes" paragraph and its PROPOSED item 2. Tests it names that this change replaced: `a_count_above_the_completions_bound_settles_at_that_bound` (now `a_count_reserves_the_most_its_settlement_can_charge`); `room_freed_anywhere_…` and `an_attempt_admitted_on_a_count_after_room_was_freed_…` (now `a_count_path_completion_is_refused_when_…`); `settlement_passes_a_ceiling_only_by_…` and `usage_above_the_reservation_is_recorded_as_a_divergence` (now `a_bill_above_its_reservation_ends_its_call_and_nothing_after_it_is_admitted`); and `budget::tests::a_usage_that_differs_from_the_estimate_is_reconciled_and_the_divergence_kept` (now `…_is_an_overrun_naming_its_job_and_request`).
+
+**For m5b, when it rebases onto this:**
+
+1. `Refusal` has two more variants, `Overrun` and `BoundUnsound`; every exhaustive match needs them.
+2. `model::harness::count_overage` is gone.
+3. `reservation_overrun` and `local_bound_unsound` are terminal for the loop: a stopped store admits nothing.
+4. Take `main`'s `model::question_worst` documentation.
+
+## Earlier — m5-arith: one worst-case convention, and the candidate cut
 
 On `m5-arith/convention`, off `main` at `651c86e` (#46). **Not pushed, and a proposal**: it is not in the owner's order, and its ADR question is proposed, not accepted. **No model has been called**, and admission, settlement, the ledger and the ceilings are unchanged, as [m5 READINESS §1](m5/READINESS.md#1-scope-and-the-promise) promises. The plan is a judge's synthesis of three planning agents' plans, checked against the code at `2f8c666`, and is in the session's scratch outside this repository; what it decided is recorded here, in [m4 READINESS §3 and §5](m4/READINESS.md#what-model-assisted-discovery-costs-against-the-three-ceilings), in [m5 READINESS §8 to §10](m5/READINESS.md#8-every-new-bound-has-its-arithmetic-computed-by-a-test-and-a-fixture-that-reaches-it) and in [ADR 001 question 17](../decisions/001-standalone-v0.1-scope-and-stack.md).
 
@@ -38,7 +74,7 @@ On `m5-arith/convention`, off `main` at `651c86e` (#46). **Not pushed, and a pro
 
 The whole of m4e is now bounded at 2,563,619 for future runs (the stop less one want's run, plus a job), and 2,876,812 stays the bound on the three recorded runs, which the old stop admitted. m5b's room beside the flow and one selection question would be 313,619. **Not claimed:** a projection beside the flow and a selection question is 1,027,597, over a job's ceiling, and sizing it is left to m5e.
 
-**What the figure assumes, stated where it is used.** A question holds at most its first send and its widest repair when bills are within their reservations and no room is freed on the refusing counter between a send's local refusal and its completion's admission. With room freed there, an attempt holds at most `W + Ic − (local − Ic)` with an honest count, less than its count's reservation more, and a test pins that maximum at every place in the window the call path names. Under `Counting::Always` nothing from the body bounds a question. Every ceiling holds at admission, and settlement can pass one by what an admitted call was billed over its reservation, on four routes, each a tested `divergence` ([m4 READINESS §3](m4/READINESS.md#what-model-assisted-discovery-costs-against-the-three-ceilings)).
+*(Superseded by m5-settle, above.)* **What the figure assumes, stated where it is used.** A question holds at most its first send and its widest repair when bills are within their reservations and no room is freed on the refusing counter between a send's local refusal and its completion's admission. With room freed there, an attempt holds at most `W + Ic − (local − Ic)` with an honest count, less than its count's reservation more, and a test pins that maximum at every place in the window the call path names. Under `Counting::Always` nothing from the body bounds a question. Every ceiling holds at admission, and settlement can pass one by what an admitted call was billed over its reservation, on four routes, each a tested `divergence` ([m4 READINESS §3](m4/READINESS.md#what-model-assisted-discovery-costs-against-the-three-ceilings)).
 
 **The cut, and its evidence.** A candidate's text is shown within 8,192 carried bytes, twice retrieval's span, and its path within 1,024, cut between characters with `[cut]` counted inside the bound; the id still names the whole candidate. `escape_scan.py` over cbr at `a6dc450`, `9ee22d0`, `2f8c666` and `651c86e` finds 12,110, 12,169, 13,830 and 14,149 spans, none past 8,192, the widest carried in 5,150 bytes and the longest path in 135. That is the planning agents' figures exactly, and plan-minimal's own scanner agrees at `651c86e`. Their counts for brian2 and Knowscroll, and for the 409 candidates m4e's runs sent, find nothing cut either ([m4 READINESS §5](m4/READINESS.md#what-a-candidate-shows-a-model-and-where-it-is-cut)).
 
@@ -72,7 +108,7 @@ The whole of m4e is now bounded at 2,563,619 for future runs (the stop less one 
 **PROPOSED, for the owner. None is taken here** (plan §12):
 
 1. **The cut**, 8,192 and 1,024 carried bytes, as [ADR 001 question 17](../decisions/001-standalone-v0.1-scope-and-stack.md), status proposed. It is a context-budget change on offline evidence alone; the alternative, 4,096 and 256, cuts 38 to 66 of cbr's ordinary spans.
-2. **m5-settle**, and when: the admission and settlement changes §1 reserves to the owner ([m5 READINESS §9](m5/READINESS.md#9-the-pull-requests-each-with-its-gate)). The recommendation is before m5h's live loop run, the first run likely to come near a job's ceiling.
+2. **Resolved 2026-09-26: the owner approved m5-settle, built above.** ~~**m5-settle**, and when: the admission and settlement changes §1 reserves to the owner ([m5 READINESS §9](m5/READINESS.md#9-the-pull-requests-each-with-its-gate)). The recommendation is before m5h's live loop run, the first run likely to come near a job's ceiling.~~
 3. **J2's harness bound**: keep 492,204, or tighten it to 341,216 at the next J2 run.
 4. **The order**: this session proposes m5-arith before m5b, where the owner's order has m5b next.
 5. **`Counting::Always` for m5b**: whether the loop may ever count first. If it may, `question_worst` does not bound its guard until the believed count is capped.
