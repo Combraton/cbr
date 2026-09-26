@@ -62,7 +62,7 @@
 
 use cbr_encoding::Value;
 
-use crate::selection::Candidate;
+use crate::selection::{Candidate, shown};
 use crate::wire::request::{Message, Request, Role, Want, generation_for};
 use crate::wire::response::Reply;
 
@@ -83,7 +83,7 @@ pub const MAX_CHOSEN: usize = crate::compiler::DISCOVERED_SPANS + crate::compile
 /// Fewer than the choose step sees, deliberately: the terms step is
 /// asking *where else to look*, which needs a sense of what the ordinary
 /// reading found and not the whole of it. Every byte here is sent, and
-/// the arithmetic is in [READINESS §4](../../docs/work/m4/READINESS.md).
+/// the arithmetic is in [READINESS §3](../../docs/work/m4/READINESS.md).
 pub const SEEN: usize = 6;
 /// The union's own cap: at most this many candidates are offered, spans
 /// and claims together. Every one of them is sent, so this is the
@@ -266,25 +266,6 @@ fn schema_of(property: &str, items: Value, max: usize) -> Value {
             Value::Array(vec![Value::String(property.into())]),
         ),
     ])
-}
-
-/// One candidate, as a request shows it.
-fn shown(text: &mut String, candidate: &Candidate) {
-    let where_it_is = if candidate.kind == crate::selection::KIND_CLAIM {
-        format!("claim {}", candidate.path)
-    } else {
-        format!(
-            "{path} lines {start}-{end}",
-            path = candidate.path,
-            start = candidate.start_line,
-            end = candidate.end_line
-        )
-    };
-    text.push_str(&format!(
-        "\n[{id}] {where_it_is}\n{body}\n[end {id}]\n",
-        id = candidate.id,
-        body = candidate.text,
-    ));
 }
 
 /// Step one: the question, and what the ordinary search already found.

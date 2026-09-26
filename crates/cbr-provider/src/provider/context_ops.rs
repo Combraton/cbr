@@ -147,20 +147,18 @@ impl Batch {
 }
 
 /// A publication at a separate evidence provider did not seal. The capture
-/// instants of every packet attempted in the tick are kept, so the retry
-/// submits the same descriptors and replays what already applied.
+/// instants of every packet the tick sends were kept before its first send
+/// ([`Provider::keep_outgoing_captures`]), so the retry submits the same
+/// descriptors and replays what already applied.
 struct NotSealed {
     artifact: String,
     failure: peer::Failure,
-    captures: Vec<(String, String)>,
 }
 
 /// One job's tick in progress.
 struct Tick {
     now: String,
     batch: Batch,
-    /// `(artifact, captured_at)` for every packet sent to an evidence peer.
-    captures: Vec<(String, String)>,
     /// **Every packet the tick publishes, held until the publication guard
     /// has seen the last of them** ([`Provider::seal_packets`]). A tick can
     /// publish at more than one step, and a packet at a later step does not
@@ -2552,8 +2550,10 @@ impl Provider {
             basis: &frontier.tree,
         }];
         let query = text(at(item, &["selector"]), &["value"]).to_string();
+        // **As many rows as the selection figure prices**, since every
+        // row is offered as a candidate (`selection::CANDIDATES`).
         let bounds = Bounds {
-            rows: 8,
+            rows: crate::selection::CANDIDATES,
             ..Bounds::default()
         };
         let mut answer = cbr_memory::retrieval::search(
@@ -3607,14 +3607,17 @@ impl Provider {
             let mut tick = Tick {
                 now: self.clock.now(),
                 batch: Batch::default(),
-                captures: Vec::new(),
                 outgoing: Vec::new(),
             };
             // The tick's packets leave only once it has run to the end,
-            // every one of them guarded, and before its batch commits.
-            let advanced = self
-                .advance(&mut job, &mut tick)
-                .and_then(|ended| self.seal_packets(&job, &mut tick).map(|()| ended));
+            // every one of them guarded, and before its batch commits. The
+            // capture instants of those bound for an evidence peer are kept
+            // first, in a commit of their own, so a send that the batch
+            // never follows is retried with the same bytes.
+            let advanced = self.advance(&mut job, &mut tick).and_then(|ended| {
+                self.keep_outgoing_captures(&job_id, &mut job, &tick)?;
+                self.seal_packets(&job, &mut tick).map(|()| ended)
+            });
             match advanced {
                 Ok(ended) => {
                     if canonical(&job) != before {
@@ -3645,15 +3648,15 @@ impl Provider {
                     }
                 }
                 Err(TickError::NotSealed(not_sealed)) => {
-                    // Nothing of this step is committed; only the capture
-                    // instants are kept, so the retry replays.
+                    // Nothing of this step is committed. The capture
+                    // instants were kept before the first send, so the
+                    // retry replays.
                     eprintln!(
                         "cbr-provider: context job {job_id}: packet {} not sealed at the \
                          evidence provider ({}); retrying at a later tick",
                         not_sealed.artifact,
                         not_sealed.failure.describe()
                     );
-                    self.keep_captures(&job_id, &not_sealed.captures)?;
                 }
                 // Nothing is written and nothing is logged: this is the
                 // ordinary state of a job waiting for work that is running.
@@ -3695,10 +3698,11 @@ impl Provider {
     /// it ended it: a job no longer stored as `running` is left alone.
     ///
     /// Built from the job and its requests **as stored**, never from the
-    /// tick that was refused: that tick's sections, cursor, captures and
-    /// any revision it published are dropped with its batch, so nothing of
-    /// the refused tick is committed. A section an earlier tick committed
-    /// stays in the ended job's stored record, which no operation serves.
+    /// tick that was refused: that tick's sections, cursor and any revision
+    /// it published are dropped with its batch, and it kept no capture
+    /// instant, so nothing of the refused tick is committed. A section an
+    /// earlier tick committed stays in the ended job's stored record, which
+    /// no operation serves.
     /// Every subscriber still `preparing` is `refused` with the reason, its
     /// items ended by [`context::refused_items`]; a subscriber already
     /// published (under `context.updates`) keeps its state and its current
@@ -3716,7 +3720,6 @@ impl Provider {
         let mut tick = Tick {
             now: self.clock.now(),
             batch: Batch::default(),
-            captures: Vec::new(),
             outgoing: Vec::new(),
         };
         let job_subject = subject(JOB, job_id);
@@ -3787,6 +3790,42 @@ impl Provider {
             ]),
         );
         Ok(())
+    }
+
+    /// **Keep the capture instant of every packet the tick is about to send
+    /// to an evidence peer, before it sends any.** CORE section 6.3 asks a
+    /// caller to persist a command before sending it, "so a retransmission
+    /// after a crash carries the original" generation; here it is the
+    /// intent. A packet's descriptor carries its capture instant, and the
+    /// descriptor is the payload of `evidence.upload.prepare`, so a retry
+    /// after a kill or a failed commit sends the same commands, which the
+    /// peer replays (CORE section 6.2) instead of refusing them as
+    /// `idempotency_conflict`. An instant already kept stays as it is.
+    ///
+    /// Called once the guard has seen every packet of the tick, so a
+    /// refused tick keeps nothing. The instants are set in `job` too, so the
+    /// tick's own batch writes the job with them, and are committed to the
+    /// stored job on their own, with no event; a failure to commit them
+    /// fails the tick before anything is sent.
+    fn keep_outgoing_captures(
+        &mut self,
+        job_id: &str,
+        job: &mut Value,
+        tick: &Tick,
+    ) -> Result<(), ProtocolError> {
+        let mut captures = Vec::new();
+        for outgoing in &tick.outgoing {
+            if let Outgoing::Peer { artifact, .. } = outgoing
+                && context::is_null(at(job, &["captures", artifact]))
+            {
+                context::set_in(job, "captures", artifact, string(&tick.now));
+                captures.push((artifact.clone(), tick.now.clone()));
+            }
+        }
+        if captures.is_empty() {
+            return Ok(());
+        }
+        self.keep_captures(job_id, &captures)
     }
 
     fn keep_captures(
@@ -4067,7 +4106,16 @@ impl Provider {
         if !due {
             return Ok(());
         }
-        let past_deadline = tick.now.as_str() >= text(&record, &["limits", "deadline"]);
+        // **A revision whose capture instant was kept is the packet composed
+        // at that instant**, so its deadline is judged there: a retry past
+        // the deadline then composes the bytes an evidence peer may already
+        // hold, which it replays. An explicit reason still wins.
+        let revision = list(&record, &["packets"]).len() as i64 + 1;
+        let artifact = crate::ids::packet_artifact(request, revision);
+        let composed_at = at(job, &["captures", &artifact])
+            .as_str()
+            .unwrap_or(&tick.now);
+        let past_deadline = composed_at >= text(&record, &["limits", "deadline"]);
         let reason = reason.or(past_deadline.then_some("deadline_passed"));
         // The compiler the job actually ran, not the one this line used to
         // assume. `job.compiler` is set at submit for a compiled request and
@@ -4153,16 +4201,19 @@ impl Provider {
     }
 
     /// **Let the tick's packets leave**, in the order it published them:
-    /// each one for an evidence peer captured, sent and sealed there, and
-    /// each one of this provider's own written as an object. Called once
-    /// the tick has run to the end and before its batch commits, so every
-    /// packet it publishes has passed the guard before any of them is
-    /// captured, sent or sealed.
+    /// each one for an evidence peer sent and sealed there, described at the
+    /// capture instant kept for it, and each one of this provider's own
+    /// written as an object. Called once the tick has run to the end and
+    /// its peer-bound capture instants are kept
+    /// ([`Provider::keep_outgoing_captures`]), and before its batch commits,
+    /// so every packet it publishes has passed the guard before any of them
+    /// is captured, sent or sealed.
     ///
-    /// A peer that does not seal fails the tick as before, keeping the
-    /// capture instants of the packets attempted so far, the failed one
-    /// included, so the retry replays what already applied.
+    /// A peer that does not seal fails the tick as before; the instants were
+    /// kept before the first send, so the retry replays what already
+    /// applied.
     fn seal_packets(&self, job: &Value, tick: &mut Tick) -> Result<(), TickError> {
+        let mut sealed_at_peer = false;
         for outgoing in std::mem::take(&mut tick.outgoing) {
             match outgoing {
                 Outgoing::Peer {
@@ -4176,24 +4227,26 @@ impl Provider {
                         Some(kept) => kept.to_string(),
                         None => tick.now.clone(),
                     };
-                    tick.captures.push((artifact.clone(), captured_at.clone()));
                     let descriptor =
                         context::packet_descriptor(&request, &digest, content.len(), &captured_at);
                     if let Err(failure) =
                         peer::publish_artifact(&evidence, &artifact, descriptor, &content)
                     {
-                        return Err(TickError::NotSealed(NotSealed {
-                            artifact,
-                            failure,
-                            captures: tick.captures.clone(),
-                        }));
+                        return Err(TickError::NotSealed(NotSealed { artifact, failure }));
                     }
+                    sealed_at_peer = true;
                 }
                 Outgoing::Object { digest, content } => {
                     self.store.publish_object(&digest, &content)?;
                     crate::barriers::pause(crate::barriers::PACKET_AFTER_OBJECT_PUBLISHED);
                 }
             }
+        }
+        // After the loop, not after each send: a barrier holds only the
+        // first time it is reached, and a test killing the provider here
+        // needs every packet of the tick sealed.
+        if sealed_at_peer {
+            crate::barriers::pause(crate::barriers::PACKET_AFTER_PEER_SEALED);
         }
         Ok(())
     }

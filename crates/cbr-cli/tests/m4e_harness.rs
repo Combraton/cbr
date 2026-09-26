@@ -490,6 +490,30 @@ fn a_dry_run_drives_every_stage_and_reports_what_it_found() {
         report.get("run_ceiling_tokens"),
         Some(&Value::Int(5_000_000))
     );
+    // **And so is what the stop priced a run at**: the flow and the
+    // selection question the harness names, and this run's worst case,
+    // its flow and one selection question for its one want. A report
+    // that stated a figure the stop did not use would tell its reader
+    // about a bound nobody applied.
+    let (flow, selection) = (
+        harness_figure("WORST_CASE_FLOW_TOKENS"),
+        harness_figure("WORST_CASE_SELECTION_TOKENS"),
+    );
+    assert_eq!(
+        report.get("worst_case_flow_tokens"),
+        Some(&Value::Int(flow)),
+        "the report does not state the flow the stop priced"
+    );
+    assert_eq!(
+        report.get("worst_case_selection_tokens"),
+        Some(&Value::Int(selection)),
+        "the report does not state the selection question the stop priced"
+    );
+    assert_eq!(
+        run.get("worst_case_tokens"),
+        Some(&Value::Int(flow + selection)),
+        "the run does not say it was priced at its flow and one selection question: {run:?}"
+    );
 
     // The packet is written where the reviewer can read it, and it is
     // not in this repository.
@@ -591,17 +615,18 @@ fn each_launch_is_given_what_is_left_of_the_run_and_not_the_whole_of_it() {
     );
 
     // **And the stop is checked before a run rather than after one.**
-    // Lowered to a little over one flow's worst case, the first run is
+    // Lowered to a little over one run's worst case, the first run is
     // started and the second is not — because what it *could* cost
     // would cross it, which is knowable before any of it is spent.
     //
     // The bound is read out of the report rather than written here: it
     // moved at m4f when the discovery steps were given room to reason,
-    // and a figure typed into a test is one more place for the number
-    // to drift.
-    let worst = match report.get("worst_case_flow_tokens") {
+    // and again when the stop was found to leave out the run's own
+    // selection questions, and a figure typed into a test is one more
+    // place for the number to drift.
+    let worst = match runs[0].get("worst_case_tokens") {
         Some(Value::Int(tokens)) => *tokens,
-        other => panic!("the report does not say what a flow can cost: {other:?}"),
+        other => panic!("the report does not say what a run can cost: {other:?}"),
     };
     let stop = (worst + 1).to_string();
     let out = directory.join("stopped");
@@ -632,6 +657,125 @@ fn each_launch_is_given_what_is_left_of_the_run_and_not_the_whole_of_it() {
             .and_then(Value::as_str)
             .is_some_and(|why| why.contains("was not started") && why.contains("worst case")),
         "and the report does not say it stopped, or why: {report:?}"
+    );
+}
+
+/// A figure the harness names, read out of its source rather than
+/// written here, so the test prices a run the way the harness does.
+fn harness_figure(name: &str) -> i64 {
+    let source = std::fs::read_to_string(script()).expect("the harness");
+    let marker = format!("{name} = ");
+    let at = source
+        .find(&marker)
+        .unwrap_or_else(|| panic!("the harness does not name {name}"));
+    source[at + marker.len()..]
+        .chars()
+        .take_while(|c| c.is_ascii_digit() || *c == '_')
+        .filter(|c| *c != '_')
+        .collect::<String>()
+        .parse()
+        .unwrap_or_else(|_| panic!("{name} is not a figure"))
+}
+
+#[test]
+fn the_stop_prices_each_selection_question_a_run_asks_as_well_as_its_flow() {
+    // **Every run asks a selection question for each thing it wants**,
+    // under the same job and before discovery, and the stop priced the
+    // flow alone. So a run was started against a stop its own item
+    // questions could carry it past. What one run can cost is its flow
+    // and one selection question per want, and a run is started only
+    // when that fits under the stop and under what is left of the
+    // ceiling.
+    //
+    // Two wants, at one token short of that figure by each door, and
+    // then exactly at it.
+    let flow = harness_figure("WORST_CASE_FLOW_TOKENS");
+    let selection = harness_figure("WORST_CASE_SELECTION_TOKENS");
+    let worst = flow + 2 * selection;
+    let fixture = standing_in_for_cbr();
+    let directory = fixture.directory.path();
+    let manifest = written(
+        directory,
+        "two-wants",
+        &[format!(
+            r#"{{"id":"wants","repository":{{"id":"cbr","path":"{checkout}"}},
+               "model":"MiniMax-M3","task":"what drains the queue",
+               "selector":"queue drains shutdown","capacity":65536,"investigation":4,
+               "wants":["q=source:queue.md","r=source:cache.md"],
+               "dry_answers":["choose:c2","choose:c2","terms:tombstone","ids:d1"]}}"#,
+            checkout = fixture.checkout.display()
+        )],
+    );
+    let started = |name: &str, flags: &[&str]| -> Value {
+        let out = directory.join(name);
+        let mut arguments = vec![
+            "--manifest",
+            manifest.to_str().expect("utf-8"),
+            "--out",
+            out.to_str().expect("utf-8"),
+            "--dry-run",
+        ];
+        arguments.extend_from_slice(flags);
+        let (ok, stdout, stderr) = harness(&arguments);
+        assert!(ok, "{name}: the dry run failed:\n{stdout}\n{stderr}");
+        cbr_encoding::parse(&std::fs::read(out.join("report.json")).expect("a report"))
+            .expect("JSON")
+    };
+    let short = (worst - 1).to_string();
+    let exact = worst.to_string();
+    for (name, flags) in [
+        ("stop", ["--stop-tokens", short.as_str()]),
+        ("ceiling", ["--run-ceiling", short.as_str()]),
+    ] {
+        let report = started(name, &flags);
+        assert_eq!(
+            report
+                .get("runs")
+                .and_then(Value::as_array)
+                .map(<[Value]>::len),
+            Some(0),
+            "{name}: a run was started with {short}, one short of its flow and two \
+             selection questions: {report:?}"
+        );
+        let why = report
+            .get("stopped")
+            .and_then(Value::as_str)
+            .unwrap_or_else(|| panic!("{name}: the report does not say it stopped: {report:?}"));
+        assert!(
+            why.contains("wants was not started"),
+            "{name}: the report does not name the run it did not start: {why}"
+        );
+        // **And it says what the run was priced at**: the whole figure,
+        // not the flow alone, and the wants that make it up. A message
+        // naming a figure the check did not use tells its reader about a
+        // bound nobody applied.
+        assert!(
+            why.contains(&format!(
+                "the {worst} worst case of one flow and 2 selection questions"
+            )),
+            "{name}: the stop does not state the {worst} it priced the run at, flow \
+             {flow} and two selection questions of {selection}: {why}"
+        );
+    }
+    let report = started(
+        "exact",
+        &[
+            "--stop-tokens",
+            exact.as_str(),
+            "--run-ceiling",
+            exact.as_str(),
+        ],
+    );
+    let runs = report.get("runs").and_then(Value::as_array).expect("runs");
+    assert_eq!(
+        runs.len(),
+        1,
+        "exactly its worst case is room for it: {report:?}"
+    );
+    assert_eq!(
+        runs[0].get("worst_case_tokens"),
+        Some(&Value::Int(worst)),
+        "the run does not say what it was priced at"
     );
 }
 

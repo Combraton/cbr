@@ -23,6 +23,10 @@ pub const RECHECK_AFTER_AUTHORIZATION: &str = "subscription.recheck.after_author
 /// A context tick published a packet's object and has not yet committed the
 /// batch that names it (CONTEXT section 5, STORAGE section 2).
 pub const PACKET_AFTER_OBJECT_PUBLISHED: &str = "context.packet.after_object_published";
+/// Every packet of a context tick has been sealed at the evidence peer, and
+/// the batch that publishes them has not been committed. Declared in no
+/// descriptor: no fixture reaches it, and CBR's own tests wait on it.
+pub const PACKET_AFTER_PEER_SEALED: &str = "context.packet.after_peer_sealed";
 /// A context tick's packet was refused by the publication guard, and the
 /// batch that ends its job has been built and not yet committed. Declared in
 /// no descriptor: no fixture reaches the guard, and CBR's own tests wait on

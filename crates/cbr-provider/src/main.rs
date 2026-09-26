@@ -321,7 +321,7 @@ fn run() -> Result<(), String> {
         Some(std::sync::Arc::new(provider::Serving {
             dialect: runtime.dialect,
             model: runtime.model.clone(),
-            counting: model::Counting::WhenItCouldAdmit,
+            counting: model::SERVING_COUNTING,
             run_ceiling: config.model_run_ceiling,
             wire: provider::Wire::Replay,
         }))
@@ -346,7 +346,7 @@ fn run() -> Result<(), String> {
                 Some(std::sync::Arc::new(provider::Serving {
                     dialect: runtime.dialect,
                     model: runtime.model.clone(),
-                    counting: model::Counting::WhenItCouldAdmit,
+                    counting: model::SERVING_COUNTING,
                     run_ceiling: config.model_run_ceiling,
                     wire: provider::Wire::Live(credential),
                 }))
