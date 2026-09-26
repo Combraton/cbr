@@ -46,15 +46,15 @@ On `fix/peer-capture`, off `main` at `4dcfb04` (#47, packet_invalid). Commits: `
 
 **A second verification round ran twelve more mutants (V1–V12) against `context_ops.rs` in a private copy, plus O6 again on its own.** Eight of the twelve were already killed by the tests above: V1 (the boundary read as never past when no instant is kept) and V10 (D falling back to the previous revision's instant) by `a_later_revision_first_composed_past_the_deadline_reads_deadline_passed`; V5 (a failed capture commit's error swallowed) by `a_tick_that_cannot_keep_its_capture_instants_sends_nothing_to_the_peer`; V6 (a later packet's captured-at ignores what was kept) and V7 (a not-sealed failure continues the loop instead of stopping it) by the existing kill-and-replay tests; V12 (`keep_outgoing_captures` skips once any instant is stored) by `a_kill_after_the_peer_seals_a_later_revision_publishes_it_once_the_clock_has_moved` and the new update-revision probe below.
 
-**Corrected: O6 was not inseparable.** The earlier claim above, that a single held lock fails both the capture commit and the tick's batch alike, missed that they are separate writes to the same row and can be made to fail one at a time with a SQLite trigger that aborts only the capture-only write (`cursor` still 0, `captures` present), never the tick's own advancing batch. `probe_a_capture_commit_that_fails_alone_publishes_nothing_until_it_succeeds` (`46036a5`) does this and kills O6 alone.
+**Corrected: O6 was not inseparable.** The earlier claim above, that a single held lock fails both the capture commit and the tick's batch alike, missed that they are separate writes to the same row and can be made to fail one at a time with a SQLite trigger that aborts only the capture-only write (`cursor` still 0, `captures` present), never the tick's own advancing batch. `a_capture_commit_that_fails_alone_publishes_nothing_until_it_succeeds` (`46036a5`) does this and kills O6 alone.
 
 **Three more of this round's mutants needed a dedicated test, now added (`46036a5`), each killing exactly the one it targets, none other:**
 
 | Mutant | Test |
 |---|---|
-| V2, the kept-instant read gated on the request still `preparing` (an already-published `context.updates` revision recomposes at the tick's own instant instead) | `probe_an_update_revision_kept_before_the_deadline_replays_after_it` |
-| V3, the capture-keeping call skipped on a tick that ends the job | `probe_a_kill_after_a_finishing_tick_seals_at_the_peer_replays` |
-| V11, the deadline boundary read strict (`>`) once an instant is kept, instead of the same `>=` as an uncomposed one | `probe_a_capture_kept_at_the_deadline_instant_replays_after_it` |
+| V2, the kept-instant read gated on the request still `preparing` (an already-published `context.updates` revision recomposes at the tick's own instant instead) | `an_update_revision_kept_before_the_deadline_replays_after_it` |
+| V3, the capture-keeping call skipped on a tick that ends the job | `a_kill_after_a_finishing_tick_seals_at_the_peer_replays` |
+| V11, the deadline boundary read strict (`>`) once an instant is kept, instead of the same `>=` as an uncomposed one | `a_capture_kept_at_the_deadline_instant_replays_after_it` |
 
 **Still survive, this round, recorded and not changed:** V4 (`captures.push` records a fresh read of the clock rather than the tick's own `now`), V8 (the after-peer-sealed barrier set even on a failed send) and V9 (`keep_captures` drops its guard against overwriting an instant already stored). No test in this run distinguishes any of the three from the fix; whether they are equivalent or a real gap is not established here.
 

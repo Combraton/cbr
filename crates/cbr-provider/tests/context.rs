@@ -4788,7 +4788,7 @@ fn a_job_that_ends_for_its_own_reason_after_the_deadline_keeps_that_reason() {
 }
 
 #[test]
-fn probe_a_capture_commit_that_fails_alone_publishes_nothing_until_it_succeeds() {
+fn a_capture_commit_that_fails_alone_publishes_nothing_until_it_succeeds() {
     // **The capture commit and the tick's own batch are separate, and the
     // tick must fail whole when only the capture commit fails.** A trigger
     // aborts only the capture-only write of the job (its stored cursor 0,
@@ -4837,7 +4837,7 @@ fn probe_a_capture_commit_that_fails_alone_publishes_nothing_until_it_succeeds()
 }
 
 #[test]
-fn probe_an_update_revision_kept_before_the_deadline_replays_after_it() {
+fn an_update_revision_kept_before_the_deadline_replays_after_it() {
     // `r` under `context.updates`, `i-2` unmet: revision 1 published at
     // 00:00; revision 2 sealed at the peer at 00:10 and CBR killed;
     // restart at 02:00, past the 01:00 deadline. Revision 2 must replay as
@@ -4905,7 +4905,7 @@ fn probe_an_update_revision_kept_before_the_deadline_replays_after_it() {
 }
 
 #[test]
-fn probe_a_kill_after_a_finishing_tick_seals_at_the_peer_replays() {
+fn a_kill_after_a_finishing_tick_seals_at_the_peer_replays() {
     // The script ends the job in the very tick that publishes; CBR is
     // killed after the seal at the peer, before that tick's batch commits,
     // and restarted at 00:05. The ending tick must replay too, not only an
@@ -4944,7 +4944,7 @@ fn probe_a_kill_after_a_finishing_tick_seals_at_the_peer_replays() {
 }
 
 #[test]
-fn probe_a_capture_kept_at_the_deadline_instant_replays_after_it() {
+fn a_capture_kept_at_the_deadline_instant_replays_after_it() {
     // Composed at exactly the deadline (00:30): `i-2` reads
     // `deadline_passed`, and the deadline judgment at that boundary is
     // itself the kept instant (V11: `>=` for a kept instant, not `>`).
