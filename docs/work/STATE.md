@@ -59,7 +59,7 @@ A turned T1, T2 and J green, B T3, and C T4. T26 of `packet_invalid` now ends it
 
 ### After independent verification
 
-Two agents that wrote none of this verified it at `279a8fb`. Their mutants V1, V2, V3, V8, V11, V12 and V13 survived every `cbr-provider` test; each is now killed by a test in `tests/context.rs` (`83be67e`), from the verifier's probes. Each kill was shown in a private copy, `git archive 279a8fb` with those tests: the mutant applied by the verifier's script, `tests/context.rs` run, and the copy restored. Each time only the named test failed, 52 of 53 passing. No provider source changed.
+Two agents that wrote none of this verified it at `279a8fb`. Their mutants V1, V2, V3, V8, V11, V12 and V13 survived every `cbr-provider` test they ran, all but the keychain module's, skipped for its load flake; each is now killed by a test in `tests/context.rs` (`83be67e`), from the verifier's probes. Each kill was shown in a private copy, `git archive 279a8fb` with those tests: the mutant applied by the verifier's script, `tests/context.rs` run, and the copy restored. Each time only the named test failed, 52 of 53 passing. No provider source changed.
 
 | Test | Mutants, and the red |
 |---|---|
@@ -71,13 +71,14 @@ Two agents that wrote none of this verified it at `279a8fb`. Their mutants V1, V
 **V4, V7 and V9 survive**, and no test is added for them:
 
 - V4, a partial refusal returning before the compiled steps replace the marker, so the job compiles again at the next tick. The conformance compiler decides the same steps, sources and derivations are sealed once by digest, and no one new is refused, so the only difference is one tick, which no test observes. In production the job would compile twice, and a compile can ask a model.
-- V7, refused subscribers dropped from the job's `requests`. Every other reader of `requests` skips a subscriber not `preparing`; what remains is §10's visibility of the job through its requests (`context_visible`), and no test reads the job's events under a grant over the refused subscriber alone.
-- V9, submit's own refusal at an exact fit (`>` as `>=`). That comparator predates this change, which leaves it unchanged; no `cbr-provider` test submits a scripted request whose own mandatory size equals its capacity.
+- V7, refused subscribers dropped from the job's `requests`. After a refusal every reader of `requests` passes over a refused subscriber, since the tick's loops act only on one `preparing`, `publish_one` owes it no revision and cancel leaves it out, except §10's visibility of the job through its requests (`context_visible`); no test reads the job's events under a grant over the refused subscriber alone.
+- V9, submit's own refusal at an exact fit (`>` as `>=`). That comparator predates this change, which leaves it unchanged; no `cbr-provider` test pins submit's answer at an exact fit.
 
 **Recorded, not changed.**
 
 - **`packet_invalid` wins a tick it shares with this refusal.** In a shared compiled job whose wide subscriber's packet fails the id guard in the tick whose compile refused the narrow one, the narrow subscriber ends `packet_invalid`, with no `needed`: the refused tick's batch is dropped, this refusal with it, and `end_refused_job` refuses every subscriber the store still holds `preparing`. The verifier's probe showed it, with a scripted section id outside the grammar before the `compile` step, and showed it again in this round's private copy; alone, the same narrow request ends `budget_insufficient`, since nothing is published for it. Since #43 the compiler builds every id inside the grammar, so only a test control reaches this.
 - **A correction to `456695d`'s subject**, *cancel's job_continues counts only subscribers still needing the job*: it leaves out only `refused` subscribers. One published without `context.updates` needs nothing more from its job and still counts. The verifier's probe, run again here, cancelled `r-late` beside `r-early`, published `ready` at its own deadline without `context.updates`: `job_continues: true`, and the job left `running` for `r-early` alone. That was so before this change too, since at `4dcfb04` any other subscriber counted, and it falls short of CTX-10's "while any other request still needs it". **A follow-up, not fixed here.**
+
 ### The merge of `main`
 
 `main` had moved again by the merge, to `d1bcc00` (#49, peer-capture), so it brought #48 and #49 in, and two code files conflicted as well as the docs. Both are resolved keeping both behaviours:
@@ -85,6 +86,12 @@ Two agents that wrote none of this verified it at `279a8fb`. Their mutants V1, V
 - **`context_ops.rs`**: each side added one function at the same place, this change `refuse_request` and #49 `keep_outgoing_captures`; both are kept, one after the other. The merged file differs from `main`'s by exactly this branch's lines against `4dcfb04`, and from this branch's by exactly `main`'s. The refusal commits no packet, so #49's capture keeping, which runs after `advance` over the tick's peer-bound packets, has nothing to keep for a refused request.
 - **`tests/context.rs`**: both sides appended tests at the end. The merge takes `main`'s file and applies this branch's three changes to it: its bullet in the module comment, T26's `end` step, and its section of tests, after #49's.
 - **Docs**: this change stays on top of STATE, with #49's and #48's sections under *Earlier*, and the references to #49's section renamed to match; READINESS and VERIFICATION take #49's words for its fixed defect, and VERIFICATION's count row is this merge's own run, below.
+
+**Gates at `5e01bb0`, the merge**, with only these docs edited after it:
+
+- **Static gates, all exit 0:** `check_docs.py`, `verify_pin.py`, `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets --locked -- -D warnings`, `cargo build --workspace --locked`, and `git diff --check origin/main...HEAD`; `git merge-tree --write-tree origin/main HEAD` merges with no conflict. No machine path is committed. `Cargo.lock` and `vendor/` are unchanged. The provider's source differs from `main`'s by exactly the fix's lines at `279a8fb`; nothing after that commit changes it.
+- **`cargo test --workspace --locked --no-fail-fast`, through `wslot`: 834 tests over 44 `test result` lines**; 831 passed, one ignored (the stall harness), and two failed, both keychain tests on the fake tool's `TimedOut`, VERIFICATION's named load flake, at a load average of 9.0 to 12.2. Run alone straight afterwards, the provider's 462 unit tests passed, the 19 keychain tests among them. By crate: 20, 7, 40, 569 and 198; `tests/context.rs` has 67, `journey_one.rs` 9. That is `main`'s 824 and this change's ten: T1–T9 and J.
+- **The seven conformance suites**, run as before, with the worktree's `target/` a symlink only for the run: all seven matched their expectations. `stream` 24; `core` 130 and 5 unsupported; `socket` 11 and 2; `evidence` 16; `knowledge` 10; `context` 11; `composition` 3 and 11.
 
 ## Earlier — a peer's seal survives a lost commit
 
