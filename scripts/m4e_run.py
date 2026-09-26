@@ -24,8 +24,9 @@ What it does, per run in the manifest:
   1. launches a provider over a data directory under `--out`, bounded
      by what is left of the run ceiling rather than by the whole of it,
   2. registers the repository and submits one context request,
-  3. polls until it settles, and writes the packet where the reviewer
-     can score it,
+  3. polls until it settles, writes the packet where the reviewer can
+     score it, and reconciles the store as a start would before reading
+     what it spent,
   4. relaunches the same store with `--replay-model` and rebuilds the
      same question offline, comparing sealed sections -- **the replay
      gate**,
@@ -606,6 +607,37 @@ def stop(child):
     child.wait()
 
 
+def reconciled(provider, data):
+    """**The store as a start leaves it**, before anything reads it
+    (m5-settle, verification round 2).
+
+    A launch is killed, not ended, so an overrun its process kept -- the
+    store refused the settlement, and took the record -- is in no row
+    until a start reconciles the reservation against its record. Every
+    run opens a new store, so no later start would, and the next run
+    would start on a store read as having no stop and a smaller spend.
+    So the harness runs that start itself, the provider's own
+    `--reconcile-ledger`, after each launch and before reading; and one
+    that fails is a refusal to go on, since the store could not then say
+    what it spent.
+    """
+    try:
+        done = subprocess.run(
+            [str(provider), "--data-dir", str(data), "--reconcile-ledger"],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            timeout=60,
+        )
+    except subprocess.TimeoutExpired:
+        refuse("the store could not be reconciled after its launch: it did not finish")
+    if done.returncode != 0:
+        refuse(
+            "the store could not be reconciled after its launch: "
+            + done.stderr.decode(errors="replace").strip()
+        )
+
+
 def admits(config):
     """The credential a launch under `config` will accept, or `None` when
     the provider issues its own at start.
@@ -858,19 +890,52 @@ def evidence(data):
         connection.close()
 
 
+# **The kinds the ledger counts as spend**: `Ledger::SPENT` in
+# crates/cbr-provider/src/budget.rs, which
+# `m4e_harness::the_harness_counts_what_the_ledger_counts` holds this to.
+SPENT_KINDS = ("reservation", "usage", "unknown", "provider_exhausted", "not_sent")
+
+# **The rows after which a store admits nothing again** (`bound_unsound`,
+# `overrun`) or makes no serving count again (`count_unsound`). A run whose
+# store recorded one ends the sequence: the next run's new store would start
+# on the assumption that just failed (m5-settle).
+STOP_KINDS = ("bound_unsound", "count_unsound", "overrun")
+
+
 def spend(data):
     """Every charge in the ledger, and their total.
 
-    `admitted_*` rows are notes about which path admitted a call, not
-    charges, and are not counted -- counting them would double every
-    call's cost.
+    Only the ledger's own spend kinds. Every other row is a note about a
+    call -- which path admitted it, an anomaly, a bill above a
+    reservation -- and its tokens are not a second charge: an `overrun`
+    row carries the bill its settled row already counts.
     """
     with evidence(data) as connection:
         rows = connection.execute(
             "SELECT kind, tokens FROM model_ledger ORDER BY id"
         ).fetchall()
-    charges = [(kind, tokens) for kind, tokens in rows if not kind.startswith("admitted_")]
+    charges = [(kind, tokens) for kind, tokens in rows if kind in SPENT_KINDS]
     return sum(tokens for _, tokens in charges), charges
+
+
+def stops(data):
+    """The stop kinds a store recorded, sorted; empty when it recorded none."""
+    with evidence(data) as connection:
+        rows = connection.execute(
+            "SELECT DISTINCT kind FROM model_ledger WHERE kind IN (?, ?, ?) ORDER BY kind",
+            STOP_KINDS,
+        ).fetchall()
+    return [kind for (kind,) in rows]
+
+
+def stopped_after(run_id, result):
+    """The report's `stopped` line when `result`'s store recorded a stop."""
+    if not result.get("stops"):
+        return None
+    return (
+        f"{run_id} recorded {', '.join(result['stops'])}: its store admits "
+        "nothing again, and no further run is started"
+    )
 
 
 def object_path(data, digest):
@@ -1033,9 +1098,11 @@ def one_run(run, out, provider, client, live, ceiling, checkout):
         stop(child)
 
     data = work / "data"
+    reconciled(provider, data)
     total, charges = spend(data)
     result["tokens"] = total
     result["charges"] = [{"kind": kind, "tokens": tokens} for kind, tokens in charges]
+    result["stops"] = stops(data)
     result["records"] = len(records(data))
     found = discovery_records(data)
     result["discovery_records"] = len(found)
@@ -1228,6 +1295,10 @@ def main(argv=None):
                 f"replay {'identical' if result.get('replay', {}).get('sections_identical') else 'DIFFERS'}, "
                 f"{len(result.get('replay', {}).get('ambiguous', []))} ambiguous"
             )
+            if stopped_after(run["id"], result):
+                report["stopped"] = stopped_after(run["id"], result)
+                print(f"m4e_run: STOPPED. {report['stopped']}", file=sys.stderr)
+                break
         report["tokens"] = spent
         report["ambiguous_questions"] = sum(
             len(run.get("replay", {}).get("ambiguous", [])) for run in report["runs"]

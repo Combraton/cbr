@@ -389,10 +389,38 @@ fn provider_exhaustion_is_a_different_outcome_from_an_exhausted_envelope() {
     );
 }
 
+/// Every row as (job, request, kind, tokens, estimate): what `rows` leaves
+/// out is who a row is about, which is what m5-settle's rows must name.
+/// One ledger row: job, request, kind, tokens, estimate.
+type Attributed = (String, String, String, u64, u64);
+
+fn attributed(connection: &Connection) -> Vec<Attributed> {
+    let mut statement = connection
+        .prepare("SELECT job, request, kind, tokens, estimate FROM model_ledger ORDER BY id")
+        .expect("the ledger table exists");
+    statement
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, i64>(3)?.max(0) as u64,
+                row.get::<_, i64>(4)?.max(0) as u64,
+            ))
+        })
+        .expect("queries")
+        .collect::<Result<Vec<_>, _>>()
+        .expect("rows")
+}
+
 #[test]
-fn a_usage_that_differs_from_the_estimate_is_reconciled_and_the_divergence_kept() {
+fn a_settlement_above_its_reservation_is_charged_whole_and_is_an_overrun_naming_its_job_and_request()
+ {
     // A systematically low estimate is how an envelope leaks, so the
-    // difference is a thing the ledger holds rather than a thing it discards.
+    // difference is a thing the ledger holds rather than a thing it
+    // discards. **The counter holds the bill**, which is what the shared
+    // quota was charged; and the row saying it passed its reservation
+    // names the call, because an unattributed row stops nobody.
     let connection = database();
     let ledger = Ledger::new(&connection);
     let reservation = ledger
@@ -402,18 +430,420 @@ fn a_usage_that_differs_from_the_estimate_is_reconciled_and_the_divergence_kept(
     ledger
         .settle(T0, &reservation, Settlement::Usage(12_000))
         .expect("settles");
+    let rows = attributed(&connection);
+    assert!(
+        rows.contains(&(
+            "job".to_string(),
+            "r".to_string(),
+            "overrun".to_string(),
+            12_000,
+            10_000
+        )),
+        "no overrun row names the call that passed its reservation: {rows:?}"
+    );
     assert_eq!(
         ledger.spend(T0, "job").expect("spend").window,
         12_000,
         "the actual spend wins, even when it is larger than the estimate"
     );
-    let rows = ledger.rows().expect("rows");
     assert!(
-        rows.iter().any(|(kind, detail, tokens)| kind == "usage"
-            && *tokens == 12_000
-            && detail == "10000"),
-        "the estimate it diverged from is kept beside it: {rows:?}"
+        rows.contains(&(
+            "job".to_string(),
+            "r".to_string(),
+            "usage".to_string(),
+            12_000,
+            10_000
+        )),
+        "the estimate it passed is kept beside the bill: {rows:?}"
     );
+    assert!(
+        !rows.iter().any(|row| row.2 == "divergence"),
+        "the old unattributed kind is still written: {rows:?}"
+    );
+}
+
+#[test]
+fn a_store_that_recorded_an_overrun_admits_nothing_again_even_after_a_restart() {
+    // **The stop is the store's, not the process's**: an overrun is a
+    // fact about what a provider did, and forgetting it at a restart would
+    // admit the next call on the same assumption that just failed.
+    let directory = tempfile::tempdir().expect("temp dir");
+    let path = directory.path().join("ledger.sqlite");
+    {
+        let connection = Connection::open(&path).expect("opens");
+        Ledger::migrate(&connection).expect("migrates");
+        let ledger = Ledger::new(&connection);
+        let reservation = ledger
+            .admit(T0, "job", "r", 10_000)
+            .expect("admits")
+            .expect("admitted");
+        ledger
+            .settle(T0, &reservation, Settlement::Usage(10_001))
+            .expect("settles");
+    }
+    let connection = Connection::open(&path).expect("reopens");
+    let ledger = Ledger::new(&connection);
+    assert_eq!(
+        ledger.admit(T0, "another", "next", 1).expect("admits"),
+        Err(Refusal::Overrun),
+        "a store that overran admitted again after a restart"
+    );
+    // **Before every ceiling**, so the reason a caller reads is the stop
+    // and not whichever limit it happened to meet first.
+    assert_eq!(
+        ledger
+            .admit(T0, "another", "huge", PER_REQUEST_TOKENS + 1)
+            .expect("admits"),
+        Err(Refusal::Overrun),
+        "the stop was read after a ceiling"
+    );
+    assert!(
+        !Refusal::Overrun.a_tighter_figure_could_admit(),
+        "no figure admits anything on a stopped store, so no count is worth making"
+    );
+}
+
+#[test]
+fn an_old_divergence_row_stops_nothing() {
+    // **A guard.** Stores written before m5-settle hold unattributed
+    // `divergence` rows. They are history, not a stop: keying the stop on
+    // them would stop every store that ever settled above an estimate
+    // under the old rule.
+    let connection = database();
+    let ledger = Ledger::new(&connection);
+    ledger
+        .note(T0, "", "", "divergence", 12_000, 10_000)
+        .expect("notes");
+    let admitted = ledger.admit(T0, "job", "r", 1).expect("admits");
+    assert!(
+        admitted.is_ok(),
+        "an old divergence row stopped the store: {admitted:?}"
+    );
+}
+
+#[test]
+fn a_settlement_whose_overrun_row_cannot_be_written_leaves_its_reservation_standing() {
+    // **The settlement and its overrun row are one transaction.** Written
+    // apart, a failure between them would leave the bill counted and no
+    // stop recorded, and the next call admitted on a store that had
+    // overrun. Here the overrun row cannot be written, and the whole
+    // settlement is refused: the reservation stands at its estimate,
+    // which over-counts rather than forgets.
+    let connection = database();
+    connection
+        .execute_batch(
+            "CREATE TRIGGER no_overrun BEFORE INSERT ON model_ledger
+             WHEN NEW.kind = 'overrun'
+             BEGIN SELECT RAISE(ABORT, 'no overrun row'); END;",
+        )
+        .expect("trigger");
+    let ledger = Ledger::new(&connection);
+    let reservation = ledger
+        .admit(T0, "job", "r", 10_000)
+        .expect("admits")
+        .expect("admitted");
+    let settled = ledger.settle(T0, &reservation, Settlement::Usage(12_000));
+    let rows = attributed(&connection);
+    assert!(
+        settled.is_err(),
+        "a settlement whose overrun row was not written succeeded: {rows:?}"
+    );
+    assert_eq!(
+        rows,
+        vec![(
+            "job".to_string(),
+            "r".to_string(),
+            "reservation".to_string(),
+            10_000,
+            10_000
+        )],
+        "half a settlement landed"
+    );
+}
+
+#[test]
+fn after_an_overrun_nothing_is_admitted_and_no_counter_passes_its_ceiling_but_by_overruns() {
+    // A walk over three jobs under a run ceiling: admissions of any size,
+    // settlements of any figure, many far above what was reserved. After
+    // every step, the run and every job hold no more than their ceilings
+    // and what settlements billed above their reservations; and once the
+    // first overrun has settled, nothing is admitted.
+    let connection = database();
+    let ceiling = 300_000;
+    let ledger = Ledger::new(&connection).with_run_ceiling(Some(ceiling));
+    let mut seed: u64 = 0x5eed;
+    let mut next = |bound: u64| {
+        seed = seed
+            .wrapping_mul(6_364_136_223_846_793_005)
+            .wrapping_add(1_442_695_040_888_963_407);
+        (seed >> 33) % bound
+    };
+    let mut open: Vec<Reservation> = Vec::new();
+    let mut excess = 0;
+    let mut overran_at = None;
+    for step in 0..2_000 {
+        if next(2) == 0 || open.is_empty() {
+            let job = format!("job{}", next(3));
+            let admitted = ledger
+                .admit(T0, &job, "r", 1 + next(60_000))
+                .expect("admits");
+            if let Some(at) = overran_at {
+                assert!(
+                    matches!(admitted, Err(Refusal::Overrun)),
+                    "step {step}: {admitted:?} after the overrun at step {at}"
+                );
+            }
+            if let Ok(reservation) = admitted {
+                open.push(reservation);
+            }
+        } else {
+            let reservation = open.remove(next(open.len() as u64) as usize);
+            let settlement = match next(4) {
+                0 => Settlement::UsageUnknown,
+                1 => Settlement::NothingSpent,
+                _ => Settlement::Usage(next(reservation.estimate * 3 + 1)),
+            };
+            ledger
+                .settle(T0, &reservation, settlement)
+                .expect("settles");
+            if let Settlement::Usage(billed) = settlement
+                && billed > reservation.estimate
+            {
+                excess += billed - reservation.estimate;
+                overran_at.get_or_insert(step);
+            }
+        }
+        let run = ledger.spend(T0, "job0").expect("spend").window;
+        assert!(
+            run <= ceiling + excess,
+            "step {step}: the run holds {run}, past {ceiling} and {excess} overrun"
+        );
+        for job in ["job0", "job1", "job2"] {
+            let held = ledger.spend(T0, job).expect("spend").job;
+            assert!(
+                held <= PER_JOB_TOKENS + excess,
+                "step {step}: {job} holds {held}, past its ceiling and {excess} overrun"
+            );
+        }
+    }
+    assert!(
+        overran_at.is_some(),
+        "the walk never overran, so it tested nothing"
+    );
+}
+
+#[test]
+fn a_stops_refusal_row_is_a_refusal() {
+    // A refusal is an event and not a spend, and a report finds refusals
+    // under one kind. The stop's refusal is written under it, with the
+    // call it refused.
+    for stop in ["overrun", "bound_unsound"] {
+        let connection = database();
+        let ledger = Ledger::new(&connection);
+        ledger
+            .note(T0, "other", "x", stop, 12_000, 10_000)
+            .expect("notes");
+        let _ = ledger.admit(T0, "job", "r", 5).expect("admits");
+        let rows = attributed(&connection);
+        assert_eq!(
+            rows.last(),
+            Some(&(
+                "job".to_string(),
+                "r".to_string(),
+                "refusal".to_string(),
+                0,
+                5
+            )),
+            "after {stop}, the refused call is not a refusal row: {rows:?}"
+        );
+    }
+}
+
+#[test]
+fn a_store_holding_both_stops_reports_the_unsound_bound() {
+    // **The stated precedence (V1)**, in whichever order the rows were
+    // written: an unsound bound before an overrun, the order a call ends
+    // in, because the bound is the assumption every admission rests on.
+    for order in [["overrun", "bound_unsound"], ["bound_unsound", "overrun"]] {
+        let connection = database();
+        let ledger = Ledger::new(&connection);
+        for stop in order {
+            ledger
+                .note(T0, "other", "x", stop, 12_000, 10_000)
+                .expect("notes");
+        }
+        assert_eq!(
+            ledger.admit(T0, "job", "r", 5).expect("admits"),
+            Err(Refusal::BoundUnsound),
+            "written {order:?}, the store did not report the bound first"
+        );
+    }
+}
+
+#[test]
+fn a_settlement_lands_once_and_its_overrun_with_it() {
+    // A settlement written again — by a process retrying one the store
+    // refused, or by a start reconciling one a killed process left —
+    // finds its reservation already settled and writes nothing more: one
+    // bill, one `overrun`.
+    let connection = database();
+    let ledger = Ledger::new(&connection);
+    let reservation = ledger
+        .admit(T0, "job", "r", 10_000)
+        .expect("admits")
+        .expect("admitted");
+    for _ in 0..2 {
+        ledger
+            .settle(T0, &reservation, Settlement::Usage(12_000))
+            .expect("settles");
+    }
+    let rows = attributed(&connection);
+    assert_eq!(
+        rows,
+        vec![
+            (
+                "job".to_string(),
+                "r".to_string(),
+                "usage".to_string(),
+                12_000,
+                10_000
+            ),
+            (
+                "job".to_string(),
+                "r".to_string(),
+                "overrun".to_string(),
+                12_000,
+                10_000
+            ),
+        ],
+        "a settlement landed twice"
+    );
+}
+
+#[test]
+fn a_store_that_cannot_take_an_overrun_is_stopped_in_this_process_and_reports_its_bound_first() {
+    // **The store refuses the overrun row itself**, here by a trigger, as
+    // an I/O error or a full disk would. The settlement fails and lands
+    // nothing, and the process keeps the overrun: an admission on another
+    // connection to the store is refused, and recorded as a refusal, while
+    // the overrun still cannot be written. The store's own stops come
+    // first, so a recorded unsound bound is what a caller is then told.
+    let directory = tempfile::tempdir().expect("temp dir");
+    let path = directory.path().join("ledger.sqlite");
+    let connection = Connection::open(&path).expect("opens");
+    Ledger::migrate(&connection).expect("migrates");
+    connection
+        .execute_batch(
+            "CREATE TRIGGER no_overrun BEFORE INSERT ON model_ledger
+             WHEN NEW.kind = 'overrun'
+             BEGIN SELECT RAISE(ABORT, 'no overrun row'); END;",
+        )
+        .expect("trigger");
+    let ledger = Ledger::new(&connection);
+    let reservation = ledger
+        .admit(T0, "job", "r", 10_000)
+        .expect("admits")
+        .expect("admitted");
+    assert!(
+        ledger
+            .settle(T0, &reservation, Settlement::Usage(12_000))
+            .is_err(),
+        "the overrun row was written"
+    );
+    assert!(ledger.keeps(&reservation), "the process did not keep it");
+    let beside = Connection::open(&path).expect("opens beside");
+    assert_eq!(
+        Ledger::new(&beside)
+            .admit(T0, "another", "next", 1)
+            .expect("admits"),
+        Err(Refusal::Overrun),
+        "another connection admitted on a store whose overrun was not written"
+    );
+    let rows = attributed(&connection);
+    assert!(
+        rows.contains(&(
+            "job".to_string(),
+            "r".to_string(),
+            "reservation".to_string(),
+            10_000,
+            10_000
+        )) && rows.contains(&(
+            "another".to_string(),
+            "next".to_string(),
+            "refusal".to_string(),
+            0,
+            1
+        )),
+        "{rows:?}"
+    );
+    ledger
+        .note(T0, "other", "x", "bound_unsound", 2, 1)
+        .expect("notes");
+    assert_eq!(
+        Ledger::new(&beside)
+            .admit(T0, "another", "later", 1)
+            .expect("admits"),
+        Err(Refusal::BoundUnsound),
+        "the process's stop was read before the store's"
+    );
+}
+
+#[test]
+fn a_refused_settlement_within_its_reservation_is_no_stop() {
+    // **Round 2's test gap N1.** Only a bill above its reservation is kept
+    // by the process when the store refuses its settlement. One within it,
+    // or equal to it, leaves the reservation standing at its estimate,
+    // which over-counts, and stops nothing: the store admits again, on any
+    // connection, once it takes writes.
+    for tokens in [9_999, 10_000] {
+        let directory = tempfile::tempdir().expect("temp dir");
+        let path = directory.path().join("ledger.sqlite");
+        let connection = Connection::open(&path).expect("opens");
+        Ledger::migrate(&connection).expect("migrates");
+        let ledger = Ledger::new(&connection);
+        let reservation = ledger
+            .admit(T0, "job", "r", 10_000)
+            .expect("admits")
+            .expect("admitted");
+        connection
+            .execute_batch(
+                "CREATE TRIGGER no_settlement BEFORE UPDATE ON model_ledger
+                 BEGIN SELECT RAISE(ABORT, 'no settlement'); END;",
+            )
+            .expect("trigger");
+        assert!(
+            ledger
+                .settle(T0, &reservation, Settlement::Usage(tokens))
+                .is_err(),
+            "{tokens}: the settlement landed"
+        );
+        assert!(
+            !ledger.keeps(&reservation),
+            "{tokens}: the process kept a bill that was no overrun"
+        );
+        connection
+            .execute_batch("DROP TRIGGER no_settlement")
+            .expect("drops");
+        let beside = Connection::open(&path).expect("opens beside");
+        assert!(
+            Ledger::new(&beside)
+                .admit(T0, "another", "next", 1)
+                .expect("admits")
+                .is_ok(),
+            "{tokens}: a refused settlement within its reservation stopped the store"
+        );
+        let rows = attributed(&connection);
+        assert!(
+            rows.contains(&(
+                "job".to_string(),
+                "r".to_string(),
+                "reservation".to_string(),
+                10_000,
+                10_000
+            )) && !rows.iter().any(|row| row.2 == "overrun"),
+            "{tokens}: {rows:?}"
+        );
+    }
 }
 
 // m4a's `the_crate_has_no_network_dependency_in_its_tree` moved to
@@ -500,4 +930,135 @@ fn two_admissions_racing_for_the_last_of_a_window_admit_exactly_one() {
         Ledger::new(&after).spend(T0, "none").expect("spend").window <= WINDOW_TOKENS,
         "and the window was never over-committed"
     );
+}
+
+// ---- m5-settle, verification round 3: the ROLLBACK window ----
+
+static WINDOW_WAITING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+static WINDOW_DONE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+static WINDOW_ARMED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+static WINDOW_WORKER: Mutex<Option<std::thread::JoinHandle<String>>> = Mutex::new(None);
+
+/// The worker's busy handler: it says it is waiting on the write lock, and
+/// waits.
+fn window_waits(attempts: i32) -> bool {
+    WINDOW_WAITING.store(true, std::sync::atomic::Ordering::SeqCst);
+    std::thread::sleep(std::time::Duration::from_millis(2));
+    attempts < 5_000
+}
+
+/// The settling connection's PROFILE callback. It fires once a statement
+/// has finished, so for `ROLLBACK` once the write lock is released and
+/// before anything after it in `settle` runs; it holds there until the
+/// waiting worker's admission has ended.
+fn window_after_rollback(event: rusqlite::trace::TraceEvent<'_>) {
+    if let rusqlite::trace::TraceEvent::Profile(statement, _) = event
+        && statement.sql().trim() == "ROLLBACK"
+        && WINDOW_ARMED.load(std::sync::atomic::Ordering::SeqCst)
+    {
+        let started = std::time::Instant::now();
+        while !WINDOW_DONE.load(std::sync::atomic::Ordering::SeqCst)
+            && started.elapsed() < std::time::Duration::from_secs(10)
+        {
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+    }
+}
+
+/// A settlement above its reservation that the store refuses inside its
+/// transaction, while another worker of this process waits on that
+/// transaction's lock to admit. Returns the worker's admission and the rows.
+fn refused_while_an_admission_waits(wal: bool) -> (String, Vec<Attributed>) {
+    WINDOW_WAITING.store(false, std::sync::atomic::Ordering::SeqCst);
+    WINDOW_DONE.store(false, std::sync::atomic::Ordering::SeqCst);
+    WINDOW_ARMED.store(false, std::sync::atomic::Ordering::SeqCst);
+    let directory = tempfile::tempdir().expect("temp dir");
+    let path = directory.path().join("ledger.sqlite");
+    let connection = Connection::open(&path).expect("opens");
+    if wal {
+        connection
+            .execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;")
+            .expect("wal");
+    }
+    Ledger::migrate(&connection).expect("migrates");
+    let ledger = Ledger::new(&connection);
+    let reservation = ledger
+        .admit(T0, "job", "r", 10_000)
+        .expect("admits")
+        .expect("admitted");
+    let worker_path = path.clone();
+    connection
+        .create_scalar_function(
+            "window_hold",
+            0,
+            rusqlite::functions::FunctionFlags::SQLITE_UTF8,
+            move |_| {
+                // Inside the settlement's transaction, so the write lock is
+                // held: another worker starts an admission and waits on it.
+                let path = worker_path.clone();
+                *WINDOW_WORKER.lock().unwrap() = Some(std::thread::spawn(move || {
+                    let beside = Connection::open(&path).expect("opens");
+                    beside.busy_handler(Some(window_waits)).expect("handler");
+                    let admitted = Ledger::new(&beside).admit(T0, "worker", "w", 1);
+                    WINDOW_DONE.store(true, std::sync::atomic::Ordering::SeqCst);
+                    format!("{admitted:?}")
+                }));
+                let started = std::time::Instant::now();
+                while !WINDOW_WAITING.load(std::sync::atomic::Ordering::SeqCst) {
+                    assert!(started.elapsed() < std::time::Duration::from_secs(10));
+                    std::thread::sleep(std::time::Duration::from_millis(1));
+                }
+                Ok(0)
+            },
+        )
+        .expect("function");
+    // The store refuses the settlement inside its transaction (an I/O
+    // error, a full disk, a constraint): the lock was taken, and the
+    // ROLLBACK releases it.
+    connection
+        .execute_batch(
+            "CREATE TEMP TRIGGER refuses BEFORE UPDATE ON model_ledger
+             WHEN OLD.kind = 'reservation' AND NEW.tokens > OLD.estimate
+             BEGIN SELECT window_hold(); SELECT RAISE(ABORT, 'refused'); END;",
+        )
+        .expect("trigger");
+    connection.trace_v2(
+        rusqlite::trace::TraceEventCodes::SQLITE_TRACE_PROFILE,
+        Some(window_after_rollback),
+    );
+    WINDOW_ARMED.store(true, std::sync::atomic::Ordering::SeqCst);
+    let settled = ledger.settle(T0, &reservation, Settlement::Usage(15_000));
+    WINDOW_ARMED.store(false, std::sync::atomic::Ordering::SeqCst);
+    connection.trace_v2(rusqlite::trace::TraceEventCodes::empty(), None);
+    assert!(settled.is_err(), "the settlement landed: {settled:?}");
+    assert!(
+        ledger.keeps(&reservation),
+        "the process did not keep the overrun"
+    );
+    let worker = WINDOW_WORKER
+        .lock()
+        .unwrap()
+        .take()
+        .expect("the worker started")
+        .join()
+        .expect("the worker ends");
+    (worker, attributed(&connection))
+}
+
+#[test]
+fn an_admission_waiting_on_a_refused_settlements_own_lock_is_refused() {
+    // **Round 3's deterministic probe (the checker's).** An overrun the
+    // store refused is kept by the process **before** the ROLLBACK that
+    // releases the settlement's write lock, so an admission already
+    // waiting on that lock reads the process's stop when it is granted
+    // the lock. Kept after the ROLLBACK, there is a window in which the
+    // lock is free and the process holds no stop, and the waiting worker
+    // is admitted after the store refused an overrun.
+    for wal in [true, false] {
+        let (worker, rows) = refused_while_an_admission_waits(wal);
+        assert_eq!(
+            worker, "Ok(Err(Overrun))",
+            "wal={wal}: an admission waiting on the refused settlement's lock was granted: {rows:?}"
+        );
+    }
 }

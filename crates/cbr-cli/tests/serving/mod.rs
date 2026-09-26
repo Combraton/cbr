@@ -529,6 +529,11 @@ impl Fixture {
     /// principals and credentials, so a test states what it is about —
     /// a provider id, a script — and nothing else about the launch moves.
     pub fn start_configured(&self, members: &str) -> Running {
+        self.start_configured_with(members, &[])
+    }
+
+    /// [`Self::start_configured`], with **launch flags** as well.
+    pub fn start_configured_with(&self, members: &str, extra: &[&str]) -> Running {
         let config = self.directory.path().join("cbr-configured.json");
         std::fs::write(
             &config,
@@ -537,7 +542,7 @@ impl Fixture {
             ),
         )
         .expect("config");
-        self.launch(&config, &[])
+        self.launch(&config, extra)
     }
 
     pub fn cbr(&self, arguments: &[&str]) -> Output {
