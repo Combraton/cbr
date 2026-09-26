@@ -25,6 +25,60 @@ VENDOR = ROOT / "vendor" / "protocol" / "v0.1.0"
 RUNNER_IDENTITY = ROOT / "target" / "protocol-release" / "runner.json"
 PROVIDER = ROOT / "target" / "debug" / "cbr-provider"
 DESCRIPTOR = ROOT / "conformance" / "participants" / "cbr-provider.json"
+REFERENCE_LAUNCHER = "reference_executor_launch.py"
+COMPOSITION = "composition."
+
+
+def launches_reference_executor(descriptor):
+    """Whether a descriptor launches through scripts/reference_executor_launch.py.
+
+    Judged by its launch argv, not its file name, so a renamed copy of
+    cbr-with-reference-executor-unix.json is the same descriptor.
+    """
+    try:
+        argv = json.loads(descriptor.read_text())["launch"]["argv"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
+    return any(isinstance(part, str) and part.endswith(REFERENCE_LAUNCHER) for part in argv)
+
+
+def outside_composition(selection):
+    """Vendored fixture ids the runner's --filter selects outside the composition suite.
+
+    The runner selects a fixture when its id *contains* the filter, so the
+    prefix alone is not the rule: every selected id must be a composition one.
+    """
+    ids = []
+    for path in sorted((VENDOR / "conformance" / "fixtures").rglob("*.json")):
+        try:
+            fixture_id = json.loads(path.read_text()).get("id")
+        except (OSError, ValueError, AttributeError):
+            continue
+        if isinstance(fixture_id, str) and selection in fixture_id and not fixture_id.startswith(COMPOSITION):
+            ids.append(fixture_id)
+    return ids
+
+
+def refuse_reference_executor_outside_composition(selection, descriptor):
+    """The reference-executor descriptor runs the composition suite and nothing else.
+
+    It claims execution/1 on the reference provider's behalf. Any other
+    fixture it made applicable would be reported under a CBR-named
+    participant, which RELEASE-SCOPE section 6 forbids.
+    """
+    if not launches_reference_executor(descriptor):
+        return
+    if not selection.startswith(COMPOSITION):
+        sys.exit(
+            f"refused: {descriptor.name} launches the reference executor and runs composition fixtures "
+            f"only; --filter must start with {COMPOSITION!r}, got {selection!r}"
+        )
+    stray = outside_composition(selection)
+    if stray:
+        sys.exit(
+            f"refused: {descriptor.name} launches the reference executor and runs composition fixtures "
+            f"only; --filter {selection!r} also selects {stray[:5]}"
+        )
 
 
 def main():
@@ -37,6 +91,9 @@ def main():
         help="Participant descriptor, relative to the repository root (default: the stdio descriptor)",
     )
     args = parser.parse_args()
+
+    # Before anything is created or started.
+    refuse_reference_executor_outside_composition(args.filter, ROOT / args.participant)
 
     if not RUNNER_IDENTITY.is_file():
         sys.exit("no runner: run scripts/build_runner.py first")
