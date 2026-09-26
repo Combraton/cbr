@@ -477,24 +477,32 @@ impl<'a> Ledger<'a> {
     ) -> Result<Result<Reservation, Refusal>, LedgerError> {
         // **An overrun this process saw and the store did not take** is
         // written first, if the store takes it now, and is a stop either
-        // way: when the store cannot be asked, or cannot say, the stop is
-        // this process's and needs neither.
-        let held = self.write_unwritten();
-        let admitted = self.admit_once(now, job, request, estimate, held);
-        if held && !matches!(admitted, Ok(Err(_))) {
+        // way. The stop is read inside the admission's transaction, with
+        // the store's own; when the store cannot be asked, or cannot say,
+        // it is this process's and needs neither.
+        self.write_unwritten();
+        let admitted = self.admit_once(now, job, request, estimate);
+        if admitted.is_err() && self.holds_a_stop() {
             return Ok(Err(Refusal::Overrun));
         }
         admitted
     }
 
+    /// Whether this process kept an overrun on this store that the store
+    /// did not take. Once it has, the store admits nothing again here,
+    /// whether or not the overrun has since been written.
+    fn holds_a_stop(&self) -> bool {
+        store_file(self.connection).is_some_and(|file| unwritten().contains_key(&file))
+    }
+
     /// Write what this process kept for this store, where the store takes
-    /// it; whether the process holds a stop for this store at all.
-    fn write_unwritten(&self) -> bool {
+    /// it.
+    fn write_unwritten(&self) {
         let Some(file) = store_file(self.connection) else {
-            return false;
+            return;
         };
         let Some(kept) = unwritten().get(&file).cloned() else {
-            return false;
+            return;
         };
         let written: Vec<i64> = kept
             .iter()
@@ -507,7 +515,6 @@ impl<'a> Ledger<'a> {
         if let Some(kept) = unwritten().get_mut(&file) {
             kept.retain(|kept| !written.contains(&kept.reservation.id));
         }
-        true
     }
 
     fn admit_once(
@@ -516,7 +523,6 @@ impl<'a> Ledger<'a> {
         job: &str,
         request: &str,
         estimate: u64,
-        held: bool,
     ) -> Result<Result<Reservation, Refusal>, LedgerError> {
         // **One write transaction across the check and the insert.** m4c
         // adds concurrency, and a check-then-write race is an overspend:
@@ -524,7 +530,7 @@ impl<'a> Ledger<'a> {
         // write and both be admitted. `BEGIN IMMEDIATE` takes the write lock
         // before the read, so the second waits or fails rather than racing.
         self.connection.execute_batch("BEGIN IMMEDIATE")?;
-        let admitted = self.admit_locked(now, job, request, estimate, held);
+        let admitted = self.admit_locked(now, job, request, estimate);
         let ended = self.connection.execute_batch("COMMIT");
         match (admitted, ended) {
             (Ok(admitted), Ok(())) => Ok(admitted),
@@ -542,17 +548,19 @@ impl<'a> Ledger<'a> {
         job: &str,
         request: &str,
         estimate: u64,
-        held: bool,
     ) -> Result<Result<Reservation, Refusal>, LedgerError> {
         // **The store's stops, before every ceiling**, and inside the same
         // transaction as the insert: every caller admits here, so no path
         // (the `Counting::Always` one included) and no restart skips them,
         // and a stop written while a call's count was out refuses its
         // completion. The process's own stop comes after the store's, so
-        // an unsound bound is still reported first.
+        // an unsound bound is still reported first, and is read here too,
+        // under the lock (m5-settle, verification round 2): read before
+        // it, an admission already waiting on the lock while a settlement
+        // was refused would be granted once the lock came free.
         let stop = match self.stop()? {
             Some(stop) => Some(stop),
-            None => held.then_some(Refusal::Overrun),
+            None => self.holds_a_stop().then_some(Refusal::Overrun),
         };
         if let Some(stop) = stop {
             self.write(now, job, request, stop.reason(), 0, estimate)?;
