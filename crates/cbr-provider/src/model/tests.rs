@@ -3588,16 +3588,15 @@ fn an_overrun_whose_settlement_the_store_refused_still_stops_the_store() {
 fn killed_at(
     path: &std::path::Path,
     barrier: &'static str,
-    counts: bool,
-    answer: (Answer, Vec<u8>),
+    counting: Option<Counting>,
+    answers: Vec<(Answer, Vec<u8>)>,
 ) {
     let connection = Connection::open(path).expect("opens");
     Ledger::migrate(&connection).expect("migrates");
     crate::wire::record::migrate(&connection).expect("migrates");
     let body = padded_body(64, 4_000);
     let send = crate::budget::reservation(&body, 1, 64);
-    // One answer: a failed count ends its call before any completion.
-    let recorder = Recorder::answering_with_bytes(vec![answer]);
+    let recorder = Recorder::answering_with_bytes(answers);
     let recording = crate::wire::record::Recording {
         inner: &recorder,
         store: &connection,
@@ -3608,15 +3607,21 @@ fn killed_at(
         dialect: Dialect::Responses,
         scrubber: None,
     };
-    // A count is made only when the local bound is refused on a counter
-    // a tighter figure could satisfy.
-    let ceiling = if counts { send - 1 } else { send };
+    // On the serving path a count is made only when the local bound is
+    // refused on a counter a tighter figure could satisfy; the calibration's
+    // `Counting::Always` counts first whatever the envelope says.
+    let ceiling = match counting {
+        None => Some(send),
+        Some(Counting::WhenItCouldAdmit) => Some(send - 1),
+        Some(Counting::Always) => None,
+    };
     let runtime = Runtime {
-        ledger: Ledger::new(&connection).with_run_ceiling(Some(ceiling)),
+        ledger: Ledger::new(&connection).with_run_ceiling(ceiling),
         transport: &recording,
     };
     let attempt = Attempt {
-        count_body: counts.then_some(body.as_slice()),
+        count_body: counting.is_some().then_some(body.as_slice()),
+        counting: counting.unwrap_or(Counting::WhenItCouldAdmit),
         ..asked_with(&body, 64)
     };
     let killed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -3676,46 +3681,55 @@ fn a_store_killed_before_it_settled_an_overrun_is_stopped_when_it_is_opened_agai
             failed_billing(usage),
         )
     };
-    // (the kill, counted first, the answer, the bill, what it reserved,
+    let count = (Answer::Counted(local), br#"{"input_tokens":1}"#.to_vec());
+    // (the kill, how it counted, the answers, the bill, what it reserved,
     // the request its rows name)
     let cases = [
         (
             COMPLETION_AFTER_SEND,
-            false,
-            completed(send + 1_000),
+            None,
+            vec![completed(send + 1_000)],
             send + 1_000,
             send,
             "r",
         ),
         (
             COMPLETION_DURING_RECONCILIATION,
-            false,
-            completed(send + 1_000),
+            None,
+            vec![completed(send + 1_000)],
             send + 1_000,
             send,
             "r",
         ),
         (
             COMPLETION_DURING_RECONCILIATION,
-            false,
-            failed(send + 200),
+            None,
+            vec![failed(send + 200)],
             send + 200,
             send,
             "r",
         ),
         (
             COUNT_DURING_RECONCILIATION,
-            true,
-            failed(local + 100),
+            Some(Counting::WhenItCouldAdmit),
+            vec![failed(local + 100)],
             local + 100,
             local,
             "r.count",
         ),
+        (
+            COMPLETION_DURING_RECONCILIATION,
+            Some(Counting::Always),
+            vec![count, completed(send + 1_000)],
+            send + 1_000,
+            send,
+            "r",
+        ),
     ];
-    for (barrier, counts, answer, bill, reserved, request) in cases {
+    for (barrier, counting, answers, bill, reserved, request) in cases {
         let directory = tempfile::tempdir().expect("temp dir");
         let path = directory.path().join("cbr.sqlite");
-        killed_at(&path, barrier, counts, answer);
+        killed_at(&path, barrier, counting, answers);
         let connection = Connection::open(&path).expect("opens again");
         let left = attributed(&connection);
         assert!(
@@ -3801,7 +3815,7 @@ fn a_start_settles_no_reservation_its_record_does_not_bill_above() {
     ] {
         let directory = tempfile::tempdir().expect("temp dir");
         let path = directory.path().join("cbr.sqlite");
-        killed_at(&path, barrier, false, answer);
+        killed_at(&path, barrier, None, vec![answer]);
         let connection = Connection::open(&path).expect("opens again");
         crate::wire::record::reconcile(&connection).expect("a start reconciles");
         let rows = attributed(&connection);
