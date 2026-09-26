@@ -38,6 +38,12 @@
 //!   after one already published at its own deadline. No packet of the
 //!   refused tick is sealed anywhere, a valid one included: not in this
 //!   store, and not at an evidence peer.
+//! - **A compiled request whose mandatory content cannot fit is refused**,
+//!   `budget_insufficient`, with `needed` the size its required items need,
+//!   and no packet is sealed for it (CONTEXT section 3). In a shared job
+//!   each subscriber is decided by its own capacity; a request never joins
+//!   a job whose mandatory content it cannot hold; and cancelling the last
+//!   subscriber a refusal left ends the job.
 
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::fs::PermissionsExt;
@@ -4114,6 +4120,371 @@ fn a_tick_that_fails_after_a_packet_writes_no_object_for_it() {
         objects(&data),
         before,
         "r-first's packet was written in a tick that failed after it"
+    );
+    ctx.kill();
+}
+
+// ---- budget_insufficient on the compiled path -------------------------------
+
+/// The required item's bytes, sealed as `log-1`.
+const LOG: &[u8] = b"running 1 test\ntest tests::holds ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s\n";
+
+/// A deadline no test here reaches.
+const LATE: &str = "2030-01-01T01:00:00Z";
+
+/// A conformance launch that compiles (`context.compile`), its clock at
+/// 00:00, with `scripts` as its `context.scripts` control, negotiating
+/// `features`. Returns the provider and its clock file.
+fn compiling(directory: &Path, scripts: &str, features: &[&str]) -> (ContextProvider, PathBuf) {
+    let clock = directory.join("clock");
+    set_clock(&clock, "2030-01-01T00:00:00Z");
+    let ctx = ContextProvider::start_with(
+        directory,
+        &format!(
+            r#"{{"format":"combraton-conformance-config/1","provider_id":"context-1","principal":"owner","authority_principals":["owner"],"clock":{{"file":"{}"}},"context":{{"compile":true,"scripts":{{{scripts}}}}}}}"#,
+            clock.display()
+        ),
+        features,
+    );
+    (ctx, clock)
+}
+
+/// An evidence item for artifact `artifact` of `digest` at this provider.
+fn evidence_item(item_id: &str, artifact: &str, digest: &str, obligation: &str) -> String {
+    format!(
+        r#"{{"item_id":"{item_id}","selector":{{"kind":"evidence","value":"{artifact}"}},"obligation":"{obligation}","reliance":"evidence","selected_by":"owner","check":{{"kind":"evidence_included","evidence":{{"provider":"context-1","artifact":{{"kind":"evidence.artifact","id":"{artifact}"}},"digest":"{digest}"}}}}}}"#
+    )
+}
+
+/// Seal [`LOG`] as `log-1` and a note as `note-1`, and return two items:
+/// `log`, required, and `note`, advisory.
+fn log_and_note(ctx: &mut ContextProvider) -> String {
+    let log = seal(ctx, "log-1", LOG);
+    let note = seal(
+        ctx,
+        "note-1",
+        b"a note nobody required, which fills the advisory item\n",
+    );
+    format!(
+        "{},{}",
+        evidence_item("log", "log-1", &log, "required_before_start"),
+        evidence_item("note", "note-1", &note, "advisory")
+    )
+}
+
+/// The bytes the sections for `item` take in `request`'s revision 1.
+fn item_bytes(ctx: &mut ContextProvider, request: &str, item: &str) -> i64 {
+    let inspected = ctx.call(
+        "context.packet.inspect",
+        None,
+        &format!(r#"{{"packet":"{request}","revision":1}}"#),
+    );
+    at(result(&inspected), &["sections"])
+        .as_array()
+        .expect("sections")
+        .iter()
+        .filter(|section| section.get("item_id").and_then(Value::as_str) == Some(item))
+        .map(|section| match at(section, &["length"]) {
+            Value::Int(length) => *length,
+            other => panic!("a length: {other:?}"),
+        })
+        .sum()
+}
+
+/// The size the compiled `log` item needs, learnt from a request with room
+/// in a provider of its own.
+fn size_of_the_compiled_log() -> i64 {
+    let directory = tempfile::tempdir().expect("temp dir");
+    let (mut ctx, _) = compiling(
+        directory.path(),
+        "",
+        &["context.required_before_start", "context.advisory"],
+    );
+    let items = log_and_note(&mut ctx);
+    ctx.submit_within("r-size", &items, "proceed_with_gap", LATE, 4096);
+    let sized = settled(&mut ctx, "r-size");
+    assert_eq!(text(&sized, &["state"]), "ready", "{sized:?}");
+    let needed = item_bytes(&mut ctx, "r-size", "log");
+    assert!(needed > 1, "the premise: {needed}");
+    ctx.kill();
+    needed
+}
+
+#[test]
+fn a_compiled_request_whose_required_content_cannot_fit_is_refused_with_the_size_it_needs() {
+    // CONTEXT section 3: "A request whose mandatory items cannot fit
+    // `output_capacity` ends `refused` with reason `budget_insufficient`
+    // and `needed: { units: "bytes", amount }`, the size the mandatory
+    // items need". A compiled request learns its sizes only once compiled,
+    // so its submit answers `preparing` and the refusal comes after. The
+    // amount is the whole size, not what is over the capacity, as the
+    // context.limits-are-separate-and-mandatory-content-is-never-dropped
+    // fixture pins for a scripted one (10 at capacity 5). No packet is
+    // sealed or published for it.
+    let directory = tempfile::tempdir().expect("temp dir");
+    let (mut ctx, _) = compiling(
+        directory.path(),
+        "",
+        &["context.required_before_start", "context.advisory"],
+    );
+    let items = log_and_note(&mut ctx);
+    ctx.submit_within("r-roomy", &items, "proceed_with_gap", LATE, 4096);
+    let roomy = settled(&mut ctx, "r-roomy");
+    assert_eq!(text(&roomy, &["state"]), "ready", "{roomy:?}");
+    let needed = item_bytes(&mut ctx, "r-roomy", "log");
+    let advisory = item_bytes(&mut ctx, "r-roomy", "note");
+    assert!(
+        needed > 1 && advisory > 0,
+        "the premise: {needed} {advisory}"
+    );
+
+    let submitted = ctx.submit_within("r-tight", &items, "proceed_with_gap", LATE, needed - 1);
+    assert_eq!(
+        text(result(&submitted), &["outcome", "state"]),
+        "preparing",
+        "a compiled request cannot know its sizes at submit: {submitted:?}"
+    );
+    let tight = settled(&mut ctx, "r-tight");
+    assert_eq!(text(&tight, &["state"]), "refused", "{tight:?}");
+    assert_eq!(
+        text(&tight, &["reason"]),
+        "budget_insufficient",
+        "{tight:?}"
+    );
+    assert_eq!(
+        canonical(at(&tight, &["needed"])),
+        format!(r#"{{"amount":{needed},"units":"bytes"}}"#),
+        "the size the mandatory items need, advisory ones not counted"
+    );
+    assert_eq!(canonical(at(&tight, &["packets"])), "[]", "{tight:?}");
+    assert_eq!(
+        canonical(at(&tight, &["job"])),
+        r#"{"id":"r-tight","kind":"context.job"}"#
+    );
+    assert_eq!(at(&tight, &["revision"]), &Value::Int(2), "{tight:?}");
+    assert_eq!(
+        canonical(at(&tight, &["items"])),
+        r#"[{"item_id":"log","obligation":"required_before_start","reason":"budget_insufficient","result":"unmet"},{"item_id":"note","obligation":"advisory","reason":"budget_insufficient","result":"degraded"}]"#
+    );
+    let events = recorded(&mut ctx);
+    assert_eq!(
+        of_subject(&events, "context.request", "r-tight"),
+        vec![
+            (
+                "context.request.changed".to_string(),
+                r#"{"job":{"id":"r-tight","kind":"context.job"},"state":"preparing"}"#.to_string()
+            ),
+            (
+                "context.request.changed".to_string(),
+                r#"{"job":{"id":"r-tight","kind":"context.job"},"reason":"budget_insufficient","state":"refused"}"#.to_string()
+            ),
+        ]
+    );
+    assert_eq!(
+        of_subject(&events, "context.job", "r-tight"),
+        vec![(
+            "context.job.ended".to_string(),
+            r#"{"reason":"budget_insufficient"}"#.to_string()
+        )]
+    );
+    assert!(
+        !events
+            .iter()
+            .any(|e| e.event == "context.packet.published" && e.subject.1 == "r-tight"),
+        "{events:?}"
+    );
+    let data = directory.path().join("context-data");
+    assert!(
+        !artifacts(&data).contains(&"packet.r-tight.1".to_string()),
+        "{:?}",
+        artifacts(&data)
+    );
+    let inspected = ctx.call(
+        "context.packet.inspect",
+        None,
+        r#"{"packet":"r-tight","revision":1}"#,
+    );
+    assert!(inspected.get("result").is_none(), "{inspected:?}");
+
+    // At exactly the size it needs, the same request fits, and only the
+    // advisory item is left out.
+    ctx.submit_within("r-exact", &items, "proceed_with_gap", LATE, needed);
+    let exact = settled(&mut ctx, "r-exact");
+    assert_eq!(text(&exact, &["state"]), "partial", "{exact:?}");
+    ctx.kill();
+}
+
+#[test]
+fn in_a_shared_compiled_job_only_the_subscriber_whose_capacity_cannot_hold_the_required_content_is_refused()
+ {
+    // The limit is the request's (CONTEXT sections 1 and 3), and the job
+    // continues while another request still needs it (section 4). Two
+    // subscribers share a compiled job, one with room and one without,
+    // in both orders: the job's own `limits` are the first one's. The
+    // scripted `wait_until` before the `compile` step keeps the job
+    // unpublished so the second can join; in production that gap is a
+    // model call still pending.
+    let needed = size_of_the_compiled_log();
+    for (first, second) in [(4096, needed - 1), (needed - 1, 4096)] {
+        let directory = tempfile::tempdir().expect("temp dir");
+        let (mut ctx, clock) = compiling(
+            directory.path(),
+            r#""r-a":[{"wait_until":"2030-01-01T00:10:00Z"},{"compile":{}}]"#,
+            &[
+                "context.required_before_start",
+                "context.advisory",
+                "context.shared_jobs",
+            ],
+        );
+        let items = log_and_note(&mut ctx);
+        for (request, capacity) in [("r-a", first), ("r-b", second)] {
+            let submitted = ctx.submit_within(request, &items, "proceed_with_gap", LATE, capacity);
+            assert_eq!(
+                canonical(at(result(&submitted), &["outcome", "job"])),
+                r#"{"id":"r-a","kind":"context.job"}"#,
+                "{submitted:?}"
+            );
+        }
+        set_clock(&clock, "2030-01-01T00:10:00Z");
+        let (narrow, wide) = if first < second {
+            ("r-a", "r-b")
+        } else {
+            ("r-b", "r-a")
+        };
+        let refused = settled(&mut ctx, narrow);
+        assert_eq!(
+            text(&refused, &["state"]),
+            "refused",
+            "{narrow}: {refused:?}"
+        );
+        assert_eq!(text(&refused, &["reason"]), "budget_insufficient");
+        assert_eq!(
+            canonical(at(&refused, &["needed"])),
+            format!(r#"{{"amount":{needed},"units":"bytes"}}"#)
+        );
+        assert_eq!(
+            canonical(at(&refused, &["job"])),
+            r#"{"id":"r-a","kind":"context.job"}"#
+        );
+        let published = settled(&mut ctx, wide);
+        assert_eq!(
+            text(&published, &["state"]),
+            "ready",
+            "{wide}: {published:?}"
+        );
+        let events = recorded(&mut ctx);
+        assert!(
+            of_subject(&events, "context.job", "r-a").is_empty(),
+            "the job ended while a subscriber still needed it: {events:?}"
+        );
+        let data = directory.path().join("context-data");
+        assert!(
+            !artifacts(&data).contains(&format!("packet.{narrow}.1")),
+            "{:?}",
+            artifacts(&data)
+        );
+        ctx.kill();
+    }
+}
+
+#[test]
+fn a_request_never_joins_a_job_whose_required_content_its_capacity_cannot_hold() {
+    // The job's script is what prepares a joined request (CONTEXT section
+    // 12), so its mandatory size is what the joiner's capacity must hold.
+    // Joining is a MAY (section 4): one that cannot hold it gets a job of
+    // its own, which decides for itself. The section is 12 bytes.
+    let directory = tempfile::tempdir().expect("temp dir");
+    let clock = directory.path().join("clock");
+    set_clock(&clock, "2030-01-01T00:00:00Z");
+    let script = format!(
+        r#""r-wide":[{{"wait_until":"2030-01-01T00:10:00Z"}},{},{{"publish":{{}}}}]"#,
+        source_section("s-1")
+    );
+    let mut ctx = ContextProvider::start_with(
+        directory.path(),
+        &scripted(
+            &script,
+            &format!(r#","clock":{{"file":"{}"}}"#, clock.display()),
+        ),
+        &["context.required_before_start", "context.shared_jobs"],
+    );
+    let needed = "fn main() {}".len() as i64;
+    for (request, capacity, job) in [
+        ("r-wide", 4096, "r-wide"),
+        ("r-fits", needed, "r-wide"),
+        ("r-narrow", needed - 1, "r-narrow"),
+    ] {
+        let submitted = ctx.submit_within(request, SOURCE_ITEM, "proceed_with_gap", LATE, capacity);
+        assert_eq!(
+            canonical(at(result(&submitted), &["outcome", "job"])),
+            format!(r#"{{"id":"{job}","kind":"context.job"}}"#),
+            "{request}: {submitted:?}"
+        );
+    }
+    ctx.kill();
+}
+
+#[test]
+fn cancelling_the_last_subscriber_a_refusal_left_ends_the_job() {
+    // A refused subscriber needs nothing more from its job (CONTEXT section
+    // 4: "The job continues while any other request still needs it"). The
+    // advisory item nothing satisfies, under `wait_until_deadline`, keeps
+    // the wide subscriber preparing after the narrow one is refused.
+    let needed = size_of_the_compiled_log();
+    let directory = tempfile::tempdir().expect("temp dir");
+    let (mut ctx, clock) = compiling(
+        directory.path(),
+        r#""r-wide":[{"wait_until":"2030-01-01T00:10:00Z"},{"compile":{}}]"#,
+        &[
+            "context.required_before_start",
+            "context.advisory",
+            "context.shared_jobs",
+        ],
+    );
+    let digest = seal(&mut ctx, "log-1", LOG);
+    let items = format!(
+        "{},{}",
+        evidence_item("log", "log-1", &digest, "required_before_start"),
+        unsatisfiable("opt", "advisory")
+    );
+    for (request, capacity) in [("r-wide", 4096), ("r-narrow", needed - 1)] {
+        let submitted = ctx.submit_within(request, &items, "wait_until_deadline", LATE, capacity);
+        assert_eq!(
+            canonical(at(result(&submitted), &["outcome", "job"])),
+            r#"{"id":"r-wide","kind":"context.job"}"#,
+            "{submitted:?}"
+        );
+    }
+    set_clock(&clock, "2030-01-01T00:10:00Z");
+    let refused = settled(&mut ctx, "r-narrow");
+    assert_eq!(text(&refused, &["state"]), "refused", "{refused:?}");
+    let waiting = ctx.inspect("r-wide");
+    assert_eq!(
+        text(&waiting, &["state"]),
+        "preparing",
+        "the premise: {waiting:?}"
+    );
+    let revision = match at(&waiting, &["revision"]) {
+        Value::Int(revision) => *revision,
+        other => panic!("a revision: {other:?}"),
+    };
+    let cancelled = ctx.call(
+        "context.request.cancel",
+        Some(("cancel-r-wide", ("context.request", "r-wide"), revision)),
+        "{}",
+    );
+    assert_eq!(
+        at(result(&cancelled), &["outcome", "job_continues"]),
+        &Value::Bool(false),
+        "nothing needs the job once its one preparing subscriber is cancelled: {cancelled:?}"
+    );
+    let events = recorded(&mut ctx);
+    assert_eq!(
+        of_subject(&events, "context.job", "r-wide"),
+        vec![(
+            "context.job.ended".to_string(),
+            r#"{"reason":"no_subscribers"}"#.to_string()
+        )]
     );
     ctx.kill();
 }
