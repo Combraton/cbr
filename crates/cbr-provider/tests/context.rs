@@ -4200,7 +4200,8 @@ fn settled_logged(ctx: &mut ContextProvider, directory: &Path, request: &str) ->
     );
 }
 
-/// The result and reason `request` reads for `item`.
+/// The result and reason `request` reads for `item`; the reason is empty
+/// for an item that has none, such as a satisfied one.
 fn item_of(request: &Value, item: &str) -> (String, String) {
     let found = at(request, &["items"])
         .as_array()
@@ -4211,7 +4212,11 @@ fn item_of(request: &Value, item: &str) -> (String, String) {
         .clone();
     (
         text(&found, &["result"]).to_string(),
-        text(&found, &["reason"]).to_string(),
+        found
+            .get("reason")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string(),
     )
 }
 
