@@ -161,6 +161,27 @@ struct Tick {
     batch: Batch,
     /// `(artifact, captured_at)` for every packet sent to an evidence peer.
     captures: Vec<(String, String)>,
+    /// **Every packet the tick publishes, held until the publication guard
+    /// has seen the last of them** ([`Provider::seal_packets`]). A tick can
+    /// publish at more than one step, and a packet at a later step does not
+    /// exist until the steps before it have run, so no packet leaves the
+    /// tick while any step is left.
+    outgoing: Vec<Outgoing>,
+}
+
+/// A packet revision that has passed the guard and not yet left the tick.
+enum Outgoing {
+    /// To be captured, sent to the evidence peer and sealed there.
+    Peer {
+        evidence: PeerConfig,
+        request: String,
+        artifact: String,
+        digest: String,
+        content: Vec<u8>,
+    },
+    /// To be written as this provider's own object, which the tick's batch
+    /// already names as a sealed artifact.
+    Object { digest: String, content: Vec<u8> },
 }
 
 enum TickError {
@@ -176,7 +197,9 @@ enum TickError {
     /// identifier grammar**, leaves out one the schema requires, or names
     /// one section or citation id twice
     /// ([`context::ids_outside_grammar`]). Nothing of the job's tick is
-    /// committed and nothing is sealed or sent. The job then ends as
+    /// committed, and no packet of it is captured, sealed or sent, a valid
+    /// one the tick published before this one included: each is held in
+    /// [`Tick::outgoing`] until the tick has run. The job then ends as
     /// `packet_invalid`, from its stored records, in a batch of its own
     /// ([`Provider::end_refused_job`]), and the tick moves on to the next
     /// job, as it does for `NotSealed`: one bad packet must not stop every
@@ -3575,8 +3598,14 @@ impl Provider {
                 now: self.clock.now(),
                 batch: Batch::default(),
                 captures: Vec::new(),
+                outgoing: Vec::new(),
             };
-            match self.advance(&mut job, &mut tick) {
+            // The tick's packets leave only once it has run to the end,
+            // every one of them guarded, and before its batch commits.
+            let advanced = self
+                .advance(&mut job, &mut tick)
+                .and_then(|ended| self.seal_packets(&job, &mut tick).map(|()| ended));
+            match advanced {
                 Ok(ended) => {
                     if canonical(&job) != before {
                         let job_key = key(JOB, &job_id);
@@ -3678,6 +3707,7 @@ impl Provider {
             now: self.clock.now(),
             batch: Batch::default(),
             captures: Vec::new(),
+            outgoing: Vec::new(),
         };
         let job_subject = subject(JOB, job_id);
         for request in subscribers(&job) {
@@ -3961,14 +3991,16 @@ impl Provider {
             None => context::SCRIPT_COMPILER.to_string(),
         };
         let packet = context::compile_packet(request, &record, job, reason, &compiler);
-        // **Checked before the packet leaves the tick**: before a capture
-        // instant is taken, before the evidence peer is sent a byte and
-        // before the packet's own object is written to this store. A
-        // scripted packet refused here leaves nothing behind. A compiled
-        // job has already written the objects of what it sealed this tick
-        // (`seal_source`, `seal_derivation`); a refusal drops the tick's
-        // batch, so no row names them, and they are left, once, for the
-        // start-time collection pass: the job then ends, as
+        // **Checked before the packet leaves the tick**, and before any
+        // packet of the tick does: nothing of a packet is captured, sent to
+        // the evidence peer or written to this store until the tick has run
+        // to the end ([`Provider::seal_packets`]), so a packet refused here
+        // takes every other packet of its tick with it, however valid, and
+        // none of them leaves anything behind. A compiled job has already
+        // written the objects of the sources and derivations it sealed this
+        // tick (`seal_source`, `seal_derivation`); a refusal drops the
+        // tick's batch, so no row names them, and they are left, once, for
+        // the start-time collection pass: the job then ends, as
         // `packet_invalid`, and is never compiled again.
         let pointers = context::ids_outside_grammar(&packet.facts, &packet.artifact);
         if !pointers.is_empty() {
@@ -3981,28 +4013,15 @@ impl Provider {
         let provider = match PeerConfig::from_value(self.config.context.0.get("evidence_provider"))
         {
             Some(evidence) => {
-                let captured_at = match at(job, &["captures", &packet.artifact]).as_str() {
-                    Some(kept) => kept.to_string(),
-                    None => tick.now.clone(),
-                };
-                tick.captures
-                    .push((packet.artifact.clone(), captured_at.clone()));
-                let descriptor = context::packet_descriptor(
-                    request,
-                    &packet.digest,
-                    packet.content.len(),
-                    &captured_at,
-                );
-                if let Err(failure) =
-                    peer::publish_artifact(&evidence, &packet.artifact, descriptor, &packet.content)
-                {
-                    return Err(TickError::NotSealed(NotSealed {
-                        artifact: packet.artifact,
-                        failure,
-                        captures: tick.captures.clone(),
-                    }));
-                }
-                evidence.provider_id
+                let provider = evidence.provider_id.clone();
+                tick.outgoing.push(Outgoing::Peer {
+                    evidence,
+                    request: request.to_string(),
+                    artifact: packet.artifact.clone(),
+                    digest: packet.digest.clone(),
+                    content: packet.content.clone(),
+                });
+                provider
             }
             None => {
                 self.seal_locally(tick, request, &packet)?;
@@ -4046,11 +4065,58 @@ impl Provider {
         Ok(())
     }
 
+    /// **Let the tick's packets leave**, in the order it published them:
+    /// each one for an evidence peer captured, sent and sealed there, and
+    /// each one of this provider's own written as an object. Called once
+    /// the tick has run to the end and before its batch commits, so every
+    /// packet it publishes has passed the guard before any of them is
+    /// captured, sent or sealed.
+    ///
+    /// A peer that does not seal fails the tick as before, keeping the
+    /// capture instants of the packets attempted so far, the failed one
+    /// included, so the retry replays what already applied.
+    fn seal_packets(&self, job: &Value, tick: &mut Tick) -> Result<(), TickError> {
+        for outgoing in std::mem::take(&mut tick.outgoing) {
+            match outgoing {
+                Outgoing::Peer {
+                    evidence,
+                    request,
+                    artifact,
+                    digest,
+                    content,
+                } => {
+                    let captured_at = match at(job, &["captures", &artifact]).as_str() {
+                        Some(kept) => kept.to_string(),
+                        None => tick.now.clone(),
+                    };
+                    tick.captures.push((artifact.clone(), captured_at.clone()));
+                    let descriptor =
+                        context::packet_descriptor(&request, &digest, content.len(), &captured_at);
+                    if let Err(failure) =
+                        peer::publish_artifact(&evidence, &artifact, descriptor, &content)
+                    {
+                        return Err(TickError::NotSealed(NotSealed {
+                            artifact,
+                            failure,
+                            captures: tick.captures.clone(),
+                        }));
+                    }
+                }
+                Outgoing::Object { digest, content } => {
+                    self.store.publish_object(&digest, &content)?;
+                    crate::barriers::pause(crate::barriers::PACKET_AFTER_OBJECT_PUBLISHED);
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// Seal a packet revision in this provider's own store, as an artifact
     /// whose producer principal is this provider (CONTEXT section 5). The
-    /// object is published and verified from disk before the batch naming it
-    /// commits; if the commit never happens, the start-time collection pass
-    /// removes the object.
+    /// artifact's rows go into the tick's batch here; its object is written
+    /// by [`Provider::seal_packets`] once the tick has run, published and
+    /// verified from disk before the batch naming it commits. If the commit
+    /// never happens, the start-time collection pass removes the object.
     fn seal_locally(
         &self,
         tick: &mut Tick,
@@ -4071,8 +4137,10 @@ impl Provider {
         let payload =
             context::packet_descriptor(request, &packet.digest, packet.content.len(), &tick.now);
         let descriptor = crate::evidence::parse_descriptor(&payload, &self.config.provider_id)?;
-        self.store.publish_object(&packet.digest, &packet.content)?;
-        crate::barriers::pause(crate::barriers::PACKET_AFTER_OBJECT_PUBLISHED);
+        tick.outgoing.push(Outgoing::Object {
+            digest: packet.digest.clone(),
+            content: packet.content.clone(),
+        });
         let staged = object(vec![
             ("descriptor", descriptor.clone()),
             ("state", string("staged")),
