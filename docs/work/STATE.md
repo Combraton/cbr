@@ -11,7 +11,7 @@ This is a dated navigation snapshot. Reconcile it with Git, linked issues and cu
 
 ## This change — a compiled request that cannot fit is refused
 
-On `fix/budget-insufficient`, off `main` at `4dcfb04` (#47, `packet_invalid`). Commits: `94da152` the tests, red; `17795f1` a refactor with no change in behaviour; `78ea63f` the fix (A); `05dd265` the join guard (B); `456695d` the cancel rule (C); `6831d62` four tightened tests for what the mutants reached, below; and these docs. **No model has been called.**
+On `fix/budget-insufficient`, off `main` at `4dcfb04` (#47, `packet_invalid`). Commits: `94da152` the tests, red; `17795f1` a refactor with no change in behaviour; `78ea63f` the fix (A); `05dd265` the join guard (B); `456695d` the cancel rule (C); `6831d62` four tightened tests for what the mutants reached, below; and `279a8fb` the docs; then, after independent verification, `83be67e` four tests for what its mutants reached and the docs [after it](#after-independent-verification); then `main` merged in, #48 (m5-arith). **No model has been called.**
 
 - **The rule.** CONTEXT §3: "A request whose mandatory items cannot fit `output_capacity` ends `refused` with reason `budget_insufficient` and `needed: { units: "bytes", amount }`, the size the mandatory items need (CTX-8)." `needed.amount` is that whole size, not the part over the capacity: the fixture `context.limits-are-separate-and-mandatory-content-is-never-dropped` pins 10 at capacity 5. The brief for this slice worded it as the bytes beyond the capacity; the plan corrected that.
 - **Before.** `compile` replaced a compiled job's steps with `end budget_insufficient` when `mandatory_size` passed the job's capacity, which is its first subscriber's, and `finish` then published every subscriber: the request ended `unmet`, with a published packet and no `needed`. A scripted request refused at submit already had §3's shape.
@@ -56,6 +56,28 @@ A turned T1, T2 and J green, B T3, and C T4. T26 of `packet_invalid` now ends it
   - By crate: 20, 7, 40, 533 and 189. `tests/context.rs` has 49, `journey_one.rs` 9.
   - VERIFICATION's row said 783 at `418993c`. After that, `main` changed only docs, comments and one assertion's formatting, so this change adds six: T1–T5 and J.
 - **The seven conformance suites**, built with `build_runner.py --offline` and run into `mktemp -d`, with the worktree's `target/` a symlink to its build directory only for the run. All seven matched their expectations: `stream` 24; `core` 130 and 5 unsupported; `socket` 11 and 2; `evidence` 16; `knowledge` 10; `context` 11; `composition` 3 and 11. No fixture sets `context.compile`, so none reaches A. With B's join guard in place, every suite still matched its expectation.
+
+### After independent verification
+
+Two agents that wrote none of this verified it at `279a8fb`. Their mutants V1, V2, V3, V8, V11, V12 and V13 survived every `cbr-provider` test; each is now killed by a test in `tests/context.rs` (`83be67e`), from the verifier's probes. Each kill was shown in a private copy, `git archive 279a8fb` with those tests: the mutant applied by the verifier's script, `tests/context.rs` run, and the copy restored. Each time only the named test failed, 52 of 53 passing. No provider source changed.
+
+| Test | Mutants, and the red |
+|---|---|
+| T6 `a_compiled_request_needs_room_for_all_its_required_items_together` | V1, `needed` as the largest required section, and V2, an item `required_before_transition` not counted: `r-larger`, at the larger item's size, published `partial`. V12, `needed` as the capacity plus one: 492 where the two items need 899 |
+| T7 `a_request_never_joins_a_compiled_job_whose_required_content_its_capacity_cannot_hold` | V3, the join guard waived once the job has a compiler, and V13, the guard counting only the steps from the cursor on: `r-short` joins `r-first`'s job, compiled and waiting at its publish |
+| T8 `a_compile_that_finishes_after_the_deadline_still_refuses_what_cannot_fit` | V11, a subscriber past its deadline left to the deadline: published `partial` |
+| T9 `a_refused_subscriber_waiting_for_its_deadline_never_holds_back_a_sibling_that_proceeds_with_its_gap` | V8, `publish_all`'s wait counting a refused subscriber's advisory items: the sibling, under `proceed_with_gap`, still `preparing` |
+
+**V4, V7 and V9 survive**, and no test is added for them:
+
+- V4, a partial refusal returning before the compiled steps replace the marker, so the job compiles again at the next tick. The conformance compiler decides the same steps, sources and derivations are sealed once by digest, and no one new is refused, so the only difference is one tick, which no test observes. In production the job would compile twice, and a compile can ask a model.
+- V7, refused subscribers dropped from the job's `requests`. Every other reader of `requests` skips a subscriber not `preparing`; what remains is §10's visibility of the job through its requests (`context_visible`), and no test reads the job's events under a grant over the refused subscriber alone.
+- V9, submit's own refusal at an exact fit (`>` as `>=`). That comparator predates this change, which leaves it unchanged; no `cbr-provider` test submits a scripted request whose own mandatory size equals its capacity.
+
+**Recorded, not changed.**
+
+- **`packet_invalid` wins a tick it shares with this refusal.** In a shared compiled job whose wide subscriber's packet fails the id guard in the tick whose compile refused the narrow one, the narrow subscriber ends `packet_invalid`, with no `needed`: the refused tick's batch is dropped, this refusal with it, and `end_refused_job` refuses every subscriber the store still holds `preparing`. The verifier's probe showed it, with a scripted section id outside the grammar before the `compile` step, and showed it again in this round's private copy; alone, the same narrow request ends `budget_insufficient`, since nothing is published for it. Since #43 the compiler builds every id inside the grammar, so only a test control reaches this.
+- **A correction to `456695d`'s subject**, *cancel's job_continues counts only subscribers still needing the job*: it leaves out only `refused` subscribers. One published without `context.updates` needs nothing more from its job and still counts. The verifier's probe, run again here, cancelled `r-late` beside `r-early`, published `ready` at its own deadline without `context.updates`: `job_continues: true`, and the job left `running` for `r-early` alone. That was so before this change too, since at `4dcfb04` any other subscriber counted, and it falls short of CTX-10's "while any other request still needs it". **A follow-up, not fixed here.**
 
 ## Earlier — packet_invalid
 
