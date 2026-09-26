@@ -1224,7 +1224,14 @@ impl Fake {
     /// The script, one answer per completion, **the last one repeated**. A
     /// repair is a second completion, and a control that ran out would
     /// turn every repair into a different failure from the one under test.
-    fn scripted(&self) -> Answer {
+    ///
+    /// **Billed within the limits `body` declared** (m5-settle): the
+    /// configured usage is billed as input up to the body's bytes, then as
+    /// output up to the generation limit the body binds. So no honest
+    /// answer passes its reservation or trips a stop. `overbilled:<answer>`
+    /// answers `<answer>` and bills the whole usage as output with no cap:
+    /// the one way a fixture overruns.
+    fn scripted(&self, body: &[u8]) -> Answer {
         let mut next = self.next.lock().expect("not poisoned");
         let answer = self
             .answers
@@ -1234,51 +1241,46 @@ impl Fake {
             .unwrap_or_default();
         *next += 1;
         drop(next);
+        if let Some(answer) = answer.strip_prefix("overbilled:") {
+            return self.answer(answer, self.usage.map(|usage| (0, usage)));
+        }
+        let limit = wire::request::generation_of(self.dialect, body).unwrap_or(0);
+        let honest = self.usage.map(|usage| {
+            let input = usage.min(body.len() as u64);
+            (input, (usage - input).min(limit))
+        });
+        self.answer(&answer, honest)
+    }
+
+    /// One scripted answer, billed `(input, output)` when it is billed.
+    fn answer(&self, answer: &str, bill: Option<(u64, u64)>) -> Answer {
+        let usage = bill.map(|(input, output)| input.saturating_add(output));
+        let (input, output) = bill.unwrap_or((0, 0));
+        let completed = |text: &str| Answer::Completed {
+            body: wire::response::billed(self.dialect, text, input, output),
+            usage,
+        };
         match answer.split_once(':') {
-            Some(("choose", id)) => Answer::Completed {
-                body: wire::response::scripted(
-                    self.dialect,
-                    &format!("{{\"id\":\"{id}\"}}"),
-                    self.usage,
-                ),
-                usage: self.usage,
-            },
+            Some(("choose", id)) => completed(&format!("{{\"id\":\"{id}\"}}")),
             // **Discovery's two answers.** `terms:` proposes, `ids:`
             // chooses several; both are written the long way so that a
             // test can script an answer that breaks a bound — an empty
             // list, a term with a space in it, more ids than were
             // offered — which is the control negative control 5 needs.
-            Some(("terms", list)) => Answer::Completed {
-                body: wire::response::scripted(
-                    self.dialect,
-                    &format!("{{\"terms\":{}}}", Fake::quoted(list)),
-                    self.usage,
-                ),
-                usage: self.usage,
-            },
-            Some(("ids", list)) => Answer::Completed {
-                body: wire::response::scripted(
-                    self.dialect,
-                    &format!("{{\"ids\":{}}}", Fake::quoted(list)),
-                    self.usage,
-                ),
-                usage: self.usage,
-            },
-            Some(("text", text)) => Answer::Completed {
-                body: wire::response::scripted(self.dialect, text, self.usage),
-                usage: self.usage,
-            },
+            Some(("terms", list)) => completed(&format!("{{\"terms\":{}}}", Fake::quoted(list))),
+            Some(("ids", list)) => completed(&format!("{{\"ids\":{}}}", Fake::quoted(list))),
+            Some(("text", text)) => completed(text),
             _ if answer == "provider_exhausted" => Answer::ProviderExhausted,
             _ if answer == "failed" => Answer::Failed {
                 reason: "scripted".into(),
-                usage: self.usage,
+                usage,
             },
             _ if answer == "not_sent" => Answer::NotSent("scripted".into()),
             // Anything else is a malformed body, which is a real outcome
             // and not a reason to panic in a provider.
             _ => Answer::Completed {
                 body: Vec::new(),
-                usage: self.usage,
+                usage,
             },
         }
     }
@@ -1308,7 +1310,7 @@ impl Transport for Fake {
                 raw: Vec::new(),
             },
             Call::Completion => {
-                let answer = self.scripted();
+                let answer = self.scripted(body);
                 let raw = match &answer {
                     Answer::Completed { body, .. } => body.clone(),
                     _ => Vec::new(),

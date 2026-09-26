@@ -234,8 +234,12 @@ pub struct FakeModel {
     /// `choose:<id>` for a selection, `text:<...>`, `provider_exhausted`,
     /// `failed` or `not_sent`. The count is always answered as a count.
     /// A call past the end of the list gets the last answer again.
+    /// `overbilled:<answer>` answers `<answer>` billed the whole `usage` as
+    /// output, uncapped: the one way a fixture passes its reservation.
     pub answers: Vec<String>,
-    /// What the provider says each completion cost.
+    /// What the provider bills each completion, **within the limits the
+    /// request declared**: input up to the body's bytes, then output up to
+    /// its generation limit (except under `overbilled:`).
     pub usage: Option<u64>,
     /// Whether the provider's count is made. Serving's own answer is
     /// `WhenItCouldAdmit`; `"counting":"always"` is how the crash matrix
