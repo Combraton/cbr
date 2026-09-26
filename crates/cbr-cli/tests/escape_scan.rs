@@ -72,6 +72,19 @@ fn nested_path() -> String {
     format!("nested/{c}/{c}/{c}/deep.md")
 }
 
+/// A path a body carries in exactly 1,024 bytes, the path's cut: `edge/`,
+/// 169 U+0001 at six bytes each, and `/f.md`. At the bound, not past it.
+fn edge_path() -> String {
+    format!("edge/{}/f.md", "\u{1}".repeat(169))
+}
+
+/// The first line of a file whose last line has no newline and is dense
+/// in C0 controls: a cut span in the chunk that ends the file.
+const TAIL_FIRST: &str = "A tail line, planted-eta.\n";
+
+/// How many U+0001 follow [`TAIL_FIRST`], with no newline after them.
+const TAIL_CONTROLS: usize = 1_500;
+
 /// **Every word `planted` is repository text**, so it must never be in
 /// what the script prints.
 struct Fixture {
@@ -128,11 +141,29 @@ impl Fixture {
             "wide.md",
             format!("{}\n", "y".repeat(1_499)).repeat(3).as_bytes(),
         );
-        // A path a body carries past its bound.
+        // Two lines ending exactly at 2,048 bytes close a chunk there, and
+        // the third is a chunk of its own.
+        write(
+            "exact.md",
+            format!("{}\n{}\ntail\n", "w".repeat(1_023), "w".repeat(1_023)).as_bytes(),
+        );
+        // A line clipped inside a two-byte character: the provider decodes
+        // the half it keeps as U+FFFD, three bytes, so the span is carried
+        // in 1 + 2,047 × 2 + 3 = 4,098.
+        write("split.md", format!("x{}\n", "é".repeat(2_100)).as_bytes());
+        // The file's last chunk, with no newline of its own, past the cut.
+        write(
+            "tail.md",
+            format!("{TAIL_FIRST}{}", "\u{1}".repeat(TAIL_CONTROLS)).as_bytes(),
+        );
+        // A path a body carries past its bound, and one exactly at it.
         write(&nested_path(), b"A deep file, planted-gamma.\n");
+        write(&edge_path(), b"At the edge, planted-zeta.\n");
         // Neither is indexed: one is not UTF-8, one is over the blob bound.
         write("blob.bin", &[0xff, 0xfe, 0x00, 0x01]);
         write("huge.txt", &vec![b'a'; (1 << 20) + 1]);
+        // Exactly at the blob bound, which the indexer reads.
+        write("edge.txt", &vec![b'b'; 1 << 20]);
         // Not a regular file, and not indexed.
         std::os::unix::fs::symlink("plain.md", checkout.join("link.md")).expect("symlink");
 
@@ -209,15 +240,16 @@ fn the_scan_counts_what_a_body_would_carry_of_every_span_at_a_named_commit() {
     let report = report(&fixture);
     assert_eq!(text(&report, &["commit"]), fixture.commit);
 
-    // Ten regular files; the symlink is not one. Eight are indexed.
-    assert_eq!(number(&report, &["files", "regular"]), 10);
-    assert_eq!(number(&report, &["files", "indexed"]), 8);
+    // Fifteen regular files; the symlink is not one. Thirteen are
+    // indexed, `edge.txt` among them at exactly the blob bound.
+    assert_eq!(number(&report, &["files", "regular"]), 15);
+    assert_eq!(number(&report, &["files", "indexed"]), 13);
     assert_eq!(number(&report, &["files", "too_large"]), 1);
     assert_eq!(number(&report, &["files", "not_utf8"]), 1);
 
-    // plain, run.sh, dense, quotes, long, deep: one each; lines: three;
-    // wide: two.
-    assert_eq!(number(&report, &["spans", "total"]), 11);
+    // plain, run.sh, dense, quotes, long, split, tail, edge.txt and the
+    // two deep files: one each; lines: three; wide and exact: two each.
+    assert_eq!(number(&report, &["spans", "total"]), 17);
 
     // The dense span: its first line whole, then U+0001 up to the clip,
     // each carried in six bytes, and its newline in two.
@@ -230,18 +262,19 @@ fn the_scan_counts_what_a_body_would_carry_of_every_span_at_a_named_commit() {
     assert_eq!(number(&report, &["spans", "widest", "start_line"]), 1);
     assert_eq!(number(&report, &["spans", "widest", "end_line"]), 2);
 
-    // Past 4,096 carried: dense, and the quotes at exactly 8,192. The long
-    // line is clipped at 4,096 raw bytes and carried in as many, so it is
-    // not past it.
-    assert_eq!(number(&report, &["spans", "over_4096"]), 2);
-    // Past the cut of 8,192: dense alone. The quotes are at it, not past.
-    assert_eq!(number(&report, &["spans", "over_8192"]), 1);
-    assert_eq!(number(&report, &["spans", "with_six_byte_escapes"]), 1);
+    // Past 4,096 carried: dense, tail, the quotes at exactly 8,192, and
+    // split at 4,098. The long line and `edge.txt` are clipped at 4,096
+    // raw bytes and carried in as many, so neither is past it.
+    assert_eq!(number(&report, &["spans", "over_4096"]), 4);
+    // Past the cut of 8,192: dense and tail. The quotes are at it, not
+    // past.
+    assert_eq!(number(&report, &["spans", "over_8192"]), 2);
+    assert_eq!(number(&report, &["spans", "with_six_byte_escapes"]), 2);
 
     // Paths are the indexed files'. The nested one is carried in 2,117
     // bytes: `nested/`, three components of 700 and their two slashes, and
-    // `/deep.md`.
-    assert_eq!(number(&report, &["paths", "total"]), 8);
+    // `/deep.md`. The edge path is at 1,024, which is not past the cut.
+    assert_eq!(number(&report, &["paths", "total"]), 13);
     assert_eq!(
         number(&report, &["paths", "longest", "carried_bytes"]),
         7 + 3 * 700 + 2 + 8
@@ -258,14 +291,27 @@ fn the_scan_names_every_span_and_path_a_model_would_be_shown_cut() {
         cbr_encoding::Value::Array(items) => items.clone(),
         other => panic!("spans.cut is {other:?}"),
     };
-    assert_eq!(cut.len(), 1, "{cut:?}");
-    assert_eq!(text(&cut[0], &["path"]), "dense.md");
+    // The dense span, and the tail that ends its file on its second line
+    // with no newline, in path order.
+    let tail = (TAIL_FIRST.len() - 1) + 2 + TAIL_CONTROLS * 6;
+    let named: Vec<(String, i64, i64, i64)> = cut
+        .iter()
+        .map(|span| {
+            (
+                text(span, &["path"]).to_string(),
+                number(span, &["start_line"]),
+                number(span, &["end_line"]),
+                number(span, &["carried_bytes"]),
+            )
+        })
+        .collect();
+    let dense = (DENSE_FIRST.len() - 1) + 2 + (SPAN_BYTES - DENSE_FIRST.len()) * 6;
     assert_eq!(
-        (
-            number(&cut[0], &["start_line"]),
-            number(&cut[0], &["end_line"])
-        ),
-        (1, 2)
+        named,
+        vec![
+            ("dense.md".to_string(), 1, 2, dense as i64),
+            ("tail.md".to_string(), 1, 2, tail as i64),
+        ]
     );
     let paths = match member(&report, &["paths", "cut"]) {
         cbr_encoding::Value::Array(items) => items.clone(),
@@ -284,7 +330,7 @@ fn the_scan_names_every_span_and_path_a_model_would_be_shown_cut() {
     assert!(words.contains(&fixture.commit), "{words}");
     assert!(words.contains("dense.md lines 1-2"), "{words}");
     assert!(
-        words.contains("spans past 8,192 carried bytes, shown cut: 1"),
+        words.contains("spans past 8,192 carried bytes, shown cut: 2"),
         "{words}"
     );
     assert!(
@@ -316,10 +362,12 @@ fn the_scan_prints_no_repository_text_only_counts_and_paths() {
                 !printed.contains("\"\"\"\""),
                 "{arguments:?} printed the quotation marks of quotes.md on {stream}"
             );
-            assert!(
-                !printed.contains("zzzz") && !printed.contains("yyyy"),
-                "{arguments:?} printed a span's text on {stream}"
-            );
+            for run in ["zzzz", "yyyy", "wwww", "bbbb", "\u{e9}\u{e9}"] {
+                assert!(
+                    !printed.contains(run),
+                    "{arguments:?} printed a span's text on {stream}: {run}"
+                );
+            }
         }
     }
 }
