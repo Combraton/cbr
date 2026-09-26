@@ -464,6 +464,7 @@ fn a_publication_interrupted_at_the_evidence_provider_replays_after_the_clock_mo
     // Time moves, and only then does the held seal complete.
     set_clock(&clock, "2030-01-01T00:05:00Z");
     std::fs::write(barriers.join(format!("{seal_barrier}.release")), b"").expect("release");
+    let started = Instant::now();
     let sealed = loop {
         let response = evd_owner.call(
             "evidence.inspect",
@@ -475,6 +476,10 @@ fn a_publication_interrupted_at_the_evidence_provider_replays_after_the_clock_mo
         if text(&inspected, &["state"]) == "sealed" {
             break inspected;
         }
+        assert!(
+            started.elapsed() < Duration::from_secs(20),
+            "packet.r-1.1 was never sealed at the evidence provider once its seal was released: {inspected:?}"
+        );
         std::thread::sleep(Duration::from_millis(20));
     };
 
@@ -3844,11 +3849,16 @@ fn a_tick_whose_second_peer_send_fails_keeps_both_capture_instants_and_both_repl
     );
     ctx.kill();
     std::fs::write(peer.barriers().join(format!("{seal}.release")), b"").expect("release");
+    let started = Instant::now();
     let first = loop {
         let inspected = peer.inspect("packet.r-first.1");
         if text(result(&inspected), &["state"]) == "sealed" {
             break result(&inspected).clone();
         }
+        assert!(
+            started.elapsed() < Duration::from_secs(20),
+            "packet.r-first.1 was never sealed at the peer once its seal was released: {inspected:?}"
+        );
         std::thread::sleep(Duration::from_millis(20));
     };
     assert_eq!(
