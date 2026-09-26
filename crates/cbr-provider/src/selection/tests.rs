@@ -497,3 +497,48 @@ fn the_harness_prices_a_selection_question_as_this_module_computes_it() {
         "the harness prices a selection question this module does not compute"
     );
 }
+
+#[test]
+fn the_escape_scan_measures_spans_with_the_bounds_a_candidate_is_shown_within() {
+    // **The survey that sized the cut is a script, and its numbers live
+    // in two languages.** `scripts/escape_scan.py` rebuilds, from a
+    // commit's tree, the spans retrieval can offer — the indexer's chunks,
+    // clipped at retrieval's span — and counts which of them a body would
+    // carry past the cut. A script chunking or clipping differently would
+    // survey spans no model is ever shown. So every bound it names is read
+    // here, beside the constant it copies.
+    let mut path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    path.pop();
+    path.pop();
+    let scan = path.join("scripts").join("escape_scan.py");
+    let source = std::fs::read_to_string(&scan)
+        .unwrap_or_else(|_| panic!("{} is not where the survey lives", scan.display()));
+    let figure = |name: &str| -> Option<usize> {
+        let line = source
+            .lines()
+            .find(|line| line.starts_with(&format!("{name} = ")))?;
+        let written: String = line[name.len() + 3..]
+            .chars()
+            .take_while(|c| c.is_ascii_digit() || *c == '_')
+            .filter(|c| *c != '_')
+            .collect();
+        written.parse().ok()
+    };
+    for (name, bound) in [
+        ("MAX_BLOB_BYTES", cbr_memory::index::MAX_BLOB_BYTES),
+        ("CHUNK_LINES", cbr_memory::index::CHUNK_LINES),
+        ("CHUNK_BYTES", cbr_memory::lexical::CHUNK_BYTES),
+        (
+            "SPAN_BYTES",
+            cbr_memory::retrieval::Bounds::default().span_bytes,
+        ),
+        ("CANDIDATE_TEXT_BYTES", CANDIDATE_TEXT_BYTES),
+        ("CANDIDATE_PATH_BYTES", CANDIDATE_PATH_BYTES),
+    ] {
+        assert_eq!(
+            figure(name),
+            Some(bound),
+            "the survey measures {name} differently from the code it surveys"
+        );
+    }
+}
