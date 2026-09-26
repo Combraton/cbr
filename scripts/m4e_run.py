@@ -318,8 +318,9 @@ def check(manifest, out, live, permit, ceiling, stop):
     if ceiling > RUN_CEILING_TOKENS:
         refuse(
             f"--run-ceiling {ceiling} is above m4e's hard cap of "
-            f"{RUN_CEILING_TOKENS}. Raising it is the owner's decision and "
-            "not this script's."
+            f"{RUN_CEILING_TOKENS}. Raising it is a change to RUN_CEILING_TOKENS "
+            "here, which J2's harness reads too, with its reason recorded in "
+            "m5 READINESS section 10; never a flag."
         )
     if stop > STOP_TOKENS:
         refuse(
