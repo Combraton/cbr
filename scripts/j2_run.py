@@ -104,6 +104,7 @@ from m4e_run import (  # noqa: E402
     git_says,
     normalised_origin,
     packet_digest,
+    reconciled,
     records,
     refuse,
     refuse_unless_public,
@@ -663,6 +664,7 @@ def one_run(run, given, out, provider, client, live, ceiling, commit):
         stop(child)
 
     data = work / "data"
+    reconciled(provider, data)
     total, charges = spend(data)
     result["tokens"] = total
     result["charges"] = [{"kind": kind, "tokens": tokens} for kind, tokens in charges]

@@ -24,8 +24,9 @@ What it does, per run in the manifest:
   1. launches a provider over a data directory under `--out`, bounded
      by what is left of the run ceiling rather than by the whole of it,
   2. registers the repository and submits one context request,
-  3. polls until it settles, and writes the packet where the reviewer
-     can score it,
+  3. polls until it settles, writes the packet where the reviewer can
+     score it, and reconciles the store as a start would before reading
+     what it spent,
   4. relaunches the same store with `--replay-model` and rebuilds the
      same question offline, comparing sealed sections -- **the replay
      gate**,
@@ -606,6 +607,37 @@ def stop(child):
     child.wait()
 
 
+def reconciled(provider, data):
+    """**The store as a start leaves it**, before anything reads it
+    (m5-settle, verification round 2).
+
+    A launch is killed, not ended, so an overrun its process kept -- the
+    store refused the settlement, and took the record -- is in no row
+    until a start reconciles the reservation against its record. Every
+    run opens a new store, so no later start would, and the next run
+    would start on a store read as having no stop and a smaller spend.
+    So the harness runs that start itself, the provider's own
+    `--reconcile-ledger`, after each launch and before reading; and one
+    that fails is a refusal to go on, since the store could not then say
+    what it spent.
+    """
+    try:
+        done = subprocess.run(
+            [str(provider), "--data-dir", str(data), "--reconcile-ledger"],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            timeout=60,
+        )
+    except subprocess.TimeoutExpired:
+        refuse("the store could not be reconciled after its launch: it did not finish")
+    if done.returncode != 0:
+        refuse(
+            "the store could not be reconciled after its launch: "
+            + done.stderr.decode(errors="replace").strip()
+        )
+
+
 def admits(config):
     """The credential a launch under `config` will accept, or `None` when
     the provider issues its own at start.
@@ -1066,6 +1098,7 @@ def one_run(run, out, provider, client, live, ceiling, checkout):
         stop(child)
 
     data = work / "data"
+    reconciled(provider, data)
     total, charges = spend(data)
     result["tokens"] = total
     result["charges"] = [{"kind": kind, "tokens": tokens} for kind, tokens in charges]

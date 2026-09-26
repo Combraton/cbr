@@ -84,6 +84,10 @@ struct Args {
     /// by *reproducible from the retained records without calling the
     /// model again*.
     replay_model: bool,
+    /// **Reconcile the ledger and exit** (m5-settle, verification round
+    /// 2): what a start makes of the reservations a killed process left,
+    /// and nothing else. Serves nothing, reads no credential.
+    reconcile_ledger: bool,
 }
 
 fn parse_args() -> Result<Args, String> {
@@ -99,6 +103,7 @@ fn parse_args() -> Result<Args, String> {
         permit_model_network: false,
         calibrate: None,
         replay_model: false,
+        reconcile_ledger: false,
     };
     let mut argv = std::env::args().skip(1);
     while let Some(flag) = argv.next() {
@@ -116,6 +121,7 @@ fn parse_args() -> Result<Args, String> {
             }
             "--permit-model-network" => args.permit_model_network = true,
             "--replay-model" => args.replay_model = true,
+            "--reconcile-ledger" => args.reconcile_ledger = true,
             "--calibrate" => {
                 args.calibrate = Some(PathBuf::from(
                     argv.next()
@@ -168,6 +174,21 @@ fn run() -> Result<(), String> {
     // Opened before the store, and before any socket is bound, so a malformed
     // clock file stops the launch before anything is written or listened on.
     let clock = clock::Clock::open(config.clock.clone())?;
+    // **A start's reconciliation, alone.** A harness that kills each launch
+    // runs this before it reads the store: an overrun the killed process
+    // kept, when the store refused its settlement, is in no row until a
+    // start reconciles the reservation against its record, and every run
+    // opens a new store, so no later start would. It holds the data
+    // directory as a serving start does.
+    if args.reconcile_ledger {
+        let _held = store::lock_data_dir(&data_dir)?;
+        let store = store::Store::open(&data_dir)
+            .map_err(|error| format!("opening the store at {}: {error}", data_dir.display()))?;
+        let settled = wire::record::reconcile(store.connection())
+            .map_err(|error| format!("reconciling the ledger: {error}"))?;
+        eprintln!("cbr-provider: reconciled {settled} reservation(s)");
+        return Ok(());
+    }
     // Credential administration touches only the store and the handoff file,
     // then exits: it serves nothing.
     if args.rotate_credential || args.revoke_credential.is_some() || args.issue_credential.is_some()
