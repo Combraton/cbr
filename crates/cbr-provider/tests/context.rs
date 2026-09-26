@@ -4019,3 +4019,95 @@ fn a_subscriber_published_at_its_own_deadline_does_not_stop_the_ending_for_one_s
     );
     ctx.kill();
 }
+
+#[test]
+fn a_refused_tick_sends_nothing_even_a_packet_an_earlier_tick_failed_to_seal() {
+    // At 00:00 the peer is down: the tick publishes r's revision 1, its
+    // send fails, and the capture instant is kept. At 00:10, the peer
+    // back, the tick replays revision 1 and the guard refuses revision 2.
+    // Nothing of that tick may reach the peer.
+    let directory = tempfile::tempdir().expect("temp dir");
+    let clock = directory.path().join("clock");
+    set_clock(&clock, "2030-01-01T00:00:00Z");
+    let mut peer = EvidencePeer::start(directory.path(), &clock);
+    let script = format!(
+        r#""r":[{},{{"publish":{{}}}},{{"wait_until":"2030-01-01T00:10:00Z"}},{},{{"publish":{{}}}}]"#,
+        source_section("s-1"),
+        source_section(OUTSIDE_GRAMMAR)
+    );
+    let config = scripted_beside(
+        &script,
+        &format!(r#","clock":{{"file":"{}"}}"#, clock.display()),
+        &peer.member,
+    );
+    let features = ["context.required_before_start", "context.updates"];
+    let mut ctx = ContextProvider::start_with(directory.path(), &config, &features);
+    ctx.submit("r", "2030-01-01T01:00:00Z");
+    peer.crash();
+    let preparing = ctx.inspect("r");
+    assert_eq!(text(&preparing, &["state"]), "preparing", "{preparing:?}");
+    let data = directory.path().join("context-data");
+    let job = stored(&data, "context.job", "r");
+    assert_eq!(
+        canonical(at(&job, &["captures"])),
+        r#"{"packet.r.1":"2030-01-01T00:00:00Z"}"#,
+        "the premise: the failed send's instant is kept: {job:?}"
+    );
+    peer.restart(&[]);
+    set_clock(&clock, "2030-01-01T00:10:00Z");
+    let refused = settled(&mut ctx, "r");
+    assert_eq!(text(&refused, &["state"]), "refused", "{refused:?}");
+    assert_eq!(text(&refused, &["reason"]), "packet_invalid", "{refused:?}");
+    peer.assert_never_sent("packet.r.1");
+    peer.assert_never_sent("packet.r.2");
+    ctx.kill();
+}
+
+#[test]
+fn a_tick_that_fails_after_a_packet_writes_no_object_for_it() {
+    // r-first and r-second share a job whose publish at 00:10 publishes
+    // both; an artifact already holds r-second's conventional packet id,
+    // so the tick fails at r-second's seal, after r-first's packet was
+    // arranged. No object of r-first's packet may be written by that tick.
+    let directory = tempfile::tempdir().expect("temp dir");
+    let clock = directory.path().join("clock");
+    set_clock(&clock, "2030-01-01T00:00:00Z");
+    let script = format!(
+        r#""r-first":[{{"wait_until":"2030-01-01T00:10:00Z"}},{},{{"publish":{{}}}}]"#,
+        source_section("s-1")
+    );
+    let mut ctx = ContextProvider::start_with(
+        directory.path(),
+        &scripted(
+            &script,
+            &format!(r#","clock":{{"file":"{}"}}"#, clock.display()),
+        ),
+        &["context.required_before_start", "context.shared_jobs"],
+    );
+    for request in ["r-first", "r-second"] {
+        let submitted = ctx.submit(request, "2030-01-01T01:00:00Z");
+        assert_eq!(
+            canonical(at(result(&submitted), &["outcome", "job"])),
+            SHARED_JOB,
+            "{submitted:?}"
+        );
+    }
+    seal(&mut ctx, "packet.r-second.1", b"occupied");
+    let data = directory.path().join("context-data");
+    let before = objects(&data);
+    assert_eq!(before.len(), 1, "the premise: one object, the occupier: {before:?}");
+    set_clock(&clock, "2030-01-01T00:10:00Z");
+    let first = ctx.inspect("r-first");
+    assert_eq!(text(&first, &["state"]), "preparing", "{first:?}");
+    let logged = log(directory.path());
+    assert!(
+        logged.contains("artifact packet.r-second.1 already exists"),
+        "the premise: the tick failed at r-second's seal: {logged}"
+    );
+    assert_eq!(
+        objects(&data),
+        before,
+        "r-first's packet was written in a tick that failed after it"
+    );
+    ctx.kill();
+}
