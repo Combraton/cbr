@@ -505,3 +505,49 @@ fn a_dialect_the_counting_endpoint_does_not_describe_is_not_counted() {
         );
     }
 }
+
+// ---- what a body carries ------------------------------------------------
+
+/// What a body carries `text` as, measured by the serializer that writes
+/// the body rather than by the function under test.
+fn carried(text: &str) -> usize {
+    cbr_encoding::to_canonical(&Value::String(text.to_string())).len() - 2
+}
+
+#[test]
+fn carried_within_keeps_the_longest_prefix_a_body_carries_in_the_bound() {
+    // **The bound is on what is sent**, and what is sent is JSON: a quote
+    // is two bytes, U+0001 is six, `é` is two bytes of UTF-8 carried as
+    // they are and a musical symbol four. At every bound from nothing to
+    // past the whole, what is kept fits, is a prefix on a character, and
+    // is the longest that fits: one character more would not. A cut that
+    // split an escape could not be a prefix of characters, so none is.
+    for (class, unit) in [
+        ("x", "x"),
+        ("quote", "\""),
+        ("control", "\u{1}"),
+        ("two-byte", "\u{e9}"),
+        ("four-byte", "\u{1d11e}"),
+        ("mixed", "x\"\u{1}\u{e9}\u{1d11e}\\\n"),
+    ] {
+        let text = unit.repeat(40);
+        for bound in 0..=carried(&text) + 1 {
+            let kept = carried_within(&text, bound);
+            assert!(
+                text.starts_with(kept) && text.is_char_boundary(kept.len()),
+                "{class} at {bound}: not a prefix on a character"
+            );
+            assert!(
+                carried(kept) <= bound,
+                "{class} at {bound}: kept {} carried bytes",
+                carried(kept)
+            );
+            if let Some(next) = text[kept.len()..].chars().next() {
+                assert!(
+                    carried(kept) + carried(&next.to_string()) > bound,
+                    "{class} at {bound}: {next:?} would still have fitted"
+                );
+            }
+        }
+    }
+}

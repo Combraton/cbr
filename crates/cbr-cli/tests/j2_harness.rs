@@ -660,7 +660,8 @@ fn the_harness_refuses_a_ceiling_above_the_hard_cap_and_admits_the_cap_itself() 
 #[test]
 fn the_harness_stops_before_a_run_its_ceiling_could_not_cover() {
     // **The stop is checked before a run, against its worst case**, and
-    // the worst case is the one `projection::tests` computes.
+    // the worst case is the bound `projection::tests` holds at or above
+    // what a projection can reserve.
     let directory = tempfile::tempdir().expect("temp dir");
     let out = directory.path().join("out");
     let input = directory.path().join("small.log");

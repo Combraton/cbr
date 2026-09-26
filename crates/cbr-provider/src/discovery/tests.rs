@@ -374,15 +374,6 @@ fn cbrs_own_instruction_is_the_only_instruction_in_either_request() {
 
 // ---- what the flow can cost ---------------------------------------------
 
-/// The largest request a step can send: every candidate it may offer, each
-/// as long as retrieval's own per-span cap allows.
-fn worst_case(step: &Request) -> u64 {
-    let serialized = step.serialize(crate::wire::Dialect::Responses);
-    crate::budget::input_bound(&serialized, step.messages.len())
-        .saturating_add(step.generation)
-        .saturating_add(crate::budget::SAFETY_MARGIN_TOKENS)
-}
-
 /// Terms at the bound: as many as may be proposed, each as long as one
 /// may be.
 fn longest_terms() -> Vec<String> {
@@ -402,6 +393,78 @@ fn at_the_bound(count: usize) -> Vec<Candidate> {
             )
         })
         .collect()
+}
+
+/// The longest model name a body can carry: the name is serialized into
+/// every body, so the arithmetic prices the longest one the owner named.
+pub(crate) fn longest_model() -> &'static str {
+    crate::wire::MODELS
+        .iter()
+        .copied()
+        .max_by_key(|model| model.len())
+        .expect("the owner named models")
+}
+
+/// A task longer than the protocol admits: 256 code points, each at most
+/// six bytes escaped, is 1,536.
+pub(crate) fn widest_task() -> String {
+    "x".repeat(4_096)
+}
+
+/// **Candidates at every bound a body can carry them at**: text of
+/// quotation marks, which a body carries at two bytes each and so fills
+/// the carried cap exactly without being cut; a path at its own carried
+/// cap; and line numbers of seven digits, the most a blob of
+/// [`cbr_memory::index::MAX_BLOB_BYTES`] can have.
+pub(crate) fn widest_candidates(count: usize, prefix: &str) -> Vec<Candidate> {
+    let lines = cbr_memory::index::MAX_BLOB_BYTES + 1;
+    (1..=count)
+        .map(|n| Candidate {
+            id: format!("{prefix}{n}"),
+            kind: KIND_SPAN,
+            path: "x".repeat(crate::selection::CANDIDATE_PATH_BYTES),
+            start_line: lines,
+            end_line: lines,
+            text: "\"".repeat(cbr_memory::retrieval::Bounds::default().span_bytes),
+        })
+        .collect()
+}
+
+/// The widest terms step: every candidate it is shown, each at every
+/// bound.
+pub(crate) fn widest_terms() -> Request {
+    propose(
+        longest_model(),
+        &widest_task(),
+        &widest_candidates(SEEN, "d"),
+    )
+}
+
+/// The widest choose step: every candidate the union may hold, and every
+/// term at its bound.
+pub(crate) fn widest_choose() -> Request {
+    choose(
+        longest_model(),
+        &widest_task(),
+        &longest_terms(),
+        &widest_candidates(CANDIDATES, "d"),
+    )
+}
+
+/// What one send of `body` reserves, and what each of its repairs does,
+/// in every dialect a launch can configure.
+pub(crate) fn every_send(body: &Request) -> Vec<(String, u64)> {
+    let mut sends = Vec::new();
+    for dialect in crate::wire::Dialect::ALL {
+        let name = dialect.name();
+        let first = crate::model::send_worst(body, dialect);
+        sends.push((format!("first send in {name}"), first));
+        for unusable in crate::wire::response::REPAIRABLE {
+            let repair = crate::model::send_worst(&crate::model::repaired(body, unusable), dialect);
+            sends.push((format!("repair after {unusable:?} in {name}"), repair));
+        }
+    }
+    sends
 }
 
 #[test]
@@ -435,22 +498,40 @@ fn both_steps_ask_for_room_to_reason_and_not_just_room_to_answer() {
 /// drift from the arithmetic it quotes. They move when a bound moves,
 /// and when they do this fails rather than the table going quietly
 /// stale.
+///
+/// **Each step's first send and its widest repair**, as the serving path
+/// holds them: a question sends its body, and at most one repair, and a
+/// count made on the way is admitted within the room that refused the
+/// send ([`crate::model::question_worst`]).
+///
+/// **In whichever dialect frames the most.** A launch configures its
+/// dialect, and the same question is a different number of bytes in each,
+/// so every figure is the most over all of them
+/// ([`crate::model::over_every_dialect`]); the flow's is its two questions
+/// in one dialect, since one launch serves both.
 #[test]
-fn the_published_arithmetic_is_what_the_bodies_actually_cost() {
-    let task = "x".repeat(4096);
-    let terms = worst_case(&propose("MiniMax-M3", &task, &at_the_bound(SEEN)));
-    let choose = worst_case(&choose(
-        "MiniMax-M3",
-        &task,
-        &longest_terms(),
-        &at_the_bound(CANDIDATES),
-    ));
-    let flow = (terms + choose) * (2 + u64::from(crate::model::REPAIRS));
+fn the_published_arithmetic_is_what_the_worst_bodies_cost() {
+    use crate::model::{over_every_dialect, question_worst, send_worst};
+    let (terms, choose) = (widest_terms(), widest_choose());
+    let terms_question = over_every_dialect(|dialect| question_worst(&terms, dialect));
+    let choose_question = over_every_dialect(|dialect| question_worst(&choose, dialect));
+    let flow = over_every_dialect(|dialect| {
+        question_worst(&terms, dialect) + question_worst(&choose, dialect)
+    });
     assert_eq!(
-        (terms, choose, flow, flow * 6),
+        (
+            over_every_dialect(|dialect| send_worst(&terms, dialect)),
+            over_every_dialect(|dialect| send_worst(&choose, dialect)),
+            terms_question,
+            choose_question,
+            flow,
+            flow * 6
+        ),
         (
             PUBLISHED_TERMS,
             PUBLISHED_CHOOSE,
+            PUBLISHED_TERMS_QUESTION,
+            PUBLISHED_CHOOSE_QUESTION,
             PUBLISHED_FLOW,
             PUBLISHED_SIX_FLOWS
         ),
@@ -459,52 +540,75 @@ fn the_published_arithmetic_is_what_the_bodies_actually_cost() {
 }
 
 #[test]
-fn neither_step_can_reach_the_per_request_ceiling() {
+fn neither_step_can_reach_the_per_request_ceiling_whatever_its_text_escapes_to() {
     // **The arithmetic, as a mechanism rather than a paragraph.** Both
-    // bodies are bounded by constants in this module — [`SEEN`] and
-    // [`CANDIDATES`] candidates, each at most one span — so the largest
-    // either can be is computable, and it is computed here against the
-    // ceiling it has to fit under rather than asserted in a document
-    // that cannot notice when a constant moves.
-    let task = "x".repeat(4096);
-    let terms = worst_case(&propose("MiniMax-M3", &task, &at_the_bound(SEEN)));
-    let choose = worst_case(&choose(
-        "MiniMax-M3",
-        &task,
-        &longest_terms(),
-        &at_the_bound(CANDIDATES),
-    ));
-    assert!(
-        terms < crate::budget::PER_REQUEST_TOKENS,
-        "the terms step can be refused by its own request ceiling: {terms}"
-    );
-    assert!(
-        choose < crate::budget::PER_REQUEST_TOKENS,
-        "the choose step can be refused by its own request ceiling: {choose}"
-    );
+    // bodies are bounded by constants — [`SEEN`] and [`CANDIDATES`]
+    // candidates, each cut to its carried bounds — so the largest either
+    // can be is computable, and it is computed here against the ceiling
+    // it has to fit under.
+    //
+    // **Whatever the text escapes to.** A span is capped in raw bytes and
+    // a body is JSON, so a span of C0 control characters is carried at
+    // six bytes a byte; a path the same. Twenty of those spans were a
+    // choice the ceiling refused outright.
+    let controls = "\u{1}".repeat(cbr_memory::retrieval::Bounds::default().span_bytes);
+    let lines = cbr_memory::index::MAX_BLOB_BYTES + 1;
+    for path in ["\u{1}".repeat(1_024), "x".repeat(4_096)] {
+        let candidates = |count: usize| -> Vec<Candidate> {
+            (1..=count)
+                .map(|n| Candidate {
+                    id: format!("d{n}"),
+                    kind: KIND_SPAN,
+                    path: path.clone(),
+                    start_line: lines,
+                    end_line: lines,
+                    text: controls.clone(),
+                })
+                .collect()
+        };
+        for (step, body) in [
+            (
+                "terms",
+                propose(longest_model(), &widest_task(), &candidates(SEEN)),
+            ),
+            (
+                "choose",
+                choose(
+                    longest_model(),
+                    &widest_task(),
+                    &longest_terms(),
+                    &candidates(CANDIDATES),
+                ),
+            ),
+        ] {
+            for (send, reserved) in every_send(&body) {
+                assert!(
+                    reserved < crate::budget::PER_REQUEST_TOKENS,
+                    "the {step} step's {send} can be refused by its own request ceiling: \
+                     {reserved}, with a path of {} bytes",
+                    path.len()
+                );
+            }
+        }
+    }
 }
 
 #[test]
 fn the_whole_flow_cannot_exhaust_a_job_or_a_run() {
     // **Two questions per request, not per item and not per discovered
     // section** — which is the property the number rests on: discovery
-    // does not scale with what it finds. Each may be repaired once
-    // ([`crate::model::REPAIRS`]) and each may be counted once, so three
-    // sends apiece is the worst a step can do.
+    // does not scale with what it finds. Each is its first send and its
+    // widest repair ([`crate::model::question_worst`]).
     //
     // Against the per-job ceiling that bounds one job, and against
     // m4e's own run ceiling, which is what the whole milestone may
     // spend.
-    let task = "x".repeat(4096);
-    let terms = worst_case(&propose("MiniMax-M3", &task, &at_the_bound(SEEN)));
-    let choose = worst_case(&choose(
-        "MiniMax-M3",
-        &task,
-        &longest_terms(),
-        &at_the_bound(CANDIDATES),
-    ));
-    let sends = 2 + u64::from(crate::model::REPAIRS);
-    let flow = (terms + choose) * sends;
+    let (terms, choose) = (widest_terms(), widest_choose());
+    let flow = crate::model::over_every_dialect(|dialect| {
+        crate::model::question_worst(&terms, dialect)
+            + crate::model::question_worst(&choose, dialect)
+    });
+    assert_eq!((flow, flow * 5), (PUBLISHED_FLOW, 2_593_140));
     assert!(
         flow < crate::budget::PER_JOB_TOKENS,
         "discovery alone can exhaust a job: {flow}"
@@ -559,10 +663,14 @@ fn the_harness_stops_against_the_same_worst_case_this_module_computes() {
     );
 }
 
-/// The four figures [READINESS §3] publishes.
+/// The figures [READINESS §3] publishes: each step's first send and its
+/// question, the flow, and six flows, each the most over every dialect a
+/// launch can configure. The OpenAI dialect frames the most.
 ///
 /// [READINESS §3]: ../../docs/work/m4/READINESS.md
-const PUBLISHED_TERMS: u64 = 32_943;
-const PUBLISHED_CHOOSE: u64 = 91_453;
-pub(crate) const PUBLISHED_FLOW: u64 = 373_188;
-const PUBLISHED_SIX_FLOWS: u64 = 2_239_128;
+const PUBLISHED_TERMS: u64 = 63_718;
+const PUBLISHED_CHOOSE: u64 = 193_548;
+const PUBLISHED_TERMS_QUESTION: u64 = 129_484;
+const PUBLISHED_CHOOSE_QUESTION: u64 = 389_144;
+pub(crate) const PUBLISHED_FLOW: u64 = 518_628;
+const PUBLISHED_SIX_FLOWS: u64 = 3_111_768;

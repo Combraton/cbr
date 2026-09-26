@@ -2557,8 +2557,10 @@ impl Provider {
             basis: &frontier.tree,
         }];
         let query = text(at(item, &["selector"]), &["value"]).to_string();
+        // **As many rows as the selection figure prices**, since every
+        // row is offered as a candidate (`selection::CANDIDATES`).
         let bounds = Bounds {
-            rows: 8,
+            rows: crate::selection::CANDIDATES,
             ..Bounds::default()
         };
         let mut answer = cbr_memory::retrieval::search(

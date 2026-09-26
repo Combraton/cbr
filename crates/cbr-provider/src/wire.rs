@@ -42,13 +42,17 @@ pub enum Dialect {
 }
 
 impl Dialect {
+    /// **Every dialect a launch can configure**, and so every dialect a
+    /// published worst case is the most of (`model::over_every_dialect`).
+    ///
+    /// [`Dialect::parse`] reads a configured name through this list and
+    /// nothing else, so a dialect that is not in it cannot be configured,
+    /// and one that is is priced: a new dialect is either both or neither.
+    pub const ALL: [Dialect; 3] = [Dialect::Responses, Dialect::OpenAi, Dialect::Anthropic];
+
+    /// The dialect a configuration names, when it is one of [`Self::ALL`].
     pub fn parse(name: &str) -> Option<Self> {
-        match name {
-            "responses" => Some(Dialect::Responses),
-            "openai" => Some(Dialect::OpenAi),
-            "anthropic" => Some(Dialect::Anthropic),
-            _ => None,
-        }
+        Self::ALL.into_iter().find(|dialect| dialect.name() == name)
     }
 
     pub fn name(self) -> &'static str {

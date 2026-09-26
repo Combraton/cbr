@@ -226,11 +226,19 @@ pub struct Runtime<'a> {
 impl<'a> Runtime<'a> {
     /// The whole path, in the order READINESS section 3 fixes it.
     ///
-    /// 1. The **local** estimate decides. It alone can refuse, and when it
-    ///    does nothing leaves the process.
-    /// 2. The provider count runs only for a request already admitted, and
-    ///    is itself admitted, sent and settled.
-    /// 3. The completion is admitted against the provider's own figure.
+    /// 1. The **local** estimate decides first. When it admits, the
+    ///    completion is sent on it and no count is made. When it refuses on
+    ///    the per-request ceiling, or the dialect has no counting endpoint,
+    ///    the refusal stands and nothing leaves the process.
+    /// 2. When it refuses on the job, the window, the month or the run —
+    ///    a counter a tighter figure could satisfy — the provider count is
+    ///    made, and is itself admitted, sent and settled.
+    /// 3. The completion is then admitted on the provider's own figure —
+    ///    or on the local one again, when the count is implausibly low —
+    ///    against the ledger as it stands after the count.
+    ///
+    /// Under [`Counting::Always`], whose purpose is the count, the count
+    /// comes first and the completion is admitted on it alone.
     ///
     /// `barrier` is called at each boundary the crash matrix kills at.
     pub fn call(
@@ -309,9 +317,7 @@ impl<'a> Runtime<'a> {
         // **One data point is not a rule.** m4e's requests are realistic
         // sizes and will say more; until then this is the reading of one
         // measurement, and it is the reading that spends less.
-        let wanted = budget::input_bound(body, messages)
-            .saturating_add(generation)
-            .saturating_add(budget::SAFETY_MARGIN_TOKENS);
+        let wanted = budget::reservation(body, messages, generation);
         let (reservation, admission, counted) = match self.ledger.admit(now, job, request, wanted) {
             Ok(Ok(reservation)) => (reservation, ADMITTED_LOCAL, None),
             Ok(Err(refusal)) => {
@@ -671,6 +677,136 @@ pub struct Counted {
 /// envelope exists to prevent, arriving one polite retry at a time.
 pub const REPAIRS: u32 = 1;
 
+/// The counting every serving launch uses.
+///
+/// **Named once, because the arithmetic rests on it.** Under it a count is
+/// made only after the local bound is refused on a counter a tighter
+/// figure could satisfy, and that is what lets [`question_worst`] bound a
+/// serving question from its body alone. `main.rs` names this rather than
+/// a variant, and a test holds it to that.
+pub const SERVING_COUNTING: Counting = Counting::WhenItCouldAdmit;
+
+/// The request a repair after `unusable` sends: the same question with
+/// **more room** after a truncation, and with **CBR's own sentence** after
+/// any other repairable outcome.
+///
+/// The one place a repair is built. [`Runtime::ask`] sends it and
+/// [`question_worst`] prices it, so the repair the arithmetic bounds is the
+/// repair that goes out. `unusable` is one of
+/// [`wire::response::REPAIRABLE`]: nothing is repaired after any other.
+pub fn repaired(
+    body: &wire::request::Request,
+    unusable: wire::response::Unusable,
+) -> wire::request::Request {
+    let mut again = body.clone();
+    // **A truncation is repaired with more room, not more words.** The
+    // answer was not wrong; there was nowhere to put it, and on these
+    // models reasoning spends the same budget. Saying it again in a smaller
+    // space would waste a second call exactly as the first was wasted.
+    if unusable == wire::response::Unusable::Truncated {
+        again.generation = wire::request::widened(again.generation);
+    } else {
+        // **The model's own answer is not sent back.** Repository text is
+        // untrusted and so is what a model made of it; echoing it into the
+        // next request gives text that arrived from a repository a second
+        // chance to be read as an instruction, and charges for the
+        // privilege. The repair is CBR's own sentence.
+        again.messages.push(wire::request::Message {
+            role: wire::request::Role::User,
+            text: wire::request::repair_instruction(&again.want).to_string(),
+        });
+    }
+    again
+}
+
+/// **What admission reserves for one send of `body`** on the local bound:
+/// [`budget::reservation`] of the body as serialized, over the messages the
+/// provider frames, the instruction among them.
+// Called by the arithmetic's tests, and by m5b's loop once it lands; no
+// serving path needs the figure before then.
+#[cfg_attr(not(test), allow(dead_code))]
+pub fn send_worst(body: &wire::request::Request, dialect: Dialect) -> u64 {
+    budget::reservation(
+        &body.serialize(dialect),
+        body.framed_messages(dialect),
+        body.generation,
+    )
+}
+
+/// **The most one question can hold on the serving path**: its first send
+/// and the widest repair after it, each send priced by [`send_worst`] and
+/// each repair built by [`repaired`], over every outcome in
+/// [`wire::response::REPAIRABLE`] and [`REPAIRS`] deep.
+///
+/// Why no more. A question is one send and at most [`REPAIRS`] repairs. An
+/// attempt admitted on the local bound holds what it reserved. Under
+/// [`SERVING_COUNTING`] an attempt makes a count only after the local
+/// bound is refused on a counter with too little room for the send, and
+/// the count and the completion admitted on it are both admitted on that
+/// counter, so together they hold less than the send it refused. The
+/// sweep in `model::harness` measures this on the real call path rather
+/// than arguing it.
+///
+/// **What it assumes.** Bills are within their reservations: the byte
+/// bound holds, a completion admitted on a count is billed no more than
+/// the count said, `max_output_tokens` is honoured, and a failed call
+/// reports no more than it reserved. And nothing frees room on the
+/// refusing counter **between the local refusal and the completion's
+/// admission** — while the count is admitted, sent and settled, and after
+/// it. If room is freed anywhere in that window, the completion is
+/// admitted on the counter as it then is, and an attempt can hold more
+/// than the send `W` it counted for. With an honest count, at most the
+/// count body's own bound `Ic`, the most is `W + Ic − (local − Ic)`: the
+/// count settled at `Ic` and a completion reserved at it, which is `W`
+/// less what the count body omits (`local − Ic`, the input bound of the
+/// three members a count body does not carry). A count below the
+/// implausibility floor is not believed, and its attempt holds `W` and
+/// less than the floor beside it, which is less. So a question holds at
+/// most `question_worst` and less than one count's reservation more for
+/// each count it made, and a test pins the maximum. Every ceiling still
+/// holds at admission.
+///
+/// **Under [`Counting::Always`] nothing derived from the body bounds a
+/// question.** The count comes first and is floored but not capped, so a
+/// count above the local bound reserves above it.
+// Called by the arithmetic's tests, and by m5b's loop once it lands; no
+// serving path needs the figure before then.
+#[cfg_attr(not(test), allow(dead_code))]
+pub fn question_worst(body: &wire::request::Request, dialect: Dialect) -> u64 {
+    fn worst(body: &wire::request::Request, dialect: Dialect, repairs: u32) -> u64 {
+        let send = send_worst(body, dialect);
+        if repairs == 0 {
+            return send;
+        }
+        let widest = wire::response::REPAIRABLE
+            .iter()
+            .map(|unusable| worst(&repaired(body, *unusable), dialect, repairs - 1))
+            .max()
+            .unwrap_or(0);
+        send.saturating_add(widest)
+    }
+    worst(body, dialect, REPAIRS)
+}
+
+/// **The most `price` comes to over every dialect a launch can
+/// configure**, [`Dialect::ALL`]: the one place a published worst case
+/// takes its maximum.
+///
+/// A body's bytes depend on the dialect that frames it — the chat
+/// dialects carry members the Responses dialect does not, and the OpenAI
+/// one the schema a structure asks for — and which dialect serves is a
+/// launch's configuration. So a figure that bounds every launch is the
+/// most over all of them, and a dialect added to [`Dialect::ALL`] is
+/// priced here without anyone remembering to.
+// Called by the arithmetic's tests; no serving path needs the figure.
+#[cfg_attr(not(test), allow(dead_code))]
+pub fn over_every_dialect(price: impl Fn(Dialect) -> u64) -> u64 {
+    Dialect::ALL.into_iter().map(price).max().unwrap_or(0)
+}
+
+#[cfg(test)]
+pub(crate) mod harness;
+
 /// One question for a model, with the bounded repair that goes with it.
 pub struct Ask<'a> {
     pub job: &'a str,
@@ -868,25 +1004,9 @@ impl Runtime<'_> {
                     cost,
                 };
             }
-            // **A truncation is repaired with more room, not more words.**
-            // The answer was not wrong; there was nowhere to put it, and on
-            // these models reasoning spends the same budget. Saying it
-            // again in a smaller space would waste a second call exactly as
-            // the first was wasted.
-            if unusable == wire::response::Unusable::Truncated {
-                body.generation = wire::request::widened(body.generation);
-            } else {
-                // **The model's own answer is not sent back.** Repository
-                // text is untrusted and so is what a model made of it;
-                // echoing it into the next request gives text that arrived
-                // from a repository a second chance to be read as an
-                // instruction, and charges for the privilege. The repair is
-                // CBR's own sentence.
-                body.messages.push(wire::request::Message {
-                    role: wire::request::Role::User,
-                    text: wire::request::repair_instruction(&body.want).to_string(),
-                });
-            }
+            // **Built where the arithmetic builds it**, so the repair
+            // `question_worst` prices is the repair that is sent.
+            body = repaired(&body, unusable);
             cost.repairs += 1;
         }
     }

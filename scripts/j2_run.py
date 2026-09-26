@@ -60,8 +60,8 @@ What it refuses, before anything starts:
 
 And it stops **before** the run whose worst case could cross the ceiling,
 rather than after one that did: the worst case of a projection is a
-computed number (`projection::tests`), so the arithmetic is done before
-the tokens are.
+computed number, and `projection::tests` holds the bound here at or above
+it, so the arithmetic is done before the tokens are.
 
 The report holds names, digests, sizes, counts, costs and the checks'
 verdicts. **It holds no path from the manifest**: an input is named by
@@ -111,9 +111,14 @@ from m4e_run import (  # noqa: E402
     stop,
 )
 
-# `projection::tests` computes both, and reads them back from here: the
-# worst a whole projection can cost, every part counted and repaired once,
-# and the most parts one projection asks.
+# `projection::tests` reads both back from here. `MAX_PARTS` is the most
+# parts one projection asks. `WORST_CASE_PROJECTION_TOKENS` is the bound
+# this harness stops against, and it is not the figure that module
+# computes: it was computed when every part was priced as three sends,
+# counted and repaired once. A whole projection's serving worst case, each
+# part its first send and its widest repair (`model::question_worst`) in the
+# dialect that frames the most, is 341,216, and the test holds this bound
+# at or above it. Tightening it is the owner's call at the next J2 run.
 WORST_CASE_PROJECTION_TOKENS = 492_204
 MAX_PARTS = 4
 
