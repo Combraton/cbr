@@ -3151,25 +3151,22 @@ impl Provider {
         // before any job exists (CONTEXT section 3).
         let needed = context::mandatory_size(&script, list(payload, &["items"]));
         if needed > int(payload, &["limits", "output_capacity", "amount"]) {
-            let needed = object(vec![
-                ("units", string("bytes")),
-                ("amount", Value::Int(needed)),
-            ]);
+            let needed = context::needed_bytes(needed);
             set(&mut record, "state", string("refused"));
-            set(&mut record, "reason", string("budget_insufficient"));
+            set(&mut record, "reason", string(context::BUDGET_INSUFFICIENT));
             set(&mut record, "needed", needed.clone());
             let changed = event(
                 "context.request.changed",
                 object(vec![
                     ("state", string("refused")),
-                    ("reason", string("budget_insufficient")),
+                    ("reason", string(context::BUDGET_INSUFFICIENT)),
                 ]),
                 &command.caused_by,
             );
             let outcome = object(vec![
                 ("request", request_subject),
                 ("state", string("refused")),
-                ("reason", string("budget_insufficient")),
+                ("reason", string(context::BUDGET_INSUFFICIENT)),
                 ("needed", needed),
             ]);
             return self.commit_context(
@@ -3711,28 +3708,20 @@ impl Provider {
         };
         let job_subject = subject(JOB, job_id);
         for request in subscribers(&job) {
-            let Some((_, mut record)) = self.context_record(REQUEST, &request)? else {
+            let Some((_, record)) = self.context_record(REQUEST, &request)? else {
                 continue;
             };
             if text(&record, &["state"]) != "preparing" {
                 continue;
             }
-            let ended_items = context::refused_items(&record, context::PACKET_INVALID);
-            set(&mut record, "state", string("refused"));
-            set(&mut record, "reason", string(context::PACKET_INVALID));
-            set(&mut record, "ended_items", Value::Array(ended_items));
-            let request_key = key(REQUEST, &request);
-            let revision = self.tick_save(&mut tick, &request_key, &record)?;
-            tick.batch.event(
-                &request_key,
-                revision,
-                "context.request.changed",
-                object(vec![
-                    ("state", string("refused")),
-                    ("job", job_subject.clone()),
-                    ("reason", string(context::PACKET_INVALID)),
-                ]),
-            );
+            self.refuse_request(
+                &mut tick,
+                &request,
+                record,
+                &job_subject,
+                context::PACKET_INVALID,
+                None,
+            )?;
         }
         set(&mut job, "state", string("ended"));
         set(&mut job, "reason", string(context::PACKET_INVALID));
@@ -3751,6 +3740,40 @@ impl Provider {
         // commit is a job still running.
         self.release_job(job_id);
         Ok(true)
+    }
+
+    /// Refuse one request in `tick`, for `reason`: `refused`, its items
+    /// ended by [`context::refused_items`], `needed` when the reason has
+    /// one, one revision, and `context.request.changed` naming its job.
+    fn refuse_request(
+        &self,
+        tick: &mut Tick,
+        request: &str,
+        mut record: Value,
+        job_subject: &Value,
+        reason: &str,
+        needed: Option<i64>,
+    ) -> Result<(), ProtocolError> {
+        let ended_items = context::refused_items(&record, reason);
+        set(&mut record, "state", string("refused"));
+        set(&mut record, "reason", string(reason));
+        if let Some(needed) = needed {
+            set(&mut record, "needed", context::needed_bytes(needed));
+        }
+        set(&mut record, "ended_items", Value::Array(ended_items));
+        let request_key = key(REQUEST, request);
+        let revision = self.tick_save(tick, &request_key, &record)?;
+        tick.batch.event(
+            &request_key,
+            revision,
+            "context.request.changed",
+            object(vec![
+                ("state", string("refused")),
+                ("job", job_subject.clone()),
+                ("reason", string(reason)),
+            ]),
+        );
+        Ok(())
     }
 
     fn keep_captures(
