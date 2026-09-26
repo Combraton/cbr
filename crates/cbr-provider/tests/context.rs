@@ -1626,8 +1626,10 @@ fn every_request_sharing_a_job_the_guard_refuses_is_refused_with_it() {
     // refusal.** A section dropped from a narrower subscriber's packet
     // for capacity is still named there, as an omission, and the guard
     // reads omission ids too: no subscriber's own packet would have been
-    // valid. Every subscriber still preparing ends with the job, whatever
-    // its own deadline, and the job ends once.
+    // valid. Here both subscribers have one deadline, both are refused
+    // with the job, and the job ends once. One whose deadline is later
+    // than the one that brought the packet on is refused too:
+    // `a_subscriber_with_a_later_deadline_is_refused_with_the_job_an_earlier_deadline_ended`.
     let directory = tempfile::tempdir().expect("temp dir");
     let clock = directory.path().join("clock");
     set_clock(&clock, "2030-01-01T00:00:00Z");
@@ -2033,6 +2035,385 @@ fn a_refusal_holds_back_no_other_job_the_same_tick_walks() {
     assert!(
         !logged.contains("context preparation failed"),
         "the refusal stopped the tick: {logged}"
+    );
+    ctx.kill();
+}
+
+// ---- the cases the verification's mutants reached ---------------------------
+
+/// The job both subscribers of [`two_subscribers_of_one_refused_job`] share,
+/// named after the first of them.
+const SHARED_JOB: &str = r#"{"id":"r-first","kind":"context.job"}"#;
+
+/// `r-first` and `r-second`, both preparing in one job under
+/// `context.shared_jobs`, with the same deadline. The job's script waits
+/// for 00:10, then publishes a section the guard refuses. Returns the
+/// provider and its clock file, at 00:00.
+fn two_subscribers_of_one_refused_job(directory: &Path) -> (ContextProvider, PathBuf) {
+    let clock = directory.join("clock");
+    set_clock(&clock, "2030-01-01T00:00:00Z");
+    let script = format!(
+        r#""r-first":[{{"wait_until":"2030-01-01T00:10:00Z"}},{},{{"publish":{{}}}}]"#,
+        source_section(OUTSIDE_GRAMMAR)
+    );
+    let mut ctx = ContextProvider::start_with(
+        directory,
+        &scripted(
+            &script,
+            &format!(r#","clock":{{"file":"{}"}}"#, clock.display()),
+        ),
+        &["context.required_before_start", "context.shared_jobs"],
+    );
+    for request in ["r-first", "r-second"] {
+        let submitted = ctx.submit(request, "2030-01-01T01:00:00Z");
+        let outcome = at(result(&submitted), &["outcome"]);
+        assert_eq!(text(outcome, &["state"]), "preparing", "{submitted:?}");
+        assert_eq!(
+            canonical(at(outcome, &["job"])),
+            SHARED_JOB,
+            "{submitted:?}"
+        );
+    }
+    (ctx, clock)
+}
+
+/// The `context.request.changed` payload that refuses a subscriber of
+/// [`SHARED_JOB`].
+fn refused_in_shared_job() -> String {
+    format!(r#"{{"job":{SHARED_JOB},"reason":"packet_invalid","state":"refused"}}"#)
+}
+
+#[test]
+fn a_shared_job_whose_first_subscriber_was_cancelled_still_ends_for_the_one_left() {
+    // **The job that ends is found by its own id, not by the request whose
+    // packet was refused.** A shared job is named after its first
+    // subscriber. Cancel that one and the job carries on for the second,
+    // so when the guard refuses the packet the request being published is
+    // `r-second`, in the job `r-first`. That job ends, once, and
+    // `r-second`'s refusal names it.
+    let directory = tempfile::tempdir().expect("temp dir");
+    let (mut ctx, clock) = two_subscribers_of_one_refused_job(directory.path());
+    let revision = match at(&ctx.inspect("r-first"), &["revision"]) {
+        Value::Int(revision) => *revision,
+        other => panic!("a revision: {other:?}"),
+    };
+    let cancelled = ctx.call(
+        "context.request.cancel",
+        Some(("cancel-r-first", ("context.request", "r-first"), revision)),
+        "{}",
+    );
+    assert_eq!(
+        at(result(&cancelled), &["outcome", "job_continues"]),
+        &Value::Bool(true),
+        "the premise: the job carries on for r-second: {cancelled:?}"
+    );
+
+    set_clock(&clock, "2030-01-01T00:10:00Z");
+    let refused = settled(&mut ctx, "r-second");
+    assert_eq!(text(&refused, &["state"]), "refused", "{refused:?}");
+    assert_eq!(text(&refused, &["reason"]), "packet_invalid", "{refused:?}");
+    assert_eq!(canonical(at(&refused, &["job"])), SHARED_JOB, "{refused:?}");
+    assert_eq!(canonical(at(&refused, &["items"])), REFUSED_ITEM);
+
+    let events = recorded(&mut ctx);
+    assert_eq!(
+        of_subject(&events, "context.request", "r-second")
+            .last()
+            .expect("an event")
+            .1,
+        refused_in_shared_job(),
+        "{events:?}"
+    );
+    assert_eq!(
+        of_subject(&events, "context.job", "r-first"),
+        vec![(
+            "context.job.ended".to_string(),
+            r#"{"reason":"packet_invalid"}"#.to_string()
+        )],
+        "{events:?}"
+    );
+    let logged = log(directory.path());
+    assert_eq!(refusals(&logged, "r-second"), 1, "{logged}");
+    ctx.kill();
+}
+
+#[test]
+fn every_refusal_in_a_shared_job_names_the_job_and_not_the_request() {
+    // **`context.request.changed` names the job a request was prepared
+    // by.** For a shared job's first subscriber that is its own id as
+    // well, so only the second tells the job from the request: each
+    // subscriber is refused once, and each refusal names `r-first`.
+    let directory = tempfile::tempdir().expect("temp dir");
+    let (mut ctx, clock) = two_subscribers_of_one_refused_job(directory.path());
+    set_clock(&clock, "2030-01-01T00:10:00Z");
+    for request in ["r-first", "r-second"] {
+        let refused = settled(&mut ctx, request);
+        assert_eq!(
+            text(&refused, &["state"]),
+            "refused",
+            "{request}: {refused:?}"
+        );
+    }
+    let events = recorded(&mut ctx);
+    for request in ["r-first", "r-second"] {
+        let refusals: Vec<(String, String)> = of_subject(&events, "context.request", request)
+            .into_iter()
+            .filter(|(_, payload)| payload.contains(r#""state":"refused""#))
+            .collect();
+        assert_eq!(
+            refusals,
+            vec![(
+                "context.request.changed".to_string(),
+                refused_in_shared_job()
+            )],
+            "{request}: {events:?}"
+        );
+    }
+    ctx.kill();
+}
+
+#[test]
+fn a_subscriber_with_a_later_deadline_is_refused_with_the_job_an_earlier_deadline_ended() {
+    // **A subscriber is refused with its job whatever brought the packet
+    // on.** The job's script never publishes, so the packet the guard
+    // refuses is the one `r-first`'s deadline, 00:05, publishes. `r-second`
+    // joined the same job with a deadline an hour later, and is still
+    // inside it when the job ends; it is refused all the same, since
+    // nothing the ended job prepares will be published.
+    let directory = tempfile::tempdir().expect("temp dir");
+    let clock = directory.path().join("clock");
+    set_clock(&clock, "2030-01-01T00:00:00Z");
+    let script = format!(r#""r-first":[{}]"#, source_section(OUTSIDE_GRAMMAR));
+    let mut ctx = ContextProvider::start_with(
+        directory.path(),
+        &scripted(
+            &script,
+            &format!(r#","clock":{{"file":"{}"}}"#, clock.display()),
+        ),
+        &["context.required_before_start", "context.shared_jobs"],
+    );
+    for (request, deadline) in [
+        ("r-first", "2030-01-01T00:05:00Z"),
+        ("r-second", "2030-01-01T01:00:00Z"),
+    ] {
+        let submitted = ctx.submit(request, deadline);
+        let outcome = at(result(&submitted), &["outcome"]);
+        assert_eq!(text(outcome, &["state"]), "preparing", "{submitted:?}");
+        assert_eq!(
+            canonical(at(outcome, &["job"])),
+            SHARED_JOB,
+            "{submitted:?}"
+        );
+    }
+    let before = ctx.inspect("r-second");
+    assert_eq!(text(&before, &["state"]), "preparing", "{before:?}");
+
+    set_clock(&clock, "2030-01-01T00:05:00Z");
+    for request in ["r-first", "r-second"] {
+        let refused = settled(&mut ctx, request);
+        assert_eq!(
+            text(&refused, &["state"]),
+            "refused",
+            "{request}: {refused:?}"
+        );
+        assert_eq!(
+            text(&refused, &["reason"]),
+            "packet_invalid",
+            "{request}: {refused:?}"
+        );
+        assert_eq!(
+            canonical(at(&refused, &["items"])),
+            REFUSED_ITEM,
+            "{request}"
+        );
+    }
+    let events = recorded(&mut ctx);
+    assert_eq!(
+        of_subject(&events, "context.request", "r-second")
+            .last()
+            .expect("an event")
+            .1,
+        refused_in_shared_job(),
+        "{events:?}"
+    );
+    assert_eq!(
+        of_subject(&events, "context.job", "r-first"),
+        vec![(
+            "context.job.ended".to_string(),
+            r#"{"reason":"packet_invalid"}"#.to_string()
+        )],
+        "{events:?}"
+    );
+    ctx.kill();
+}
+
+#[test]
+fn a_request_submitted_after_the_refusal_never_joins_the_ended_job() {
+    // **An ended job takes no new subscriber.** Under
+    // `context.shared_jobs` a request joins a running job with the same
+    // principal, basis, items and access scope, and `r-later` matches
+    // `r-bad` in all of them. `r-bad`'s job has ended and never
+    // published, so joining it would leave `r-later` `preparing` for
+    // ever: no tick walks an ended job. It gets a job of its own.
+    let directory = tempfile::tempdir().expect("temp dir");
+    let mut ctx = ContextProvider::start_with(
+        directory.path(),
+        &scripted(&refused_script("r-bad"), ""),
+        &["context.required_before_start", "context.shared_jobs"],
+    );
+    ctx.submit("r-bad", "2030-01-01T01:00:00Z");
+    let refused = settled(&mut ctx, "r-bad");
+    assert_eq!(text(&refused, &["state"]), "refused", "{refused:?}");
+
+    let later = ctx.submit("r-later", "2030-01-01T01:00:00Z");
+    let outcome = at(result(&later), &["outcome"]);
+    assert_eq!(text(outcome, &["state"]), "preparing", "{later:?}");
+    assert_eq!(
+        canonical(at(outcome, &["job"])),
+        r#"{"id":"r-later","kind":"context.job"}"#,
+        "a request joined a job that had ended: {later:?}"
+    );
+    ctx.kill();
+}
+
+/// Item `i-1` of [`ContextProvider::submit`]'s request, for a request
+/// [`ContextProvider::submit_with`] builds.
+const SOURCE_ITEM: &str = r#"{"item_id":"i-1","selector":{"kind":"path","value":"src/main.rs"},"obligation":"required_before_start","reliance":"binding","selected_by":"owner","check":{"kind":"source_included","repository":"repo-a","path":"src/main.rs"}}"#;
+
+#[test]
+fn a_request_published_unmet_or_partial_keeps_its_state_and_revision_when_a_later_update_is_refused()
+ {
+    // **A request delivered a packet keeps it, whatever the packet said.**
+    // The update test above publishes revision 1 `ready`. Here `r-unmet`'s
+    // revision 1 is `unmet`, nothing having satisfied `i-1` yet, and
+    // `r-partial`'s is `partial`, `i-1` satisfied and an advisory item
+    // degraded. Neither is `preparing` when its job's revision 2 is
+    // refused, so neither is refused: each job ends, and each request
+    // reads as it was published, state and revision included.
+    let directory = tempfile::tempdir().expect("temp dir");
+    let clock = directory.path().join("clock");
+    set_clock(&clock, "2030-01-01T00:00:00Z");
+    let then_refused = format!(
+        r#"{{"wait_until":"2030-01-01T00:10:00Z"}},{},{{"publish":{{}}}}"#,
+        source_section(OUTSIDE_GRAMMAR)
+    );
+    let scripts = format!(
+        r#""r-unmet":[{{"publish":{{}}}},{then_refused}],"r-partial":[{},{{"publish":{{}}}},{then_refused}]"#,
+        source_section("s-1")
+    );
+    let mut ctx = ContextProvider::start_with(
+        directory.path(),
+        &scripted(
+            &scripts,
+            &format!(r#","clock":{{"file":"{}"}}"#, clock.display()),
+        ),
+        &[
+            "context.required_before_start",
+            "context.advisory",
+            "context.updates",
+        ],
+    );
+    ctx.submit("r-unmet", "2030-01-01T01:00:00Z");
+    ctx.submit_with(
+        "r-partial",
+        &format!("{SOURCE_ITEM},{}", unsatisfiable("optional", "advisory")),
+        "proceed_with_gap",
+        "2030-01-01T01:00:00Z",
+    );
+    let mut published = Vec::new();
+    for (request, state) in [("r-unmet", "unmet"), ("r-partial", "partial")] {
+        let first = (0..50)
+            .find_map(|_| {
+                let inspected = ctx.inspect(request);
+                (at(&inspected, &["packets"]).as_array().map(<[_]>::len) == Some(1))
+                    .then_some(inspected)
+            })
+            .unwrap_or_else(|| panic!("{request}: revision 1 was never published"));
+        assert_eq!(
+            text(&first, &["state"]),
+            state,
+            "the premise: {request}'s revision 1: {first:?}"
+        );
+        published.push((request, first));
+    }
+
+    set_clock(&clock, "2030-01-01T00:10:00Z");
+    let events = (0..50)
+        .find_map(|_| {
+            let events = recorded(&mut ctx);
+            (events
+                .iter()
+                .filter(|e| e.event == "context.job.ended")
+                .count()
+                == 2)
+                .then_some(events)
+        })
+        .expect("the two jobs never ended: a refused update left one running");
+    for (request, _) in &published {
+        assert_eq!(
+            of_subject(&events, "context.job", request),
+            vec![(
+                "context.job.ended".to_string(),
+                r#"{"reason":"packet_invalid"}"#.to_string()
+            )],
+            "{request}: {events:?}"
+        );
+    }
+    assert!(
+        !events
+            .iter()
+            .any(|e| e.payload.contains(r#""state":"refused""#)),
+        "a request that was delivered a packet was refused: {events:?}"
+    );
+    for (request, first) in &published {
+        let after = ctx.inspect(request);
+        assert_eq!(
+            text(&after, &["state"]),
+            text(first, &["state"]),
+            "{request}: {after:?}"
+        );
+        assert_eq!(
+            at(&after, &["revision"]),
+            at(first, &["revision"]),
+            "{request}: the request's revision moved"
+        );
+        assert_eq!(
+            canonical(&after),
+            canonical(first),
+            "{request}: revision 1 is read as it was published"
+        );
+    }
+    ctx.kill();
+}
+
+#[test]
+fn the_log_line_of_a_refused_packet_says_its_job_has_ended_and_names_no_id() {
+    // **The line reports what happened.** It is written after the ending
+    // commits, and its last words say the job has ended, which here it
+    // has. It names the job, the request and where each bad id is, and
+    // never an id itself: the section id is a path.
+    let directory = tempfile::tempdir().expect("temp dir");
+    let mut ctx = ContextProvider::start(directory.path(), &scripted(&refused_script("r-bad"), ""));
+    ctx.submit("r-bad", "2030-01-01T01:00:00Z");
+    let refused = settled(&mut ctx, "r-bad");
+    assert_eq!(text(&refused, &["state"]), "refused", "{refused:?}");
+    let logged = log(directory.path());
+    let lines: Vec<&str> = logged
+        .lines()
+        .filter(|line| line.contains("request r-bad:"))
+        .collect();
+    assert_eq!(
+        lines,
+        [
+            "cbr-provider: context job r-bad: request r-bad: packet not published; an id at \
+             /sections/0/section_id, /inclusions/0, /body/sections/0/section_id is missing, \
+             outside the identifier grammar or repeated; the job has ended: packet_invalid"
+        ],
+        "{logged}"
+    );
+    assert!(
+        !logged.contains("secret-path"),
+        "the log repeats the id itself: {logged}"
     );
     ctx.kill();
 }
