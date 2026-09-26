@@ -451,20 +451,20 @@ pub(crate) fn widest_choose() -> Request {
     )
 }
 
-/// What one send of `body` reserves, and what each of its repairs does.
+/// What one send of `body` reserves, and what each of its repairs does,
+/// in every dialect a launch can configure.
 pub(crate) fn every_send(body: &Request) -> Vec<(String, u64)> {
-    let dialect = crate::wire::Dialect::Responses;
-    std::iter::once((
-        "the first send".to_string(),
-        crate::model::send_worst(body, dialect),
-    ))
-    .chain(crate::wire::response::REPAIRABLE.iter().map(|unusable| {
-        (
-            format!("the repair after {unusable:?}"),
-            crate::model::send_worst(&crate::model::repaired(body, *unusable), dialect),
-        )
-    }))
-    .collect()
+    let mut sends = Vec::new();
+    for dialect in crate::wire::Dialect::ALL {
+        let name = dialect.name();
+        let first = crate::model::send_worst(body, dialect);
+        sends.push((format!("first send in {name}"), first));
+        for unusable in crate::wire::response::REPAIRABLE {
+            let repair = crate::model::send_worst(&crate::model::repaired(body, unusable), dialect);
+            sends.push((format!("repair after {unusable:?} in {name}"), repair));
+        }
+    }
+    sends
 }
 
 #[test]
@@ -503,17 +503,25 @@ fn both_steps_ask_for_room_to_reason_and_not_just_room_to_answer() {
 /// holds them: a question sends its body, and at most one repair, and a
 /// count made on the way is admitted within the room that refused the
 /// send ([`crate::model::question_worst`]).
+///
+/// **In whichever dialect frames the most.** A launch configures its
+/// dialect, and the same question is a different number of bytes in each,
+/// so every figure is the most over all of them
+/// ([`crate::model::over_every_dialect`]); the flow's is its two questions
+/// in one dialect, since one launch serves both.
 #[test]
 fn the_published_arithmetic_is_what_the_worst_bodies_cost() {
-    let dialect = crate::wire::Dialect::Responses;
+    use crate::model::{over_every_dialect, question_worst, send_worst};
     let (terms, choose) = (widest_terms(), widest_choose());
-    let terms_question = crate::model::question_worst(&terms, dialect);
-    let choose_question = crate::model::question_worst(&choose, dialect);
-    let flow = terms_question + choose_question;
+    let terms_question = over_every_dialect(|dialect| question_worst(&terms, dialect));
+    let choose_question = over_every_dialect(|dialect| question_worst(&choose, dialect));
+    let flow = over_every_dialect(|dialect| {
+        question_worst(&terms, dialect) + question_worst(&choose, dialect)
+    });
     assert_eq!(
         (
-            crate::model::send_worst(&terms, dialect),
-            crate::model::send_worst(&choose, dialect),
+            over_every_dialect(|dialect| send_worst(&terms, dialect)),
+            over_every_dialect(|dialect| send_worst(&choose, dialect)),
             terms_question,
             choose_question,
             flow,
@@ -595,10 +603,12 @@ fn the_whole_flow_cannot_exhaust_a_job_or_a_run() {
     // Against the per-job ceiling that bounds one job, and against
     // m4e's own run ceiling, which is what the whole milestone may
     // spend.
-    let dialect = crate::wire::Dialect::Responses;
-    let flow = crate::model::question_worst(&widest_terms(), dialect)
-        + crate::model::question_worst(&widest_choose(), dialect);
-    assert_eq!((flow, flow * 5), (PUBLISHED_FLOW, 2_587_460));
+    let (terms, choose) = (widest_terms(), widest_choose());
+    let flow = crate::model::over_every_dialect(|dialect| {
+        crate::model::question_worst(&terms, dialect)
+            + crate::model::question_worst(&choose, dialect)
+    });
+    assert_eq!((flow, flow * 5), (PUBLISHED_FLOW, 2_593_140));
     assert!(
         flow < crate::budget::PER_JOB_TOKENS,
         "discovery alone can exhaust a job: {flow}"
@@ -654,12 +664,13 @@ fn the_harness_stops_against_the_same_worst_case_this_module_computes() {
 }
 
 /// The figures [READINESS §3] publishes: each step's first send and its
-/// question, the flow, and six flows.
+/// question, the flow, and six flows, each the most over every dialect a
+/// launch can configure. The OpenAI dialect frames the most.
 ///
 /// [READINESS §3]: ../../docs/work/m4/READINESS.md
-const PUBLISHED_TERMS: u64 = 63_485;
-const PUBLISHED_CHOOSE: u64 = 193_213;
-const PUBLISHED_TERMS_QUESTION: u64 = 129_018;
-const PUBLISHED_CHOOSE_QUESTION: u64 = 388_474;
-pub(crate) const PUBLISHED_FLOW: u64 = 517_492;
-const PUBLISHED_SIX_FLOWS: u64 = 3_104_952;
+const PUBLISHED_TERMS: u64 = 63_718;
+const PUBLISHED_CHOOSE: u64 = 193_548;
+const PUBLISHED_TERMS_QUESTION: u64 = 129_484;
+const PUBLISHED_CHOOSE_QUESTION: u64 = 389_144;
+pub(crate) const PUBLISHED_FLOW: u64 = 518_628;
+const PUBLISHED_SIX_FLOWS: u64 = 3_111_768;

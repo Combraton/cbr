@@ -67,6 +67,14 @@ pub const KIND_SPAN: &str = "span";
 /// span of a named file has no claim to offer.
 pub const KIND_CLAIM: &str = "claim";
 
+/// **At most this many candidates one item's selection offers**: the rows
+/// retrieval is asked for where an item's span is chosen
+/// (`provider::context_ops`), and the count the published selection figure
+/// prices (`selection::tests`). One constant for both, so offering more
+/// moves the figure and fails the pins that hold it, here and in the m4e
+/// harness; and a test holds the call site to this name.
+pub const CANDIDATES: usize = 8;
+
 /// At most this many bytes of a candidate's text, as a request body
 /// carries it.
 ///

@@ -42,6 +42,10 @@ pub enum Dialect {
 }
 
 impl Dialect {
+    // Stub, tests first: the published figures are the most over this
+    // list, and it names only the dialect they were first priced in.
+    pub const ALL: [Dialect; 1] = [Dialect::Responses];
+
     pub fn parse(name: &str) -> Option<Self> {
         match name {
             "responses" => Some(Dialect::Responses),

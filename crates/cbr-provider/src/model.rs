@@ -779,6 +779,22 @@ pub fn question_worst(body: &wire::request::Request, dialect: Dialect) -> u64 {
     worst(body, dialect, REPAIRS)
 }
 
+/// **The most `price` comes to over every dialect a launch can
+/// configure**, [`Dialect::ALL`]: the one place a published worst case
+/// takes its maximum.
+///
+/// A body's bytes depend on the dialect that frames it — the chat
+/// dialects carry members the Responses dialect does not, and the OpenAI
+/// one the schema a structure asks for — and which dialect serves is a
+/// launch's configuration. So a figure that bounds every launch is the
+/// most over all of them, and a dialect added to [`Dialect::ALL`] is
+/// priced here without anyone remembering to.
+// Called by the arithmetic's tests; no serving path needs the figure.
+#[cfg_attr(not(test), allow(dead_code))]
+pub fn over_every_dialect(price: impl Fn(Dialect) -> u64) -> u64 {
+    Dialect::ALL.into_iter().map(price).max().unwrap_or(0)
+}
+
 #[cfg(test)]
 pub(crate) mod harness;
 

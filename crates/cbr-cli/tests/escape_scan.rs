@@ -418,3 +418,58 @@ fn the_scan_refuses_anything_but_a_commit_and_prints_nothing_to_count() {
     assert_eq!(output.status.code(), Some(2));
     assert!(output.stdout.is_empty());
 }
+
+#[test]
+fn the_scan_never_prints_a_control_character_of_a_path_raw() {
+    // **Paths are the one repository text it prints**, so a path is shown
+    // escaped, and every control character in it with it: C0, DEL and the
+    // C1 controls, which a terminal reads as commands — U+009B is a
+    // control sequence introducer, and a path that carried one could
+    // rewrite what the reader sees. A request body carries DEL and C1 as
+    // they are, so escaping them as a body does is not enough here.
+    let directory = tempfile::tempdir().expect("temp dir");
+    let checkout = directory.path().join("checkout");
+    let controls = ['\u{1}', '\u{1b}', '\u{7f}', '\u{85}', '\u{9b}', '\u{9f}'];
+    let name: String = controls
+        .iter()
+        .map(|control| format!("a{control}"))
+        .collect::<String>()
+        + ".md";
+    // Past the path's cut too, so the path is printed as the longest path
+    // and again as a cut one.
+    let path = format!("{}/{name}", "\u{1}".repeat(200));
+    std::fs::create_dir_all(checkout.join("\u{1}".repeat(200))).expect("mkdir");
+    std::fs::write(checkout.join(&path), b"One line.\n").expect("writes");
+    git(&checkout, &["init", "-q", "-b", "main"]);
+    git(&checkout, &["add", "-A"]);
+    git(&checkout, &["commit", "-q", "-m", "the tree"]);
+    let commit = git(&checkout, &["rev-parse", "HEAD"]);
+    for arguments in [vec!["--json", commit.as_str()], vec![commit.as_str()]] {
+        let output = scan(&checkout, &arguments);
+        assert!(
+            output.status.success(),
+            "{arguments:?}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let printed = String::from_utf8(output.stdout).expect("utf-8");
+        let raw: Vec<String> = printed
+            .chars()
+            .filter(|c| *c != '\n' && (c.is_control()))
+            .map(|c| format!("U+{:04X}", c as u32))
+            .collect();
+        assert!(
+            raw.is_empty(),
+            "{arguments:?} printed control characters raw: {raw:?}"
+        );
+        for control in controls {
+            let escaped = format!("\\u{:04x}", control as u32);
+            assert!(
+                printed.contains(&escaped),
+                "{arguments:?} does not show {escaped} in the path: {printed}"
+            );
+        }
+        if arguments.len() == 1 {
+            assert!(printed.contains("cut path: "), "{printed}");
+        }
+    }
+}

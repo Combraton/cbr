@@ -12,16 +12,18 @@
 //! [`sweep`] and [`boundary_sweep`] run a body across the ceilings and
 //! counts where the admission path changes its mind: just below, at and
 //! just above each figure it compares, and eighths of the whole question
-//! between them. [`with_room_freed_during_count`] is the one case the
-//! bound does not cover, and exists so a test can say so exactly.
+//! between them. [`with_room_freed`] is the one case the bound does not
+//! cover — room freed on the refusing counter anywhere between a send's
+//! local refusal and its completion's admission — and exists so a test
+//! can say so exactly.
 
 use std::cell::{Cell, RefCell};
 
 use rusqlite::Connection;
 
 use super::{
-    Answer, Ask, Call, Exchange, Outcome, Runtime, SERVING_COUNTING, Transport, no_barrier,
-    repaired, send_worst,
+    Answer, Ask, COUNT_AFTER_RESERVATION, COUNT_AFTER_SEND, COUNT_DURING_RECONCILIATION, Call,
+    Exchange, Outcome, Runtime, SERVING_COUNTING, Transport, repaired, send_worst,
 };
 use crate::budget::{self, Ledger, Reservation, Settlement};
 use crate::wire::Dialect;
@@ -36,6 +38,46 @@ const JOB: &str = "job";
 const OTHER: &str = "other";
 /// The dialect the serving path speaks, and the only one counted.
 const DIALECT: Dialect = Dialect::Responses;
+
+/// **Where another job's room is freed**, in the window between a send's
+/// local refusal and its completion's admission: each place in it the
+/// call path names a boundary at, and the count's flight.
+///
+/// The window runs on past the last of these — the count is settled and
+/// then the completion admitted, with nothing named between — and a
+/// settlement on another thread can land there too. It is the same
+/// window, and admits the same completion.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Freed {
+    /// The count has been admitted and not yet sent.
+    CountAdmitted,
+    /// The count is on the wire.
+    CountInFlight,
+    /// The count has answered and is not yet settled.
+    CountAnswered,
+    /// The count is being settled.
+    CountSettling,
+}
+
+/// Every place [`Freed`] names, in the order the call path reaches them.
+pub(crate) const WINDOW: [Freed; 4] = [
+    Freed::CountAdmitted,
+    Freed::CountInFlight,
+    Freed::CountAnswered,
+    Freed::CountSettling,
+];
+
+impl Freed {
+    /// The boundary the call path names at this place, when it names one.
+    fn boundary(self) -> Option<&'static str> {
+        match self {
+            Freed::CountAdmitted => Some(COUNT_AFTER_RESERVATION),
+            Freed::CountInFlight => None,
+            Freed::CountAnswered => Some(COUNT_AFTER_SEND),
+            Freed::CountSettling => Some(COUNT_DURING_RECONCILIATION),
+        }
+    }
+}
 
 /// What every completion answers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -113,9 +155,21 @@ struct Script<'c> {
     count: CountAnswer,
     counts: Cell<usize>,
     admitted_at: RefCell<Vec<u64>>,
-    /// Another job's reservation, settled at nothing during the first
-    /// count call: room freed while a count is in flight.
+    /// Another job's reservation, settled at nothing the first time the
+    /// call path reaches `free_at`.
     freed: RefCell<Option<Reservation>>,
+    free_at: Freed,
+}
+
+impl Script<'_> {
+    /// Settle the other job's reservation at nothing, once.
+    fn free(&self) {
+        if let Some(other) = self.freed.borrow_mut().take() {
+            Ledger::new(self.connection)
+                .settle(T0, &other, Settlement::Usage(0))
+                .expect("settles");
+        }
+    }
 }
 
 impl Transport for Script<'_> {
@@ -128,10 +182,8 @@ impl Transport for Script<'_> {
         let answer = match call {
             Call::Count => {
                 self.counts.set(self.counts.get() + 1);
-                if let Some(other) = self.freed.borrow_mut().take() {
-                    Ledger::new(self.connection)
-                        .settle(T0, &other, Settlement::Usage(0))
-                        .expect("settles");
+                if self.free_at == Freed::CountInFlight {
+                    self.free();
                 }
                 Answer::Counted(self.count.answer(body))
             }
@@ -167,15 +219,22 @@ fn asked(
     completion: Completion,
     ceiling: Option<u64>,
     count: CountAnswer,
-    freed: Option<Reservation>,
+    freed: Option<(Reservation, Freed)>,
 ) -> Held {
+    let free_at = freed.as_ref().map_or(Freed::CountInFlight, |(_, at)| *at);
     let script = Script {
         connection,
         completion,
         count,
         counts: Cell::new(0),
         admitted_at: RefCell::new(Vec::new()),
-        freed: RefCell::new(freed),
+        freed: RefCell::new(freed.map(|(reservation, _)| reservation)),
+        free_at,
+    };
+    let barrier = |boundary: &'static str| {
+        if free_at.boundary() == Some(boundary) {
+            script.free();
+        }
     };
     let runtime = Runtime {
         ledger: Ledger::new(connection).with_run_ceiling(ceiling),
@@ -190,7 +249,7 @@ fn asked(
             body,
             counting: SERVING_COUNTING,
         },
-        &no_barrier,
+        &barrier,
     );
     Held {
         job: Ledger::new(connection)
@@ -214,14 +273,16 @@ pub(crate) fn holds(
 }
 
 /// Ask `body` once under `ceiling` with `other` tokens of another job's
-/// already reserved, and **settle that reservation at nothing while the
-/// first count is in flight**.
-pub(crate) fn with_room_freed_during_count(
+/// already reserved, and **settle that reservation at nothing at `at`**,
+/// the first time the call path reaches it: after the send was refused on
+/// the local bound and before the completion is admitted on the count.
+pub(crate) fn with_room_freed(
     body: &Request,
     completion: Completion,
     ceiling: u64,
     other: u64,
     count: CountAnswer,
+    at: Freed,
 ) -> Held {
     let connection = database();
     let reserved = Ledger::new(&connection)
@@ -235,7 +296,7 @@ pub(crate) fn with_room_freed_during_count(
         completion,
         Some(ceiling),
         count,
-        Some(reserved),
+        Some((reserved, at)),
     )
 }
 

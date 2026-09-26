@@ -4,10 +4,30 @@ use super::*;
 
 #[test]
 fn each_dialect_round_trips_its_name() {
-    for dialect in [Dialect::OpenAi, Dialect::Anthropic] {
+    for dialect in Dialect::ALL {
         assert_eq!(Dialect::parse(dialect.name()), Some(dialect));
     }
     assert_eq!(Dialect::parse("grpc"), None);
+}
+
+#[test]
+fn every_dialect_a_launch_can_name_is_one_the_published_figures_price() {
+    // **A published worst case is the most over `Dialect::ALL`**, and a
+    // launch configures its dialect by name, so every name a configuration
+    // may use has to be in that list, once: a dialect a launch could serve
+    // and the arithmetic never priced is a bound that does not bound it.
+    // The three names are the ones the owner's configurations use.
+    for name in ["responses", "openai", "anthropic"] {
+        let dialect = Dialect::parse(name).unwrap_or_else(|| panic!("`{name}` is refused"));
+        assert_eq!(
+            Dialect::ALL
+                .iter()
+                .filter(|listed| **listed == dialect)
+                .count(),
+            1,
+            "`{name}` is configurable and priced other than once"
+        );
+    }
 }
 
 #[test]

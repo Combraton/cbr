@@ -871,15 +871,18 @@ fn a_request_with_nothing_readable_in_its_view_buys_no_call() {
 // ---- an escape-dense repository --------------------------------------
 
 /// The figures `cbr-provider` publishes for the discovery flow and pins in
-/// its own tests (`discovery::tests`, `selection::tests`): one choose
-/// send, the whole flow, and one selection question, each at the widest
-/// bodies the bounds admit.
+/// its own tests (`discovery::tests`, `selection::tests`): one send of
+/// each step and of one item's selection, the whole flow, and one
+/// selection question, each at the widest bodies the bounds admit and the
+/// most over every dialect a launch can configure.
 ///
 /// Written out, as the bounds above are, because this crate launches the
 /// provider rather than linking it.
-const PUBLISHED_CHOOSE: i64 = 193_213;
-const PUBLISHED_FLOW: i64 = 517_492;
-const PUBLISHED_SELECTION_QUESTION: i64 = 167_307;
+const PUBLISHED_SELECTION: i64 = 83_620;
+const PUBLISHED_TERMS: i64 = 63_718;
+const PUBLISHED_CHOOSE: i64 = 193_548;
+const PUBLISHED_FLOW: i64 = 518_628;
+const PUBLISHED_SELECTION_QUESTION: i64 = 167_753;
 
 /// What a candidate cut to fit its carried bound ends with.
 const CUT: &str = "[cut]";
@@ -970,8 +973,11 @@ fn an_escape_dense_repository_is_asked_its_choice_within_the_published_flow() {
          {unavailable:?}"
     );
 
-    // **Within the published figures.** The item, the terms and the
-    // choice, each admitted on the local bound and in that order.
+    // **Within the published figures, and this is the proof.** What
+    // admission reserves is what the arithmetic prices, and a reservation
+    // is what a call may hold: the item, the terms and the choice, each
+    // admitted on the local bound and in that order, each within its own
+    // published send.
     let admitted: Vec<i64> = rows
         .iter()
         .filter(|(kind, ..)| kind.starts_with("admitted_"))
@@ -982,17 +988,35 @@ fn an_escape_dense_repository_is_asked_its_choice_within_the_published_flow() {
         3,
         "the item, the terms and the choice: {rows:?}"
     );
+    assert!(
+        rows.iter()
+            .filter(|(kind, ..)| kind.starts_with("admitted_"))
+            .all(|(kind, ..)| kind == "admitted_local"),
+        "a step was admitted on a count, which the reservations below do not price: {rows:?}"
+    );
     let choose = admitted[2];
     eprintln!("the choose step reserved {choose} of the published {PUBLISHED_CHOOSE}");
-    assert!(
-        choose <= PUBLISHED_CHOOSE,
-        "the choice reserved {choose}, past the published {PUBLISHED_CHOOSE} for one send"
-    );
+    for (step, reserved, published) in [
+        ("the item's selection", admitted[0], PUBLISHED_SELECTION),
+        ("the terms step", admitted[1], PUBLISHED_TERMS),
+        ("the choice", admitted[2], PUBLISHED_CHOOSE),
+    ] {
+        assert!(
+            reserved <= published,
+            "{step} reserved {reserved}, past the published {published} for one send"
+        );
+    }
     assert!(
         admitted[1] + admitted[2] <= PUBLISHED_FLOW,
         "discovery reserved {} past the published flow",
         admitted[1] + admitted[2]
     );
+    // **A floor check, and not the proof.** The fake bills every call
+    // 5,000 tokens, so what the ledger charged here cannot come near the
+    // flow and this cannot fail against it. It binds on a real model,
+    // which bills what it bills: settlement is never above what was
+    // reserved unless a bill passes its reservation, and the reservations
+    // above carry the proof.
     let charged: i64 = rows
         .iter()
         .filter(|(kind, ..)| {

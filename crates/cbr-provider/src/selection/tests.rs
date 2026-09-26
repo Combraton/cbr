@@ -393,12 +393,8 @@ fn text_that_escapes_to_at_most_two_bytes_a_character_is_shown_whole() {
 
 // ---- what one item's selection can cost ---------------------------------
 
-/// How many candidates one item's selection offers: the spans of the named
-/// file retrieval ranks, at `rows: 8` where the call site asks
-/// (`provider::context_ops`).
-pub(crate) const SELECTION_CANDIDATES: usize = 8;
-
-/// The widest selection question: every candidate at every bound, a task
+/// The widest selection question: every candidate at every bound — as many
+/// as [`CANDIDATES`], the rows the call site asks retrieval for — a task
 /// longer than the protocol admits, and a selector of 512 code points —
 /// the most the protocol admits — each carried at six bytes.
 pub(crate) fn widest_selection() -> crate::wire::request::Request {
@@ -406,14 +402,15 @@ pub(crate) fn widest_selection() -> crate::wire::request::Request {
         crate::discovery::tests::longest_model(),
         &crate::discovery::tests::widest_task(),
         &"\u{1}".repeat(512),
-        &crate::discovery::tests::widest_candidates(SELECTION_CANDIDATES, "c"),
+        &crate::discovery::tests::widest_candidates(CANDIDATES, "c"),
     )
 }
 
 /// The figures READINESS section 3 publishes for one item's selection:
-/// one send, and the question — its first send and its widest repair.
-pub(crate) const PUBLISHED_SELECTION: u64 = 83_397;
-pub(crate) const PUBLISHED_SELECTION_QUESTION: u64 = 167_307;
+/// one send, and the question — its first send and its widest repair —
+/// each the most over every dialect a launch can configure.
+pub(crate) const PUBLISHED_SELECTION: u64 = 83_620;
+pub(crate) const PUBLISHED_SELECTION_QUESTION: u64 = 167_753;
 
 #[test]
 fn one_items_selection_at_every_bound_is_what_the_published_figures_say() {
@@ -421,12 +418,12 @@ fn one_items_selection_at_every_bound_is_what_the_published_figures_say() {
     // READINESS and nowhere in the code. Now it is computed from the body
     // at every bound, as admission prices it, and every send it can make
     // fits one request.
+    use crate::model::{over_every_dialect, question_worst, send_worst};
     let body = widest_selection();
-    let dialect = Dialect::Responses;
     assert_eq!(
         (
-            crate::model::send_worst(&body, dialect),
-            crate::model::question_worst(&body, dialect)
+            over_every_dialect(|dialect| send_worst(&body, dialect)),
+            over_every_dialect(|dialect| question_worst(&body, dialect))
         ),
         (PUBLISHED_SELECTION, PUBLISHED_SELECTION_QUESTION),
         "READINESS section 3's figures for selection are not what it costs"
@@ -447,7 +444,7 @@ fn a_selection_request_is_never_refused_by_its_own_ceiling_whatever_its_text_esc
     // be asked.
     let lines = cbr_memory::index::MAX_BLOB_BYTES + 1;
     let span_bytes = cbr_memory::retrieval::Bounds::default().span_bytes;
-    let candidates: Vec<Candidate> = (1..=SELECTION_CANDIDATES)
+    let candidates: Vec<Candidate> = (1..=CANDIDATES)
         .map(|n| Candidate {
             id: format!("c{n}"),
             kind: KIND_SPAN,
@@ -469,6 +466,43 @@ fn a_selection_request_is_never_refused_by_its_own_ceiling_whatever_its_text_esc
             "selection's {send} can be refused by its own request ceiling: {reserved}"
         );
     }
+}
+
+#[test]
+fn the_call_site_asks_retrieval_for_the_candidates_the_figure_is_priced_for() {
+    // **The figure prices [`CANDIDATES`] candidates and the call site
+    // decides how many are offered**, so the two are one constant and this
+    // holds the call site to it: an item's span is chosen from the rows
+    // retrieval returns, every one of them is a candidate, and a literal
+    // there could offer more than was priced with nothing failing.
+    // Widening the constant instead moves the published figure, and the
+    // pins above and the m4e harness's fail.
+    let source = std::fs::read_to_string(
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("src")
+            .join("provider")
+            .join("context_ops.rs"),
+    )
+    .expect("context_ops.rs");
+    let from = source
+        .find("fn select_source(")
+        .expect("the call site that chooses an item's span");
+    let body = &source[from..];
+    let body = &body[..body.find("\n    }\n").expect("the function ends")];
+    let rows: Vec<&str> = body
+        .lines()
+        .map(str::trim)
+        .filter(|line| line.starts_with("rows:"))
+        .collect();
+    assert_eq!(
+        rows,
+        ["rows: crate::selection::CANDIDATES,"],
+        "the call site asks retrieval for a number of rows the selection figure does not price"
+    );
+    assert!(
+        body.contains("self.assist(&answer.found,"),
+        "the candidates are no longer the rows retrieval returned, so this guard guards nothing"
+    );
 }
 
 #[test]

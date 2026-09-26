@@ -737,12 +737,24 @@ fn the_stop_prices_each_selection_question_a_run_asks_as_well_as_its_flow() {
             "{name}: a run was started with {short}, one short of its flow and two \
              selection questions: {report:?}"
         );
+        let why = report
+            .get("stopped")
+            .and_then(Value::as_str)
+            .unwrap_or_else(|| panic!("{name}: the report does not say it stopped: {report:?}"));
         assert!(
-            report
-                .get("stopped")
-                .and_then(Value::as_str)
-                .is_some_and(|why| why.contains("was not started")),
-            "{name}: the report does not say it stopped: {report:?}"
+            why.contains("wants was not started"),
+            "{name}: the report does not name the run it did not start: {why}"
+        );
+        // **And it says what the run was priced at**: the whole figure,
+        // not the flow alone, and the wants that make it up. A message
+        // naming a figure the check did not use tells its reader about a
+        // bound nobody applied.
+        assert!(
+            why.contains(&format!(
+                "the {worst} worst case of one flow and 2 selection questions"
+            )),
+            "{name}: the stop does not state the {worst} it priced the run at, flow \
+             {flow} and two selection questions of {selection}: {why}"
         );
     }
     let report = started(

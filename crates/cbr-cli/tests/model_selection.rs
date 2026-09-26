@@ -463,3 +463,57 @@ fn the_investigation_limit_counts_questions_and_the_budget_runs_out() {
     );
     provider.stop();
 }
+
+/// How many candidates one item's selection offers at most:
+/// `selection::CANDIDATES` in `cbr-provider`, which its published
+/// selection figure is priced for and which the call site asks retrieval
+/// for. Written out because this crate launches the provider rather than
+/// linking it; `selection::tests` holds the call site to the constant.
+const SELECTION_CANDIDATES: usize = 8;
+
+#[test]
+fn a_selection_offers_no_more_candidates_than_its_figure_is_priced_for() {
+    // **The published selection figure prices a fixed number of
+    // candidates**, and what decides how many are offered is the number
+    // of rows retrieval returns at the call site. A file with more spans
+    // than that, every one of which answers the selector, must still be
+    // offered that many and no more: one more would be a body past the
+    // figure, and a stop priced on it would start runs that could cross it.
+    let fixture = Fixture::dominated(&["choose:c1"]);
+    let provider = fixture.start();
+    serving::submit(&fixture, "wide", "dominant.md");
+    let started = Instant::now();
+    let inspected = loop {
+        let polled = fixture.cbr(&["request", "wide"]);
+        let inspected =
+            cbr_encoding::parse(String::from_utf8_lossy(&polled.stdout).trim().as_bytes())
+                .expect("canonical JSON");
+        if inspected.get("state").and_then(Value::as_str) != Some("preparing") {
+            break inspected;
+        }
+        assert!(
+            started.elapsed() < Duration::from_secs(60),
+            "never left preparing: {inspected:?}"
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    };
+    assert_eq!(result(&inspected, "q").0, "satisfied", "{inspected:?}");
+    let bodies = bodies_sent(&fixture.data());
+    assert_eq!(bodies.len(), 1, "one item, one question");
+    let offered: Vec<usize> = (1..=4 * SELECTION_CANDIDATES)
+        .filter(|n| bodies[0].contains(&format!("\\n[c{n}] dominant.md lines ")))
+        .collect();
+    assert_eq!(
+        offered,
+        (1..=SELECTION_CANDIDATES).collect::<Vec<_>>(),
+        "the selection offered other than the {SELECTION_CANDIDATES} candidates its figure prices"
+    );
+    // **And the file had more to offer**, or this would pin nothing: the
+    // file's spans, each answering the selector, outnumber the candidates.
+    let file = std::fs::read_to_string(fixture.checkout.join("dominant.md")).expect("the file");
+    assert!(
+        file.matches("## Draining, part").count() > SELECTION_CANDIDATES,
+        "the fixture has no more spans than the candidates offered"
+    );
+    provider.stop();
+}

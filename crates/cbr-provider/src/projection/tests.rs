@@ -8,7 +8,6 @@
 
 use super::read as parse;
 use super::*;
-use crate::wire::Dialect;
 
 // ---- fixtures -----------------------------------------------------------------
 
@@ -2601,9 +2600,13 @@ pub(crate) fn widest_part() -> Request {
 
 /// The figures READINESS publishes, so that a document cannot drift from
 /// the arithmetic it quotes: one part's send, and a whole projection's
-/// questions, each its first send and its widest repair.
-const PUBLISHED_PART: u64 = 41_029;
-const PUBLISHED_PROJECTION: u64 = 336_424;
+/// questions, each its first send and its widest repair, and each the most
+/// over every dialect a launch can configure.
+const PUBLISHED_PART: u64 = 41_628;
+const PUBLISHED_PROJECTION: u64 = 341_216;
+/// And a projection beside discovery's published flow, which m5 READINESS
+/// section 8 quotes.
+const PUBLISHED_BESIDE_DISCOVERY: u64 = 859_844;
 /// **What the J2 harness stops against**, which is a bound at least as
 /// large as a projection's worst case rather than equal to it: it was
 /// computed under the three-sends convention, and tightening it is the
@@ -2612,7 +2615,9 @@ const J2_HARNESS_BOUND: u64 = 492_204;
 
 #[test]
 fn a_parts_worst_call_is_computed_from_its_real_body_and_fits_one_request() {
-    let worst = crate::model::send_worst(&widest_part(), Dialect::Responses);
+    let part = widest_part();
+    let worst =
+        crate::model::over_every_dialect(|dialect| crate::model::send_worst(&part, dialect));
     assert_eq!(
         worst, PUBLISHED_PART,
         "READINESS's figure for one part is not what it costs"
@@ -2629,9 +2634,12 @@ fn a_whole_projection_cannot_exhaust_a_job_even_beside_discovery() {
     // serving path holds a question; and a request whose limit covers
     // both a projection and discovery's flow must not be refused by its
     // own job's ceiling.
-    let projection =
-        crate::model::question_worst(&widest_part(), Dialect::Responses) * MAX_PARTS as u64;
+    let part = widest_part();
+    let projection = crate::model::over_every_dialect(|dialect| {
+        crate::model::question_worst(&part, dialect) * MAX_PARTS as u64
+    });
     assert_eq!(projection, PUBLISHED_PROJECTION);
+    assert_eq!(projection + DISCOVERY_FLOW, PUBLISHED_BESIDE_DISCOVERY);
     assert!(projection < crate::budget::PER_JOB_TOKENS, "{projection}");
     assert!(
         projection + DISCOVERY_FLOW < crate::budget::PER_JOB_TOKENS,
