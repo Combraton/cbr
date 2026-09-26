@@ -4017,7 +4017,16 @@ impl Provider {
         if !due {
             return Ok(());
         }
-        let past_deadline = tick.now.as_str() >= text(&record, &["limits", "deadline"]);
+        // **A revision whose capture instant was kept is the packet composed
+        // at that instant**, so its deadline is judged there: a retry past
+        // the deadline then composes the bytes an evidence peer may already
+        // hold, which it replays. An explicit reason still wins.
+        let revision = list(&record, &["packets"]).len() as i64 + 1;
+        let artifact = crate::ids::packet_artifact(request, revision);
+        let composed_at = at(job, &["captures", &artifact])
+            .as_str()
+            .unwrap_or(&tick.now);
+        let past_deadline = composed_at >= text(&record, &["limits", "deadline"]);
         let reason = reason.or(past_deadline.then_some("deadline_passed"));
         // The compiler the job actually ran, not the one this line used to
         // assume. `job.compiler` is set at submit for a compiled request and
