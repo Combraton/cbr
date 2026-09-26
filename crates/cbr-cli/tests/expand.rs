@@ -22,6 +22,9 @@
 //! and the client must not tell them apart either: no output file, and
 //! the same words on standard error.
 //!
+//! **A request whose packet the provider refused has nothing to expand.**
+//! It ends `refused` with the reason `packet_invalid`, and `cbr` says so.
+//!
 //! **No model is called.** Every request here asks with an investigation
 //! of zero, or is scripted.
 
@@ -1402,4 +1405,156 @@ fn an_evidence_item_of_127_characters_declares_its_omission_inside_the_grammar()
     );
     assert_eq!(bytes, fetched(&fixture, &evidence.0, &evidence.1));
     provider.stop();
+}
+
+// ---- a packet the guard refuses --------------------------------------------
+
+#[test]
+fn a_request_whose_packet_would_carry_an_id_outside_the_grammar_ends_refused_and_says_why_through_cbr()
+ {
+    // **What a consumer sees when the provider will not publish.** The
+    // compiler builds ids inside the grammar, so only a script reaches
+    // the guard now; the section here has a path for an id. The owner's
+    // ruling of 2026-09-26 is that the job ends with the typed reason
+    // `packet_invalid`. That the request ends `refused`, the one terminal
+    // state the provider can choose that needs no packet (`cancelled` is
+    // the caller's), is this session's reading within that ruling, not
+    // part of it. Through `cbr` that is: the request says `refused` and
+    // why, names its job and publishes nothing; there is no packet to read
+    // or expand; and there is nothing left to cancel.
+    //
+    // It is terminal on disk as well: after a restart `cbr request`
+    // prints the same bytes, revision included. The provider's log is not
+    // read here, because this fixture discards it; the provider's own
+    // tests read it.
+    let fixture = Fixture::narrow(&["ids:u1"]);
+    let ingesting = start(&fixture);
+    let evidence = ingest(&fixture, "run.log", &log());
+    ingesting.stop();
+    let script = format!(
+        r#"[{},{{"publish":{{}}}}]"#,
+        section("s/secret-path", "c-x", &evidence)
+    );
+    let members = format!(r#"{PROVIDER},"context":{{"scripts":{{"bad":{script}}}}}"#);
+    let provider = fixture.start_configured(&members);
+
+    let mut outputs = Vec::new();
+    let mut cbr = |arguments: &[&str]| {
+        let output = fixture.cbr(arguments);
+        outputs.push((arguments.join(" "), output.clone()));
+        output
+    };
+    let want = format!("{ITEM}=evidence:{}@{}", evidence.0, evidence.1);
+    let submitted = cbr(&[
+        "context",
+        "bad",
+        "--repo",
+        fixture.outside.to_str().expect("utf-8"),
+        "--repo-id",
+        "j2",
+        "--obligation",
+        "required_before_start",
+        "--want",
+        &want,
+    ]);
+    assert!(submitted.status.success(), "submit: {}", stderr(&submitted));
+    let answered =
+        cbr_encoding::parse(String::from_utf8_lossy(&submitted.stdout).trim().as_bytes())
+            .expect("canonical JSON");
+    assert_eq!(
+        answered
+            .get("outcome")
+            .and_then(|outcome| outcome.get("state"))
+            .and_then(Value::as_str),
+        Some("preparing"),
+        "{answered:?}"
+    );
+
+    let started = Instant::now();
+    let (printed, inspected) = loop {
+        let polled = cbr(&["request", "bad"]);
+        assert!(polled.status.success(), "inspect: {}", stderr(&polled));
+        let printed = polled.stdout.clone();
+        let inspected = cbr_encoding::parse(String::from_utf8_lossy(&printed).trim().as_bytes())
+            .expect("canonical JSON");
+        if inspected.get("state").and_then(Value::as_str) != Some("preparing") {
+            break (printed, inspected);
+        }
+        assert!(
+            started.elapsed() < Duration::from_secs(60),
+            "bad never left preparing: {inspected:?}"
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    };
+    let canonical =
+        |value: &Value| String::from_utf8(cbr_encoding::to_canonical(value)).expect("utf-8");
+    let member = |name: &str| {
+        inspected
+            .get(name)
+            .map(canonical)
+            .unwrap_or_else(|| panic!("no {name} in {inspected:?}"))
+    };
+    assert_eq!(member("state"), r#""refused""#, "{inspected:?}");
+    assert_eq!(member("reason"), r#""packet_invalid""#, "{inspected:?}");
+    assert_eq!(member("packets"), "[]");
+    assert_eq!(member("job"), r#"{"id":"bad","kind":"context.job"}"#);
+    assert_eq!(
+        member("items"),
+        format!(
+            r#"[{{"item_id":"{ITEM}","obligation":"required_before_start","reason":"packet_invalid","result":"unmet"}}]"#
+        )
+    );
+    assert!(
+        inspected.get("needed").is_none(),
+        "an invalid packet is not a capacity that could be raised: {inspected:?}"
+    );
+
+    // Nothing to read, nothing to expand, and nothing left to cancel.
+    let packet = cbr(&["packet", "bad"]);
+    assert!(
+        !packet.status.success(),
+        "a refused request printed a packet"
+    );
+    assert!(
+        stderr(&packet).contains("bad has published no packet"),
+        "{}",
+        stderr(&packet)
+    );
+    let expanded = cbr(&["expand", "bad", "c-x"]);
+    assert!(
+        !expanded.status.success(),
+        "a refused request's citation was expanded"
+    );
+    let cancelled = cbr(&["cancel", "bad"]);
+    assert!(
+        !cancelled.status.success(),
+        "a refused request was cancelled"
+    );
+    assert!(
+        stderr(&cancelled).contains("not_found"),
+        "a refused request is terminal: {}",
+        stderr(&cancelled)
+    );
+
+    // Terminal across a restart, to the byte.
+    provider.stop();
+    let provider = fixture.start_configured(&members);
+    let again = cbr(&["request", "bad"]);
+    assert!(again.status.success(), "inspect: {}", stderr(&again));
+    assert_eq!(
+        String::from_utf8_lossy(&again.stdout),
+        String::from_utf8_lossy(&printed),
+        "the restart changed a refused request"
+    );
+    provider.stop();
+
+    // The id is a path, and nothing `cbr` printed repeats it.
+    for (arguments, output) in &outputs {
+        for (stream, bytes) in [("stdout", &output.stdout), ("stderr", &output.stderr)] {
+            assert!(
+                !String::from_utf8_lossy(bytes).contains("secret-path"),
+                "`cbr {arguments}` printed the refused id on {stream}"
+            );
+        }
+    }
 }
