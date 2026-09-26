@@ -682,6 +682,13 @@ impl<'a> Ledger<'a> {
         self.recorded("bound_unsound")
     }
 
+    /// Whether a completion admitted on a count was ever billed input above
+    /// the count and the margin. Durable, like the bound's stop; it closes
+    /// the serving count path and nothing else.
+    pub fn count_is_unsound(&self) -> Result<bool, LedgerError> {
+        self.recorded("count_unsound")
+    }
+
     /// **The stop this store has recorded**, when it has one: an unsound
     /// bound before an overrun, the order a call ends in. Old `divergence`
     /// rows are not one.
