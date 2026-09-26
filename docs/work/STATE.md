@@ -11,7 +11,7 @@ This is a dated navigation snapshot. Reconcile it with Git, linked issues and cu
 
 ## This change — a peer's seal survives a lost commit
 
-On `fix/peer-capture`, off `main` at `4dcfb04` (#47, packet_invalid). Commits: `aa349be` a test barrier, `8608ee4` tests first, `5d88422` fix A, `3899885` a test helper corrected, `19e3f2a` fix D, `0397f76` four tests for what the mutant run reached, and these docs. **No model has been called.** It fixes packet_invalid's follow-up 8, first bullet ([below](#follow-ups-not-fixed-here)).
+On `fix/peer-capture`, off `main` at `4dcfb04` (#47, packet_invalid). Commits: `aa349be` a test barrier, `8608ee4` tests first, `5d88422` fix A, `3899885` a test helper corrected, `19e3f2a` fix D, `0397f76` four tests for what the mutant run reached, these docs (`ea86688`), then, after a further verification round, `46036a5` four tests for what its mutants reached, and these docs. **No model has been called.** It fixes packet_invalid's follow-up 8, first bullet ([below](#follow-ups-not-fixed-here)).
 
 - **The defect, present since m3a.** A packet sent to an evidence peer and sealed there could lose the batch that publishes it, to a kill or to a failed commit (SQLite busy past its 10-second timeout, a full disk). Its capture instant had not been kept, so the next tick, once the clock had moved, described the packet with a new `captured_at`, a different `evidence.upload.prepare` payload under the same command id, and the peer refused every retry as `idempotency_conflict` (CORE §6.2). The request stayed `preparing` for ever, past its deadline too.
 - **The path is conformance-only today.** `evidence_provider` is a member of the `context` launch member, and `context` is a test control (`TEST_CONTROL_MEMBERS` in `crates/cbr-provider/src/config.rs`) that a production configuration refuses. A production launch seals its packets in its own store (`seal_locally`).
@@ -44,7 +44,19 @@ On `fix/peer-capture`, off `main` at `4dcfb04` (#47, packet_invalid). Commits: `
 | `>` for `>=` on the deadline | `a_scripted_publication_at_the_deadline_instant_reads_deadline_passed` |
 | The deadline wins over an explicit reason | `a_job_that_ends_for_its_own_reason_after_the_deadline_keeps_that_reason` |
 
-**One survives:** a failed capture commit that skips the sends and commits the tick's batch anyway. A single held lock fails both commits, so no deterministic test separates it from the fix.
+**A second verification round ran twelve more mutants (V1–V12) against `context_ops.rs` in a private copy, plus O6 again on its own.** Eight of the twelve were already killed by the tests above: V1 (the boundary read as never past when no instant is kept) and V10 (D falling back to the previous revision's instant) by `a_later_revision_first_composed_past_the_deadline_reads_deadline_passed`; V5 (a failed capture commit's error swallowed) by `a_tick_that_cannot_keep_its_capture_instants_sends_nothing_to_the_peer`; V6 (a later packet's captured-at ignores what was kept) and V7 (a not-sealed failure continues the loop instead of stopping it) by the existing kill-and-replay tests; V12 (`keep_outgoing_captures` skips once any instant is stored) by `a_kill_after_the_peer_seals_a_later_revision_publishes_it_once_the_clock_has_moved` and the new update-revision probe below.
+
+**Corrected: O6 was not inseparable.** The earlier claim above, that a single held lock fails both the capture commit and the tick's batch alike, missed that they are separate writes to the same row and can be made to fail one at a time with a SQLite trigger that aborts only the capture-only write (`cursor` still 0, `captures` present), never the tick's own advancing batch. `probe_a_capture_commit_that_fails_alone_publishes_nothing_until_it_succeeds` (`46036a5`) does this and kills O6 alone.
+
+**Three more of this round's mutants needed a dedicated test, now added (`46036a5`), each killing exactly the one it targets, none other:**
+
+| Mutant | Test |
+|---|---|
+| V2, the kept-instant read gated on the request still `preparing` (an already-published `context.updates` revision recomposes at the tick's own instant instead) | `probe_an_update_revision_kept_before_the_deadline_replays_after_it` |
+| V3, the capture-keeping call skipped on a tick that ends the job | `probe_a_kill_after_a_finishing_tick_seals_at_the_peer_replays` |
+| V11, the deadline boundary read strict (`>`) once an instant is kept, instead of the same `>=` as an uncomposed one | `probe_a_capture_kept_at_the_deadline_instant_replays_after_it` |
+
+**Still survive, this round, recorded and not changed:** V4 (`captures.push` records a fresh read of the clock rather than the tick's own `now`), V8 (the after-peer-sealed barrier set even on a failed send) and V9 (`keep_captures` drops its guard against overwriting an instant already stored). No test in this run distinguishes any of the three from the fix; whether they are equivalent or a real gap is not established here.
 
 **Recorded, not changed.**
 
@@ -53,7 +65,7 @@ On `fix/peer-capture`, off `main` at `4dcfb04` (#47, packet_invalid). Commits: `
 
 **Follow-up, not fixed here: persist the dedupe generation before sending** (CORE §6.3 item 3). CBR's peer client takes the peer's `current` generation at each connect (`Peer::connect`, `crates/cbr-provider/src/peer.rs`). The key a command is deduplicated under does not include the generation, so a retry is replayed while the peer keeps its record; but a peer that has discarded the record would take a retry sent under its new `current` as a new command, where the original generation would have drawn `dedupe_history_unavailable`. Deferred: the path is conformance-only, and the reconciliation that answer calls for, inspecting the subject, needs `evidence.read`, which the composition grant does not give. Whether to file anything is the owner's call.
 
-**Gates at the head.** At `0397f76`, the last commit with tests, with this docs commit's edits in place (Markdown, and one doc comment in `peer.rs`).
+**Gates at the head.** At `46036a5`, the last commit with tests, with this docs commit's edits in place (Markdown, and one doc comment in `peer.rs`).
 
 - **Static gates, all exit 0:** `check_docs.py`, `verify_pin.py`, `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets --locked -- -D warnings`, `cargo build --workspace --locked`, and `git diff --check origin/main...HEAD`. `Cargo.lock`, `GOLDEN_PACKET_DIGEST` and `vendor/` are unchanged, and no machine path is committed.
 - **`main` moved during this change**, from `4dcfb04` to `25eefca` (#48, m5-arith). `git merge-tree --write-tree` merges `0397f76`, the last commit with code or tests, into `25eefca` with no conflict; these docs conflict with it in `docs/VERIFICATION.md` and `docs/work/STATE.md`. #48's change to `context_ops.rs`, a discovery bound (`rows: crate::selection::CANDIDATES`), does not touch this change's paths.
