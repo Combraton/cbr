@@ -75,6 +75,15 @@ pub enum Unusable {
     NoToolCall,
 }
 
+/// Every outcome a question may be repaired after.
+// Stub, tests first: declared beside `Unusable::repairable`, which does
+// not read it yet.
+pub const REPAIRABLE: [Unusable; 3] = [
+    Unusable::Truncated,
+    Unusable::NotStructured,
+    Unusable::NoToolCall,
+];
+
 impl Unusable {
     pub fn reason(self) -> &'static str {
         match self {

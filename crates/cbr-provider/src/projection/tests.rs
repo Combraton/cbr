@@ -2528,14 +2528,6 @@ fn a_failure_the_floor_left_out_is_never_credited_to_the_model() {
 
 // ---- what the family can cost ---------------------------------------------------------------
 
-/// The largest request a part can send, as admission counts it.
-fn worst_case(body: &Request) -> u64 {
-    let serialized = body.serialize(Dialect::Responses);
-    crate::budget::input_bound(&serialized, body.framed_messages(Dialect::Responses))
-        .saturating_add(body.generation)
-        .saturating_add(crate::budget::SAFETY_MARGIN_TOKENS)
-}
-
 /// The widest counts a part's preamble can carry: a named failure is at
 /// least one byte of an input within capacity, and the room is at most a
 /// whole projection.
@@ -2594,18 +2586,33 @@ fn at_the_bound() -> (Part, Vec<Candidate>) {
     (part, candidates)
 }
 
+/// The widest part a projection can ask: at every bound, with a task
+/// longer than the protocol admits (256 characters, each at most six
+/// bytes escaped) and the longest model name the owner named.
+pub(crate) fn widest_part() -> Request {
+    let (part, candidates) = at_the_bound();
+    ask(
+        crate::discovery::tests::longest_model(),
+        &crate::discovery::tests::widest_task(),
+        &part,
+        &candidates,
+    )
+}
+
 /// The figures READINESS publishes, so that a document cannot drift from
-/// the arithmetic it quotes.
-const PUBLISHED_PART: u64 = 41_017;
-const PUBLISHED_PROJECTION: u64 = 492_204;
+/// the arithmetic it quotes: one part's send, and a whole projection's
+/// questions, each its first send and its widest repair.
+const PUBLISHED_PART: u64 = 41_029;
+const PUBLISHED_PROJECTION: u64 = 336_424;
+/// **What the J2 harness stops against**, which is a bound at least as
+/// large as a projection's worst case rather than equal to it: it was
+/// computed under the three-sends convention, and tightening it is the
+/// owner's call at the next J2 run.
+const J2_HARNESS_BOUND: u64 = 492_204;
 
 #[test]
 fn a_parts_worst_call_is_computed_from_its_real_body_and_fits_one_request() {
-    let (part, candidates) = at_the_bound();
-    // A task larger than the protocol admits (256 characters, each at
-    // most six bytes escaped), as discovery's arithmetic takes it.
-    let task = "x".repeat(4096);
-    let worst = worst_case(&ask("MiniMax-M3", &task, &part, &candidates));
+    let worst = crate::model::send_worst(&widest_part(), Dialect::Responses);
     assert_eq!(
         worst, PUBLISHED_PART,
         "READINESS's figure for one part is not what it costs"
@@ -2618,15 +2625,12 @@ fn a_parts_worst_call_is_computed_from_its_real_body_and_fits_one_request() {
 
 #[test]
 fn a_whole_projection_cannot_exhaust_a_job_even_beside_discovery() {
-    // **Every part may be counted once and repaired once**, so three
-    // sends apiece, as discovery's arithmetic has it; and a request whose
-    // limit covers both a projection and discovery's flow must not be
-    // refused by its own job's ceiling.
-    let (part, candidates) = at_the_bound();
-    let task = "x".repeat(4096);
-    let sends = 2 + u64::from(crate::model::REPAIRS);
+    // **Every part is its first send and its widest repair**, as the
+    // serving path holds a question; and a request whose limit covers
+    // both a projection and discovery's flow must not be refused by its
+    // own job's ceiling.
     let projection =
-        worst_case(&ask("MiniMax-M3", &task, &part, &candidates)) * sends * MAX_PARTS as u64;
+        crate::model::question_worst(&widest_part(), Dialect::Responses) * MAX_PARTS as u64;
     assert_eq!(projection, PUBLISHED_PROJECTION);
     assert!(projection < crate::budget::PER_JOB_TOKENS, "{projection}");
     assert!(
@@ -2640,10 +2644,12 @@ fn a_whole_projection_cannot_exhaust_a_job_even_beside_discovery() {
 const DISCOVERY_FLOW: u64 = crate::discovery::tests::PUBLISHED_FLOW;
 
 #[test]
-fn the_harness_stops_against_the_same_worst_case_this_module_computes() {
+fn the_harness_stops_against_a_bound_no_smaller_than_a_projections_worst_case() {
     // **A number that lives in two languages has a test across the
     // boundary**: the J2 harness checks a run's worst case before it
-    // starts one, and reads it from here.
+    // starts one. Its figure is not this module's: it is a bound, kept
+    // from the convention it was computed under, and what has to hold is
+    // that it is no smaller than what a projection can reserve.
     let mut path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     path.pop();
     path.pop();
@@ -2659,10 +2665,15 @@ fn the_harness_stops_against_the_same_worst_case_this_module_computes() {
             .collect();
         written.parse().ok()
     };
+    let stops_at = figure("WORST_CASE_PROJECTION_TOKENS = ");
     assert_eq!(
-        figure("WORST_CASE_PROJECTION_TOKENS = "),
-        Some(PUBLISHED_PROJECTION),
-        "the harness stops against a worst case this module does not compute"
+        stops_at,
+        Some(J2_HARNESS_BOUND),
+        "the harness stops against a figure nobody recorded"
+    );
+    assert!(
+        stops_at.is_some_and(|bound| bound >= PUBLISHED_PROJECTION),
+        "the harness stops against less than a projection can reserve: {stops_at:?}"
     );
     assert_eq!(figure("MAX_PARTS = "), Some(MAX_PARTS as u64));
 }

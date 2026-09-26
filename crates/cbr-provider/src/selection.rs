@@ -63,6 +63,42 @@ pub const KIND_SPAN: &str = "span";
 /// span of a named file has no claim to offer.
 pub const KIND_CLAIM: &str = "claim";
 
+/// At most this many bytes of a candidate's text, as a request body
+/// carries it.
+// Stub, tests first: declared, and not yet applied by `shown`.
+#[cfg_attr(not(test), allow(dead_code))]
+pub const CANDIDATE_TEXT_BYTES: usize = 2 * 4_096;
+/// At most this many bytes of a candidate's path, as a request body
+/// carries it.
+// Stub, tests first: declared, and not yet applied by `shown`.
+#[cfg_attr(not(test), allow(dead_code))]
+pub const CANDIDATE_PATH_BYTES: usize = 1_024;
+/// What a field cut to its bound ends with.
+// Stub, tests first: declared, and not yet written by `shown`.
+#[cfg_attr(not(test), allow(dead_code))]
+pub const CUT_MARKER: &str = "[cut]";
+
+/// One candidate, as a request shows it.
+// Stub, tests first: moved from `discovery` unchanged, so it does not
+// cut.
+pub(crate) fn shown(text: &mut String, candidate: &Candidate) {
+    let where_it_is = if candidate.kind == KIND_CLAIM {
+        format!("claim {}", candidate.path)
+    } else {
+        format!(
+            "{path} lines {start}-{end}",
+            path = candidate.path,
+            start = candidate.start_line,
+            end = candidate.end_line
+        )
+    };
+    text.push_str(&format!(
+        "\n[{id}] {where_it_is}\n{body}\n[end {id}]\n",
+        id = candidate.id,
+        body = candidate.text,
+    ));
+}
+
 /// The answer is one small object. [`generation_for`] multiplies it,
 /// because on these models reasoning spends the same budget and an
 /// under-sized limit costs the whole call and returns nothing.
@@ -160,4 +196,4 @@ pub fn chosen(
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

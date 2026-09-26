@@ -62,7 +62,7 @@
 
 use cbr_encoding::Value;
 
-use crate::selection::Candidate;
+use crate::selection::{Candidate, shown};
 use crate::wire::request::{Message, Request, Role, Want, generation_for};
 use crate::wire::response::Reply;
 
@@ -266,25 +266,6 @@ fn schema_of(property: &str, items: Value, max: usize) -> Value {
             Value::Array(vec![Value::String(property.into())]),
         ),
     ])
-}
-
-/// One candidate, as a request shows it.
-fn shown(text: &mut String, candidate: &Candidate) {
-    let where_it_is = if candidate.kind == crate::selection::KIND_CLAIM {
-        format!("claim {}", candidate.path)
-    } else {
-        format!(
-            "{path} lines {start}-{end}",
-            path = candidate.path,
-            start = candidate.start_line,
-            end = candidate.end_line
-        )
-    };
-    text.push_str(&format!(
-        "\n[{id}] {where_it_is}\n{body}\n[end {id}]\n",
-        id = candidate.id,
-        body = candidate.text,
-    ));
 }
 
 /// Step one: the question, and what the ordinary search already found.

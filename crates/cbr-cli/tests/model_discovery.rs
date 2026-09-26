@@ -867,3 +867,261 @@ fn a_request_with_nothing_readable_in_its_view_buys_no_call() {
     );
     provider.stop();
 }
+
+// ---- an escape-dense repository --------------------------------------
+
+/// The figures `cbr-provider` publishes for the discovery flow and pins in
+/// its own tests (`discovery::tests`, `selection::tests`): one choose
+/// send, the whole flow, and one selection question, each at the widest
+/// bodies the bounds admit.
+///
+/// Written out, as the bounds above are, because this crate launches the
+/// provider rather than linking it.
+const PUBLISHED_CHOOSE: i64 = 193_213;
+const PUBLISHED_FLOW: i64 = 517_492;
+const PUBLISHED_SELECTION_QUESTION: i64 = 167_307;
+
+/// What a candidate cut to fit its carried bound ends with.
+const CUT: &str = "[cut]";
+
+/// What a candidate's text may take in a request body, and its path.
+const CANDIDATE_TEXT_BYTES: usize = 8_192;
+const CANDIDATE_PATH_BYTES: usize = 1_024;
+
+/// `text` as a request body carries it: JSON, whose escapes are sent.
+fn carried(text: &str) -> String {
+    let quoted = String::from_utf8(cbr_encoding::to_canonical(&Value::String(text.to_string())))
+        .expect("canonical JSON is utf-8");
+    quoted[1..quoted.len() - 1].to_string()
+}
+
+/// Every ledger row, in the order it was written, as `(kind, estimate,
+/// tokens)`: the reservations and what they settled to, the notes saying
+/// which evidence admitted each call, and the refusals.
+fn ledger_rows(data: &std::path::Path) -> Vec<(String, i64, i64)> {
+    let connection = rusqlite::Connection::open(data.join("cbr.sqlite")).expect("opens the store");
+    let mut statement = connection
+        .prepare("SELECT kind, estimate, tokens FROM model_ledger ORDER BY id")
+        .expect("the ledger table exists");
+    statement
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+        .expect("queries")
+        .map(|row| row.expect("row"))
+        .collect()
+}
+
+/// The frame candidate `id` was offered in, as the body that was sent
+/// carries it: `(where it is, its text)`, both still escaped.
+fn frame_of(body: &str, id: &str) -> (String, String) {
+    let open = format!("\\n[{id}] ");
+    let close = format!("\\n[end {id}]\\n");
+    let from = body
+        .find(&open)
+        .unwrap_or_else(|| panic!("no candidate {id} in the body that was sent"))
+        + open.len();
+    let to = from
+        + body[from..]
+            .find(&close)
+            .unwrap_or_else(|| panic!("candidate {id} is never closed"));
+    let (where_it_is, text) = body[from..to]
+        .split_once("\\n")
+        .unwrap_or_else(|| panic!("candidate {id} has no text"));
+    (where_it_is.to_string(), text.to_string())
+}
+
+#[test]
+fn an_escape_dense_repository_is_asked_its_choice_within_the_published_flow() {
+    // **The flow's figure is a bound only if the body it prices is the
+    // widest one a repository can make.** Spans are capped in raw bytes
+    // and a request body is JSON, so a span of C0 control characters is
+    // carried at six bytes a byte: twenty of them came to about 450,000,
+    // and the per-request ceiling refused the choice outright. So a
+    // repository dense in them was never asked its choice at all, and
+    // the published flow was not the most a flow could reserve.
+    //
+    // What must hold: the choice is asked, within the published figure
+    // for one choose send; a candidate cut to fit says so; an ordinary
+    // candidate is shown exactly as it always was; the packet's own
+    // bytes are the repository's, untouched by what the model was shown;
+    // and the records replay to the same packet.
+    let chosen: Vec<String> = (1..=12).map(|n| format!("d{n}")).collect();
+    let terms = format!("terms:{}", serving::DENSE_TERM);
+    let ids = format!("ids:{}", chosen.join(","));
+    let fixture = Fixture::escape_dense(&["choose:c1", &terms, &ids]);
+    let provider = fixture.start();
+    let inspected = prepared(&fixture, "dense", BOTH_STEPS);
+    assert_eq!(result(&inspected, "q").0, "satisfied", "{inspected:?}");
+
+    let rows = ledger_rows(&fixture.data());
+    for (kind, estimate, tokens) in &rows {
+        eprintln!("ledger: {kind} estimate {estimate} tokens {tokens}");
+    }
+    let refused: Vec<&(String, i64, i64)> = rows
+        .iter()
+        .filter(|(kind, ..)| kind == "refusal" || kind.ends_with("_ceiling"))
+        .collect();
+    let unavailable: Vec<(String, String)> = omissions(&fixture, "dense")
+        .into_iter()
+        .filter(|(section, _)| section.starts_with("d-model-"))
+        .collect();
+    assert!(
+        refused.is_empty() && unavailable.is_empty(),
+        "the choice was not asked: the ledger refused {refused:?} and the packet declares \
+         {unavailable:?}"
+    );
+
+    // **Within the published figures.** The item, the terms and the
+    // choice, each admitted on the local bound and in that order.
+    let admitted: Vec<i64> = rows
+        .iter()
+        .filter(|(kind, ..)| kind.starts_with("admitted_"))
+        .map(|(_, estimate, _)| *estimate)
+        .collect();
+    assert_eq!(
+        admitted.len(),
+        3,
+        "the item, the terms and the choice: {rows:?}"
+    );
+    let choose = admitted[2];
+    eprintln!("the choose step reserved {choose} of the published {PUBLISHED_CHOOSE}");
+    assert!(
+        choose <= PUBLISHED_CHOOSE,
+        "the choice reserved {choose}, past the published {PUBLISHED_CHOOSE} for one send"
+    );
+    assert!(
+        admitted[1] + admitted[2] <= PUBLISHED_FLOW,
+        "discovery reserved {} past the published flow",
+        admitted[1] + admitted[2]
+    );
+    let charged: i64 = rows
+        .iter()
+        .filter(|(kind, ..)| {
+            matches!(
+                kind.as_str(),
+                "reservation" | "usage" | "unknown" | "provider_exhausted" | "not_sent"
+            )
+        })
+        .map(|(_, _, tokens)| *tokens)
+        .sum();
+    assert!(
+        charged <= PUBLISHED_FLOW,
+        "the job's ledger holds {charged}, past the flow"
+    );
+    assert!(
+        admitted.iter().sum::<i64>() <= PUBLISHED_FLOW + PUBLISHED_SELECTION_QUESTION,
+        "what the job reserved is past one flow and one selection question: {admitted:?}"
+    );
+
+    // **What the model was shown.** A candidate cut to fit carries the
+    // marker inside its bound; an ordinary one is the frame it always
+    // was, byte for byte.
+    let (_, body) = steps(&fixture);
+    let offered: Vec<String> = (1..=CANDIDATES)
+        .map(|n| format!("d{n}"))
+        .filter(|id| body.contains(&format!("[{id}] ")))
+        .collect();
+    assert_eq!(offered.len(), CANDIDATES, "{offered:?}");
+    let (mut cut, mut whole, mut path_cut) = (0, 0, 0);
+    for id in &offered {
+        let (where_it_is, text) = frame_of(&body, id);
+        let dense = where_it_is.starts_with("dense-") || where_it_is.starts_with("nested/");
+        if dense {
+            assert!(
+                text.ends_with(CUT) && text.len() <= CANDIDATE_TEXT_BYTES,
+                "{id} was shown {} carried bytes, and {}",
+                text.len(),
+                if text.ends_with(CUT) {
+                    "says it was cut"
+                } else {
+                    "does not say it was cut"
+                }
+            );
+            let (path, _) = where_it_is
+                .rsplit_once(" lines ")
+                .unwrap_or_else(|| panic!("{id} names no lines: {where_it_is}"));
+            assert!(path.len() <= CANDIDATE_PATH_BYTES, "{id}: {path}");
+            if path.ends_with(CUT) {
+                path_cut += 1;
+            }
+            cut += 1;
+        } else {
+            let (path, lines) = where_it_is
+                .rsplit_once(" lines ")
+                .unwrap_or_else(|| panic!("{id} names no lines: {where_it_is}"));
+            let (first, last) = lines.split_once('-').expect("a range");
+            let (first, last): (usize, usize) = (
+                first.parse().expect("a line"),
+                last.parse().expect("a line"),
+            );
+            let file = std::fs::read_to_string(fixture.checkout.join(path)).expect("the file");
+            let span: String = file
+                .split_inclusive('\n')
+                .skip(first - 1)
+                .take(last - first + 1)
+                .collect();
+            let frame = format!("\n[{id}] {path} lines {first}-{last}\n{span}\n[end {id}]\n");
+            assert!(
+                body.contains(&carried(&frame)),
+                "{id} is not shown the way it was before the cut: {where_it_is}"
+            );
+            assert!(!text.ends_with(CUT), "{id} was cut: {where_it_is}");
+            whole += 1;
+        }
+    }
+    eprintln!("{cut} candidates cut, {path_cut} of their paths, {whole} shown whole");
+    assert!(cut >= 10 && whole >= 2, "{cut} cut and {whole} whole");
+    assert_eq!(path_cut, 2, "the long path's two spans are shown cut");
+
+    // **The packet is the repository's bytes.** Every discovered section
+    // is an excerpt of the file its locator names, whatever the model
+    // was shown of it.
+    let sections = serving::sealed(&serving::packet(&fixture, "dense"))
+        .get("sections")
+        .and_then(Value::as_array)
+        .unwrap_or_default()
+        .to_vec();
+    let mut dense_sections = 0;
+    for section in &sections {
+        let Some(id) = section.get("section_id").and_then(Value::as_str) else {
+            continue;
+        };
+        if !id.starts_with("d-span-") {
+            continue;
+        }
+        let content = section
+            .get("content")
+            .and_then(Value::as_str)
+            .expect("content");
+        let (_, path) = serving::locator_path(content).expect("a locator");
+        let (from, to) = serving::locator_range(content).expect("a byte range");
+        let file = std::fs::read(fixture.checkout.join(&path)).expect("the file");
+        let excerpt = content.split_once('\n').map_or("", |(_, excerpt)| excerpt);
+        assert_eq!(
+            excerpt.as_bytes(),
+            &file[from..to],
+            "{id} does not carry the bytes its locator names"
+        );
+        if path.starts_with("dense-") || path.starts_with("nested/") {
+            dense_sections += 1;
+        }
+        eprintln!(
+            "packet: {id} carries bytes {from}-{to} of a file of {}",
+            file.len()
+        );
+    }
+    assert!(dense_sections > 0, "no escape-dense span was published");
+
+    // **And a rebuild reaches the same packet from the records.**
+    let discovered = discovered_spans(&fixture, "dense");
+    let sent = bodies_sent(&fixture.data()).len();
+    provider.stop();
+    let rebuilding = fixture.start_replaying();
+    prepared(&fixture, "again", BOTH_STEPS);
+    assert_eq!(discovered_spans(&fixture, "again"), discovered);
+    assert_eq!(
+        bodies_sent(&fixture.data()).len(),
+        sent,
+        "the rebuild sent something"
+    );
+    rebuilding.stop();
+}

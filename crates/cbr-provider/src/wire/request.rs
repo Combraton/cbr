@@ -301,6 +301,15 @@ pub fn repair_instruction(want: &Want) -> &'static str {
     }
 }
 
+/// The longest prefix of `text`, on a character boundary, that a request
+/// body carries in at most `bytes` bytes.
+// Stub, tests first: returns the text whole.
+#[cfg_attr(not(test), allow(dead_code))]
+pub fn carried_within(text: &str, bytes: usize) -> &str {
+    let _ = bytes;
+    text
+}
+
 fn message(role: &str, text: &str) -> Value {
     Value::Object(vec![
         ("role".into(), Value::String(role.into())),

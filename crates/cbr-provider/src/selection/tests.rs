@@ -181,3 +181,319 @@ fn one_candidate_is_not_a_question_worth_paying_for() {
     assert!(!worth_asking(&[]));
     assert!(worth_asking(&two()));
 }
+
+// ---- what a candidate is shown as ---------------------------------------
+
+/// What a request body carries `text` as, measured by the serializer that
+/// writes the body: JSON, whose escapes are sent.
+fn carried(text: &str) -> usize {
+    cbr_encoding::to_canonical(&Value::String(text.to_string())).len() - 2
+}
+
+/// Every way a body carries a character: as itself, as a two-byte escape,
+/// as a six-byte one, as four bytes of UTF-8, and all of them at once.
+fn classes() -> Vec<(&'static str, &'static str)> {
+    vec![
+        ("x", "x"),
+        ("quote", "\""),
+        ("backslash", "\\"),
+        ("newline", "\n"),
+        ("tab", "\t"),
+        ("control", "\u{1}"),
+        ("four-byte", "\u{1d11e}"),
+        ("mixed", "x\"\\\n\t\u{1}\u{e9}\u{1d11e}"),
+    ]
+}
+
+/// `unit` repeated to at most `bytes` raw bytes, cut on a character.
+fn of_bytes(unit: &str, bytes: usize) -> String {
+    unit.chars()
+        .cycle()
+        .scan(0usize, |used, ch| {
+            *used += ch.len_utf8();
+            (*used <= bytes).then_some(ch)
+        })
+        .collect()
+}
+
+/// What a frame showed of `candidate`'s path and text, read back out of
+/// it.
+fn read_frame(frame: &str, candidate: &Candidate) -> (String, String) {
+    let open = format!("\n[{}] ", candidate.id);
+    let close = format!("\n[end {}]\n", candidate.id);
+    let inner = frame
+        .strip_prefix(&open)
+        .and_then(|rest| rest.strip_suffix(&close))
+        .unwrap_or_else(|| panic!("not a frame: {frame:?}"));
+    if candidate.kind == KIND_CLAIM {
+        let (path, text) = inner
+            .strip_prefix("claim ")
+            .and_then(|rest| rest.split_once('\n'))
+            .unwrap_or_else(|| panic!("not a claim's frame: {frame:?}"));
+        return (path.to_string(), text.to_string());
+    }
+    let lines = format!(" lines {}-{}\n", candidate.start_line, candidate.end_line);
+    let at = inner
+        .find(&lines)
+        .unwrap_or_else(|| panic!("no lines in the frame: {frame:?}"));
+    (
+        inner[..at].to_string(),
+        inner[at + lines.len()..].to_string(),
+    )
+}
+
+/// That `shown` is `original` within `cap` carried bytes: the whole of it
+/// when it fits, and otherwise the longest prefix that fits beside the
+/// marker, then the marker.
+fn assert_shown_within(what: &str, original: &str, shown: &str, cap: usize) {
+    assert!(
+        carried(shown) <= cap,
+        "{what} is shown in {} carried bytes, past {cap}",
+        carried(shown)
+    );
+    if carried(original) <= cap {
+        assert_eq!(shown, original, "{what} fits, and was not shown whole");
+        return;
+    }
+    let kept = shown
+        .strip_suffix(CUT_MARKER)
+        .unwrap_or_else(|| panic!("{what} was cut and does not say so"));
+    assert!(
+        original.starts_with(kept),
+        "{what}: what was kept is not a prefix of it"
+    );
+    let next = original[kept.len()..]
+        .chars()
+        .next()
+        .unwrap_or_else(|| panic!("{what} is marked cut and nothing was cut"));
+    assert!(
+        carried(kept) + carried(&next.to_string()) + carried(CUT_MARKER) > cap,
+        "{what} was cut shorter than its bound needs"
+    );
+}
+
+#[test]
+fn a_candidate_is_shown_within_its_carried_bounds_and_says_when_it_was_cut() {
+    // **A span is capped in raw bytes and a body is JSON.** A span of C0
+    // control characters is carried at six bytes a byte, so the bound
+    // the per-request arithmetic rests on was not a bound on what a body
+    // could carry. What is shown is cut to a carried bound, on a
+    // character, and a candidate cut says so inside its bound.
+    //
+    // The text's cap is twice retrieval's span, so text whose every
+    // character is carried in at most two bytes is never cut.
+    let span_bytes = cbr_memory::retrieval::Bounds::default().span_bytes;
+    assert_eq!(CANDIDATE_TEXT_BYTES, 2 * span_bytes);
+    for (class, unit) in classes() {
+        let text = of_bytes(unit, span_bytes);
+        for path_bytes in [0, 1, 135, 1_023, 1_024, 1_025, 4_096] {
+            let path = of_bytes(unit, path_bytes);
+            for kind in [KIND_SPAN, KIND_CLAIM] {
+                // A claim is framed by its id, which holds no newline.
+                if kind == KIND_CLAIM && path.contains('\n') {
+                    continue;
+                }
+                let lines = if kind == KIND_SPAN { (1, 20) } else { (0, 0) };
+                let candidate = Candidate {
+                    id: "d1".into(),
+                    kind,
+                    path: path.clone(),
+                    start_line: lines.0,
+                    end_line: lines.1,
+                    text: text.clone(),
+                };
+                let mut frame = String::new();
+                shown(&mut frame, &candidate);
+                let (path_shown, text_shown) = read_frame(&frame, &candidate);
+                let what = format!("a {kind}'s {class} text, beside a path of {path_bytes} bytes");
+                assert_shown_within(&what, &text, &text_shown, CANDIDATE_TEXT_BYTES);
+                let what = format!("a {kind}'s {class} path of {path_bytes} bytes");
+                assert_shown_within(&what, &path, &path_shown, CANDIDATE_PATH_BYTES);
+
+                // **Every request that offers a candidate shows it so.**
+                let offered = std::slice::from_ref(&candidate);
+                let mut requests = vec![
+                    (
+                        "propose",
+                        crate::discovery::propose("MiniMax-M3", "q", offered),
+                    ),
+                    (
+                        "choose",
+                        crate::discovery::choose("MiniMax-M3", "q", &[], offered),
+                    ),
+                ];
+                if kind == KIND_SPAN {
+                    requests.push(("ask", ask("MiniMax-M3", "q", "s", offered)));
+                }
+                for (step, request) in requests {
+                    assert!(
+                        request.messages[0].text.contains(&frame),
+                        "{step} shows {what} otherwise"
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn text_that_escapes_to_at_most_two_bytes_a_character_is_shown_whole() {
+    // **The guard on the cap's size.** Every span of the repositories
+    // surveyed carries in at most 5,150 bytes, and text whose characters
+    // are carried in at most two bytes each is at most twice a span —
+    // so at this cap none of them changes, and the frame is byte for
+    // byte what it was before the cut existed. A smaller cap would cut
+    // real spans.
+    let span_bytes = cbr_memory::retrieval::Bounds::default().span_bytes;
+    let path = format!("{}/mod.rs", "d".repeat(128));
+    assert_eq!(path.len(), 135, "the longest path surveyed: {path}");
+    for (class, unit) in [
+        ("quote", "\""),
+        ("backslash", "\\"),
+        ("newline", "\n"),
+        ("tab", "\t"),
+        ("two-byte", "\u{e9}"),
+        ("x", "x"),
+    ] {
+        let text = of_bytes(unit, span_bytes);
+        let candidate = Candidate {
+            id: "c1".into(),
+            kind: KIND_SPAN,
+            path: path.clone(),
+            start_line: 1,
+            end_line: 20,
+            text: text.clone(),
+        };
+        // The frame every request showed before, written out rather than
+        // produced by the code under test.
+        let before = format!("\n[c1] {path} lines 1-20\n{text}\n[end c1]\n");
+        let mut frame = String::new();
+        shown(&mut frame, &candidate);
+        assert_eq!(frame, before, "the {class} span is not shown whole");
+        assert!(!frame.contains(CUT_MARKER), "{class}");
+        let offered = std::slice::from_ref(&candidate);
+        for (step, request) in [
+            (
+                "propose",
+                crate::discovery::propose("MiniMax-M3", "q", offered),
+            ),
+            (
+                "choose",
+                crate::discovery::choose("MiniMax-M3", "q", &[], offered),
+            ),
+            ("ask", ask("MiniMax-M3", "q", "s", offered)),
+        ] {
+            assert!(
+                request.messages[0].text.contains(&before),
+                "{step} does not show the {class} span whole"
+            );
+        }
+    }
+}
+
+// ---- what one item's selection can cost ---------------------------------
+
+/// How many candidates one item's selection offers: the spans of the named
+/// file retrieval ranks, at `rows: 8` where the call site asks
+/// (`provider::context_ops`).
+pub(crate) const SELECTION_CANDIDATES: usize = 8;
+
+/// The widest selection question: every candidate at every bound, a task
+/// longer than the protocol admits, and a selector of 512 code points —
+/// the most the protocol admits — each carried at six bytes.
+pub(crate) fn widest_selection() -> crate::wire::request::Request {
+    ask(
+        crate::discovery::tests::longest_model(),
+        &crate::discovery::tests::widest_task(),
+        &"\u{1}".repeat(512),
+        &crate::discovery::tests::widest_candidates(SELECTION_CANDIDATES, "c"),
+    )
+}
+
+/// The figures READINESS section 3 publishes for one item's selection:
+/// one send, and the question — its first send and its widest repair.
+pub(crate) const PUBLISHED_SELECTION: u64 = 83_397;
+pub(crate) const PUBLISHED_SELECTION_QUESTION: u64 = 167_307;
+
+#[test]
+fn one_items_selection_at_every_bound_is_what_the_published_figures_say() {
+    // **Selection had a published figure and no test.** 39,612 was in
+    // READINESS and nowhere in the code. Now it is computed from the body
+    // at every bound, as admission prices it, and every send it can make
+    // fits one request.
+    let body = widest_selection();
+    let dialect = Dialect::Responses;
+    assert_eq!(
+        (
+            crate::model::send_worst(&body, dialect),
+            crate::model::question_worst(&body, dialect)
+        ),
+        (PUBLISHED_SELECTION, PUBLISHED_SELECTION_QUESTION),
+        "READINESS section 3's figures for selection are not what it costs"
+    );
+    for (send, reserved) in crate::discovery::tests::every_send(&body) {
+        assert!(
+            reserved < crate::budget::PER_REQUEST_TOKENS,
+            "selection's {send} can be refused by its own request ceiling: {reserved}"
+        );
+    }
+}
+
+#[test]
+fn a_selection_request_is_never_refused_by_its_own_ceiling_whatever_its_text_escapes_to() {
+    // Eight spans of nothing but U+0001 and a path of 1,024 of them, the
+    // most the protocol admits, carried at six bytes each: over the
+    // per-request ceiling before the cut, and a question that could never
+    // be asked.
+    let lines = cbr_memory::index::MAX_BLOB_BYTES + 1;
+    let span_bytes = cbr_memory::retrieval::Bounds::default().span_bytes;
+    let candidates: Vec<Candidate> = (1..=SELECTION_CANDIDATES)
+        .map(|n| Candidate {
+            id: format!("c{n}"),
+            kind: KIND_SPAN,
+            path: "\u{1}".repeat(1_024),
+            start_line: lines,
+            end_line: lines,
+            text: "\u{1}".repeat(span_bytes),
+        })
+        .collect();
+    let body = ask(
+        crate::discovery::tests::longest_model(),
+        &crate::discovery::tests::widest_task(),
+        &"\u{1}".repeat(512),
+        &candidates,
+    );
+    for (send, reserved) in crate::discovery::tests::every_send(&body) {
+        assert!(
+            reserved < crate::budget::PER_REQUEST_TOKENS,
+            "selection's {send} can be refused by its own request ceiling: {reserved}"
+        );
+    }
+}
+
+#[test]
+fn the_harness_prices_a_selection_question_as_this_module_computes_it() {
+    // **The m4e stop priced one flow and no selection question**, and
+    // every run asks at least one. So the harness prices each, and the
+    // figure is read here, where it is computed.
+    let mut path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    path.pop();
+    path.pop();
+    let harness = path.join("scripts").join("m4e_run.py");
+    let source = std::fs::read_to_string(&harness)
+        .unwrap_or_else(|_| panic!("{} is not where the harness lives", harness.display()));
+    const NAME: &str = "WORST_CASE_SELECTION_TOKENS = ";
+    let at = source
+        .find(NAME)
+        .unwrap_or_else(|| panic!("the harness does not price a selection question: no {NAME}"));
+    let written: String = source[at + NAME.len()..]
+        .chars()
+        .take_while(|c| c.is_ascii_digit() || *c == '_')
+        .filter(|c| *c != '_')
+        .collect();
+    assert_eq!(
+        written.parse::<u64>().ok(),
+        Some(PUBLISHED_SELECTION_QUESTION),
+        "the harness prices a selection question this module does not compute"
+    );
+}

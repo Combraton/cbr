@@ -671,6 +671,44 @@ pub struct Counted {
 /// envelope exists to prevent, arriving one polite retry at a time.
 pub const REPAIRS: u32 = 1;
 
+/// The counting every serving launch uses.
+// Stub, tests first: declared so the source guard in `tests` can name it,
+// and not yet used by `main.rs`.
+#[cfg_attr(not(test), allow(dead_code))]
+pub const SERVING_COUNTING: Counting = Counting::WhenItCouldAdmit;
+
+/// The request a repair after `unusable` sends.
+// Stub, tests first: returns the body unchanged.
+#[cfg_attr(not(test), allow(dead_code))]
+pub fn repaired(
+    body: &wire::request::Request,
+    unusable: wire::response::Unusable,
+) -> wire::request::Request {
+    let _ = unusable;
+    body.clone()
+}
+
+/// What admission reserves for one send of `body`.
+// Stub, tests first: prices `messages.len()` rather than the messages the
+// provider frames.
+#[cfg_attr(not(test), allow(dead_code))]
+pub fn send_worst(body: &wire::request::Request, dialect: Dialect) -> u64 {
+    budget::input_bound(&body.serialize(dialect), body.messages.len())
+        .saturating_add(body.generation)
+        .saturating_add(budget::SAFETY_MARGIN_TOKENS)
+}
+
+/// The most one question can hold on the serving path.
+// Stub, tests first: three sends of the first body, the convention the
+// published figures used until now.
+#[cfg_attr(not(test), allow(dead_code))]
+pub fn question_worst(body: &wire::request::Request, dialect: Dialect) -> u64 {
+    send_worst(body, dialect).saturating_mul(3)
+}
+
+#[cfg(test)]
+pub(crate) mod harness;
+
 /// One question for a model, with the bounded repair that goes with it.
 pub struct Ask<'a> {
     pub job: &'a str,
