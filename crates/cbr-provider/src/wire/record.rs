@@ -108,6 +108,12 @@ pub fn record(
     Ok(())
 }
 
+/// Tests-first stub for m5-settle's verification round: reconciles nothing.
+pub fn reconcile(connection: &Connection) -> Result<usize, rusqlite::Error> {
+    let _ = connection;
+    Ok(0)
+}
+
 /// One recorded exchange: which call it was, what was sent, what came back.
 pub type Row = (String, Vec<u8>, Vec<u8>);
 

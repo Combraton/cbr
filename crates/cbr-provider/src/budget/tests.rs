@@ -656,6 +656,67 @@ fn a_stops_refusal_row_is_a_refusal() {
     }
 }
 
+#[test]
+fn a_store_holding_both_stops_reports_the_unsound_bound() {
+    // **The stated precedence (V1)**, in whichever order the rows were
+    // written: an unsound bound before an overrun, the order a call ends
+    // in, because the bound is the assumption every admission rests on.
+    for order in [["overrun", "bound_unsound"], ["bound_unsound", "overrun"]] {
+        let connection = database();
+        let ledger = Ledger::new(&connection);
+        for stop in order {
+            ledger
+                .note(T0, "other", "x", stop, 12_000, 10_000)
+                .expect("notes");
+        }
+        assert_eq!(
+            ledger.admit(T0, "job", "r", 5).expect("admits"),
+            Err(Refusal::BoundUnsound),
+            "written {order:?}, the store did not report the bound first"
+        );
+    }
+}
+
+#[test]
+fn a_settlement_lands_once_and_its_overrun_with_it() {
+    // A settlement written again — by a process retrying one the store
+    // refused, or by a start reconciling one a killed process left —
+    // finds its reservation already settled and writes nothing more: one
+    // bill, one `overrun`.
+    let connection = database();
+    let ledger = Ledger::new(&connection);
+    let reservation = ledger
+        .admit(T0, "job", "r", 10_000)
+        .expect("admits")
+        .expect("admitted");
+    for _ in 0..2 {
+        ledger
+            .settle(T0, &reservation, Settlement::Usage(12_000))
+            .expect("settles");
+    }
+    let rows = attributed(&connection);
+    assert_eq!(
+        rows,
+        vec![
+            (
+                "job".to_string(),
+                "r".to_string(),
+                "usage".to_string(),
+                12_000,
+                10_000
+            ),
+            (
+                "job".to_string(),
+                "r".to_string(),
+                "overrun".to_string(),
+                12_000,
+                10_000
+            ),
+        ],
+        "a settlement landed twice"
+    );
+}
+
 // m4a's `the_crate_has_no_network_dependency_in_its_tree` moved to
 // `wire::net::tests` when m4b gave the crate one, and became two tests
 // there: the four crates that do not need a network client still have

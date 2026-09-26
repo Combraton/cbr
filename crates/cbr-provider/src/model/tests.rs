@@ -3476,3 +3476,500 @@ fn overbilled_bills_what_it_was_told() {
     };
     assert_eq!(usage, Some(small.len() as u64 + 64), "the next answer");
 }
+
+// --- m5-settle, verification round 1: the settlement routes -------------
+
+/// A provider that takes the store's write lock on `other` while the
+/// completion is on the wire, as another writer would, and answers it
+/// with `answer`.
+struct LockedWhileSending<'c> {
+    other: &'c Connection,
+    answer: std::cell::RefCell<Option<Answer>>,
+}
+
+impl Transport for LockedWhileSending<'_> {
+    fn send(&self, call: Call, _body: &[u8]) -> Exchange {
+        assert_eq!(call, Call::Completion, "the local bound admits; no count");
+        self.other
+            .execute_batch("BEGIN IMMEDIATE")
+            .expect("the other writer takes the lock");
+        Exchange {
+            answer: self.answer.borrow_mut().take().expect("one answer"),
+            raw: Vec::new(),
+        }
+    }
+}
+
+/// A connection to the store at `path` that gives up on a held lock
+/// after 50 milliseconds.
+fn impatient(path: &std::path::Path) -> Connection {
+    let connection = Connection::open(path).expect("opens");
+    connection
+        .busy_timeout(std::time::Duration::from_millis(50))
+        .expect("a busy timeout");
+    connection
+}
+
+#[test]
+fn an_overrun_whose_settlement_the_store_refused_still_stops_the_store() {
+    // **P1.** A settlement is one transaction, so a store that cannot take
+    // it — another writer holding the lock past the busy timeout, an I/O
+    // error, a full disk — takes none of it, and its `overrun` row is not
+    // written. The process remembers the overrun: every later admission
+    // on that store is refused, on the call's connection and on another,
+    // and the first one the store takes writes the bill and the overrun
+    // that could not be written. The call's charge is the bill, which is
+    // what the ledger then holds.
+    let directory = tempfile::tempdir().expect("temp dir");
+    let path = directory.path().join("ledger.sqlite");
+    let connection = impatient(&path);
+    Ledger::migrate(&connection).expect("migrates");
+    let other = impatient(&path);
+    let body = padded_body(64, 4_000);
+    let send = crate::budget::reservation(&body, 1, 64);
+    let bill = send + 1_000;
+    let transport = LockedWhileSending {
+        other: &other,
+        answer: std::cell::RefCell::new(Some(Answer::Completed {
+            body: responses_completion_billing(1, bill - 1),
+            usage: Some(bill),
+        })),
+    };
+    let runtime = Runtime {
+        ledger: Ledger::new(&connection),
+        transport: &transport,
+    };
+    let charges = Charges::default();
+    let ended = runtime.call(T0, &asked_with(&body, 64), &no_barrier, &charges);
+    assert_eq!(ended.reason(), Some(OVERRUN_REASON), "{ended:?}");
+    assert!(
+        !attributed(&connection).iter().any(|row| row.2 == "overrun"),
+        "the settlement landed, so this is not the case under test"
+    );
+
+    let beside = impatient(&path);
+    for (which, store) in [("the call's connection", &connection), ("another", &beside)] {
+        let admitted = Ledger::new(store).admit(T0, "another", "held", 1);
+        assert!(
+            matches!(admitted, Ok(Err(Refusal::Overrun))),
+            "{which}, while the lock is held: {admitted:?}"
+        );
+    }
+    other
+        .execute_batch("COMMIT")
+        .expect("the other writer commits");
+    let admitted = Ledger::new(&beside).admit(T0, "another", "next", 1);
+    assert!(
+        matches!(admitted, Ok(Err(Refusal::Overrun))),
+        "the first admission the store takes: {admitted:?}"
+    );
+    let rows = attributed(&connection);
+    assert!(
+        rows.contains(&row("job", "r", "usage", bill, send)),
+        "the bill was not written once the store took it: {rows:?}"
+    );
+    assert_eq!(
+        rows.iter()
+            .filter(|row| row.2 == "overrun")
+            .collect::<Vec<_>>(),
+        vec![&row("job", "r", "overrun", bill, send)],
+        "not one overrun row naming the call: {rows:?}"
+    );
+    assert_eq!(
+        charges.attempted().tokens,
+        Some(bill),
+        "the call's charge and what the ledger holds disagree"
+    );
+}
+
+/// One recorded call over a store at `path`, killed where `barrier`
+/// names: a `Recording` in front of a scripted provider, as a serving
+/// launch has, so the store holds what came back.
+fn killed_at(
+    path: &std::path::Path,
+    barrier: &'static str,
+    counts: bool,
+    answer: (Answer, Vec<u8>),
+) {
+    let connection = Connection::open(path).expect("opens");
+    Ledger::migrate(&connection).expect("migrates");
+    crate::wire::record::migrate(&connection).expect("migrates");
+    let body = padded_body(64, 4_000);
+    let send = crate::budget::reservation(&body, 1, 64);
+    // One answer: a failed count ends its call before any completion.
+    let recorder = Recorder::answering_with_bytes(vec![answer]);
+    let recording = crate::wire::record::Recording {
+        inner: &recorder,
+        store: &connection,
+        now: T0,
+        job: "job",
+        request: "r",
+        model: "MiniMax-M3",
+        dialect: Dialect::Responses,
+        scrubber: None,
+    };
+    // A count is made only when the local bound is refused on a counter
+    // a tighter figure could satisfy.
+    let ceiling = if counts { send - 1 } else { send };
+    let runtime = Runtime {
+        ledger: Ledger::new(&connection).with_run_ceiling(Some(ceiling)),
+        transport: &recording,
+    };
+    let attempt = Attempt {
+        count_body: counts.then_some(body.as_slice()),
+        ..asked_with(&body, 64)
+    };
+    let killed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        runtime.call(
+            T0,
+            &attempt,
+            &|name| {
+                if name == barrier {
+                    panic!("killed at {name}");
+                }
+            },
+            &Charges::default(),
+        )
+    }));
+    assert!(killed.is_err(), "the kill at {barrier} did not land");
+}
+
+/// A failed call's body reporting `usage`, as a provider's error answer
+/// carries it.
+fn failed_billing(usage: u64) -> Vec<u8> {
+    format!(
+        "{{\"object\":\"response\",\"status\":\"failed\",\
+         \"error\":{{\"message\":\"reset\",\"code\":\"server_error\"}},\
+         \"usage\":{{\"input_tokens\":{usage},\"output_tokens\":0,\"total_tokens\":{usage}}}}}"
+    )
+    .into_bytes()
+}
+
+#[test]
+fn a_store_killed_before_it_settled_an_overrun_is_stopped_when_it_is_opened_again() {
+    // **P4.** A process killed after the answer came back and before its
+    // settlement landed leaves the reservation at its estimate and no
+    // `overrun`. What came back is in the store: the recording boundary
+    // writes it before the call path sees it, beside the reservation it
+    // was sent under. So a start reconciles the reservation against it,
+    // and a recorded bill above the estimate is charged whole and writes
+    // its `overrun` before anything is admitted.
+    let body = padded_body(64, 4_000);
+    let local = crate::budget::input_bound(&body, 1);
+    let send = crate::budget::reservation(&body, 1, 64);
+    let completed = |usage: u64| {
+        let raw = responses_completion_billing(1, usage - 1);
+        (
+            Answer::Completed {
+                body: raw.clone(),
+                usage: Some(usage),
+            },
+            raw,
+        )
+    };
+    let failed = |usage: u64| {
+        (
+            Answer::Failed {
+                reason: "provider_status".into(),
+                usage: Some(usage),
+            },
+            failed_billing(usage),
+        )
+    };
+    // (the kill, counted first, the answer, the bill, what it reserved,
+    // the request its rows name)
+    let cases = [
+        (
+            COMPLETION_AFTER_SEND,
+            false,
+            completed(send + 1_000),
+            send + 1_000,
+            send,
+            "r",
+        ),
+        (
+            COMPLETION_DURING_RECONCILIATION,
+            false,
+            completed(send + 1_000),
+            send + 1_000,
+            send,
+            "r",
+        ),
+        (
+            COMPLETION_DURING_RECONCILIATION,
+            false,
+            failed(send + 200),
+            send + 200,
+            send,
+            "r",
+        ),
+        (
+            COUNT_DURING_RECONCILIATION,
+            true,
+            failed(local + 100),
+            local + 100,
+            local,
+            "r.count",
+        ),
+    ];
+    for (barrier, counts, answer, bill, reserved, request) in cases {
+        let directory = tempfile::tempdir().expect("temp dir");
+        let path = directory.path().join("cbr.sqlite");
+        killed_at(&path, barrier, counts, answer);
+        let connection = Connection::open(&path).expect("opens again");
+        let left = attributed(&connection);
+        assert!(
+            left.contains(&row("job", request, "reservation", reserved, reserved))
+                && !left.iter().any(|row| row.2 == "overrun"),
+            "{barrier}: not the state a kill leaves: {left:?}"
+        );
+        crate::wire::record::reconcile(&connection).expect("a start reconciles");
+        let rows = attributed(&connection);
+        assert!(
+            rows.contains(&row("job", request, "usage", bill, reserved)),
+            "{barrier}: the recorded bill was not charged whole: {rows:?}"
+        );
+        assert_eq!(
+            rows.iter()
+                .filter(|row| row.2 == "overrun")
+                .collect::<Vec<_>>(),
+            vec![&row("job", request, "overrun", bill, reserved)],
+            "{barrier}: not one overrun row naming the call: {rows:?}"
+        );
+        assert_eq!(
+            Ledger::new(&connection)
+                .admit(T0, "another", "next", 1)
+                .expect("admits"),
+            Err(Refusal::Overrun),
+            "{barrier}: the store admitted after it was opened again"
+        );
+        crate::wire::record::reconcile(&connection).expect("reconciles again");
+        assert_eq!(
+            attributed(&connection)
+                .iter()
+                .filter(|row| row.2 == "overrun")
+                .count(),
+            1,
+            "{barrier}: a second start wrote a second overrun"
+        );
+    }
+}
+
+#[test]
+fn a_start_leaves_a_killed_calls_reservation_standing_when_its_record_is_within_it() {
+    // **The control for P4.** A bill within its reservation is not an
+    // overrun, and a start does not settle it: the reservation stands at
+    // its estimate, which over-counts, as the crash matrix has always
+    // said. Nor does a start settle a call killed before it sent, which
+    // recorded nothing.
+    let body = padded_body(64, 4_000);
+    let send = crate::budget::reservation(&body, 1, 64);
+    let raw = responses_completion_billing(1, send - 1);
+    for (barrier, answer) in [
+        (
+            COMPLETION_DURING_RECONCILIATION,
+            (
+                Answer::Completed {
+                    body: raw.clone(),
+                    usage: Some(send),
+                },
+                raw.clone(),
+            ),
+        ),
+        (
+            COMPLETION_AFTER_RESERVATION,
+            (
+                Answer::Completed {
+                    body: responses_completion_billing(1, send + 999),
+                    usage: Some(send + 1_000),
+                },
+                responses_completion_billing(1, send + 999),
+            ),
+        ),
+    ] {
+        let directory = tempfile::tempdir().expect("temp dir");
+        let path = directory.path().join("cbr.sqlite");
+        killed_at(&path, barrier, false, answer);
+        let connection = Connection::open(&path).expect("opens again");
+        crate::wire::record::reconcile(&connection).expect("a start reconciles");
+        let rows = attributed(&connection);
+        assert!(
+            rows.contains(&row("job", "r", "reservation", send, send))
+                && !rows
+                    .iter()
+                    .any(|row| row.2 == "overrun" || row.2 == "usage"),
+            "{barrier}: a start settled what it had no bill above: {rows:?}"
+        );
+        assert!(
+            Ledger::new(&connection)
+                .admit(T0, "another", "next", 1)
+                .expect("admits")
+                .is_ok(),
+            "{barrier}: a start stopped a store that did not overrun"
+        );
+    }
+}
+
+/// A provider whose process is killed while the answer is on the wire,
+/// before it reaches the recording boundary.
+struct KilledOnTheWire;
+
+impl Transport for KilledOnTheWire {
+    fn send(&self, _call: Call, _body: &[u8]) -> Exchange {
+        panic!("killed while the answer was on the wire")
+    }
+}
+
+#[test]
+fn a_call_killed_before_its_answer_was_recorded_leaves_no_stop() {
+    // **The window that stays open, pinned.** A kill after the body left
+    // and before the answer was written — on the wire, or before the
+    // recording boundary's own write landed — leaves nothing to reconcile
+    // against: the reservation stands at its estimate, and a provider
+    // that billed above it is not seen. ADR 001 question 18 states it.
+    let directory = tempfile::tempdir().expect("temp dir");
+    let path = directory.path().join("cbr.sqlite");
+    let body = padded_body(64, 4_000);
+    let send = crate::budget::reservation(&body, 1, 64);
+    {
+        let connection = Connection::open(&path).expect("opens");
+        Ledger::migrate(&connection).expect("migrates");
+        crate::wire::record::migrate(&connection).expect("migrates");
+        let recording = crate::wire::record::Recording {
+            inner: &KilledOnTheWire,
+            store: &connection,
+            now: T0,
+            job: "job",
+            request: "r",
+            model: "MiniMax-M3",
+            dialect: Dialect::Responses,
+            scrubber: None,
+        };
+        let runtime = Runtime {
+            ledger: Ledger::new(&connection),
+            transport: &recording,
+        };
+        let killed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            runtime.call(T0, &asked_with(&body, 64), &no_barrier, &Charges::default())
+        }));
+        assert!(killed.is_err(), "the kill did not land");
+    }
+    let connection = Connection::open(&path).expect("opens again");
+    crate::wire::record::reconcile(&connection).expect("a start reconciles");
+    let rows = attributed(&connection);
+    assert!(
+        rows.contains(&row("job", "r", "reservation", send, send))
+            && !rows.iter().any(|row| row.2 == "overrun"),
+        "{rows:?}"
+    );
+    assert!(
+        Ledger::new(&connection)
+            .admit(T0, "another", "next", 1)
+            .expect("admits")
+            .is_ok(),
+        "nothing was recorded, so nothing stops the store"
+    );
+}
+
+#[test]
+fn a_bill_above_the_bound_and_above_its_reservation_ends_on_the_bound() {
+    // **The stated precedence (V23).** A completion billed input above
+    // the local bound and in total above its reservation writes
+    // `bound_unsound` and its `overrun`, and ends `local_bound_unsound`:
+    // the bound is the broken assumption, and the store reports it first.
+    let connection = database();
+    let body = padded_body(64, 4_000);
+    let local = crate::budget::input_bound(&body, 1);
+    let send = crate::budget::reservation(&body, 1, 64);
+    let bill = local + 1 + send;
+    let transport = Recorder::new(vec![Answer::Completed {
+        body: responses_completion_billing(local + 1, send),
+        usage: Some(bill),
+    }]);
+    let runtime = Runtime {
+        ledger: Ledger::new(&connection),
+        transport: &transport,
+    };
+    let ended = runtime.call(T0, &asked_with(&body, 64), &no_barrier, &Charges::default());
+    let rows = attributed(&connection);
+    assert_eq!(
+        ended.reason(),
+        Some(BOUND_UNSOUND_REASON),
+        "{ended:?}\n{rows:?}"
+    );
+    assert!(
+        rows.contains(&row("job", "r", BOUND_UNSOUND, local + 1, local)),
+        "no bound_unsound row: {rows:?}"
+    );
+    assert!(
+        rows.contains(&row("job", "r", "overrun", bill, send)),
+        "no overrun row: {rows:?}"
+    );
+    assert_eq!(
+        Ledger::new(&connection)
+            .admit(T0, "another", "next", 1)
+            .expect("admits"),
+        Err(Refusal::BoundUnsound),
+        "the store does not report the bound first"
+    );
+}
+
+#[test]
+fn a_bill_equal_to_its_reservation_is_not_an_overrun() {
+    // **The boundary (V3)**: the ledger's rule is strictly above, and so
+    // is the call's. A completion billed exactly its reservation is an
+    // answer; a failed call reporting exactly its reservation, a
+    // completion's or a count's, is a failure and not an overrun.
+    let body = padded_body(64, 4_000);
+    let local = crate::budget::input_bound(&body, 1);
+    let send = crate::budget::reservation(&body, 1, 64);
+    let cases = vec![
+        (
+            "a completion",
+            vec![Answer::Completed {
+                body: responses_completion_billing(1, send - 1),
+                usage: Some(send),
+            }],
+            false,
+            None,
+        ),
+        (
+            "a failed completion",
+            vec![Answer::Failed {
+                reason: "reset".into(),
+                usage: Some(send),
+            }],
+            false,
+            Some("model_call_failed"),
+        ),
+        (
+            "a failed count",
+            vec![Answer::Failed {
+                reason: "reset".into(),
+                usage: Some(local),
+            }],
+            true,
+            Some("model_call_failed"),
+        ),
+    ];
+    for (which, answers, counts, reason) in cases {
+        let connection = database();
+        let transport = Recorder::new(answers);
+        let ceiling = if counts { send - 1 } else { send };
+        let runtime = Runtime {
+            ledger: Ledger::new(&connection).with_run_ceiling(Some(ceiling)),
+            transport: &transport,
+        };
+        let attempt = Attempt {
+            count_body: counts.then_some(body.as_slice()),
+            ..asked_with(&body, 64)
+        };
+        let ended = runtime.call(T0, &attempt, &no_barrier, &Charges::default());
+        let rows = attributed(&connection);
+        assert_eq!(ended.reason(), reason, "{which}: {ended:?}\n{rows:?}");
+        assert!(
+            !rows.iter().any(|row| row.2 == "overrun"),
+            "{which}: an overrun at a bill equal to its reservation: {rows:?}"
+        );
+    }
+}

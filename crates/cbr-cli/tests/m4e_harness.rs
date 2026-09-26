@@ -1640,6 +1640,58 @@ print(json.dumps({"total": total, "kinds": sorted({kind for kind, _ in charges})
     );
 }
 
+#[test]
+fn the_harness_stops_after_each_kind_of_stop() {
+    // **Each stop ends the sequence, not only an overrun (V16b).** A
+    // store that recorded an unsound bound admits nothing again, and one
+    // that recorded an unsound count makes no serving count again; the
+    // harness reads each from a crafted store and names it.
+    let program = r#"
+import importlib.util, json, pathlib, sqlite3, sys
+spec = importlib.util.spec_from_file_location("m4e_run", sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+data = pathlib.Path(sys.argv[2])
+data.mkdir(parents=True)
+c = sqlite3.connect(data / "cbr.sqlite")
+c.execute("CREATE TABLE model_ledger (id INTEGER PRIMARY KEY, job TEXT, request TEXT, "
+          "kind TEXT, tokens INTEGER, estimate INTEGER)")
+c.executemany("INSERT INTO model_ledger (job, request, kind, tokens, estimate) "
+              "VALUES ('job', 'r', ?, 5, 4)", [("usage",), ("admitted_local",), (sys.argv[3],)])
+c.commit()
+c.close()
+stops = module.stops(data)
+print(json.dumps({"stops": stops, "line": module.stopped_after("first", {"stops": stops})}))
+"#;
+    for kind in ["bound_unsound", "count_unsound", "overrun"] {
+        let directory = tempfile::tempdir().expect("temp dir");
+        let output = Command::new("python3")
+            .args(["-c", program])
+            .arg(script())
+            .arg(directory.path().join("data"))
+            .arg(kind)
+            .output()
+            .expect("python3 runs");
+        assert!(
+            output.status.success(),
+            "{kind}: the harness could not read the store: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let read = cbr_encoding::parse(String::from_utf8_lossy(&output.stdout).trim().as_bytes())
+            .expect("the answer is JSON");
+        assert_eq!(
+            read.get("stops"),
+            Some(&Value::Array(vec![Value::String(kind.to_string())])),
+            "{kind}: the harness did not read the stop: {read:?}"
+        );
+        let line = read.get("line").and_then(Value::as_str).unwrap_or_default();
+        assert!(
+            line.contains("first") && line.contains(kind) && line.contains("no further run"),
+            "{kind}: the stop line does not name the store and its stop: {line:?}"
+        );
+    }
+}
+
 /// Run the harness **with the fake's usage raised** for any run whose dry
 /// answers include `overbilled:`, which is how a dry run's store records
 /// an overrun: the fake bills that answer's usage whole, and the usage a

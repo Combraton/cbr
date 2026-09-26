@@ -634,3 +634,89 @@ fn a_provider_billing_past_its_reservation_stops_the_store_for_good() {
     );
     provider.stop();
 }
+
+#[test]
+fn a_provider_killed_before_it_settled_an_overbill_is_stopped_when_it_starts_again() {
+    // **m5-settle's verification round, P4 as a person sees it.** The fake
+    // overbills the first request's call, and the provider is killed
+    // after the answer came back and before its settlement landed: the
+    // dead process leaves the reservation at its estimate and no stop.
+    // The answer is in the store, beside the reservation it was sent
+    // under, so the next start charges the bill whole and writes its
+    // `overrun` before anything is admitted, and the next request is
+    // refused.
+    let fixture = Fixture::answering(&["choose:c1"]);
+    let barrier = "model.completion.during_reconciliation";
+    let model = r#""model":{"dialect":"responses","model":"MiniMax-M2.7-highspeed","answers":["overbilled:choose:c1","choose:c1"],"usage":60000,"counting":"when_it_could_admit"}"#;
+    let paused = format!(
+        r#""context":{{"compile":true}},"test_barriers":{{"directory":"{}","enabled":["{barrier}"]}},{model}"#,
+        fixture.barriers.display()
+    );
+    let provider = fixture.start_configured(&paused);
+    submit(&fixture, "first", "queue.md");
+    let reached = fixture.barriers.join(format!("{barrier}.reached"));
+    let started = Instant::now();
+    while !reached.exists() {
+        assert!(
+            started.elapsed() < Duration::from_secs(60),
+            "{barrier} was never reached"
+        );
+        poll(&fixture, &["first"]);
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    // Dropping it is the SIGKILL.
+    provider.stop();
+    let left = every_row(&fixture.data());
+    for row in &left {
+        eprintln!("JOURNEY after the kill: {row:?}");
+    }
+    let reserved = left
+        .iter()
+        .find(|row| row.1 == "first" && row.2 == "reservation")
+        .unwrap_or_else(|| panic!("the kill left no reservation: {left:?}"))
+        .4;
+    assert!(
+        !left.iter().any(|row| row.2 == "overrun"),
+        "the settlement landed before the kill: {left:?}"
+    );
+
+    // **Restarted on an honest script**, so the only thing that can stop
+    // the store now is what the start makes of the recorded bill: the
+    // resumed first request, and the second, are each billed within their
+    // reservations if they are sent at all.
+    let sent = bodies_sent(&fixture.data()).len();
+    let honest = r#""context":{"compile":true},"model":{"dialect":"responses","model":"MiniMax-M2.7-highspeed","answers":["choose:c1"],"usage":60000,"counting":"when_it_could_admit"}"#;
+    let provider = fixture.start_configured(honest);
+    let second = prepared(&fixture, "second", "1");
+    let rows = every_row(&fixture.data());
+    for row in &rows {
+        eprintln!("JOURNEY after the start: {row:?}");
+    }
+    eprintln!("JOURNEY the next request: {:?}", result(&second, "q"));
+    assert!(
+        rows.iter().any(|row| row.1 == "first"
+            && row.2 == "usage"
+            && row.3 == 60_000
+            && row.4 == reserved),
+        "the start did not charge the recorded bill whole: {rows:?}"
+    );
+    assert_eq!(
+        rows.iter()
+            .filter(|row| row.2 == "overrun")
+            .map(|row| (row.1.as_str(), row.3, row.4))
+            .collect::<Vec<_>>(),
+        vec![("first", 60_000, reserved)],
+        "not one overrun row naming the call: {rows:?}"
+    );
+    assert_eq!(
+        result(&second, "q"),
+        ("unmet".to_string(), "reservation_overrun".to_string()),
+        "{second:?}"
+    );
+    assert_eq!(
+        bodies_sent(&fixture.data()).len(),
+        sent,
+        "a body was sent after the start"
+    );
+    provider.stop();
+}
