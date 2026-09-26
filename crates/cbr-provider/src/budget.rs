@@ -13,10 +13,16 @@
 //! MiniMax's `POST /v1/responses/input_tokens` carries the **fully serialized
 //! request** to the provider. Counting there first has already sent the body
 //! it was deciding whether to send. So a **local, conservative estimate
-//! decides first**, and alone can refuse; the provider count runs only for a
-//! request the local step has already admitted, and is itself a call with a
-//! view, a record and a cost. Only the local half exists at m4a, and it is a
-//! complete admission path: CI exercises it with no network at all.
+//! decides first**, and alone can refuse. When it admits, no count is made.
+//! The provider count runs only for a request the local step has
+//! **refused**, and only on a counter a tighter figure could satisfy — the
+//! window, the month, the job or the run, never the per-request ceiling
+//! ([`Refusal::a_tighter_figure_could_admit`]). The count is itself a call
+//! with a view, a record and a cost, admitted and settled like any other,
+//! and the completion is then admitted on it. A caller whose purpose is
+//! the count, which is the calibration, counts first instead. Only the
+//! local half exists at m4a, and it is a complete admission path: CI
+//! exercises it with no network at all.
 //!
 //! # The estimate is one-sided
 //!
@@ -260,6 +266,21 @@ impl std::fmt::Display for LedgerError {
 /// twice.
 pub fn input_bound(serialized: &[u8], messages: usize) -> u64 {
     worst_case_tokens(serialized) + MESSAGE_OVERHEAD_TOKENS * messages as u64
+}
+
+/// **What a completion reserves on the local bound**: the input bound of
+/// the body as serialized and of the messages the provider frames, plus
+/// the generation the body binds and the margin.
+///
+/// One function, because two places need the figure and must agree:
+/// admission reserves it, and the arithmetic that says what a question
+/// can hold prices it (`model::send_worst`). A count reserves its input
+/// alone, since it generates nothing, and a completion admitted on a count
+/// reserves the count in place of the input bound.
+pub fn reservation(serialized: &[u8], messages: usize, generation: u64) -> u64 {
+    input_bound(serialized, messages)
+        .saturating_add(generation)
+        .saturating_add(SAFETY_MARGIN_TOKENS)
 }
 
 /// The largest number of tokens any byte-level BPE could emit for `text`:

@@ -75,9 +75,10 @@ pub enum Unusable {
     NoToolCall,
 }
 
-/// Every outcome a question may be repaired after.
-// Stub, tests first: declared beside `Unusable::repairable`, which does
-// not read it yet.
+/// Every outcome a question may be repaired after, and so every repair
+/// `model::question_worst` prices. [`Unusable::repairable`] reads this and
+/// nothing else, so the outcomes that are repaired and the outcomes that
+/// are priced cannot be two lists.
 pub const REPAIRABLE: [Unusable; 3] = [
     Unusable::Truncated,
     Unusable::NotStructured,
@@ -111,10 +112,7 @@ impl Unusable {
     ///
     /// Everything else would spend twice for one answer.
     pub fn repairable(self) -> bool {
-        matches!(
-            self,
-            Unusable::NotStructured | Unusable::NoToolCall | Unusable::Truncated
-        )
+        REPAIRABLE.contains(&self)
     }
 }
 
