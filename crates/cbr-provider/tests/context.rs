@@ -28,7 +28,9 @@
 //!   built from the stored records and apart from the refused tick; one
 //!   already published under `context.updates` keeps its revision. It holds
 //!   at the deadline, across ticks, across a restart, and across a `SIGKILL`
-//!   before the refusal commits.
+//!   before the refusal commits. No packet of the refused tick is sealed
+//!   anywhere, a valid one included: not in this store, and not at an
+//!   evidence peer.
 
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::fs::PermissionsExt;
@@ -1375,8 +1377,14 @@ fn source_section(id: &str) -> String {
 /// A conformance launch whose `context.script` control holds `scripts`,
 /// with `extra` top-level members, such as a clock, spliced in before it.
 fn scripted(scripts: &str, extra: &str) -> String {
+    scripted_beside(scripts, extra, "")
+}
+
+/// [`scripted`], with `beside`, such as an [`EvidencePeer`]'s member,
+/// spliced into `context` after its scripts.
+fn scripted_beside(scripts: &str, extra: &str, beside: &str) -> String {
     format!(
-        r#"{{"format":"combraton-conformance-config/1","provider_id":"context-1","principal":"owner","authority_principals":["owner"]{extra},"context":{{"scripts":{{{scripts}}}}}}}"#
+        r#"{{"format":"combraton-conformance-config/1","provider_id":"context-1","principal":"owner","authority_principals":["owner"]{extra},"context":{{"scripts":{{{scripts}}}{beside}}}}}"#
     )
 }
 
@@ -1850,10 +1858,13 @@ fn a_refusal_commits_nothing_of_the_tick_that_was_refused() {
     // from it.** Here one tick publishes revision 1, a valid packet, then
     // refuses revision 2. Nothing of that tick commits, not revision 1's
     // artifact and not its publication, so the request was never
-    // delivered anything and is refused like any other. Revision 1's
-    // object was written before the refusal and no row names it; the
-    // start-time collection pass removes it. Only a script publishes twice
-    // in one tick.
+    // delivered anything and is refused like any other. **Nor is revision
+    // 1 sealed**: every packet the tick publishes is put to the guard
+    // before any of them is sealed, so no object is ever written, even
+    // before the next start's collection pass could remove one. Under an
+    // evidence peer nothing is sent there either
+    // (`no_packet_of_a_refused_tick_that_publishes_twice_reaches_the_evidence_peer`).
+    // Only a script publishes twice in one tick.
     let directory = tempfile::tempdir().expect("temp dir");
     let script = format!(
         r#""r":[{},{{"publish":{{}}}},{},{{"publish":{{}}}}]"#,
@@ -1879,8 +1890,11 @@ fn a_refusal_commits_nothing_of_the_tick_that_was_refused() {
         artifacts(&data)
     );
     assert_nothing_published(&recorded(&mut ctx));
-    // The premise: revision 1 was sealed in the tick that was refused.
-    assert_eq!(objects(&data).len(), 1, "{:?}", objects(&data));
+    assert!(
+        objects(&data).is_empty(),
+        "revision 1 was sealed in the tick that was refused: {:?}",
+        objects(&data)
+    );
     ctx.kill();
 
     let mut restarted = ContextProvider::start_with(directory.path(), &config, &features);
@@ -2702,6 +2716,16 @@ fn narrow_and_wide(
     directory: &Path,
     requests: &[(&str, i64)],
 ) -> (ContextProvider, String, PathBuf) {
+    narrow_and_wide_beside(directory, requests, "")
+}
+
+/// [`narrow_and_wide`], with `beside` spliced into the provider's `context`
+/// configuration after its scripts: an [`EvidencePeer`]'s member.
+fn narrow_and_wide_beside(
+    directory: &Path,
+    requests: &[(&str, i64)],
+    beside: &str,
+) -> (ContextProvider, String, PathBuf) {
     let clock = directory.join("clock");
     set_clock(&clock, "2030-01-01T00:00:00Z");
     let evidence = r#""evidence":{"provider":"context-1","artifact":{"kind":"evidence.artifact","id":"log-1"},"digest":"sha256:0000000000000000000000000000000000000000000000000000000000000000"}"#;
@@ -2710,9 +2734,10 @@ fn narrow_and_wide(
         source_section("s-1"),
         "x".repeat(200)
     );
-    let config = scripted(
+    let config = scripted_beside(
         &script,
         &format!(r#","clock":{{"file":"{}"}}"#, clock.display()),
+        beside,
     );
     let mut ctx = ContextProvider::start_with(directory, &config, &NARROW_FEATURES);
     for (request, capacity) in requests {
@@ -2742,14 +2767,6 @@ const NARROW_FEATURES: [&str; 3] = [
     "context.shared_jobs",
 ];
 
-/// The digest of each object file the store holds, read off its bytes.
-fn object_digests(data: &Path) -> Vec<String> {
-    objects(data)
-        .iter()
-        .map(|path| cbr_encoding::digest_bytes(&std::fs::read(path).expect("reads an object")))
-        .collect()
-}
-
 #[test]
 fn a_narrower_subscriber_whose_own_packet_is_valid_is_refused_with_its_job() {
     // **A packet the guard refuses ends the whole job, even for a
@@ -2764,12 +2781,14 @@ fn a_narrower_subscriber_whose_own_packet_is_valid_is_refused_with_its_job() {
     // refusal per subscriber. Since #43 the compiler builds every id
     // inside the grammar (`crate::ids`), so in production the guard fires
     // only on a defect or a scripted test control, and ending the whole
-    // job fails closed. `r-narrow`'s packet was sealed earlier in the
-    // refused tick, which is dropped with it. Here the provider seals its
-    // own packets, so that packet is never an artifact, never published
-    // and never served, and its object is collected at the next start as
-    // one no row names. Under an evidence peer it would already have been
-    // sent there and sealed, with nothing in this store naming it.
+    // job fails closed. **No packet of the refused tick is sealed
+    // anywhere**: the guard sees every packet the tick would publish,
+    // `r-narrow`'s valid one included, before any of them is captured,
+    // sent or sealed. Here the provider seals its own packets, so
+    // `r-narrow`'s is never an artifact, never published, never served,
+    // and never written as an object, even before the next start. Under
+    // an evidence peer nothing is sent there
+    // (`a_narrower_subscribers_valid_packet_never_reaches_the_evidence_peer`).
 
     // The control: alone, the same request is published `ready`, and its
     // one revision omits `s-more` for capacity.
@@ -2784,7 +2803,6 @@ fn a_narrower_subscriber_whose_own_packet_is_valid_is_refused_with_its_job() {
     );
     let packets = at(&own, &["packets"]).as_array().expect("packets").to_vec();
     assert_eq!(packets.len(), 1, "{own:?}");
-    let digest = text(&packets[0], &["reference", "artifact", "digest"]).to_string();
     let revision = result(&ctx.call(
         "context.packet.inspect",
         None,
@@ -2861,10 +2879,13 @@ fn a_narrower_subscriber_whose_own_packet_is_valid_is_refused_with_its_job() {
         "an artifact of the refused tick was committed: {:?}",
         artifacts(&data)
     );
-    // The premise of what was dropped: r-narrow's packet was sealed in the
-    // refused tick, before the guard reached r-wide's, as the very bytes it
-    // is published as alone.
-    assert_eq!(object_digests(&data), [digest], "{:?}", objects(&data));
+    // Nothing of the refused tick was sealed: r-narrow's valid packet was
+    // guarded with r-wide's, and neither was written.
+    assert!(
+        objects(&data).is_empty(),
+        "r-narrow's packet was sealed in the refused tick: {:?}",
+        objects(&data)
+    );
     let logged = log(shared.path());
     assert_eq!(refusals(&logged, "r-wide"), 1, "{logged}");
     assert_eq!(
@@ -2878,8 +2899,8 @@ fn a_narrower_subscriber_whose_own_packet_is_valid_is_refused_with_its_job() {
     );
     ctx.kill();
 
-    // The next start collects the object no row names, and serves the
-    // same two refusals.
+    // The next start serves the same two refusals, and still holds no
+    // object.
     let mut restarted = ContextProvider::start_with(shared.path(), &config, &NARROW_FEATURES);
     for (request, refused) in ["r-narrow", "r-wide"].iter().zip(&ended) {
         assert_eq!(
@@ -2890,7 +2911,7 @@ fn a_narrower_subscriber_whose_own_packet_is_valid_is_refused_with_its_job() {
     }
     assert!(
         objects(&data).is_empty(),
-        "r-narrow's dropped packet survived the restart: {:?}",
+        "an object appeared across the restart: {:?}",
         objects(&data)
     );
     assert!(artifacts(&data).is_empty(), "{:?}", artifacts(&data));
@@ -3111,5 +3132,329 @@ fn every_subscribers_refusal_is_recorded_before_the_jobs_ending() {
             "{request}'s refusal is recorded after the job's ending: {events:?}"
         );
     }
+    ctx.kill();
+}
+
+// ---- no packet of a refused tick leaves the provider ------------------------
+
+/// A separate evidence provider on a Unix socket in `directory`, reading
+/// the clock file `clock`, with a grant for `ctx-service` to publish
+/// `packet.` artifacts there, as a context provider's `evidence_provider`
+/// names one. Killed when dropped.
+struct EvidencePeer {
+    child: Child,
+    owner: Socket,
+    /// The `context` configuration member naming this peer, with its
+    /// leading comma, for [`scripted_beside`].
+    member: String,
+}
+
+impl EvidencePeer {
+    fn start(directory: &Path, clock: &Path) -> Self {
+        let sockets = directory.join("s");
+        std::fs::create_dir(&sockets).expect("socket dir");
+        std::fs::set_permissions(&sockets, std::fs::Permissions::from_mode(0o700)).expect("0700");
+        let socket = sockets.join("evd.sock");
+        let owner = format!("ccred1.owner.{}", "A".repeat(43));
+        let service = format!("ccred1.ctx-service.{}", "B".repeat(43));
+        let config = directory.join("evd.json");
+        std::fs::write(
+            &config,
+            format!(
+                r#"{{"format":"combraton-conformance-config/1","provider_id":"evidence-1","principal":"owner","authority_principals":["owner"],"clock":{{"file":"{}"}},"credentials":[{{"credential":"{owner}"}},{{"credential":"{service}"}}]}}"#,
+                clock.display()
+            ),
+        )
+        .expect("evd config");
+        let child = Command::new(binary())
+            .arg("--data-dir")
+            .arg(directory.join("evd-data"))
+            .arg("--config")
+            .arg(&config)
+            .arg("--socket")
+            .arg(&socket)
+            // A socket provider serves until its standard input closes.
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("evidence provider starts");
+        let mut owner = Socket::connect(&socket, &owner);
+        result(&owner.call(
+            "core.grant.issue",
+            Some(("issue-g-pub", ("core.grant", "g-pub"), 0)),
+            r#"{"holder":"ctx-service","audience":"evidence-1","rights":["evidence.publish"],"resources":[{"kind":"evidence.artifact","id_prefix":"packet."}],"delegation":{"allowed":false,"max_depth":0}}"#,
+            None,
+        ));
+        let member = format!(
+            r#","evidence_provider":{{"provider_id":"evidence-1","socket":"{}","credential":"{service}","grant":"g-pub"}}"#,
+            socket.display()
+        );
+        Self {
+            child,
+            owner,
+            member,
+        }
+    }
+
+    /// `evidence.inspect` of the artifact `id` at the peer, whole.
+    fn inspect(&mut self, id: &str) -> Value {
+        self.owner.call(
+            "evidence.inspect",
+            None,
+            &format!(r#"{{"artifact":{{"kind":"evidence.artifact","id":"{id}"}}}}"#),
+            None,
+        )
+    }
+
+    /// Every event the peer has recorded about the artifact `id`: an
+    /// upload prepared, appended to or sealed there.
+    fn events_of_artifact(&mut self, id: &str) -> Vec<(String, String)> {
+        let read = self.owner.call(
+            "core.events.read",
+            None,
+            r#"{"from":"start","limit":1000}"#,
+            None,
+        );
+        of_subject(&events_of(&read), "evidence.artifact", id)
+    }
+
+    /// Asserts the peer holds nothing of the artifact `id`: it is
+    /// `not_found`, and no event was ever recorded about it.
+    fn assert_never_sent(&mut self, id: &str) {
+        let inspected = self.inspect(id);
+        assert_eq!(
+            inspected
+                .get("error")
+                .map(|error| text(error, &["data", "code"])),
+            Some("not_found"),
+            "{id} reached the evidence peer: {inspected:?}"
+        );
+        let events = self.events_of_artifact(id);
+        assert!(
+            events.is_empty(),
+            "{id} reached the evidence peer: {events:?}"
+        );
+    }
+}
+
+impl Drop for EvidencePeer {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
+}
+
+#[test]
+fn a_narrower_subscribers_valid_packet_never_reaches_the_evidence_peer() {
+    // **No packet of a refused tick is sealed anywhere, and under an
+    // evidence peer none is sent there.** The shape is
+    // `a_narrower_subscriber_whose_own_packet_is_valid_is_refused_with_its_job`'s,
+    // with `evidence_provider` set: `r-narrow`'s own packet is valid and
+    // `r-wide`'s is refused, in one job. The guard sees both before either
+    // is captured, sent or sealed, so the peer never hears of
+    // `packet.r-narrow.1`, although `r-narrow`'s packet is compiled and
+    // guarded first. Before this, it was sealed at the peer with nothing
+    // in CBR naming it.
+
+    // The control: alone, the same request is published `ready` at the
+    // peer, so the peer is where its packet would go.
+    let alone = tempfile::tempdir().expect("temp dir");
+    set_clock(&alone.path().join("clock"), "2030-01-01T00:00:00Z");
+    let mut peer = EvidencePeer::start(alone.path(), &alone.path().join("clock"));
+    let (mut ctx, _, clock) =
+        narrow_and_wide_beside(alone.path(), &[("r-narrow", 64)], &peer.member);
+    set_clock(&clock, "2030-01-01T00:10:00Z");
+    let own = settled(&mut ctx, "r-narrow");
+    assert_eq!(
+        text(&own, &["state"]),
+        "ready",
+        "the premise: alone, r-narrow's own packet is valid: {own:?}"
+    );
+    let packets = at(&own, &["packets"]).as_array().expect("packets").to_vec();
+    assert_eq!(packets.len(), 1, "{own:?}");
+    assert_eq!(
+        text(&packets[0], &["reference", "artifact", "provider"]),
+        "evidence-1",
+        "the premise: the packet is sealed at the peer: {own:?}"
+    );
+    let sealed = result(&peer.inspect("packet.r-narrow.1")).clone();
+    assert_eq!(text(&sealed, &["state"]), "sealed", "{sealed:?}");
+    assert_eq!(
+        text(&sealed, &["descriptor", "digest"]),
+        text(&packets[0], &["reference", "artifact", "digest"])
+    );
+    ctx.kill();
+    drop(peer);
+
+    // Shared: r-wide joins r-narrow's job, and the job ends.
+    let shared = tempfile::tempdir().expect("temp dir");
+    set_clock(&shared.path().join("clock"), "2030-01-01T00:00:00Z");
+    let mut peer = EvidencePeer::start(shared.path(), &shared.path().join("clock"));
+    let (mut ctx, _, clock) = narrow_and_wide_beside(
+        shared.path(),
+        &[("r-narrow", 64), ("r-wide", 4096)],
+        &peer.member,
+    );
+    set_clock(&clock, "2030-01-01T00:10:00Z");
+    for request in ["r-narrow", "r-wide"] {
+        let refused = settled(&mut ctx, request);
+        assert_eq!(
+            text(&refused, &["state"]),
+            "refused",
+            "{request}: {refused:?}"
+        );
+        assert_eq!(
+            text(&refused, &["reason"]),
+            "packet_invalid",
+            "{request}: {refused:?}"
+        );
+        assert_eq!(
+            at(&refused, &["packets"]).as_array().map(<[_]>::len),
+            Some(0),
+            "{request}: {refused:?}"
+        );
+    }
+    let logged = log(shared.path());
+    assert_eq!(refusals(&logged, "r-wide"), 1, "{logged}");
+    assert_eq!(refusals(&logged, "r-narrow"), 0, "{logged}");
+    assert!(
+        !logged.contains("not sealed at the evidence provider"),
+        "a send to the peer was attempted: {logged}"
+    );
+    peer.assert_never_sent("packet.r-narrow.1");
+    peer.assert_never_sent("packet.r-wide.1");
+    // Nor is anything of the tick left in CBR's store, before any restart.
+    let data = shared.path().join("context-data");
+    assert!(objects(&data).is_empty(), "{:?}", objects(&data));
+    assert!(artifacts(&data).is_empty(), "{:?}", artifacts(&data));
+    assert_nothing_published(&recorded(&mut ctx));
+    ctx.kill();
+}
+
+#[test]
+fn no_packet_of_a_refused_tick_that_publishes_twice_reaches_the_evidence_peer() {
+    // **The guard sees every packet a tick would publish, not only those
+    // of one publication step.** `a_refusal_commits_nothing_of_the_tick_that_was_refused`'s
+    // script under an evidence peer: one tick publishes `r`'s revision 1,
+    // a valid packet, and then revision 2, which the guard refuses. The
+    // second is not compiled until the steps between the two have run, so
+    // a check made at each step before its sends would already have sent
+    // revision 1. Nothing of the tick goes to the peer. `r-ok`, a job of
+    // its own beside it, is sealed there as usual, which is the premise
+    // that the peer is where `r`'s packets would go.
+    let directory = tempfile::tempdir().expect("temp dir");
+    let clock = directory.path().join("clock");
+    set_clock(&clock, "2030-01-01T00:00:00Z");
+    let mut peer = EvidencePeer::start(directory.path(), &clock);
+    let script = format!(
+        r#""r":[{},{{"publish":{{}}}},{},{{"publish":{{}}}}],"r-ok":[{},{{"publish":{{}}}}]"#,
+        source_section("s-1"),
+        source_section(OUTSIDE_GRAMMAR),
+        source_section("s-1")
+    );
+    let config = scripted_beside(
+        &script,
+        &format!(r#","clock":{{"file":"{}"}}"#, clock.display()),
+        &peer.member,
+    );
+    let features = ["context.required_before_start", "context.updates"];
+    let mut ctx = ContextProvider::start_with(directory.path(), &config, &features);
+    ctx.submit("r", "2030-01-01T01:00:00Z");
+    ctx.submit("r-ok", "2030-01-01T01:00:00Z");
+
+    let refused = settled(&mut ctx, "r");
+    assert_eq!(text(&refused, &["state"]), "refused", "{refused:?}");
+    assert_eq!(text(&refused, &["reason"]), "packet_invalid", "{refused:?}");
+    let published = settled(&mut ctx, "r-ok");
+    assert_eq!(text(&published, &["state"]), "ready", "{published:?}");
+    let sealed = result(&peer.inspect("packet.r-ok.1")).clone();
+    assert_eq!(
+        text(&sealed, &["state"]),
+        "sealed",
+        "the premise: a valid job's packet is sealed at the peer: {sealed:?}"
+    );
+
+    peer.assert_never_sent("packet.r.1");
+    peer.assert_never_sent("packet.r.2");
+    let data = directory.path().join("context-data");
+    assert!(objects(&data).is_empty(), "{:?}", objects(&data));
+    assert!(artifacts(&data).is_empty(), "{:?}", artifacts(&data));
+    ctx.kill();
+}
+
+#[test]
+fn a_subscriber_cancelled_before_its_job_is_refused_still_reads_the_items_the_job_prepared() {
+    // **An ended job keeps the sections earlier ticks committed**, and a
+    // subscriber cancelled before the ending reads its item results off
+    // them, as a cancelled request always has. The first tick commits
+    // `s-1`, which satisfies `i-1`, and waits; `r-second` is cancelled
+    // and reads `i-1` `satisfied`; at 00:10 the guard refuses the job's
+    // packet and the job ends. `r-second` reads exactly what it read
+    // before, `i-1` still `satisfied`: clearing the ended job's sections
+    // would turn it `pending`.
+    let directory = tempfile::tempdir().expect("temp dir");
+    let clock = directory.path().join("clock");
+    set_clock(&clock, "2030-01-01T00:00:00Z");
+    let script = format!(
+        r#""r-first":[{},{{"wait_until":"2030-01-01T00:10:00Z"}},{},{{"publish":{{}}}}]"#,
+        source_section("s-1"),
+        source_section(OUTSIDE_GRAMMAR)
+    );
+    let mut ctx = ContextProvider::start_with(
+        directory.path(),
+        &scripted(
+            &script,
+            &format!(r#","clock":{{"file":"{}"}}"#, clock.display()),
+        ),
+        &["context.required_before_start", "context.shared_jobs"],
+    );
+    for request in ["r-first", "r-second"] {
+        let submitted = ctx.submit(request, "2030-01-01T01:00:00Z");
+        let outcome = at(result(&submitted), &["outcome"]);
+        assert_eq!(
+            canonical(at(outcome, &["job"])),
+            SHARED_JOB,
+            "{submitted:?}"
+        );
+    }
+    let revision = match at(&ctx.inspect("r-second"), &["revision"]) {
+        Value::Int(revision) => *revision,
+        other => panic!("a revision: {other:?}"),
+    };
+    let cancelled = ctx.call(
+        "context.request.cancel",
+        Some(("cancel-r-second", ("context.request", "r-second"), revision)),
+        "{}",
+    );
+    assert_eq!(
+        text(result(&cancelled), &["outcome", "state"]),
+        "cancelled",
+        "{cancelled:?}"
+    );
+    let before = ctx.inspect("r-second");
+    assert_eq!(text(&before, &["state"]), "cancelled", "{before:?}");
+    assert_eq!(
+        canonical(at(&before, &["items"])),
+        r#"[{"item_id":"i-1","obligation":"required_before_start","result":"satisfied"}]"#,
+        "the premise: the cancelled subscriber reads the committed section: {before:?}"
+    );
+
+    set_clock(&clock, "2030-01-01T00:10:00Z");
+    let refused = settled(&mut ctx, "r-first");
+    assert_eq!(text(&refused, &["state"]), "refused", "{refused:?}");
+    assert_eq!(text(&refused, &["reason"]), "packet_invalid", "{refused:?}");
+    let job = stored(
+        &directory.path().join("context-data"),
+        "context.job",
+        "r-first",
+    );
+    assert_eq!(text(&job, &["state"]), "ended", "{job:?}");
+    let after = ctx.inspect("r-second");
+    assert_eq!(
+        canonical(&after),
+        canonical(&before),
+        "the cancelled subscriber's read changed when its job ended"
+    );
     ctx.kill();
 }
