@@ -804,6 +804,11 @@ pub fn to_target(basis: &Value) -> Value {
 /// Why a claim could not be carried.
 pub const KNOWLEDGE_UNAVAILABLE: &str = "knowledge_unavailable";
 pub const DIGEST_MISMATCH: &str = "claim_digest_mismatch";
+/// Why a job ended when the publication guard refused its packet
+/// ([`ids_outside_grammar`]). A provider reason: CONTEXT section 3 admits
+/// one for an item, and section 4 reports a job's ending with its reason in
+/// `context.job.ended`.
+pub const PACKET_INVALID: &str = "packet_invalid";
 
 /// The section snapshot of a claim from a `knowledge.claim.inspect` result,
 /// after recomputing the record's digest (CONTEXT section 14). The second
@@ -1105,11 +1110,28 @@ pub fn item_results(
 /// Item results for a request whose job ended without publishing it, for
 /// `reason`.
 ///
-/// **A scaffold with no behaviour yet**, so the test that states what it
-/// must return compiles and fails for its own reason: it returns nothing.
-#[cfg_attr(not(test), allow(dead_code))]
-pub fn refused_items(_record: &Value, _reason: &str) -> Vec<Value> {
-    Vec::new()
+/// **Read off the request alone, never off the job's sections**: what a job
+/// prepared is not what a consumer was delivered, and nothing was. So each
+/// item is `unmet` if required and `degraded` if advisory — including one
+/// the job's sections would have satisfied — and never `pending`, since
+/// nothing more will be prepared for it.
+pub fn refused_items(record: &Value, reason: &str) -> Vec<Value> {
+    list(record, &["items"])
+        .iter()
+        .map(|item| {
+            let result = if is_required(item) {
+                "unmet"
+            } else {
+                "degraded"
+            };
+            object(vec![
+                ("item_id", at(item, &["item_id"]).clone()),
+                ("obligation", at(item, &["obligation"]).clone()),
+                ("result", string(result)),
+                ("reason", string(reason)),
+            ])
+        })
+        .collect()
 }
 
 /// A request's state from its item results (CONTEXT section 3).
