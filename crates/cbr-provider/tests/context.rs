@@ -1096,8 +1096,10 @@ fn a_packet_holding_an_id_outside_the_identifier_grammar_is_never_published() {
             Some(0),
             "a packet with an id outside the grammar was published: {refused:?}"
         );
-        // **Refused, not left preparing** (the owner's ruling of
-        // 2026-09-26): nothing will ever be published for it.
+        // **Refused, not left preparing**: the job ends as
+        // `packet_invalid` (the owner's ruling of 2026-09-26), and the
+        // request is `refused`, this session's reading within that
+        // ruling. Nothing will ever be published for it.
         assert_eq!(text(&refused, &["state"]), "refused", "{refused:?}");
         assert_eq!(text(&refused, &["reason"]), "packet_invalid", "{refused:?}");
     }

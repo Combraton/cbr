@@ -1416,8 +1416,9 @@ fn a_request_whose_packet_would_carry_an_id_outside_the_grammar_ends_refused_and
     // compiler builds ids inside the grammar, so only a script reaches
     // the guard now; the section here has a path for an id. The owner's
     // ruling of 2026-09-26 is that the job ends with the typed reason
-    // `packet_invalid`, and the request ends `refused`, the one terminal
-    // state that needs no packet. Through `cbr` that is: the request says
+    // `packet_invalid`. That the request ends `refused`, the one terminal
+    // state that needs no packet, is this session's reading within that
+    // ruling, not part of it. Through `cbr` that is: the request says
     // `refused` and why, names its job and publishes nothing; there is no
     // packet to read or expand; and there is nothing left to cancel.
     //
