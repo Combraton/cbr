@@ -3707,8 +3707,10 @@ fn assert_its_one_revision_is_served(ctx: &mut ContextProvider, request: &str) -
 fn a_packet_published_at_its_jobs_ending_is_served_by_its_digest() {
     // **A job's ending lets its packets leave too.** The script prepares
     // `s-1` and ends the job, so `finish` publishes the request in the tick
-    // that ends it: its object is written before that tick's batch commits,
-    // as a `publish` step's is, and the revision is served.
+    // that ends it, and the revision is served. (This test shows the
+    // revision served after the tick, not that its object was written
+    // before the tick's batch commits, which is tested only for a
+    // `publish` step.)
     let directory = tempfile::tempdir().expect("temp dir");
     let script = format!(
         r#""r-1":[{},{{"end":"investigation_budget_exhausted"}}]"#,
@@ -4095,7 +4097,11 @@ fn a_tick_that_fails_after_a_packet_writes_no_object_for_it() {
     seal(&mut ctx, "packet.r-second.1", b"occupied");
     let data = directory.path().join("context-data");
     let before = objects(&data);
-    assert_eq!(before.len(), 1, "the premise: one object, the occupier: {before:?}");
+    assert_eq!(
+        before.len(),
+        1,
+        "the premise: one object, the occupier: {before:?}"
+    );
     set_clock(&clock, "2030-01-01T00:10:00Z");
     let first = ctx.inspect("r-first");
     assert_eq!(text(&first, &["state"]), "preparing", "{first:?}");
