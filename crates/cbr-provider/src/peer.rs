@@ -285,7 +285,7 @@ impl Peer {
 /// retried after a failure part-way replays the steps that already applied
 /// instead of duplicating them (CORE section 6). That only works while the
 /// descriptor is the same bytes, which is why its capture instant is fixed by
-/// the caller across attempts.
+/// the caller across attempts, and kept durably before the first one.
 pub fn publish_artifact(
     config: &PeerConfig,
     artifact: &str,
