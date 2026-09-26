@@ -235,8 +235,20 @@ impl ContextProvider {
     /// A request with the items, fallback and deadline a test needs, rather
     /// than the one shape `submit` builds.
     fn submit_with(&mut self, request: &str, items: &str, fallback: &str, deadline: &str) -> Value {
+        self.submit_within(request, items, fallback, deadline, 4096)
+    }
+
+    /// [`Self::submit_with`] with an output capacity of `capacity` bytes.
+    fn submit_within(
+        &mut self,
+        request: &str,
+        items: &str,
+        fallback: &str,
+        deadline: &str,
+        capacity: i64,
+    ) -> Value {
         let payload = format!(
-            r#"{{"consumer":{{"task":"fix the build","principal":"owner"}},"basis":{{"repositories":[{{"id":"repo-a","tree":"tree-1","workspace":"clean","dirty":null}}],"completeness":"complete"}},"items":[{items}],"fallback":"{fallback}","limits":{{"deadline":"{deadline}","investigation":{{"units":"queries","amount":10}},"output_capacity":{{"units":"bytes","amount":4096}}}}}}"#
+            r#"{{"consumer":{{"task":"fix the build","principal":"owner"}},"basis":{{"repositories":[{{"id":"repo-a","tree":"tree-1","workspace":"clean","dirty":null}}],"completeness":"complete"}},"items":[{items}],"fallback":"{fallback}","limits":{{"deadline":"{deadline}","investigation":{{"units":"queries","amount":10}},"output_capacity":{{"units":"bytes","amount":{capacity}}}}}}}"#
         );
         self.call(
             "context.request.submit",
@@ -1504,11 +1516,12 @@ fn a_packet_the_guard_refuses_ends_its_job_and_refuses_its_request_as_packet_inv
     // logged again at every tick.
     //
     // The request ends `refused`. `ready`, `partial` and `unmet` each
-    // name a published revision (CONTEXT section 3), and there is none to
-    // name; `refused` is the one terminal state the provider can choose
-    // that needs no packet (`cancelled` is the caller's). That state is
-    // this session's reading within the ruling, which named the job's
-    // ending and its reason.
+    // name a published revision (CONTEXT section 5: "When a request
+    // reaches `ready`, `partial` or `unmet`, the provider publishes a
+    // packet revision"), and there is none to name; `refused` is the one
+    // terminal state the provider can choose that needs no packet
+    // (`cancelled` is the caller's). That state is this session's reading
+    // within the ruling, which named the job's ending and its reason.
     //
     // The scripted section would satisfy `i-1`, so an item read off the
     // job's sections would say `satisfied`, and one read as still
@@ -1664,13 +1677,25 @@ fn a_refused_request_stays_refused_across_ticks_and_restarts_and_its_job_is_neve
 
 #[test]
 fn every_request_sharing_a_job_the_guard_refuses_is_refused_with_it() {
-    // **The subscribers of one job share its sections, and so its
-    // refusal.** A section dropped from a narrower subscriber's packet
-    // for capacity is still named there, as an omission, and the guard
-    // reads omission ids too: no subscriber's own packet would have been
-    // valid. Here both subscribers have one deadline, both are refused
-    // with the job, and the job ends once. One whose deadline is later
-    // than the one that brought the packet on is refused too:
+    // **The subscribers of one job share its ending.** Here both
+    // subscribers have one deadline and one capacity, and each one's own
+    // packet would carry the refused section id: both are refused with
+    // the job, and the job ends once. A subscriber whose own packet would
+    // have been valid is refused all the same. That can happen: a section
+    // a narrower subscriber omits for capacity is named in its packet only
+    // by its section id, as an omission, and the citation and claim ids
+    // inside it never reach that packet
+    // (`a_narrower_subscriber_whose_own_packet_is_valid_is_refused_with_its_job`).
+    //
+    // Refusing the whole job is this session's choice, and the owner may
+    // overturn it for a refusal per subscriber. Since #43 the compiler
+    // builds every id inside the identifier grammar (`crate::ids`), so in
+    // production the guard fires only on a defect, or on a scripted test
+    // control; ending the whole job fails closed. A subscriber's valid
+    // packet sealed in that tick is dropped with the tick and never
+    // served (the narrower subscriber's test says what is left of it).
+    // One whose deadline is later than the one that brought the packet on
+    // is refused too:
     // `a_subscriber_with_a_later_deadline_is_refused_with_the_job_an_earlier_deadline_ended`.
     let directory = tempfile::tempdir().expect("temp dir");
     let clock = directory.path().join("clock");
@@ -2656,5 +2681,435 @@ fn an_ended_job_is_still_seen_through_a_subscriber_it_is_not_named_after() {
         )],
         "a reader of r-second no longer sees the job it subscribed to: {seen:?}"
     );
+    ctx.kill();
+}
+
+// ---- the cases the third verification reached -------------------------------
+
+/// The job every request of
+/// [`a_narrower_subscriber_whose_own_packet_is_valid_is_refused_with_its_job`]
+/// is prepared by, named after `r-narrow`, which is submitted first.
+const NARROW_JOB: &str = r#"{"id":"r-narrow","kind":"context.job"}"#;
+
+/// A provider under `context.shared_jobs` whose one script, for job
+/// `r-narrow`, waits for 00:10, then prepares three sections and publishes.
+/// `s-1` satisfies `i-1` in 12 bytes, `s-opt` satisfies the advisory `opt`
+/// in 11, and `s-more` is 200 more bytes for `opt`, whose one citation id
+/// is outside the grammar. Each of `requests`, with its output capacity, is
+/// submitted in order for `i-1` and `opt`, and joins job `r-narrow`.
+/// Returns the provider, its configuration and its clock file, at 00:00.
+fn narrow_and_wide(
+    directory: &Path,
+    requests: &[(&str, i64)],
+) -> (ContextProvider, String, PathBuf) {
+    let clock = directory.join("clock");
+    set_clock(&clock, "2030-01-01T00:00:00Z");
+    let evidence = r#""evidence":{"provider":"context-1","artifact":{"kind":"evidence.artifact","id":"log-1"},"digest":"sha256:0000000000000000000000000000000000000000000000000000000000000000"}"#;
+    let script = format!(
+        r#""r-narrow":[{{"wait_until":"2030-01-01T00:10:00Z"}},{},{{"section":{{"section_id":"s-opt","item_id":"opt","label":"source_inspected","content":"fn opt() {{}}","source":{{"repository":"repo-a","path":"src/opt.rs","tree":"tree-1"}}}}}},{{"section":{{"section_id":"s-more","item_id":"opt","label":"source_inspected","content":"{}","citations":[{{"citation_id":"c/x-secret-path",{evidence}}}]}}}},{{"publish":{{}}}}]"#,
+        source_section("s-1"),
+        "x".repeat(200)
+    );
+    let config = scripted(
+        &script,
+        &format!(r#","clock":{{"file":"{}"}}"#, clock.display()),
+    );
+    let mut ctx = ContextProvider::start_with(directory, &config, &NARROW_FEATURES);
+    for (request, capacity) in requests {
+        let submitted = ctx.submit_within(
+            request,
+            &format!("{SOURCE_ITEM},{}", unsatisfiable("opt", "advisory")),
+            "proceed_with_gap",
+            "2030-01-01T01:00:00Z",
+            *capacity,
+        );
+        let outcome = at(result(&submitted), &["outcome"]);
+        assert_eq!(text(outcome, &["state"]), "preparing", "{submitted:?}");
+        assert_eq!(
+            canonical(at(outcome, &["job"])),
+            NARROW_JOB,
+            "{submitted:?}"
+        );
+    }
+    (ctx, config, clock)
+}
+
+/// What [`narrow_and_wide`]'s provider negotiates: a required item, an
+/// advisory one, and a job its requests share.
+const NARROW_FEATURES: [&str; 3] = [
+    "context.required_before_start",
+    "context.advisory",
+    "context.shared_jobs",
+];
+
+/// The digest of each object file the store holds, read off its bytes.
+fn object_digests(data: &Path) -> Vec<String> {
+    objects(data)
+        .iter()
+        .map(|path| cbr_encoding::digest_bytes(&std::fs::read(path).expect("reads an object")))
+        .collect()
+}
+
+#[test]
+fn a_narrower_subscriber_whose_own_packet_is_valid_is_refused_with_its_job() {
+    // **A packet the guard refuses ends the whole job, even for a
+    // subscriber whose own packet would have been valid.** `r-narrow`, at
+    // 64 bytes, omits `s-more` for capacity: its packet names `s-more`
+    // only as an omission, and the citation id outside the grammar never
+    // reaches it. Alone it is published `ready`. `r-wide`, at 4096, joins
+    // its job and carries `s-more` whole, citation and all, and the guard
+    // refuses that packet. Both are refused with the job.
+    //
+    // That is this session's choice, which the owner may overturn for a
+    // refusal per subscriber. Since #43 the compiler builds every id
+    // inside the grammar (`crate::ids`), so in production the guard fires
+    // only on a defect or a scripted test control, and ending the whole
+    // job fails closed. `r-narrow`'s packet was sealed earlier in the
+    // refused tick, which is dropped with it. Here the provider seals its
+    // own packets, so that packet is never an artifact, never published
+    // and never served, and its object is collected at the next start as
+    // one no row names. Under an evidence peer it would already have been
+    // sent there and sealed, with nothing in this store naming it.
+
+    // The control: alone, the same request is published `ready`, and its
+    // one revision omits `s-more` for capacity.
+    let alone = tempfile::tempdir().expect("temp dir");
+    let (mut ctx, _, clock) = narrow_and_wide(alone.path(), &[("r-narrow", 64)]);
+    set_clock(&clock, "2030-01-01T00:10:00Z");
+    let own = settled(&mut ctx, "r-narrow");
+    assert_eq!(
+        text(&own, &["state"]),
+        "ready",
+        "the premise: alone, r-narrow's own packet is valid: {own:?}"
+    );
+    let packets = at(&own, &["packets"]).as_array().expect("packets").to_vec();
+    assert_eq!(packets.len(), 1, "{own:?}");
+    let digest = text(&packets[0], &["reference", "artifact", "digest"]).to_string();
+    let revision = result(&ctx.call(
+        "context.packet.inspect",
+        None,
+        r#"{"packet":"r-narrow","revision":1}"#,
+    ))
+    .clone();
+    assert_eq!(
+        canonical(at(&revision, &["omissions"])),
+        r#"[{"item_id":"opt","reason":"output_capacity","section_id":"s-more"}]"#,
+        "the premise: r-narrow omits s-more for capacity: {revision:?}"
+    );
+    assert!(
+        !canonical(&revision).contains("secret-path"),
+        "the premise: the citation id never reaches r-narrow's packet: {revision:?}"
+    );
+    ctx.kill();
+
+    // Shared: r-wide joins r-narrow's job, and the job ends.
+    let shared = tempfile::tempdir().expect("temp dir");
+    let (mut ctx, config, clock) =
+        narrow_and_wide(shared.path(), &[("r-narrow", 64), ("r-wide", 4096)]);
+    set_clock(&clock, "2030-01-01T00:10:00Z");
+    let mut ended = Vec::new();
+    for request in ["r-narrow", "r-wide"] {
+        let refused = settled(&mut ctx, request);
+        assert_eq!(
+            text(&refused, &["state"]),
+            "refused",
+            "{request}: {refused:?}"
+        );
+        assert_eq!(
+            text(&refused, &["reason"]),
+            "packet_invalid",
+            "{request}: {refused:?}"
+        );
+        assert_eq!(canonical(at(&refused, &["job"])), NARROW_JOB, "{request}");
+        assert_eq!(
+            canonical(at(&refused, &["items"])),
+            concat!(
+                r#"[{"item_id":"i-1","obligation":"required_before_start","reason":"packet_invalid","result":"unmet"},"#,
+                r#"{"item_id":"opt","obligation":"advisory","reason":"packet_invalid","result":"degraded"}]"#
+            ),
+            "{request}: {refused:?}"
+        );
+        assert_eq!(
+            at(&refused, &["packets"]).as_array().map(<[_]>::len),
+            Some(0),
+            "{request}: {refused:?}"
+        );
+        ended.push(refused);
+    }
+    let unserved = ctx.call(
+        "context.packet.inspect",
+        None,
+        r#"{"packet":"r-narrow","revision":1}"#,
+    );
+    assert!(
+        unserved.get("result").is_none(),
+        "r-narrow's packet is served: {unserved:?}"
+    );
+    let events = recorded(&mut ctx);
+    assert_nothing_published(&events);
+    assert_eq!(
+        of_subject(&events, "context.job", "r-narrow"),
+        vec![(
+            "context.job.ended".to_string(),
+            r#"{"reason":"packet_invalid"}"#.to_string()
+        )],
+        "{events:?}"
+    );
+    let data = shared.path().join("context-data");
+    assert!(
+        artifacts(&data).is_empty(),
+        "an artifact of the refused tick was committed: {:?}",
+        artifacts(&data)
+    );
+    // The premise of what was dropped: r-narrow's packet was sealed in the
+    // refused tick, before the guard reached r-wide's, as the very bytes it
+    // is published as alone.
+    assert_eq!(object_digests(&data), [digest], "{:?}", objects(&data));
+    let logged = log(shared.path());
+    assert_eq!(refusals(&logged, "r-wide"), 1, "{logged}");
+    assert_eq!(
+        refusals(&logged, "r-narrow"),
+        0,
+        "r-narrow's own packet was refused: {logged}"
+    );
+    assert!(
+        logged.contains("/sections/2/citations/0,") && !logged.contains("secret-path"),
+        "{logged}"
+    );
+    ctx.kill();
+
+    // The next start collects the object no row names, and serves the
+    // same two refusals.
+    let mut restarted = ContextProvider::start_with(shared.path(), &config, &NARROW_FEATURES);
+    for (request, refused) in ["r-narrow", "r-wide"].iter().zip(&ended) {
+        assert_eq!(
+            canonical(&restarted.inspect(request)),
+            canonical(refused),
+            "{request}"
+        );
+    }
+    assert!(
+        objects(&data).is_empty(),
+        "r-narrow's dropped packet survived the restart: {:?}",
+        objects(&data)
+    );
+    assert!(artifacts(&data).is_empty(), "{:?}", artifacts(&data));
+    restarted.kill();
+}
+
+#[test]
+fn a_store_failure_while_ending_is_a_tick_failure_and_the_next_tick_ends_the_job_once() {
+    // **A store failure while the job is being ended is a store failure
+    // like any other in the tick.** The ending waits at its barrier, built
+    // and not committed, while another connection takes SQLite's write
+    // lock and holds it past the provider's busy timeout; then the barrier
+    // is released. The commit fails, so the tick fails: nothing is logged
+    // as refused, the request is still preparing and the job running. Once
+    // the lock is gone the next tick ends the job, once, with one log line
+    // that says so.
+    let directory = tempfile::tempdir().expect("temp dir");
+    let barriers = directory.path().join("barriers");
+    std::fs::create_dir(&barriers).expect("barrier dir");
+    let config = scripted(
+        &refused_script("r-bad"),
+        &format!(
+            r#","test_barriers":{{"directory":"{}","enabled":["{REFUSED_BEFORE_COMMIT}"]}}"#,
+            barriers.display()
+        ),
+    );
+    let mut ctx = ContextProvider::start(directory.path(), &config);
+    ctx.submit("r-bad", "2030-01-01T01:00:00Z");
+    ctx.send("context.request.inspect", None, r#"{"request":"r-bad"}"#);
+    wait_for(
+        &barriers.join(format!("{REFUSED_BEFORE_COMMIT}.reached")),
+        "the refusal's batch reaching its commit",
+    );
+    let data = directory.path().join("context-data");
+    let holder = rusqlite::Connection::open(data.join("cbr.sqlite")).expect("opens the store");
+    holder
+        .execute_batch("BEGIN IMMEDIATE")
+        .expect("takes the write lock");
+    std::fs::write(
+        barriers.join(format!("{REFUSED_BEFORE_COMMIT}.release")),
+        b"",
+    )
+    .expect("release");
+    let answered = ctx.read().expect("the inspect is answered");
+    holder
+        .execute_batch("ROLLBACK")
+        .expect("releases the write lock");
+    drop(holder);
+    assert_eq!(
+        text(result(&answered), &["state"]),
+        "preparing",
+        "{answered:?}"
+    );
+    let logged = log(directory.path());
+    assert_eq!(
+        refusals(&logged, "r-bad"),
+        0,
+        "a refusal was logged although its ending never committed: {logged}"
+    );
+    assert!(
+        logged.contains("context preparation failed"),
+        "the failed ending was not a failure of the tick: {logged}"
+    );
+    assert_eq!(
+        text(&stored(&data, "context.request", "r-bad"), &["state"]),
+        "preparing"
+    );
+    assert_eq!(
+        text(&stored(&data, "context.job", "r-bad"), &["state"]),
+        "running"
+    );
+
+    let refused = settled(&mut ctx, "r-bad");
+    assert_eq!(text(&refused, &["state"]), "refused", "{refused:?}");
+    assert_eq!(text(&refused, &["reason"]), "packet_invalid", "{refused:?}");
+    assert_eq!(canonical(at(&refused, &["items"])), REFUSED_ITEM);
+    let logged = log(directory.path());
+    let lines: Vec<&str> = logged
+        .lines()
+        .filter(|line| line.contains("request r-bad:"))
+        .collect();
+    assert_eq!(lines.len(), 1, "{logged}");
+    assert!(
+        lines[0].ends_with("; the job has ended: packet_invalid"),
+        "{logged}"
+    );
+    let events = recorded(&mut ctx);
+    let count = |wanted: &dyn Fn(&Recorded) -> bool| events.iter().filter(|e| wanted(e)).count();
+    assert_eq!(
+        count(&|e| e.payload.contains(r#""state":"refused""#)),
+        1,
+        "{events:?}"
+    );
+    assert_eq!(count(&|e| e.event == "context.job.ended"), 1, "{events:?}");
+    ctx.kill();
+}
+
+#[test]
+fn a_published_subscriber_not_named_by_its_job_still_sees_the_ending() {
+    // **An ended job keeps the subscribers it did not refuse.** Under
+    // `context.updates`, `r-first` and `r-second` share job `r-first`, and
+    // both are published `ready` at 00:05. The update at 00:10 is refused,
+    // so the job ends and neither request is refused: each keeps its
+    // revision. A reader whose grant covers `r-second` alone still reads
+    // job `r-first`'s ending, which it can see only because the ended job
+    // still names `r-second`.
+    let directory = tempfile::tempdir().expect("temp dir");
+    let clock = directory.path().join("clock");
+    set_clock(&clock, "2030-01-01T00:00:00Z");
+    let script = format!(
+        r#""r-first":[{{"wait_until":"2030-01-01T00:05:00Z"}},{},{{"publish":{{}}}},{{"wait_until":"2030-01-01T00:10:00Z"}},{},{{"publish":{{}}}}]"#,
+        source_section("s-1"),
+        source_section(OUTSIDE_GRAMMAR)
+    );
+    let mut ctx = ContextProvider::start_negotiating(
+        directory.path(),
+        &scripted(
+            &script,
+            &format!(r#","clock":{{"file":"{}"}}"#, clock.display()),
+        ),
+        &["core.events", "core.grants"],
+        &[
+            "context.required_before_start",
+            "context.shared_jobs",
+            "context.updates",
+        ],
+    );
+    for request in ["r-first", "r-second"] {
+        let submitted = ctx.submit(request, "2030-01-01T01:00:00Z");
+        assert_eq!(
+            canonical(at(result(&submitted), &["outcome", "job"])),
+            SHARED_JOB,
+            "the premise: {request} is prepared by job r-first: {submitted:?}"
+        );
+    }
+    set_clock(&clock, "2030-01-01T00:05:00Z");
+    for request in ["r-first", "r-second"] {
+        let published = settled(&mut ctx, request);
+        assert_eq!(
+            text(&published, &["state"]),
+            "ready",
+            "{request}: {published:?}"
+        );
+    }
+    result(&ctx.call(
+        "core.grant.issue",
+        Some(("issue-g-second", ("core.grant", "g-second"), 0)),
+        r#"{"holder":"owner","audience":"context-1","rights":["core.events.read","context.read"],"resources":[{"kind":"context.request","id":"r-second"}],"delegation":{"allowed":false,"max_depth":0}}"#,
+    ));
+
+    set_clock(&clock, "2030-01-01T00:10:00Z");
+    let events = (0..50)
+        .find_map(|_| {
+            let events = recorded(&mut ctx);
+            events
+                .iter()
+                .any(|e| e.event == "context.job.ended")
+                .then_some(events)
+        })
+        .expect("the job never ended: a refused update left it running");
+    assert!(
+        !events
+            .iter()
+            .any(|e| e.payload.contains(r#""state":"refused""#)),
+        "the premise: neither published request was refused: {events:?}"
+    );
+    let seen = events_of(&ctx.query_under(
+        "g-second",
+        "core.events.read",
+        r#"{"from":"start","limit":1000}"#,
+    ));
+    assert!(
+        of_subject(&seen, "context.request", "r-first").is_empty(),
+        "the premise: the grant covers r-second alone: {seen:?}"
+    );
+    assert_eq!(
+        of_subject(&seen, "context.job", "r-first"),
+        vec![(
+            "context.job.ended".to_string(),
+            r#"{"reason":"packet_invalid"}"#.to_string()
+        )],
+        "a published subscriber's reader no longer sees its job end: {seen:?}"
+    );
+    ctx.kill();
+}
+
+#[test]
+fn every_subscribers_refusal_is_recorded_before_the_jobs_ending() {
+    // **The requests' changes come first and the job's ending last**, for
+    // every subscriber of a shared job and not only the first: a reader
+    // that sees `context.job.ended` has already been shown each refusal.
+    let directory = tempfile::tempdir().expect("temp dir");
+    let (mut ctx, clock) = two_subscribers_of_one_refused_job(directory.path());
+    set_clock(&clock, "2030-01-01T00:10:00Z");
+    for request in ["r-first", "r-second"] {
+        let refused = settled(&mut ctx, request);
+        assert_eq!(
+            text(&refused, &["state"]),
+            "refused",
+            "{request}: {refused:?}"
+        );
+    }
+    let events = recorded(&mut ctx);
+    let ended = events
+        .iter()
+        .position(|e| e.event == "context.job.ended")
+        .unwrap_or_else(|| panic!("the job never ended: {events:?}"));
+    for request in ["r-first", "r-second"] {
+        let refused = events
+            .iter()
+            .position(|e| {
+                e.subject == ("context.request".to_string(), request.to_string())
+                    && e.payload == refused_in_shared_job()
+            })
+            .unwrap_or_else(|| panic!("{request} was never refused: {events:?}"));
+        assert!(
+            refused < ended,
+            "{request}'s refusal is recorded after the job's ending: {events:?}"
+        );
+    }
     ctx.kill();
 }
