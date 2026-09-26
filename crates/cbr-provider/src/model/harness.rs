@@ -12,10 +12,10 @@
 //! [`sweep`] and [`boundary_sweep`] run a body across the ceilings and
 //! counts where the admission path changes its mind: just below, at and
 //! just above each figure it compares, and eighths of the whole question
-//! between them. [`with_room_freed`] is the one case the bound does not
-//! cover — room freed on the refusing counter anywhere between a send's
-//! local refusal and its completion's admission — and exists so a test
-//! can say so exactly.
+//! between them. [`with_room_freed`] frees room on the refusing counter
+//! anywhere between a send's local refusal and its completion's
+//! admission: the case m5-settle's per-attempt rule closes, run so a test
+//! can show it closed.
 
 use std::cell::{Cell, RefCell};
 
@@ -138,6 +138,9 @@ pub(crate) struct Held {
     /// after that send's own reservation was admitted: every figure here
     /// was within the ceiling when it was admitted.
     pub admitted_at: Vec<u64>,
+    /// Every ledger row afterwards, as [`Ledger::rows`] reads them, for a
+    /// test that asserts a note.
+    pub rows: Vec<(String, String, u64)>,
 }
 
 /// One run of a sweep, and what it was run with.
@@ -260,6 +263,7 @@ fn asked(
         outcome,
         counts: script.counts.get(),
         admitted_at: script.admitted_at.into_inner(),
+        rows: Ledger::new(connection).rows().expect("the ledger reads"),
     }
 }
 
@@ -313,24 +317,10 @@ fn bounds(body: &Request) -> (u64, u64) {
     )
 }
 
-/// **The most a count can settle above its own reservation**, over `body`
-/// and each of its repairs: the count is reserved at its own body's bound
-/// and settled at no more than the completion's, and the completion body
-/// carries three members the count body does not.
-pub(crate) fn count_overage(body: &Request) -> u64 {
-    std::iter::once(body.clone())
-        .chain(REPAIRABLE.iter().map(|unusable| repaired(body, *unusable)))
-        .map(|body| {
-            let (local, counted) = bounds(&body);
-            local.saturating_sub(counted)
-        })
-        .max()
-        .unwrap_or(0)
-}
-
 /// Every ceiling at which the admission path decides something different
-/// for `body`: none; either side of its first send; its count's
-/// reservation and the completion's bound; the first send beside a count;
+/// for `body`: none; either side of its first send; the count body's
+/// bound and the completion's, which a count reserves; the first send
+/// beside a count;
 /// either side of the first send and each repair; and eighths of the whole
 /// question between them.
 pub(crate) fn ceilings(body: &Request) -> Vec<Option<u64>> {
@@ -352,8 +342,9 @@ pub(crate) fn ceilings(body: &Request) -> Vec<Option<u64>> {
 }
 
 /// Every count answer worth making: nothing, the floor's worth, half, the
-/// body's bytes, the whole reservation, the completion's bound — which a
-/// count settles at above its own reservation — and ten times that.
+/// body's bytes, the count body's whole bound, the completion's bound —
+/// which a count reserves, and settles at no more than — and ten times
+/// that.
 pub(crate) fn counts(body: &Request) -> Vec<CountAnswer> {
     let (local, _) = bounds(body);
     vec![
@@ -392,8 +383,8 @@ pub(crate) fn sweep(body: &Request) -> Vec<Run> {
 }
 
 /// **The ceilings a decision turns on and nothing between them**, with
-/// the count the fake makes and the one that settles above its own
-/// reservation: thirty-six runs, for a body too large to sweep whole.
+/// the count the fake makes and the one at the completion's bound:
+/// thirty-six runs, for a body too large to sweep whole.
 pub(crate) fn boundary_sweep(body: &Request) -> Vec<Run> {
     let first = send_worst(body, DIALECT);
     let (local, counted) = bounds(body);

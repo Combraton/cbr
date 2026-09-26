@@ -661,6 +661,13 @@ impl Provider {
         data_dir: &std::path::Path,
     ) -> Result<Self, crate::store::StoreError> {
         let mut store = Store::open(data_dir)?;
+        // **Before anything is admitted** (m5-settle): a reservation a killed
+        // process left, whose recorded answer billed above it, is charged
+        // the bill and so writes its `overrun`. A start, not a connection.
+        crate::wire::record::reconcile(store.connection()).map_err(|error| match error {
+            crate::budget::LedgerError::Storage(error) => crate::store::StoreError::Sqlite(error),
+            _ => crate::store::StoreError::Sqlite(rusqlite::Error::InvalidQuery),
+        })?;
         // Epoch and retention changes belong to process start, before anything
         // is read, so a consumer never sees the stream change under it mid-read.
         if config.events_new_epoch_on_start {

@@ -527,28 +527,45 @@ fn a_completion_the_envelope_refused_is_still_a_stop() {
     // the measurement it came for. That is a stop, where a completion that
     // happened and was truncated is not.
     //
-    // Reached by scripting the completion's own count above the
-    // per-request ceiling, so the refusal lands on the completion rather
-    // than on one of the corpus counts — an earlier version set a low run
-    // ceiling, which stopped the first count instead and tested nothing
-    // about this path.
-    let connection = database();
+    // Reached by a run ceiling with room for every count and one token
+    // too little for the completion, so the refusal lands on the
+    // completion rather than on one of the counts — an earlier version set
+    // a ceiling that stopped the first count instead and tested nothing
+    // about this path. Each count answers its own local bound, which
+    // settles it at exactly what it can reserve, so the room it leaves is
+    // known whatever a count reserves. (Scripting the completion's count
+    // above the per-request ceiling no longer reaches this path: under
+    // `Counting::Always` a count above the local bound is capped at it.)
+    let dialect = Dialect::Responses;
+    let model = "MiniMax-M2.7-highspeed";
+    let local = |text: &str| {
+        let request = asking(model, text);
+        budget::input_bound(
+            &request.serialize(dialect),
+            request.framed_messages(dialect),
+        )
+    };
     let mut answers: Vec<Answer> = corpus()
         .iter()
-        .map(|(_, text)| Answer::Counted((text.len() / 4) as u64))
+        .map(|(_, text)| Answer::Counted(local(text)))
         .collect();
-    answers.push(Answer::Counted(crate::budget::PER_REQUEST_TOKENS + 1));
+    let completion = local("Reply with the single word: calibrated.");
+    answers.push(Answer::Counted(completion));
+    let counted: u64 = corpus().iter().map(|(_, text)| local(text)).sum::<u64>() + completion;
+    let ceiling = counted + completion + GENERATION + budget::SAFETY_MARGIN_TOKENS - 1;
+    let connection = database();
     let transport = Recorder::new(answers);
     let report = run(
         T0,
-        Ledger::new(&connection).with_run_ceiling(Some(CEILING)),
+        Ledger::new(&connection).with_run_ceiling(Some(ceiling)),
         &transport,
-        Dialect::Responses,
-        "MiniMax-M2.7-highspeed",
+        dialect,
+        model,
     );
     assert_eq!(report.rows.len(), corpus().len(), "every file was counted");
     let stopped = report.stopped.expect("the completion was refused");
     assert!(stopped.contains("refused"), "{stopped}");
+    assert!(stopped.contains("run_over_ceiling"), "{stopped}");
     assert!(report.completion.is_none(), "and there is no completion");
 }
 

@@ -24,6 +24,27 @@
 //! local half exists at m4a, and it is a complete admission path: CI
 //! exercises it with no network at all.
 //!
+//! # A bill above its reservation stops the store (m5-settle)
+//!
+//! A settlement is charged whole, whatever it says: the counters hold what
+//! the shared quota was charged. When that is more than the reservation,
+//! the same transaction writes an `overrun` row naming the call's job and
+//! request, and from then on [`Ledger::admit`] refuses everything, before
+//! any ceiling, as it does once the local bound is recorded unsound. The
+//! stop is a row, so it holds for every caller and across restarts; an
+//! operator clears it only with a new data directory. It catches a
+//! provider billing above what it was asked; it cannot prevent one, so a
+//! store can pass a ceiling once, by what calls already admitted bill
+//! above their reservations.
+//!
+//! **A settlement the store does not take** — another writer holding the
+//! lock past the busy timeout, an I/O error, a full disk — writes none of
+//! it, the `overrun` row included. The process keeps an overrun it could
+//! not write, refuses every later admission on that store, and writes it
+//! at the first admission the store takes ([`UNWRITTEN`]). A process
+//! killed before its settlement landed is reconciled at the next start,
+//! from what the recording boundary wrote (`wire::record::reconcile`).
+//!
 //! # The estimate is one-sided
 //!
 //! It may over-estimate. It must never under-estimate, because an
@@ -44,6 +65,9 @@
 //! provider's tokenizer rather than a fact CBR has checked**. The
 //! calibration checks it — its own step after m4b merges, on the owner's
 //! word, with one count above its local estimate stopping M4 outright.
+
+use std::collections::BTreeMap;
+use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use rusqlite::{Connection, OptionalExtension as _, params};
 
@@ -145,9 +169,28 @@ pub enum Refusal {
     PerJob,
     /// A launch-configured ceiling for this whole run.
     RunCeiling,
+    /// This store once settled a call above its reservation. Durable: the
+    /// store admits nothing again. Also this process's refusal on a store
+    /// whose overrun it saw and could not write ([`UNWRITTEN`]).
+    Overrun,
+    /// This store once recorded the local bound being wrong. Durable, as
+    /// above.
+    BoundUnsound,
 }
 
 impl Refusal {
+    /// Every refusal, for the tests that must see each one.
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub const ALL: [Refusal; 7] = [
+        Refusal::WindowExhausted,
+        Refusal::MonthExhausted,
+        Refusal::PerRequest,
+        Refusal::PerJob,
+        Refusal::RunCeiling,
+        Refusal::Overrun,
+        Refusal::BoundUnsound,
+    ];
+
     /// Whether a **tighter figure for the same request** could turn this
     /// refusal into an admission.
     ///
@@ -164,7 +207,7 @@ impl Refusal {
             | Refusal::MonthExhausted
             | Refusal::PerJob
             | Refusal::RunCeiling => true,
-            Refusal::PerRequest => false,
+            Refusal::PerRequest | Refusal::Overrun | Refusal::BoundUnsound => false,
         }
     }
 
@@ -177,6 +220,8 @@ impl Refusal {
             Refusal::PerRequest => "request_over_ceiling",
             Refusal::PerJob => "job_over_ceiling",
             Refusal::RunCeiling => "run_over_ceiling",
+            Refusal::Overrun => "reservation_overrun",
+            Refusal::BoundUnsound => "local_bound_unsound",
         }
     }
 }
@@ -190,7 +235,9 @@ impl Refusal {
 /// over-counts. The transport says which, because only the transport knows.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Settlement {
-    /// The provider's own accounting of what was spent.
+    /// The provider's own accounting of what was spent, **charged whole**
+    /// even above the reservation. Above it, the settlement also records an
+    /// `overrun` naming the call, and the store admits nothing again.
     Usage(u64),
     /// **Sent, and no usage reported.** The reservation's estimate stands:
     /// the provider may have charged and nobody said how much, so the
@@ -244,6 +291,29 @@ pub enum LedgerError {
 impl From<rusqlite::Error> for LedgerError {
     fn from(error: rusqlite::Error) -> Self {
         LedgerError::Storage(error)
+    }
+}
+
+/// A settlement the store did not take, and whether this process kept it
+/// ([`UNWRITTEN`]). A caller charges a kept one its bill, which is what the
+/// ledger will hold, and any other its reservation's estimate. Read from
+/// the settlement itself rather than from [`UNWRITTEN`] afterwards, where
+/// another worker's admission may already have written it and removed it.
+#[derive(Debug)]
+pub struct Unsettled {
+    pub error: LedgerError,
+    pub kept: bool,
+}
+
+impl From<Unsettled> for LedgerError {
+    fn from(unsettled: Unsettled) -> Self {
+        unsettled.error
+    }
+}
+
+impl std::fmt::Display for Unsettled {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.error.fmt(formatter)
     }
 }
 
@@ -321,6 +391,38 @@ pub fn epoch_seconds(instant: &str) -> Option<i64> {
     Some(days * 86_400 + hour * 3_600 + minute * 60 + second)
 }
 
+/// **Overruns this process saw and the store did not take**, by the
+/// store's database file (m5-settle, verification round 1).
+///
+/// A settlement is one transaction, so a store that refuses it takes none
+/// of it and its `overrun` row is not written. A store named here admits
+/// nothing again in this process, whatever its rows say, and each
+/// admission first writes what is kept, if the store takes it now. Keyed
+/// by the file, so every connection this process opens to the store
+/// reads it; a store with no file, which only a test opens, has its rows
+/// alone.
+static UNWRITTEN: Mutex<BTreeMap<String, Vec<Unwritten>>> = Mutex::new(BTreeMap::new());
+
+/// One settlement above its reservation that the store did not take.
+#[derive(Debug, Clone)]
+struct Unwritten {
+    now: String,
+    reservation: Reservation,
+    tokens: u64,
+}
+
+fn unwritten() -> MutexGuard<'static, BTreeMap<String, Vec<Unwritten>>> {
+    UNWRITTEN.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+/// The database file a connection has open, when it has one.
+fn store_file(connection: &Connection) -> Option<String> {
+    connection
+        .path()
+        .filter(|path| !path.is_empty())
+        .map(str::to_string)
+}
+
 /// The ledger: durable, conservative, and the only thing that admits a call.
 pub struct Ledger<'a> {
     connection: &'a Connection,
@@ -379,9 +481,9 @@ impl<'a> Ledger<'a> {
         Ok(())
     }
 
-    /// Rows that count as spend. A refusal is recorded and is not one.
-    /// Rows that count as spend. A refusal, an anomaly, a divergence and a
-    /// mismatch are all recorded and none of them is one.
+    /// Rows that count as spend. A refusal, an anomaly, a divergence, an
+    /// overrun and a mismatch are all recorded and none of them is one: an
+    /// overrun's tokens are the bill its settled row already counts.
     const SPENT: &'static str =
         "kind IN ('reservation', 'usage', 'unknown', 'provider_exhausted', 'not_sent')";
 
@@ -390,6 +492,55 @@ impl<'a> Ledger<'a> {
     /// between the reservation and the send leaves the spend counted rather
     /// than forgotten.
     pub fn admit(
+        &self,
+        now: &str,
+        job: &str,
+        request: &str,
+        estimate: u64,
+    ) -> Result<Result<Reservation, Refusal>, LedgerError> {
+        // **An overrun this process saw and the store did not take** is
+        // written first, if the store takes it now, and is a stop either
+        // way. The stop is read inside the admission's transaction, with
+        // the store's own; when the store cannot be asked, or cannot say,
+        // it is this process's and needs neither.
+        self.write_unwritten();
+        let admitted = self.admit_once(now, job, request, estimate);
+        if admitted.is_err() && self.holds_a_stop() {
+            return Ok(Err(Refusal::Overrun));
+        }
+        admitted
+    }
+
+    /// Whether this process kept an overrun on this store that the store
+    /// did not take. Once it has, the store admits nothing again here,
+    /// whether or not the overrun has since been written.
+    fn holds_a_stop(&self) -> bool {
+        store_file(self.connection).is_some_and(|file| unwritten().contains_key(&file))
+    }
+
+    /// Write what this process kept for this store, where the store takes
+    /// it.
+    fn write_unwritten(&self) {
+        let Some(file) = store_file(self.connection) else {
+            return;
+        };
+        let Some(kept) = unwritten().get(&file).cloned() else {
+            return;
+        };
+        let written: Vec<i64> = kept
+            .iter()
+            .filter(|kept| {
+                self.settle_once(&kept.now, &kept.reservation, Settlement::Usage(kept.tokens))
+                    .is_ok()
+            })
+            .map(|kept| kept.reservation.id)
+            .collect();
+        if let Some(kept) = unwritten().get_mut(&file) {
+            kept.retain(|kept| !written.contains(&kept.reservation.id));
+        }
+    }
+
+    fn admit_once(
         &self,
         now: &str,
         job: &str,
@@ -421,6 +572,23 @@ impl<'a> Ledger<'a> {
         request: &str,
         estimate: u64,
     ) -> Result<Result<Reservation, Refusal>, LedgerError> {
+        // **The store's stops, before every ceiling**, and inside the same
+        // transaction as the insert: every caller admits here, so no path
+        // (the `Counting::Always` one included) and no restart skips them,
+        // and a stop written while a call's count was out refuses its
+        // completion. The process's own stop comes after the store's, so
+        // an unsound bound is still reported first, and is read here too,
+        // under the lock (m5-settle, verification round 2): read before
+        // it, an admission already waiting on the lock while a settlement
+        // was refused would be granted once the lock came free.
+        let stop = match self.stop()? {
+            Some(stop) => Some(stop),
+            None => self.holds_a_stop().then_some(Refusal::Overrun),
+        };
+        if let Some(stop) = stop {
+            self.write(now, job, request, stop.reason(), 0, estimate)?;
+            return Ok(Err(stop));
+        }
         let spend = self.spend(now, job)?;
         let run = self.run_spend()?;
         // Ceilings first, so a caller learns it asked for something no
@@ -466,6 +634,8 @@ impl<'a> Ledger<'a> {
         let kind = if kind == "budget_exhausted"
             || kind == "request_over_ceiling"
             || kind == "job_over_ceiling"
+            || kind == "reservation_overrun"
+            || kind == "local_bound_unsound"
         {
             "refusal"
         } else {
@@ -490,13 +660,101 @@ impl<'a> Ledger<'a> {
     /// Replace a reservation's estimate with what was actually spent. A
     /// reservation that is never settled stays counted at its estimate,
     /// which over-counts rather than loses a spend.
+    ///
+    /// **One transaction**: the settled row and, when the bill is above
+    /// the reservation, the `overrun` row that stops the store. Apart, a
+    /// failure between them would count the bill and record no stop.
+    ///
+    /// A bill above the reservation that the store does not take is kept
+    /// by this process ([`UNWRITTEN`]): the store admits nothing again here,
+    /// and the next admission it takes writes it. The error says whether
+    /// it was kept ([`Unsettled`]).
     pub fn settle(
         &self,
         now: &str,
         reservation: &Reservation,
         settlement: Settlement,
+    ) -> Result<(), Unsettled> {
+        self.settle_once(now, reservation, settlement)
+    }
+
+    /// Keep a settlement the store did not take, when it is a bill above
+    /// its reservation on a store with a file, once per reservation.
+    /// Returns whether it is kept.
+    fn keep(&self, now: &str, reservation: &Reservation, settlement: Settlement) -> bool {
+        let Settlement::Usage(tokens) = settlement else {
+            return false;
+        };
+        if tokens <= reservation.estimate {
+            return false;
+        }
+        let Some(file) = store_file(self.connection) else {
+            return false;
+        };
+        let mut kept = unwritten();
+        let kept = kept.entry(file).or_default();
+        if !kept
+            .iter()
+            .any(|kept| kept.reservation.id == reservation.id)
+        {
+            kept.push(Unwritten {
+                now: now.to_string(),
+                reservation: reservation.clone(),
+                tokens,
+            });
+        }
+        true
+    }
+
+    /// Whether this process kept a settlement of `reservation` that the
+    /// store did not take, to write at the next admission it takes.
+    #[cfg(test)]
+    pub fn keeps(&self, reservation: &Reservation) -> bool {
+        store_file(self.connection).is_some_and(|file| {
+            unwritten().get(&file).is_some_and(|kept| {
+                kept.iter()
+                    .any(|kept| kept.reservation.id == reservation.id)
+            })
+        })
+    }
+
+    fn settle_once(
+        &self,
+        now: &str,
+        reservation: &Reservation,
+        settlement: Settlement,
+    ) -> Result<(), Unsettled> {
+        let unsettled = |error: LedgerError| Unsettled {
+            kept: self.keep(now, reservation, settlement),
+            error,
+        };
+        let seconds =
+            epoch_seconds(now).ok_or_else(|| unsettled(LedgerError::Instant(now.to_string())))?;
+        self.connection
+            .execute_batch("BEGIN IMMEDIATE")
+            .map_err(|error| unsettled(error.into()))?;
+        self.settle_locked(now, seconds, reservation, settlement)
+            .and_then(|()| Ok(self.connection.execute_batch("COMMIT")?))
+            .map_err(|error| {
+                // **Kept before the ROLLBACK**, while this transaction still
+                // holds the write lock (m5-settle, verification round 3):
+                // kept after it, an admission already waiting on the lock
+                // would be granted it while the process held no stop.
+                let unsettled = unsettled(error);
+                // Nothing of a settlement lands unless all of it does; the
+                // reservation then stands at its estimate.
+                let _ = self.connection.execute_batch("ROLLBACK");
+                unsettled
+            })
+    }
+
+    fn settle_locked(
+        &self,
+        now: &str,
+        seconds: i64,
+        reservation: &Reservation,
+        settlement: Settlement,
     ) -> Result<(), LedgerError> {
-        let seconds = epoch_seconds(now).ok_or_else(|| LedgerError::Instant(now.to_string()))?;
         let (kind, tokens) = match settlement {
             Settlement::Usage(tokens) => ("usage", Some(tokens)),
             // Sent, and nobody said what it cost: the estimate stands, which
@@ -511,7 +769,7 @@ impl<'a> Ledger<'a> {
         };
         // The reservation row **becomes** the settlement, so there is never a
         // moment when both are counted and never one when neither is.
-        match tokens {
+        let changed = match tokens {
             Some(tokens) => self.connection.execute(
                 "UPDATE model_ledger
                  SET kind = ?1, tokens = ?2, recorded_at = ?3, seconds = ?4
@@ -525,12 +783,31 @@ impl<'a> Ledger<'a> {
                 params![kind, now, seconds, reservation.id],
             )?,
         };
-        // Spending more than was reserved is a fact about the estimate, and
-        // READINESS section 3 requires it to be kept rather than absorbed.
+        // **A settlement lands once, and its overrun with it.** A
+        // reservation already settled — by this process writing one it
+        // kept, or by a start reconciling one a killed process left —
+        // takes nothing more.
+        if changed == 0 {
+            return Ok(());
+        }
+        // Spending more than was reserved is kept rather than absorbed
+        // (READINESS section 3), **as a stop naming the call**: the row
+        // copies the reservation's job and request. Stores written before
+        // m5-settle hold unattributed `divergence` rows, which stop nothing.
         if let Settlement::Usage(tokens) = settlement
             && tokens > reservation.estimate
         {
-            self.note(now, "", "", "divergence", tokens, reservation.estimate)?;
+            self.connection.execute(
+                "INSERT INTO model_ledger (job, request, kind, tokens, estimate, recorded_at, seconds)
+                 SELECT job, request, 'overrun', ?1, ?2, ?3, ?4 FROM model_ledger WHERE id = ?5",
+                params![
+                    tokens as i64,
+                    reservation.estimate as i64,
+                    now,
+                    seconds,
+                    reservation.id
+                ],
+            )?;
         }
         Ok(())
     }
@@ -598,10 +875,42 @@ impl<'a> Ledger<'a> {
     /// bound; forgetting at restart would be forgetting the one observation
     /// that invalidates every admission the store has ever made.
     pub fn bound_is_unsound(&self) -> Result<bool, LedgerError> {
+        self.recorded("bound_unsound")
+    }
+
+    /// Whether a completion admitted on a count was ever billed input above
+    /// the count and the margin. Durable, like the bound's stop; it closes
+    /// the serving count path and nothing else.
+    pub fn count_is_unsound(&self) -> Result<bool, LedgerError> {
+        self.recorded("count_unsound")
+    }
+
+    /// **The stop this store has recorded**, when it has one: an unsound
+    /// bound before an overrun, the order a call ends in. Old `divergence`
+    /// rows are not one.
+    fn stop(&self) -> Result<Option<Refusal>, LedgerError> {
+        let kind: Option<String> = self
+            .connection
+            .prepare(
+                "SELECT kind FROM model_ledger WHERE kind IN ('bound_unsound', 'overrun')
+                 ORDER BY kind = 'overrun' LIMIT 1",
+            )?
+            .query_row([], |row| row.get(0))
+            .optional()?;
+        Ok(kind.map(|kind| {
+            if kind == "bound_unsound" {
+                Refusal::BoundUnsound
+            } else {
+                Refusal::Overrun
+            }
+        }))
+    }
+
+    fn recorded(&self, kind: &str) -> Result<bool, LedgerError> {
         let found: Option<i64> = self
             .connection
-            .prepare("SELECT 1 FROM model_ledger WHERE kind = 'bound_unsound' LIMIT 1")?
-            .query_row([], |row| row.get(0))
+            .prepare("SELECT 1 FROM model_ledger WHERE kind = ?1 LIMIT 1")?
+            .query_row([kind], |row| row.get(0))
             .optional()?;
         Ok(found.is_some())
     }

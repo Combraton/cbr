@@ -19,6 +19,15 @@
 //! against the ledger, it is recorded, and [`Recorder`] counts it among the
 //! sends it saw. The local estimate runs **before** it and can refuse alone,
 //! which is the whole reason the admission path is complete without a network.
+//!
+//! # No attempt reserves more than its send (m5-settle)
+//!
+//! A count reserves the completion body's input bound, where its settlement
+//! is capped, and a completion admitted on a count is refused when the
+//! count's charge and its own reservation would pass the send the local
+//! bound refused. A provider billing above a reservation is caught, not
+//! prevented: the bill is charged whole, the call ends
+//! `reservation_overrun`, and the ledger admits nothing again.
 
 use std::cell::Cell;
 use std::sync::Mutex;
@@ -71,6 +80,15 @@ pub struct Exchange {
 /// The one thing that could open a socket.
 pub trait Transport {
     fn send(&self, call: Call, body: &[u8]) -> Exchange;
+
+    /// [`Self::send`], for the reservation the call was admitted under.
+    /// The call path sends this way, so the recording boundary can write
+    /// the reservation beside the exchange and a start can reconcile one
+    /// a killed process left (m5-settle, `wire::record::reconcile`).
+    fn send_for(&self, reservation: &Reservation, call: Call, body: &[u8]) -> Exchange {
+        let _ = reservation;
+        self.send(call, body)
+    }
 }
 
 /// The fake a **unit test** scripts: it records the exact bytes it was
@@ -184,7 +202,10 @@ pub enum Counting {
     WhenItCouldAdmit,
     /// Always, for a caller whose purpose **is** the count: the
     /// calibration compares it against what the provider then charges, and
-    /// a comparison with no count is no comparison.
+    /// a comparison with no count is no comparison. The count it believes
+    /// is capped at the local bound, so an attempt reserves at most
+    /// `local + W`, which [`question_worst`] does not price; and a bill
+    /// above the count is the calibration's finding, not a stop.
     Always,
 }
 
@@ -231,14 +252,22 @@ impl<'a> Runtime<'a> {
     ///    the per-request ceiling, or the dialect has no counting endpoint,
     ///    the refusal stands and nothing leaves the process.
     /// 2. When it refuses on the job, the window, the month or the run —
-    ///    a counter a tighter figure could satisfy — the provider count is
-    ///    made, and is itself admitted, sent and settled.
+    ///    a counter a tighter figure could satisfy — and the store has not
+    ///    recorded a count unsound, the provider count is made, and is
+    ///    itself admitted, sent and settled. It reserves the completion
+    ///    body's input bound, the most its settlement can charge.
     /// 3. The completion is then admitted on the provider's own figure —
     ///    or on the local one again, when the count is implausibly low —
-    ///    against the ledger as it stands after the count.
+    ///    against the ledger as it stands after the count, and only when
+    ///    the count's charge and the completion's reservation together fit
+    ///    within the send the local bound refused (m5-settle).
     ///
     /// Under [`Counting::Always`], whose purpose is the count, the count
-    /// comes first and the completion is admitted on it alone.
+    /// comes first and the completion is admitted on it alone, capped at
+    /// the local bound.
+    ///
+    /// A bill above its reservation ends its call `reservation_overrun`,
+    /// and the ledger then admits nothing ([`budget`]).
     ///
     /// `barrier` is called at each boundary the crash matrix kills at.
     pub fn call(
@@ -286,8 +315,13 @@ impl<'a> Runtime<'a> {
                 .note(now, job, request, ADMITTED_COUNT, 0, wanted);
             charges.admission.set(Some(ADMITTED_COUNT));
             barrier(COMPLETION_AFTER_RESERVATION);
-            let answer = self.transport.send(Call::Completion, body).answer;
+            let answer = self
+                .transport
+                .send_for(&reservation, Call::Completion, body)
+                .answer;
             barrier(COMPLETION_AFTER_SEND);
+            // The count is the measurement here, so a bill above it is the
+            // calibration's finding and closes nothing: no `admitted_on`.
             return self.settle_completion(
                 now,
                 attempt,
@@ -296,6 +330,7 @@ impl<'a> Runtime<'a> {
                 barrier,
                 wanted,
                 counted.reported,
+                None,
                 charges,
             );
         }
@@ -317,23 +352,46 @@ impl<'a> Runtime<'a> {
         // **One data point is not a rule.** m4e's requests are realistic
         // sizes and will say more; until then this is the reading of one
         // measurement, and it is the reading that spends less.
-        let wanted = budget::reservation(body, messages, generation);
-        let (reservation, admission, counted) = match self.ledger.admit(now, job, request, wanted) {
+        let send = budget::reservation(body, messages, generation);
+        let mut admitted_on = None;
+        let (reservation, admission, counted) = match self.ledger.admit(now, job, request, send) {
             Ok(Ok(reservation)) => (reservation, ADMITTED_LOCAL, None),
             Ok(Err(refusal)) => {
                 // Nothing tighter exists, or nothing tighter would
-                // help: the refusal stands and nothing is sent.
-                if count_body.is_none() || !refusal.a_tighter_figure_could_admit() {
+                // help: the refusal stands and nothing is sent. Nor once a
+                // count has been shown unsound (below), in this store.
+                if count_body.is_none()
+                    || !refusal.a_tighter_figure_could_admit()
+                    || self.count_path_closed()
+                {
                     return Ended::Refused(refusal);
                 }
                 let counted = match self.count(now, attempt, barrier, charges) {
                     Ok(counted) => counted,
                     Err(ended) => return ended,
                 };
+                // Read again: another job may have closed it while this
+                // count was out.
+                if self.count_path_closed() {
+                    return Ended::Refused(refusal);
+                }
                 let wanted = counted
                     .believed
                     .saturating_add(generation)
                     .saturating_add(budget::SAFETY_MARGIN_TOKENS);
+                // **The per-attempt rule.** The count's charge and the
+                // completion's reservation together hold no more than the
+                // send the local bound refused, however much room was freed
+                // on the counter since. Without freed room the ledger
+                // already forces this.
+                let attempt_holds = charges.count.get().unwrap_or(0).saturating_add(wanted);
+                if attempt_holds > send {
+                    let _ =
+                        self.ledger
+                            .note(now, job, request, ATTEMPT_OVER_SEND, 0, attempt_holds);
+                    return Ended::Refused(refusal);
+                }
+                admitted_on = Some(counted.believed);
                 match self.ledger.admit(now, job, request, wanted) {
                     Ok(Ok(reservation)) => (reservation, ADMITTED_COUNT, counted.reported),
                     // The count was worth asking for and did not
@@ -353,7 +411,10 @@ impl<'a> Runtime<'a> {
             .note(now, job, request, admission, 0, reservation.estimate);
         charges.admission.set(Some(admission));
         barrier(COMPLETION_AFTER_RESERVATION);
-        let answer = self.transport.send(Call::Completion, body).answer;
+        let answer = self
+            .transport
+            .send_for(&reservation, Call::Completion, body)
+            .answer;
         barrier(COMPLETION_AFTER_SEND);
         self.settle_completion(
             now,
@@ -363,13 +424,22 @@ impl<'a> Runtime<'a> {
             barrier,
             reservation.estimate,
             counted,
+            admitted_on,
             charges,
         )
     }
 
+    /// Whether this store has closed the serving count path. A ledger that
+    /// cannot say has not said it is open, so the local refusal stands.
+    fn count_path_closed(&self) -> bool {
+        !matches!(self.ledger.count_is_unsound(), Ok(false))
+    }
+
     /// **The count half alone**, which is a complete send in its own right:
     /// the local estimate decides first, then the provider count is
-    /// admitted, sent and settled like anything else.
+    /// admitted, sent and settled like anything else. It reserves the
+    /// completion body's input bound and settles at no more than it, and
+    /// the figure it believes is capped at that bound too.
     pub fn count(
         &self,
         now: &str,
@@ -407,9 +477,12 @@ impl<'a> Runtime<'a> {
                 believed: local,
             });
         };
-        // **A count call generates nothing**, so it reserves its input and
-        // not a generation it will never use.
-        let counting_costs = budget::input_bound(count_body, messages);
+        // **A count call generates nothing**, so it reserves input and not a
+        // generation it will never use: the completion body's input bound,
+        // which is where its settlement is capped, so a count never settles
+        // above its reservation (m5-settle). Its own body's bound omits
+        // members the completion carries, and settled above it.
+        let counting_costs = local;
 
         // Step 1: the count call is a send, so it is admitted first.
         let counting =
@@ -422,7 +495,10 @@ impl<'a> Runtime<'a> {
                 Err(_) => return Err(Ended::Unmet("ledger_unavailable")),
             };
         barrier(COUNT_AFTER_RESERVATION);
-        let counted = self.transport.send(Call::Count, count_body).answer;
+        let counted = self
+            .transport
+            .send_for(&counting, Call::Count, count_body)
+            .answer;
         barrier(COUNT_AFTER_SEND);
         let counted = match counted {
             Answer::Counted(tokens) => {
@@ -437,7 +513,12 @@ impl<'a> Runtime<'a> {
                         .note(now, job, request, "anomaly", tokens, local);
                     local
                 } else {
-                    tokens
+                    // Never above the local bound, so a completion
+                    // admitted on it reserves no more than its send. On the
+                    // serving path the per-attempt rule refuses such a
+                    // completion anyway; under `Counting::Always` this is
+                    // what caps it.
+                    tokens.min(local)
                 };
                 charges.count.set(Some(self.finish(
                     now,
@@ -484,6 +565,9 @@ impl<'a> Runtime<'a> {
                     barrier,
                     COUNT_DURING_RECONCILIATION,
                 )));
+                if overran(usage, &counting) {
+                    return Err(Ended::Unmet(OVERRUN_REASON));
+                }
                 return Err(Ended::Unmet(
                     Settlement::UsageUnknown.reason().unwrap_or("unknown"),
                 ));
@@ -537,6 +621,12 @@ impl<'a> Runtime<'a> {
     }
 
     /// What a completion's answer settles to, and what the caller is told.
+    ///
+    /// `admitted_on` is the count a serving completion was admitted on,
+    /// when it was: input billed above it and the margin records
+    /// `count_unsound`, which closes the count path. The answer stands
+    /// unless the bill also passed the reservation, because the byte bound
+    /// held.
     #[allow(clippy::too_many_arguments)]
     fn settle_completion(
         &self,
@@ -547,6 +637,7 @@ impl<'a> Runtime<'a> {
         barrier: &dyn Fn(&'static str),
         wanted: u64,
         counted: Option<u64>,
+        admitted_on: Option<u64>,
         charges: &Charges,
     ) -> Ended {
         let (job, request) = (attempt.job, attempt.request);
@@ -567,6 +658,16 @@ impl<'a> Runtime<'a> {
                 if self.check_the_bound(now, job, request, attempt.body, attempt.messages, charged)
                 {
                     return Ended::Unmet(BOUND_UNSOUND_REASON);
+                }
+                if let (Some(on), Some(charged)) = (admitted_on, charged)
+                    && charged > on.saturating_add(budget::SAFETY_MARGIN_TOKENS)
+                {
+                    let _ = self
+                        .ledger
+                        .note(now, job, request, COUNT_UNSOUND, charged, on);
+                }
+                if overran(usage, reservation) {
+                    return Ended::Unmet(OVERRUN_REASON);
                 }
                 // An unpriced completion is reported at what it was
                 // reserved for, so the caller is told what it is being
@@ -605,6 +706,9 @@ impl<'a> Runtime<'a> {
                     barrier,
                     COMPLETION_DURING_RECONCILIATION,
                 )));
+                if overran(usage, reservation) {
+                    return Ended::Unmet(OVERRUN_REASON);
+                }
                 Ended::Unmet(Settlement::UsageUnknown.reason().unwrap_or("unknown"))
             }
             Answer::Counted(_) => {
@@ -645,8 +749,14 @@ impl<'a> Runtime<'a> {
         };
         match self.ledger.settle(now, reservation, settlement) {
             Ok(()) => holds,
-            // A settlement that did not land leaves the reservation, which
-            // counts at its estimate.
+            // A bill above the reservation that the store did not take is
+            // kept by the ledger and written at the next admission the
+            // store takes, so the ledger holds the bill (m5-settle).
+            // Read from the settlement, not from the ledger afterwards: by
+            // then another worker's admission may have written it.
+            Err(unsettled) if unsettled.kept => holds,
+            // Any other settlement that did not land leaves the
+            // reservation, which counts at its estimate.
             Err(_) => reservation.estimate,
         }
     }
@@ -681,8 +791,10 @@ pub const REPAIRS: u32 = 1;
 ///
 /// **Named once, because the arithmetic rests on it.** Under it a count is
 /// made only after the local bound is refused on a counter a tighter
-/// figure could satisfy, and that is what lets [`question_worst`] bound a
-/// serving question from its body alone. `main.rs` names this rather than
+/// figure could satisfy, and while the store has recorded no count
+/// unsound, and its completion is held to the send the local bound
+/// refused: that is what lets [`question_worst`] bound a serving question
+/// from its body alone. `main.rs` names this rather than
 /// a variant, and a test holds it to that.
 pub const SERVING_COUNTING: Counting = Counting::WhenItCouldAdmit;
 
@@ -741,34 +853,32 @@ pub fn send_worst(body: &wire::request::Request, dialect: Dialect) -> u64 {
 /// Why no more. A question is one send and at most [`REPAIRS`] repairs. An
 /// attempt admitted on the local bound holds what it reserved. Under
 /// [`SERVING_COUNTING`] an attempt makes a count only after the local
-/// bound is refused on a counter with too little room for the send, and
-/// the count and the completion admitted on it are both admitted on that
-/// counter, so together they hold less than the send it refused. The
-/// sweep in `model::harness` measures this on the real call path rather
-/// than arguing it.
+/// bound is refused on a counter a tighter figure could satisfy, and its
+/// completion is admitted only when the count's charge and the
+/// completion's own reservation fit within the send it refused. The sweep
+/// in `model::harness` measures this on the real call path rather than
+/// arguing it.
 ///
-/// **What it assumes.** Bills are within their reservations: the byte
-/// bound holds, a completion admitted on a count is billed no more than
-/// the count said, `max_output_tokens` is honoured, and a failed call
-/// reports no more than it reserved. And nothing frees room on the
-/// refusing counter **between the local refusal and the completion's
-/// admission** — while the count is admitted, sent and settled, and after
-/// it. If room is freed anywhere in that window, the completion is
-/// admitted on the counter as it then is, and an attempt can hold more
-/// than the send `W` it counted for. With an honest count, at most the
-/// count body's own bound `Ic`, the most is `W + Ic − (local − Ic)`: the
-/// count settled at `Ic` and a completion reserved at it, which is `W`
-/// less what the count body omits (`local − Ic`, the input bound of the
-/// three members a count body does not carry). A count below the
-/// implausibility floor is not believed, and its attempt holds `W` and
-/// less than the floor beside it, which is less. So a question holds at
-/// most `question_worst` and less than one count's reservation more for
-/// each count it made, and a test pins the maximum. Every ceiling still
-/// holds at admission.
+/// **What it assumes. Only that bills are within their reservations**:
+/// the byte bound holds, a completion admitted on a count is billed input
+/// within the count and the margin, `max_output_tokens` is honoured, and a
+/// failed call reports no more than it reserved.
 ///
-/// **Under [`Counting::Always`] nothing derived from the body bounds a
-/// question.** The count comes first and is floored but not capped, so a
-/// count above the local bound reserves above it.
+/// **Room freed changes nothing.** A count reserves the completion body's
+/// input bound, where its settlement is capped. A completion is admitted
+/// on a count only when the count's charge and its own reservation fit
+/// within the send the local bound refused. So an attempt reserves at most
+/// `W` however room is freed.
+///
+/// **A bill above its reservation** is charged whole, recorded as an
+/// `overrun` naming its job and request, and ends its call, and the store
+/// admits nothing again. So a question can hold more than this only by
+/// what a provider billed above a reservation, and only calls already
+/// admitted when the first overrun settles can add to it.
+///
+/// **Under [`Counting::Always`]** the believed count is capped at the
+/// local bound, so an attempt reserves at most `local + W`. This function
+/// does not price that, because no serving launch counts that way.
 // Called by the arithmetic's tests, and by m5b's loop once it lands; no
 // serving path needs the figure before then.
 #[cfg_attr(not(test), allow(dead_code))]
@@ -1070,6 +1180,24 @@ pub const BOUND_UNSOUND: &str = "bound_unsound";
 /// The reason a call reports once the bound is known to be wrong.
 pub const BOUND_UNSOUND_REASON: &str = "local_bound_unsound";
 
+/// The ledger kind recording a completion admitted on a count and billed
+/// input above the count and the margin. Durable: the store makes no
+/// serving count again, and local admissions carry on.
+pub const COUNT_UNSOUND: &str = "count_unsound";
+/// The reason a call reports when its bill passed its reservation, and the
+/// reason every later admission on that store is refused with.
+pub const OVERRUN_REASON: &str = "reservation_overrun";
+/// The ledger note recording a count-path completion refused because its
+/// count and its reservation would pass the send the local bound refused.
+pub const ATTEMPT_OVER_SEND: &str = "attempt_over_send";
+
+/// Whether a provider billed above a reservation. The ledger has charged it
+/// whole and recorded the `overrun`; the call ends on it, whatever the
+/// answer was.
+fn overran(usage: Option<u64>, reservation: &Reservation) -> bool {
+    usage.is_some_and(|usage| usage > reservation.estimate)
+}
+
 /// A failure after the send, settled by whether the provider said anything
 /// about what it charged.
 fn settlement_for(usage: Option<u64>) -> Settlement {
@@ -1120,7 +1248,14 @@ impl Fake {
     /// The script, one answer per completion, **the last one repeated**. A
     /// repair is a second completion, and a control that ran out would
     /// turn every repair into a different failure from the one under test.
-    fn scripted(&self) -> Answer {
+    ///
+    /// **Billed within the limits `body` declared** (m5-settle): the
+    /// configured usage is billed as input up to the body's bytes, then as
+    /// output up to the generation limit the body binds. So no honest
+    /// answer passes its reservation or trips a stop. `overbilled:<answer>`
+    /// answers `<answer>` and bills the whole usage as output with no cap:
+    /// the one way a fixture overruns.
+    fn scripted(&self, body: &[u8]) -> Answer {
         let mut next = self.next.lock().expect("not poisoned");
         let answer = self
             .answers
@@ -1130,51 +1265,46 @@ impl Fake {
             .unwrap_or_default();
         *next += 1;
         drop(next);
+        if let Some(answer) = answer.strip_prefix("overbilled:") {
+            return self.answer(answer, self.usage.map(|usage| (0, usage)));
+        }
+        let limit = wire::request::generation_of(self.dialect, body).unwrap_or(0);
+        let honest = self.usage.map(|usage| {
+            let input = usage.min(body.len() as u64);
+            (input, (usage - input).min(limit))
+        });
+        self.answer(&answer, honest)
+    }
+
+    /// One scripted answer, billed `(input, output)` when it is billed.
+    fn answer(&self, answer: &str, bill: Option<(u64, u64)>) -> Answer {
+        let usage = bill.map(|(input, output)| input.saturating_add(output));
+        let (input, output) = bill.unwrap_or((0, 0));
+        let completed = |text: &str| Answer::Completed {
+            body: wire::response::billed(self.dialect, text, input, output),
+            usage,
+        };
         match answer.split_once(':') {
-            Some(("choose", id)) => Answer::Completed {
-                body: wire::response::scripted(
-                    self.dialect,
-                    &format!("{{\"id\":\"{id}\"}}"),
-                    self.usage,
-                ),
-                usage: self.usage,
-            },
+            Some(("choose", id)) => completed(&format!("{{\"id\":\"{id}\"}}")),
             // **Discovery's two answers.** `terms:` proposes, `ids:`
             // chooses several; both are written the long way so that a
             // test can script an answer that breaks a bound — an empty
             // list, a term with a space in it, more ids than were
             // offered — which is the control negative control 5 needs.
-            Some(("terms", list)) => Answer::Completed {
-                body: wire::response::scripted(
-                    self.dialect,
-                    &format!("{{\"terms\":{}}}", Fake::quoted(list)),
-                    self.usage,
-                ),
-                usage: self.usage,
-            },
-            Some(("ids", list)) => Answer::Completed {
-                body: wire::response::scripted(
-                    self.dialect,
-                    &format!("{{\"ids\":{}}}", Fake::quoted(list)),
-                    self.usage,
-                ),
-                usage: self.usage,
-            },
-            Some(("text", text)) => Answer::Completed {
-                body: wire::response::scripted(self.dialect, text, self.usage),
-                usage: self.usage,
-            },
+            Some(("terms", list)) => completed(&format!("{{\"terms\":{}}}", Fake::quoted(list))),
+            Some(("ids", list)) => completed(&format!("{{\"ids\":{}}}", Fake::quoted(list))),
+            Some(("text", text)) => completed(text),
             _ if answer == "provider_exhausted" => Answer::ProviderExhausted,
             _ if answer == "failed" => Answer::Failed {
                 reason: "scripted".into(),
-                usage: self.usage,
+                usage,
             },
             _ if answer == "not_sent" => Answer::NotSent("scripted".into()),
             // Anything else is a malformed body, which is a real outcome
             // and not a reason to panic in a provider.
             _ => Answer::Completed {
                 body: Vec::new(),
-                usage: self.usage,
+                usage,
             },
         }
     }
@@ -1204,7 +1334,7 @@ impl Transport for Fake {
                 raw: Vec::new(),
             },
             Call::Completion => {
-                let answer = self.scripted();
+                let answer = self.scripted(body);
                 let raw = match &answer {
                     Answer::Completed { body, .. } => body.clone(),
                     _ => Vec::new(),

@@ -348,3 +348,16 @@ pub fn declares_generation(dialect: Dialect, body: &[u8], generation: u64) -> bo
     };
     parsed.get(dialect.generation_field()) == Some(&Value::Int(generation as i64))
 }
+
+/// The generation limit `body` binds, read from the member
+/// [`declares_generation`] reads. `None` for a body that cannot be parsed
+/// or binds no non-negative integer there.
+pub fn generation_of(dialect: Dialect, body: &[u8]) -> Option<u64> {
+    match cbr_encoding::parse(body)
+        .ok()?
+        .get(dialect.generation_field())
+    {
+        Some(Value::Int(limit)) => u64::try_from(*limit).ok(),
+        _ => None,
+    }
+}

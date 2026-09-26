@@ -507,20 +507,26 @@ pub fn read_count(body: &[u8]) -> Option<u64> {
 /// It is never reached in production: the control that builds it is
 /// refused by a production configuration like every other test control.
 pub fn scripted(dialect: Dialect, text: &str, usage: Option<u64>) -> Vec<u8> {
+    billed(dialect, text, 0, usage.unwrap_or(0))
+}
+
+/// [`scripted`], billing `input` and `output` separately, for the fake
+/// that bills within the limits its request declared (m5-settle).
+pub fn billed(dialect: Dialect, text: &str, input: u64, output: u64) -> Vec<u8> {
     let quoted = String::from_utf8(cbr_encoding::to_canonical(&cbr_encoding::Value::String(
         text.to_string(),
     )))
     .expect("canonical JSON is utf-8");
-    let spent = usage.unwrap_or(0);
+    let spent = input.saturating_add(output);
     match dialect {
         Dialect::Responses => format!(
-            r#"{{"id":"resp_scripted","object":"response","status":"completed","output":[{{"type":"message","role":"assistant","content":[{{"type":"output_text","text":{quoted}}}]}}],"output_text":{quoted},"error":null,"usage":{{"input_tokens":0,"output_tokens":{spent},"total_tokens":{spent}}}}}"#
+            r#"{{"id":"resp_scripted","object":"response","status":"completed","output":[{{"type":"message","role":"assistant","content":[{{"type":"output_text","text":{quoted}}}]}}],"output_text":{quoted},"error":null,"usage":{{"input_tokens":{input},"output_tokens":{output},"total_tokens":{spent}}}}}"#
         ),
         Dialect::OpenAi => format!(
-            r#"{{"id":"chatcmpl_scripted","object":"chat.completion","choices":[{{"index":0,"finish_reason":"stop","message":{{"role":"assistant","content":{quoted}}}}}],"usage":{{"prompt_tokens":0,"completion_tokens":{spent},"total_tokens":{spent}}}}}"#
+            r#"{{"id":"chatcmpl_scripted","object":"chat.completion","choices":[{{"index":0,"finish_reason":"stop","message":{{"role":"assistant","content":{quoted}}}}}],"usage":{{"prompt_tokens":{input},"completion_tokens":{output},"total_tokens":{spent}}}}}"#
         ),
         Dialect::Anthropic => format!(
-            r#"{{"id":"msg_scripted","type":"message","role":"assistant","stop_reason":"end_turn","content":[{{"type":"text","text":{quoted}}}],"usage":{{"input_tokens":0,"output_tokens":{spent}}}}}"#
+            r#"{{"id":"msg_scripted","type":"message","role":"assistant","stop_reason":"end_turn","content":[{{"type":"text","text":{quoted}}}],"usage":{{"input_tokens":{input},"output_tokens":{output}}}}}"#
         ),
     }
     .into_bytes()
