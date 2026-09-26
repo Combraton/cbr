@@ -2726,11 +2726,22 @@ fn narrow_and_wide_beside(
     requests: &[(&str, i64)],
     beside: &str,
 ) -> (ContextProvider, String, PathBuf) {
+    narrow_and_wide_ending(directory, requests, beside, r#"{"publish":{}}"#)
+}
+
+/// [`narrow_and_wide_beside`], with `last` in place of the script's final
+/// `publish`.
+fn narrow_and_wide_ending(
+    directory: &Path,
+    requests: &[(&str, i64)],
+    beside: &str,
+    last: &str,
+) -> (ContextProvider, String, PathBuf) {
     let clock = directory.join("clock");
     set_clock(&clock, "2030-01-01T00:00:00Z");
     let evidence = r#""evidence":{"provider":"context-1","artifact":{"kind":"evidence.artifact","id":"log-1"},"digest":"sha256:0000000000000000000000000000000000000000000000000000000000000000"}"#;
     let script = format!(
-        r#""r-narrow":[{{"wait_until":"2030-01-01T00:10:00Z"}},{},{{"section":{{"section_id":"s-opt","item_id":"opt","label":"source_inspected","content":"fn opt() {{}}","source":{{"repository":"repo-a","path":"src/opt.rs","tree":"tree-1"}}}}}},{{"section":{{"section_id":"s-more","item_id":"opt","label":"source_inspected","content":"{}","citations":[{{"citation_id":"c/x-secret-path",{evidence}}}]}}}},{{"publish":{{}}}}]"#,
+        r#""r-narrow":[{{"wait_until":"2030-01-01T00:10:00Z"}},{},{{"section":{{"section_id":"s-opt","item_id":"opt","label":"source_inspected","content":"fn opt() {{}}","source":{{"repository":"repo-a","path":"src/opt.rs","tree":"tree-1"}}}}}},{{"section":{{"section_id":"s-more","item_id":"opt","label":"source_inspected","content":"{}","citations":[{{"citation_id":"c/x-secret-path",{evidence}}}]}}}},{last}]"#,
         source_section("s-1"),
         "x".repeat(200)
     );
@@ -3456,5 +3467,75 @@ fn a_subscriber_cancelled_before_its_job_is_refused_still_reads_the_items_the_jo
         canonical(&before),
         "the cancelled subscriber's read changed when its job ended"
     );
+    ctx.kill();
+}
+
+/// Both of [`narrow_and_wide`]'s requests are refused as `packet_invalid`,
+/// `r-wide`'s packet alone was refused, and nothing of the tick was sealed:
+/// no object, no artifact and no publication in the store under
+/// `directory`, before any restart.
+fn assert_both_refused_and_nothing_sealed(ctx: &mut ContextProvider, directory: &Path) {
+    for request in ["r-narrow", "r-wide"] {
+        let refused = settled(ctx, request);
+        assert_eq!(
+            text(&refused, &["state"]),
+            "refused",
+            "{request}: {refused:?}"
+        );
+        assert_eq!(
+            text(&refused, &["reason"]),
+            "packet_invalid",
+            "{request}: {refused:?}"
+        );
+    }
+    let logged = log(directory);
+    assert_eq!(refusals(&logged, "r-wide"), 1, "{logged}");
+    assert_eq!(refusals(&logged, "r-narrow"), 0, "{logged}");
+    let data = directory.join("context-data");
+    assert!(
+        objects(&data).is_empty(),
+        "r-narrow's packet was sealed in the refused tick: {:?}",
+        objects(&data)
+    );
+    assert!(artifacts(&data).is_empty(), "{:?}", artifacts(&data));
+    assert_nothing_published(&recorded(ctx));
+}
+
+#[test]
+fn a_narrower_subscribers_valid_packet_is_not_sealed_when_the_jobs_ending_refuses_the_wider_one() {
+    // **A job's ending publishes too, and is guarded whole.** T19's shape
+    // with the script ending the job, `budget_insufficient`, in place of
+    // its `publish`, as a compiled job whose mandatory content cannot fit
+    // does: `finish` publishes every subscriber, `r-narrow`'s valid packet
+    // first and then `r-wide`'s, which the guard refuses. Nothing of the
+    // tick is sealed.
+    let directory = tempfile::tempdir().expect("temp dir");
+    let (mut ctx, _, clock) = narrow_and_wide_ending(
+        directory.path(),
+        &[("r-narrow", 64), ("r-wide", 4096)],
+        "",
+        r#"{"end":"budget_insufficient"}"#,
+    );
+    set_clock(&clock, "2030-01-01T00:10:00Z");
+    assert_both_refused_and_nothing_sealed(&mut ctx, directory.path());
+    ctx.kill();
+}
+
+#[test]
+fn a_narrower_subscribers_valid_packet_is_not_sealed_when_the_deadline_refuses_the_wider_one() {
+    // **The deadline publishes too, and is guarded whole.** T19's shape
+    // with the script stalling in place of its `publish`, and the clock
+    // moved to both requests' deadline: the deadline publishes each
+    // preparing request, `r-narrow`'s valid packet first and then
+    // `r-wide`'s, which the guard refuses. Nothing of the tick is sealed.
+    let directory = tempfile::tempdir().expect("temp dir");
+    let (mut ctx, _, clock) = narrow_and_wide_ending(
+        directory.path(),
+        &[("r-narrow", 64), ("r-wide", 4096)],
+        "",
+        r#"{"stall":{}}"#,
+    );
+    set_clock(&clock, "2030-01-01T01:00:00Z");
+    assert_both_refused_and_nothing_sealed(&mut ctx, directory.path());
     ctx.kill();
 }
