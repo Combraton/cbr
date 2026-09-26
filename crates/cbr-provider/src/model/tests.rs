@@ -3756,16 +3756,28 @@ fn a_store_killed_before_it_settled_an_overrun_is_stopped_when_it_is_opened_agai
 }
 
 #[test]
-fn a_start_leaves_a_killed_calls_reservation_standing_when_its_record_is_within_it() {
+fn a_start_settles_no_reservation_its_record_does_not_bill_above() {
     // **The control for P4.** A bill within its reservation is not an
     // overrun, and a start does not settle it: the reservation stands at
     // its estimate, which over-counts, as the crash matrix has always
     // said. Nor does a start settle a call killed before it sent, which
-    // recorded nothing.
+    // recorded nothing, or one whose response said the provider's quota
+    // was gone, which the call path settles to nothing whatever usage the
+    // body reports.
     let body = padded_body(64, 4_000);
     let send = crate::budget::reservation(&body, 1, 64);
     let raw = responses_completion_billing(1, send - 1);
+    let exhausted = format!(
+        "{{\"base_resp\":{{\"status_code\":1008,\"status_msg\":\"insufficient balance\"}},\
+         \"usage\":{{\"input_tokens\":1,\"output_tokens\":{send},\"total_tokens\":{}}}}}",
+        send + 1
+    )
+    .into_bytes();
     for (barrier, answer) in [
+        (
+            COMPLETION_DURING_RECONCILIATION,
+            (Answer::ProviderExhausted, exhausted),
+        ),
         (
             COMPLETION_DURING_RECONCILIATION,
             (

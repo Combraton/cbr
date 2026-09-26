@@ -717,6 +717,74 @@ fn a_settlement_lands_once_and_its_overrun_with_it() {
     );
 }
 
+#[test]
+fn a_store_that_cannot_take_an_overrun_is_stopped_in_this_process_and_reports_its_bound_first() {
+    // **The store refuses the overrun row itself**, here by a trigger, as
+    // an I/O error or a full disk would. The settlement fails and lands
+    // nothing, and the process keeps the overrun: an admission on another
+    // connection to the store is refused, and recorded as a refusal, while
+    // the overrun still cannot be written. The store's own stops come
+    // first, so a recorded unsound bound is what a caller is then told.
+    let directory = tempfile::tempdir().expect("temp dir");
+    let path = directory.path().join("ledger.sqlite");
+    let connection = Connection::open(&path).expect("opens");
+    Ledger::migrate(&connection).expect("migrates");
+    connection
+        .execute_batch(
+            "CREATE TRIGGER no_overrun BEFORE INSERT ON model_ledger
+             WHEN NEW.kind = 'overrun'
+             BEGIN SELECT RAISE(ABORT, 'no overrun row'); END;",
+        )
+        .expect("trigger");
+    let ledger = Ledger::new(&connection);
+    let reservation = ledger
+        .admit(T0, "job", "r", 10_000)
+        .expect("admits")
+        .expect("admitted");
+    assert!(
+        ledger
+            .settle(T0, &reservation, Settlement::Usage(12_000))
+            .is_err(),
+        "the overrun row was written"
+    );
+    assert!(ledger.keeps(&reservation), "the process did not keep it");
+    let beside = Connection::open(&path).expect("opens beside");
+    assert_eq!(
+        Ledger::new(&beside)
+            .admit(T0, "another", "next", 1)
+            .expect("admits"),
+        Err(Refusal::Overrun),
+        "another connection admitted on a store whose overrun was not written"
+    );
+    let rows = attributed(&connection);
+    assert!(
+        rows.contains(&(
+            "job".to_string(),
+            "r".to_string(),
+            "reservation".to_string(),
+            10_000,
+            10_000
+        )) && rows.contains(&(
+            "another".to_string(),
+            "next".to_string(),
+            "refusal".to_string(),
+            0,
+            1
+        )),
+        "{rows:?}"
+    );
+    ledger
+        .note(T0, "other", "x", "bound_unsound", 2, 1)
+        .expect("notes");
+    assert_eq!(
+        Ledger::new(&beside)
+            .admit(T0, "another", "later", 1)
+            .expect("admits"),
+        Err(Refusal::BoundUnsound),
+        "the process's stop was read before the store's"
+    );
+}
+
 // m4a's `the_crate_has_no_network_dependency_in_its_tree` moved to
 // `wire::net::tests` when m4b gave the crate one, and became two tests
 // there: the four crates that do not need a network client still have
