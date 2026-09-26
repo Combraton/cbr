@@ -4786,3 +4786,210 @@ fn a_job_that_ends_for_its_own_reason_after_the_deadline_keeps_that_reason() {
     );
     ctx.kill();
 }
+
+#[test]
+fn probe_a_capture_commit_that_fails_alone_publishes_nothing_until_it_succeeds() {
+    // **The capture commit and the tick's own batch are separate, and the
+    // tick must fail whole when only the capture commit fails.** A trigger
+    // aborts only the capture-only write of the job (its stored cursor 0,
+    // with captures), never the tick's own batch (cursor advanced). The
+    // tick must fail, send nothing to the peer and publish nothing; once
+    // the trigger is removed, the retry captures, sends and publishes.
+    let directory = tempfile::tempdir().expect("temp dir");
+    let clock = directory.path().join("clock");
+    set_clock(&clock, "2030-01-01T00:00:00Z");
+    let mut peer = EvidencePeer::start(directory.path(), &clock);
+    let script = format!(r#""r-1":[{},{{"publish":{{}}}}]"#, source_section("s-1"));
+    let config = scripted_beside(
+        &script,
+        &format!(r#","clock":{{"file":"{}"}}"#, clock.display()),
+        &peer.member,
+    );
+    let mut ctx = ContextProvider::start(directory.path(), &config);
+    ctx.submit("r-1", "2030-01-01T00:30:00Z");
+    let data = directory.path().join("context-data");
+    let other = rusqlite::Connection::open(data.join("cbr.sqlite")).expect("opens the store");
+    other
+        .execute_batch(
+            "CREATE TRIGGER probe_fail_capture BEFORE UPDATE ON subjects \
+             WHEN NEW.kind = 'context.job' AND json_extract(NEW.value, '$.cursor') = 0 \
+             AND json_extract(NEW.value, '$.captures') IS NOT NULL \
+             BEGIN SELECT RAISE(ABORT, 'probe: the capture commit fails'); END;",
+        )
+        .expect("trigger");
+    let answered = ctx.inspect("r-1");
+    assert_eq!(text(&answered, &["state"]), "preparing", "{answered:?}");
+    assert_eq!(
+        text(&stored(&data, "context.request", "r-1"), &["state"]),
+        "preparing"
+    );
+    peer.assert_never_sent("packet.r-1.1");
+    other
+        .execute_batch("DROP TRIGGER probe_fail_capture")
+        .expect("drop");
+    set_clock(&clock, "2030-01-01T00:05:00Z");
+    let published = settled_logged(&mut ctx, directory.path(), "r-1");
+    assert_eq!(text(&published, &["state"]), "ready", "{published:?}");
+    let (captured, digest) = sealed_at_peer(&mut peer, "packet.r-1.1");
+    assert_eq!(captured, "2030-01-01T00:05:00Z");
+    assert_eq!(its_one_packet(&published), digest);
+    ctx.kill();
+}
+
+#[test]
+fn probe_an_update_revision_kept_before_the_deadline_replays_after_it() {
+    // `r` under `context.updates`, `i-2` unmet: revision 1 published at
+    // 00:00; revision 2 sealed at the peer at 00:10 and CBR killed;
+    // restart at 02:00, past the 01:00 deadline. Revision 2 must replay as
+    // composed at 00:10 (`i-2` `unavailable`), not recomposed as
+    // `deadline_passed`.
+    let directory = tempfile::tempdir().expect("temp dir");
+    let clock = directory.path().join("clock");
+    set_clock(&clock, "2030-01-01T00:00:00Z");
+    let barriers = directory.path().join("barriers");
+    std::fs::create_dir(&barriers).expect("barrier dir");
+    let mut peer = EvidencePeer::start(directory.path(), &clock);
+    let script = format!(
+        r#""r":[{},{{"publish":{{}}}},{{"wait_until":"2030-01-01T00:10:00Z"}},{},{{"publish":{{}}}}]"#,
+        source_section("s-1"),
+        source_section("s-2")
+    );
+    let features = ["context.required_before_start", "context.updates"];
+    let mut ctx = ContextProvider::start_with(
+        directory.path(),
+        &beside_holding(&script, &clock, &barriers, false, &peer),
+        &features,
+    );
+    ctx.submit_with(
+        "r",
+        &one_unmet_item(),
+        "proceed_with_gap",
+        "2030-01-01T01:00:00Z",
+    );
+    revised(&mut ctx, directory.path(), "r", 1);
+    ctx.kill();
+    set_clock(&clock, "2030-01-01T00:10:00Z");
+    let ctx = ContextProvider::launch(
+        directory.path(),
+        &beside_holding(&script, &clock, &barriers, true, &peer),
+        &["core.events"],
+        &features,
+    );
+    wait_for(
+        &barriers.join(format!("{AFTER_PEER_SEALED}.reached")),
+        "revision 2's seal at the peer",
+    );
+    ctx.kill();
+    let (captured, digest) = sealed_at_peer(&mut peer, "packet.r.2");
+    assert_eq!(captured, "2030-01-01T00:10:00Z", "the premise");
+
+    set_clock(&clock, "2030-01-01T02:00:00Z");
+    let mut ctx = ContextProvider::start_with(
+        directory.path(),
+        &beside_holding(&script, &clock, &barriers, false, &peer),
+        &features,
+    );
+    let published = revised(&mut ctx, directory.path(), "r", 2);
+    let packets = at(&published, &["packets"]).as_array().expect("packets");
+    assert_eq!(
+        text(&packets[1], &["reference", "artifact", "digest"]),
+        digest,
+        "the peer's seal: {published:?}"
+    );
+    assert_eq!(
+        item_of(&published, "i-2"),
+        ("unmet".to_string(), "unavailable".to_string()),
+        "{published:?}"
+    );
+    ctx.kill();
+}
+
+#[test]
+fn probe_a_kill_after_a_finishing_tick_seals_at_the_peer_replays() {
+    // The script ends the job in the very tick that publishes; CBR is
+    // killed after the seal at the peer, before that tick's batch commits,
+    // and restarted at 00:05. The ending tick must replay too, not only an
+    // ordinary one.
+    let directory = tempfile::tempdir().expect("temp dir");
+    let clock = directory.path().join("clock");
+    set_clock(&clock, "2030-01-01T00:00:00Z");
+    let barriers = directory.path().join("barriers");
+    std::fs::create_dir(&barriers).expect("barrier dir");
+    let mut peer = EvidencePeer::start(directory.path(), &clock);
+    let script = format!(
+        r#""r-1":[{},{{"end":"investigation_budget_exhausted"}}]"#,
+        source_section("s-1")
+    );
+    let mut ctx = ContextProvider::start(
+        directory.path(),
+        &beside_holding(&script, &clock, &barriers, true, &peer),
+    );
+    ctx.submit("r-1", "2030-01-01T01:00:00Z");
+    ctx.send("context.request.inspect", None, r#"{"request":"r-1"}"#);
+    wait_for(
+        &barriers.join(format!("{AFTER_PEER_SEALED}.reached")),
+        "the seal at the peer",
+    );
+    ctx.kill();
+    let (captured, digest) = sealed_at_peer(&mut peer, "packet.r-1.1");
+    assert_eq!(captured, "2030-01-01T00:00:00Z", "the premise");
+    set_clock(&clock, "2030-01-01T00:05:00Z");
+    let mut ctx = ContextProvider::start(
+        directory.path(),
+        &beside_holding(&script, &clock, &barriers, false, &peer),
+    );
+    let published = settled_logged(&mut ctx, directory.path(), "r-1");
+    assert_eq!(its_one_packet(&published), digest, "the peer's seal");
+    ctx.kill();
+}
+
+#[test]
+fn probe_a_capture_kept_at_the_deadline_instant_replays_after_it() {
+    // Composed at exactly the deadline (00:30): `i-2` reads
+    // `deadline_passed`, and the deadline judgment at that boundary is
+    // itself the kept instant (V11: `>=` for a kept instant, not `>`).
+    // Killed after the peer seal, restarted at 00:40: the revision must
+    // replay unchanged, not recompose at the later instant.
+    let directory = tempfile::tempdir().expect("temp dir");
+    let clock = directory.path().join("clock");
+    set_clock(&clock, "2030-01-01T00:00:00Z");
+    let barriers = directory.path().join("barriers");
+    std::fs::create_dir(&barriers).expect("barrier dir");
+    let mut peer = EvidencePeer::start(directory.path(), &clock);
+    let script = format!(
+        r#""r-1":[{},{{"wait_until":"2030-01-01T00:30:00Z"}},{{"publish":{{}}}}]"#,
+        source_section("s-1")
+    );
+    let mut ctx = ContextProvider::start(
+        directory.path(),
+        &beside_holding(&script, &clock, &barriers, true, &peer),
+    );
+    ctx.submit_with(
+        "r-1",
+        &one_unmet_item(),
+        "proceed_with_gap",
+        "2030-01-01T00:30:00Z",
+    );
+    set_clock(&clock, "2030-01-01T00:30:00Z");
+    ctx.send("context.request.inspect", None, r#"{"request":"r-1"}"#);
+    wait_for(
+        &barriers.join(format!("{AFTER_PEER_SEALED}.reached")),
+        "the seal at the peer",
+    );
+    ctx.kill();
+    let (captured, digest) = sealed_at_peer(&mut peer, "packet.r-1.1");
+    assert_eq!(captured, "2030-01-01T00:30:00Z", "the premise");
+    set_clock(&clock, "2030-01-01T00:40:00Z");
+    let mut ctx = ContextProvider::start(
+        directory.path(),
+        &beside_holding(&script, &clock, &barriers, false, &peer),
+    );
+    let published = settled_logged(&mut ctx, directory.path(), "r-1");
+    assert_eq!(its_one_packet(&published), digest, "the peer's seal");
+    assert_eq!(
+        item_of(&published, "i-2"),
+        ("unmet".to_string(), "deadline_passed".to_string()),
+        "{published:?}"
+    );
+    ctx.kill();
+}
